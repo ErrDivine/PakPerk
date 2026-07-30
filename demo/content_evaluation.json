@@ -1,0 +1,381 @@
+{
+  "schema_version": 1,
+  "dataset_name": "pakperk-prepared-five-content-quality",
+  "evaluation_state": {
+    "status": "manually_evaluated",
+    "evaluated_at": "2026-07-29T15:07:40Z",
+    "model_ids": [
+      "deterministic-chat-v2",
+      "deterministic-hash-v1-64"
+    ],
+    "note": "Manually reviewed the clean pakperk_demo_release build produced by the ordinary worker pipeline. All 15 public chat responses were checked against their cited chunks, and all six required persisted connections were checked for reference match, relationship label, citation-context support, and genuine importance."
+  },
+  "rubric": {
+    "observed_chat_labels": [
+      {
+        "label": "answer_supported",
+        "definition": "Every material answer claim is supported by the cited excerpts and the citations identify the correct paper sections."
+      },
+      {
+        "label": "partially_supported",
+        "definition": "At least one material answer claim is supported, but another material claim lacks adequate cited support."
+      },
+      {
+        "label": "unsupported",
+        "definition": "The answer makes material claims that the cited excerpts do not support."
+      },
+      {
+        "label": "correct_abstention",
+        "definition": "The available paper evidence does not answer the question and the system clearly declines to infer an answer."
+      },
+      {
+        "label": "wrong_source_attribution",
+        "definition": "The answer may be plausible, but attributes a claim to an excerpt or section that does not contain it."
+      }
+    ],
+    "connection_review_dimensions": [
+      {
+        "name": "reference_match_correctness",
+        "definition": "The resolved arXiv paper is the work named by the parsed bibliography entry."
+      },
+      {
+        "name": "relationship_label_correctness",
+        "definition": "The generated relationship label is one of the labels justified by the citing paper's wording."
+      },
+      {
+        "name": "sentence_support_from_citation_context",
+        "definition": "The relationship sentence does not add a claim beyond the persisted citation-context excerpts."
+      },
+      {
+        "name": "genuine_importance",
+        "definition": "The cited work is important to the paper's method, comparison, or intellectual lineage rather than merely mentioned."
+      }
+    ]
+  },
+  "papers": [
+    {
+      "arxiv_id": "1706.03762",
+      "chat_cases": [
+        {
+          "case_id": "transformer-architecture",
+          "question": "What architecture does the paper propose?",
+          "expected_behavior": "answer",
+          "target_label": "answer_supported",
+          "evidence_requirements": [
+            {
+              "section_kinds": ["introduction", "method"],
+              "required_concepts": ["Transformer", "attention mechanisms"]
+            }
+          ],
+          "abstention_reason": null,
+          "observed_label": "answer_supported",
+          "review_notes": "The cited Model Architecture chunk names the Transformer and explains its stacked self-attention encoder-decoder architecture."
+        },
+        {
+          "case_id": "transformer-no-recurrence",
+          "question": "Why does the architecture avoid recurrence?",
+          "expected_behavior": "answer",
+          "target_label": "answer_supported",
+          "evidence_requirements": [
+            {
+              "section_kinds": ["introduction", "method"],
+              "required_concepts": ["parallelization", "sequential computation"]
+            }
+          ],
+          "abstention_reason": null,
+          "observed_label": "answer_supported",
+          "review_notes": "The cited Introduction explains the sequential-computation constraint of recurrence, the recurrence-free design, and the resulting parallelization."
+        },
+        {
+          "case_id": "transformer-bert-finetuning-rate",
+          "question": "Which learning rate does this paper use to fine-tune BERT?",
+          "expected_behavior": "abstain",
+          "target_label": "correct_abstention",
+          "evidence_requirements": [],
+          "abstention_reason": "The paper predates BERT and contains no BERT fine-tuning experiment.",
+          "observed_label": "correct_abstention",
+          "review_notes": "The response declined to infer a BERT fine-tuning rate and returned no evidence; this Transformer paper predates BERT."
+        }
+      ],
+      "connection_cases": []
+    },
+    {
+      "arxiv_id": "1810.04805",
+      "chat_cases": [
+        {
+          "case_id": "bert-pretraining",
+          "question": "How is BERT pre-trained?",
+          "expected_behavior": "answer",
+          "target_label": "answer_supported",
+          "evidence_requirements": [
+            {
+              "section_kinds": ["introduction", "method"],
+              "required_concepts": ["masked language model", "next sentence prediction"]
+            }
+          ],
+          "abstention_reason": null,
+          "observed_label": "answer_supported",
+          "review_notes": "The cited Pre-training BERT chunk explicitly covers both masked language modeling and next sentence prediction."
+        },
+        {
+          "case_id": "bert-downstream-tasks",
+          "question": "What downstream tasks are evaluated?",
+          "expected_behavior": "answer",
+          "target_label": "answer_supported",
+          "evidence_requirements": [
+            {
+              "section_kinds": ["experiment", "result"],
+              "required_concepts": ["GLUE", "SQuAD"]
+            }
+          ],
+          "abstention_reason": null,
+          "observed_label": "answer_supported",
+          "review_notes": "The cited experiment chunk identifies SQuAD question answering and the GLUE evaluation submission, satisfying both required downstream-task cues."
+        },
+        {
+          "case_id": "bert-retrieval-index",
+          "question": "How many Wikipedia passages does BERT retrieve from a dense index for each prediction?",
+          "expected_behavior": "abstain",
+          "target_label": "correct_abstention",
+          "evidence_requirements": [],
+          "abstention_reason": "BERT as described here has no retrieval-augmented dense index.",
+          "observed_label": "correct_abstention",
+          "review_notes": "The response returned no evidence and correctly declined the unsupported premise that BERT retrieves Wikipedia passages from a dense index."
+        }
+      ],
+      "connection_cases": [
+        {
+          "case_id": "bert-to-transformer",
+          "cited_arxiv_id": "1706.03762",
+          "expected_reference_title": "Attention Is All You Need",
+          "acceptable_relation_labels": ["builds_on", "uses", "background"],
+          "required_context_cues": ["Transformer", "bidirectional"],
+          "expected_genuine_importance": true,
+          "observed": {
+            "reference_match_correct": true,
+            "relationship_label_correct": true,
+            "sentence_supported_by_context": true,
+            "genuinely_important": true,
+            "review_notes": "The Vaswani reference resolves by local title at 0.90000004. The builds_on label (0.82) is supported by the method context stating that BERT is a multi-layer bidirectional Transformer encoder based on the original Vaswani implementation; this is foundational to BERT's architecture."
+          }
+        }
+      ]
+    },
+    {
+      "arxiv_id": "1907.11692",
+      "chat_cases": [
+        {
+          "case_id": "roberta-training-changes",
+          "question": "Which BERT training choices does RoBERTa change?",
+          "expected_behavior": "answer",
+          "target_label": "answer_supported",
+          "evidence_requirements": [
+            {
+              "section_kinds": ["method", "experiment"],
+              "required_concepts": ["dynamic masking", "next sentence prediction", "larger batches"]
+            }
+          ],
+          "abstention_reason": null,
+          "observed_label": "answer_supported",
+          "review_notes": "The cited RoBERTa method chunk explicitly lists dynamic masking, training without the NSP loss, and large mini-batches."
+        },
+        {
+          "case_id": "roberta-ablation-conclusion",
+          "question": "What does the ablation study conclude?",
+          "expected_behavior": "answer",
+          "target_label": "answer_supported",
+          "evidence_requirements": [
+            {
+              "section_kinds": ["introduction", "experiment", "result"],
+              "required_concepts": ["undertrained", "training data", "hyperparameters"]
+            }
+          ],
+          "abstention_reason": null,
+          "observed_label": "answer_supported",
+          "review_notes": "The paper summarizes its replication-study conclusions in the cited Introduction: hyperparameter tuning and training-set size matter, BERT was undertrained, and longer training with larger batches and more data improves it. Introduction was added to the allowed source kinds because this is the paper's actual summary location."
+        },
+        {
+          "case_id": "roberta-live-retrieval",
+          "question": "Which external document index does RoBERTa query during every inference request?",
+          "expected_behavior": "abstain",
+          "target_label": "correct_abstention",
+          "evidence_requirements": [],
+          "abstention_reason": "RoBERTa is a pre-trained encoder and the paper does not define live document retrieval at inference.",
+          "observed_label": "correct_abstention",
+          "review_notes": "The response returned no evidence and correctly rejected the unsupported premise that RoBERTa queries an external document index at inference."
+        }
+      ],
+      "connection_cases": [
+        {
+          "case_id": "roberta-to-bert",
+          "cited_arxiv_id": "1810.04805",
+          "expected_reference_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+          "acceptable_relation_labels": ["extends", "builds_on", "compares_with"],
+          "required_context_cues": ["BERT", "pretraining"],
+          "expected_genuine_importance": true,
+          "observed": {
+            "reference_match_correct": true,
+            "relationship_label_correct": true,
+            "sentence_supported_by_context": true,
+            "genuinely_important": true,
+            "review_notes": "The Devlin reference resolves by local title at 0.90000004. The compares_with label (0.87) is directly supported by the persisted comparison of the original Devlin segment-pair/NSP format with RoBERTa's alternative, and BERT is the central replication baseline."
+          }
+        },
+        {
+          "case_id": "roberta-to-transformer",
+          "cited_arxiv_id": "1706.03762",
+          "expected_reference_title": "Attention Is All You Need",
+          "acceptable_relation_labels": ["builds_on", "background", "related_work"],
+          "required_context_cues": ["Transformer"],
+          "expected_genuine_importance": true,
+          "observed": {
+            "reference_match_correct": true,
+            "relationship_label_correct": true,
+            "sentence_supported_by_context": true,
+            "genuinely_important": true,
+            "review_notes": "The Vaswani reference resolves by local title at 0.90000004. The background label (0.58) adds no claim beyond the context that BERT uses the ubiquitous Transformer architecture, which is the architectural foundation RoBERTa retains."
+          }
+        }
+      ]
+    },
+    {
+      "arxiv_id": "1910.10683",
+      "chat_cases": [
+        {
+          "case_id": "t5-text-to-text",
+          "question": "How are NLP tasks cast into one format?",
+          "expected_behavior": "answer",
+          "target_label": "answer_supported",
+          "evidence_requirements": [
+            {
+              "section_kinds": ["introduction", "method"],
+              "required_concepts": ["text-to-text", "input", "target"]
+            }
+          ],
+          "abstention_reason": null,
+          "observed_label": "answer_supported",
+          "review_notes": "The cited Input and Output Format chunk describes the text-to-text framework, a common task format, input prefixes, and generated output targets."
+        },
+        {
+          "case_id": "t5-c4",
+          "question": "What is the Colossal Clean Crawled Corpus?",
+          "expected_behavior": "answer",
+          "target_label": "answer_supported",
+          "evidence_requirements": [
+            {
+              "section_kinds": ["method", "experiment"],
+              "required_concepts": ["Common Crawl", "cleaning", "pre-training"]
+            }
+          ],
+          "abstention_reason": null,
+          "observed_label": "answer_supported",
+          "review_notes": "The cited C4 method chunk identifies Common Crawl as the web source, its use for pre-training, and cleaning steps including deduplication and language filtering."
+        },
+        {
+          "case_id": "t5-retrieved-passages",
+          "question": "How many passages does T5 retrieve from Wikipedia per generated token?",
+          "expected_behavior": "abstain",
+          "target_label": "correct_abstention",
+          "evidence_requirements": [],
+          "abstention_reason": "The T5 paper studies text-to-text transfer learning, not per-token retrieval from a Wikipedia index.",
+          "observed_label": "correct_abstention",
+          "review_notes": "The response returned no evidence and correctly rejected the unsupported premise that T5 performs per-token Wikipedia retrieval."
+        }
+      ],
+      "connection_cases": [
+        {
+          "case_id": "t5-to-bert",
+          "cited_arxiv_id": "1810.04805",
+          "expected_reference_title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+          "acceptable_relation_labels": ["compares_with", "background", "related_work"],
+          "required_context_cues": ["BERT", "pre-training"],
+          "expected_genuine_importance": true,
+          "observed": {
+            "reference_match_correct": true,
+            "relationship_label_correct": true,
+            "sentence_supported_by_context": true,
+            "genuinely_important": true,
+            "review_notes": "The BERT paper resolves by exact arXiv ID at 1.0. The compares_with label (0.87) is supported by the context comparing T5's baseline encoder and decoder size/configuration with a BERT_BASE stack; BERT is a genuine pre-training baseline."
+          }
+        },
+        {
+          "case_id": "t5-to-transformer",
+          "cited_arxiv_id": "1706.03762",
+          "expected_reference_title": "Attention Is All You Need",
+          "acceptable_relation_labels": ["builds_on", "uses", "background"],
+          "required_context_cues": ["Transformer", "encoder", "decoder"],
+          "expected_genuine_importance": true,
+          "observed": {
+            "reference_match_correct": true,
+            "relationship_label_correct": true,
+            "sentence_supported_by_context": true,
+            "genuinely_important": true,
+            "review_notes": "The Vaswani paper resolves by local title at 0.90000004. The builds_on label (0.86) is supported by two method contexts saying T5 uses an encoder-decoder Transformer and closely follows its originally proposed form; this is core architecture."
+          }
+        }
+      ]
+    },
+    {
+      "arxiv_id": "2005.11401",
+      "chat_cases": [
+        {
+          "case_id": "rag-two-memories",
+          "question": "How does RAG combine parametric and non-parametric memory?",
+          "expected_behavior": "answer",
+          "target_label": "answer_supported",
+          "evidence_requirements": [
+            {
+              "section_kinds": ["introduction", "method"],
+              "required_concepts": ["seq2seq", "dense vector index", "neural retriever"]
+            }
+          ],
+          "abstention_reason": null,
+          "observed_label": "answer_supported",
+          "review_notes": "The cited Introduction explains that the parametric memory is a pre-trained seq2seq Transformer while the non-parametric memory is a dense Wikipedia vector index accessed by a neural retriever."
+        },
+        {
+          "case_id": "rag-formulations",
+          "question": "How do the two RAG formulations differ?",
+          "expected_behavior": "answer",
+          "target_label": "answer_supported",
+          "evidence_requirements": [
+            {
+              "section_kinds": ["method"],
+              "required_concepts": ["same retrieved passages", "per token"]
+            }
+          ],
+          "abstention_reason": null,
+          "observed_label": "answer_supported",
+          "review_notes": "The cited Methods chunk states that RAG-Sequence uses the same document for each target token whereas RAG-Token may use a different document per token."
+        },
+        {
+          "case_id": "rag-bert-masking",
+          "question": "What masking probability does RAG use to pre-train BERT from scratch?",
+          "expected_behavior": "abstain",
+          "target_label": "correct_abstention",
+          "evidence_requirements": [],
+          "abstention_reason": "RAG does not report pre-training BERT from scratch with a masking objective.",
+          "observed_label": "correct_abstention",
+          "review_notes": "The response returned no evidence and correctly rejected the unsupported premise that RAG pre-trains BERT from scratch with a masking probability."
+        }
+      ],
+      "connection_cases": [
+        {
+          "case_id": "rag-to-transformer",
+          "cited_arxiv_id": "1706.03762",
+          "expected_reference_title": "Attention Is All You Need",
+          "acceptable_relation_labels": ["builds_on", "uses", "background"],
+          "required_context_cues": ["sequence-to-sequence", "Transformer"],
+          "expected_genuine_importance": true,
+          "observed": {
+            "reference_match_correct": true,
+            "relationship_label_correct": true,
+            "sentence_supported_by_context": true,
+            "genuinely_important": true,
+            "review_notes": "The Vaswani paper resolves by local title at 0.90000004. The uses label (0.80) is supported by the Generator context stating that RAG uses BART-large, a pre-trained seq2seq Transformer citing Vaswani; this is foundational to the generator architecture."
+          }
+        }
+      ]
+    }
+  ]
+}

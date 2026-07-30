@@ -1,0 +1,470 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-29T16:10:29Z",
+  "api_base": "http://127.0.0.1:8081",
+  "arxiv_id": "2106.09685v2",
+  "paper_id": "4ddea212-2eee-441a-a24a-ff2fd393bd10",
+  "initial": {
+    "paper_id": "4ddea212-2eee-441a-a24a-ff2fd393bd10",
+    "generation": 1,
+    "overall_state": "not_requested",
+    "stage": "not_requested",
+    "capabilities": {
+      "metadata": true,
+      "introduction": false,
+      "chat": false,
+      "connections": false
+    },
+    "retryable": false,
+    "last_error": null,
+    "started_at": null,
+    "updated_at": "2026-07-29T14:28:23.111828Z",
+    "completed_at": null,
+    "parser_version": null,
+    "embedding_model": null,
+    "summary_model": null
+  },
+  "first_prepare": {
+    "paper_id": "4ddea212-2eee-441a-a24a-ff2fd393bd10",
+    "generation": 1,
+    "overall_state": "processing",
+    "stage": "queued",
+    "capabilities": {
+      "metadata": true,
+      "introduction": false,
+      "chat": false,
+      "connections": false
+    },
+    "retryable": false,
+    "last_error": null,
+    "started_at": null,
+    "updated_at": "2026-07-29T16:09:59.872872Z",
+    "completed_at": null,
+    "parser_version": null,
+    "embedding_model": null,
+    "summary_model": null
+  },
+  "second_prepare": {
+    "paper_id": "4ddea212-2eee-441a-a24a-ff2fd393bd10",
+    "generation": 1,
+    "overall_state": "processing",
+    "stage": "queued",
+    "capabilities": {
+      "metadata": true,
+      "introduction": false,
+      "chat": false,
+      "connections": false
+    },
+    "retryable": false,
+    "last_error": null,
+    "started_at": null,
+    "updated_at": "2026-07-29T16:09:59.872872Z",
+    "completed_at": null,
+    "parser_version": null,
+    "embedding_model": null,
+    "summary_model": null
+  },
+  "observed_stages": [
+    {
+      "observed_at": "2026-07-29T16:09:59Z",
+      "stage": "queued",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": false,
+        "chat": false,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:00Z",
+      "stage": "fetching_pdf",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": false,
+        "chat": false,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:01Z",
+      "stage": "parsing_pdf",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": false,
+        "chat": false,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:03Z",
+      "stage": "parsing_pdf",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": false,
+        "chat": false,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:04Z",
+      "stage": "parsing_pdf",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": false,
+        "chat": false,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:05Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:06Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:07Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:08Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:09Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:10Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:11Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:12Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:13Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:14Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:15Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:16Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:17Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:18Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:20Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:21Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:22Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:23Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:24Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:25Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:26Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:27Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:28Z",
+      "stage": "resolving_references",
+      "overall_state": "processing",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": false
+      },
+      "retryable": false,
+      "last_error": null
+    },
+    {
+      "observed_at": "2026-07-29T16:10:29Z",
+      "stage": "ready",
+      "overall_state": "ready",
+      "capabilities": {
+        "metadata": true,
+        "introduction": true,
+        "chat": true,
+        "connections": true
+      },
+      "retryable": false,
+      "last_error": null
+    }
+  ],
+  "final": {
+    "paper_id": "4ddea212-2eee-441a-a24a-ff2fd393bd10",
+    "generation": 1,
+    "overall_state": "ready",
+    "stage": "ready",
+    "capabilities": {
+      "metadata": true,
+      "introduction": true,
+      "chat": true,
+      "connections": true
+    },
+    "retryable": false,
+    "last_error": null,
+    "started_at": "2026-07-29T16:10:00.527419Z",
+    "updated_at": "2026-07-29T16:10:28.691534Z",
+    "completed_at": "2026-07-29T16:10:28.691534Z",
+    "parser_version": "grobid-tei-v1",
+    "embedding_model": "deterministic-hash-v1-64",
+    "summary_model": null
+  },
+  "introduction_paragraph_count": 7,
+  "key_connection_count": 5,
+  "reference_count": 64,
+  "success": true
+}

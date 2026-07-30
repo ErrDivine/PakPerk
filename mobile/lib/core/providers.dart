@@ -1,0 +1,119 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
+
+import 'api/api_client.dart';
+import 'cache/demo_asset_store.dart';
+import 'cache/local_store.dart';
+import 'content_policy.dart';
+import 'models/reader_state.dart';
+import 'repository/paper_repository.dart';
+
+const apiBaseUrl = String.fromEnvironment(
+  'PAKPERK_API_BASE_URL',
+  defaultValue: 'http://localhost:8080',
+);
+
+final localStoreProvider = Provider<LocalStore>(
+  (ref) =>
+      throw StateError('localStoreProvider must be overridden at startup.'),
+);
+
+final initialAnonymousSessionIdProvider = Provider<String>(
+  (ref) => const Uuid().v4(),
+);
+
+final anonymousSessionIdProvider =
+    StateNotifierProvider<AnonymousSessionController, String>(
+  (ref) => AnonymousSessionController(
+    store: ref.watch(localStoreProvider),
+    initialSessionId: ref.watch(initialAnonymousSessionIdProvider),
+  ),
+);
+
+final initialRestorationProvider = Provider<AppRestorationState>(
+  (ref) => const AppRestorationState(),
+);
+
+final clientFulltextPolicyProvider = Provider<ClientFulltextPolicy>(
+  (ref) => ClientFulltextPolicy.fromWire(configuredFulltextPolicyName),
+);
+
+final demoContentStoreProvider = Provider<DemoContentStore>(
+  (ref) => BundleDemoContentStore(),
+);
+
+final apiClientProvider = Provider<ApiClient>(
+  (ref) {
+    final client = ApiClient(
+      baseUrl: apiBaseUrl,
+      sessionId: ref.watch(anonymousSessionIdProvider),
+    );
+    ref.onDispose(client.dispose);
+    return client;
+  },
+);
+
+final paperRepositoryProvider = Provider<PaperDataSource>((ref) {
+  final repository = PaperRepository(
+    api: ref.watch(apiClientProvider),
+    localStore: ref.watch(localStoreProvider),
+    demoContent: ref.watch(demoContentStoreProvider),
+    fulltextPolicy: ref.watch(clientFulltextPolicyProvider),
+  );
+  ref.onDispose(repository.dispose);
+  return repository;
+});
+
+final networkOfflineProvider = StreamProvider<bool>((ref) async* {
+  final repository = ref.watch(paperRepositoryProvider);
+  yield repository.isOffline;
+  yield* repository.offlineChanges;
+});
+
+abstract interface class ExternalLinkOpener {
+  Future<bool> open(Uri uri);
+}
+
+class SystemExternalLinkOpener implements ExternalLinkOpener {
+  @override
+  Future<bool> open(Uri uri) =>
+      launchUrl(uri, mode: LaunchMode.externalApplication);
+}
+
+final externalLinkOpenerProvider = Provider<ExternalLinkOpener>(
+  (ref) => SystemExternalLinkOpener(),
+);
+
+class AnonymousSessionController extends StateNotifier<String> {
+  AnonymousSessionController({
+    required LocalStore store,
+    required String initialSessionId,
+  })  : _store = store,
+        super(initialSessionId);
+
+  final LocalStore _store;
+  Future<String>? _rotation;
+
+  /// Replaces the anonymous identity and removes locally restorable chat state.
+  ///
+  /// There is intentionally no old-ID recovery path: this is an anonymous
+  /// rate-limit/privacy identity, not an account credential.
+  Future<String> rotate() {
+    final active = _rotation;
+    if (active != null) return active;
+    final operation = _rotate();
+    _rotation = operation;
+    return operation.whenComplete(() {
+      if (identical(_rotation, operation)) _rotation = null;
+    });
+  }
+
+  Future<String> reset() => rotate();
+
+  Future<String> _rotate() async {
+    final next = await _store.rotateAnonymousSession();
+    if (mounted) state = next;
+    return next;
+  }
+}

@@ -1,0 +1,333 @@
+import 'dart:async';
+
+import 'package:pakperk/core/cache/local_store.dart';
+import 'package:pakperk/core/api/request_cancellation.dart';
+import 'package:pakperk/core/models/chat.dart';
+import 'package:pakperk/core/models/connections.dart';
+import 'package:pakperk/core/models/introduction.dart';
+import 'package:pakperk/core/models/paper.dart';
+import 'package:pakperk/core/models/processing.dart';
+import 'package:pakperk/core/models/reader_state.dart';
+import 'package:pakperk/core/repository/paper_repository.dart';
+
+final samplePaper = PaperSummary(
+  paperId: '17060376-2000-4000-8000-000000000001',
+  arxivId: '1706.03762v7',
+  title: 'Attention Is All You Need',
+  abstractText:
+      'A Transformer architecture based entirely on attention mechanisms.',
+  authors: const ['Ashish Vaswani', 'Noam Shazeer'],
+  primaryCategory: 'cs.CL',
+  categories: const ['cs.CL', 'cs.LG'],
+  publishedAt: DateTime.utc(2017, 6, 12),
+  updatedAt: DateTime.utc(2023, 8, 2),
+  absUrl: 'https://arxiv.org/abs/1706.03762v7',
+  pdfUrl: 'https://arxiv.org/pdf/1706.03762v7',
+);
+
+final sampleIntroduction = PaperIntroduction(
+  paperId: samplePaper.paperId,
+  generation: 1,
+  heading: '1 Introduction',
+  paragraphs: const [
+    IntroductionParagraph(
+      ordinal: 0,
+      text: 'The Transformer removes recurrence from sequence modeling.',
+      pageStart: 1,
+      pageEnd: 1,
+    ),
+  ],
+  detectionConfidence: .99,
+  originalPdfUrl: samplePaper.pdfUrl,
+);
+
+final sampleProcessing = PaperProcessingState(
+  paperId: samplePaper.paperId,
+  overallState: 'ready',
+  stage: ProcessingStage.ready,
+  capabilities: const PaperCapabilities(
+    introduction: true,
+    chat: true,
+    connections: true,
+  ),
+  retryable: false,
+  updatedAt: DateTime.utc(2026, 7, 29),
+);
+
+final sampleConnections = PaperConnections(
+  paperId: samplePaper.paperId,
+  ready: true,
+  keyConnections: const [],
+  references: const [],
+);
+
+class MemoryLocalStore implements LocalStore {
+  String? sessionId;
+  int sessionRotations = 0;
+  AppRestorationState restoration = const AppRestorationState();
+  FeedPage? feed;
+  final Map<String, PaperSummary> papers = {};
+  final Map<String, PaperProcessingState> processing = {};
+  final Map<String, PaperIntroduction> introductions = {};
+  final Map<String, PaperConnections> connections = {};
+  final Map<String, ChatSnapshot> chats = {};
+
+  @override
+  Future<String> getOrCreateSessionId() async =>
+      sessionId ??= '00000000-0000-4000-8000-000000000099';
+
+  @override
+  Future<String> rotateAnonymousSession() async {
+    sessionRotations += 1;
+    sessionId =
+        '00000000-0000-4000-8000-${sessionRotations.toString().padLeft(12, '0')}';
+    chats.clear();
+    restoration = restoration.copyWith(
+      readerStates: restoration.readerStates.map(
+        (key, reader) => MapEntry(
+          key,
+          reader.copyWith(
+            chatSheetOpen: false,
+            clearChatThreadId: true,
+          ),
+        ),
+      ),
+    );
+    return sessionId!;
+  }
+
+  @override
+  Future<AppRestorationState> loadRestoration() async => restoration;
+
+  @override
+  Future<void> saveRestoration(AppRestorationState value) async {
+    restoration = value;
+  }
+
+  @override
+  Future<FeedPage?> loadFeed() async => feed;
+
+  @override
+  Future<void> saveFeed(FeedPage value) async {
+    feed = value;
+  }
+
+  @override
+  Future<PaperSummary?> loadPaper(String paperId) async => papers[paperId];
+
+  @override
+  Future<void> savePaper(PaperSummary value) async {
+    papers[value.paperId] = value;
+  }
+
+  @override
+  Future<void> clearDerived(String paperId) async {
+    processing.remove(paperId);
+    introductions.remove(paperId);
+    connections.remove(paperId);
+  }
+
+  @override
+  Future<PaperProcessingState?> loadProcessing(String paperId) async =>
+      processing[paperId];
+
+  @override
+  Future<void> saveProcessing(PaperProcessingState value) async {
+    processing[value.paperId] = value;
+  }
+
+  @override
+  Future<PaperIntroduction?> loadIntroduction(String paperId) async =>
+      introductions[paperId];
+
+  @override
+  Future<void> saveIntroduction(PaperIntroduction value) async {
+    introductions[value.paperId] = value;
+  }
+
+  @override
+  Future<PaperConnections?> loadConnections(String paperId) async =>
+      connections[paperId];
+
+  @override
+  Future<void> saveConnections(PaperConnections value) async {
+    connections[value.paperId] = value;
+  }
+
+  @override
+  Future<ChatSnapshot?> loadChat(String readerKey) async => chats[readerKey];
+
+  @override
+  Future<void> saveChat(String readerKey, ChatSnapshot value) async {
+    chats[readerKey] = value;
+  }
+}
+
+class FakePaperDataSource implements PaperDataSource {
+  FakePaperDataSource({
+    this.paper,
+    this.processing,
+    this.prepareResult,
+    this.introduction,
+    this.connections,
+  });
+
+  PaperSummary? paper;
+  PaperProcessingState? processing;
+  PaperProcessingState? prepareResult;
+  PaperIntroduction? introduction;
+  PaperConnections? connections;
+  int prepareCalls = 0;
+  int processingCalls = 0;
+  int introductionCalls = 0;
+  int connectionCalls = 0;
+  bool offline = false;
+  DataOrigin contentOrigin = DataOrigin.network;
+  Completer<RepositoryValue<FeedPage>>? networkFeedCompleter;
+  Completer<void>? cacheFeedCompleter;
+  FeedPage? cachedFeed;
+  FeedPage? networkFeed;
+  final List<FeedPage> cachedFeedWrites = [];
+  final List<bool> cachedFeedReplaceFlags = [];
+  RequestCancellation? lastFeedCancellation;
+  RequestCancellation? lastPaperCancellation;
+  RequestCancellation? lastPrepareCancellation;
+  RequestCancellation? lastProcessingCancellation;
+  RequestCancellation? lastIntroductionCancellation;
+  RequestCancellation? lastConnectionsCancellation;
+  RequestCancellation? lastChatCancellation;
+
+  @override
+  bool get isOffline => offline;
+
+  @override
+  Stream<bool> get offlineChanges => const Stream<bool>.empty();
+
+  @override
+  Future<void> cacheFeed(FeedPage value, {bool replaceFeed = true}) async {
+    cachedFeedWrites.add(value);
+    cachedFeedReplaceFlags.add(replaceFeed);
+    await cacheFeedCompleter?.future;
+  }
+
+  @override
+  Future<RepositoryValue<FeedPage>> getCachedFeed({String? category}) async =>
+      RepositoryValue(
+        value: cachedFeed ?? FeedPage(items: [paper ?? samplePaper]),
+        origin: DataOrigin.deviceCache,
+        offline: offline,
+      );
+
+  @override
+  Future<RepositoryValue<FeedPage>> getFeed({
+    String? category,
+    String? cursor,
+    int limit = 20,
+    RequestCancellation? cancellation,
+  }) async {
+    lastFeedCancellation = cancellation;
+    if (networkFeedCompleter != null) {
+      return networkFeedCompleter!.future;
+    }
+    return RepositoryValue(
+      value: networkFeed ?? FeedPage(items: [paper ?? samplePaper]),
+      origin: DataOrigin.network,
+      offline: offline,
+    );
+  }
+
+  @override
+  Future<RepositoryValue<PaperSummary>> getPaper(
+    String paperId, {
+    RequestCancellation? cancellation,
+  }) async {
+    lastPaperCancellation = cancellation;
+    return RepositoryValue(
+      value: paper ?? samplePaper,
+      origin: DataOrigin.network,
+      offline: offline,
+    );
+  }
+
+  @override
+  Future<RepositoryValue<PaperProcessingState>> prepare(
+    String paperId, {
+    bool retry = false,
+    RequestCancellation? cancellation,
+  }) async {
+    lastPrepareCancellation = cancellation;
+    prepareCalls += 1;
+    return RepositoryValue(
+      value: prepareResult ?? processing ?? sampleProcessing,
+      origin: DataOrigin.network,
+      offline: offline,
+    );
+  }
+
+  @override
+  Future<RepositoryValue<PaperProcessingState>> getProcessing(
+    String paperId, {
+    RequestCancellation? cancellation,
+  }) async {
+    lastProcessingCancellation = cancellation;
+    processingCalls += 1;
+    return RepositoryValue(
+      value: processing ?? sampleProcessing,
+      origin: DataOrigin.network,
+      offline: offline,
+    );
+  }
+
+  @override
+  Future<RepositoryValue<PaperIntroduction>> getIntroduction(
+    String paperId, {
+    RequestCancellation? cancellation,
+  }) async {
+    lastIntroductionCancellation = cancellation;
+    introductionCalls += 1;
+    return RepositoryValue(
+      value: introduction ?? sampleIntroduction,
+      origin: contentOrigin,
+      offline: offline,
+    );
+  }
+
+  @override
+  Future<RepositoryValue<PaperConnections>> getConnections(
+    String paperId, {
+    RequestCancellation? cancellation,
+  }) async {
+    lastConnectionsCancellation = cancellation;
+    connectionCalls += 1;
+    return RepositoryValue(
+      value: connections ?? sampleConnections,
+      origin: contentOrigin,
+      offline: offline,
+    );
+  }
+
+  @override
+  Future<ChatAnswer> sendChat({
+    required String paperId,
+    required String message,
+    String? threadId,
+    RequestCancellation? cancellation,
+  }) async {
+    lastChatCancellation = cancellation;
+    return const ChatAnswer(
+      answerMarkdown: 'It uses self-attention.',
+      insufficientEvidence: false,
+      evidence: [
+        ChatEvidence(
+          sectionKind: 'method',
+          sectionHeading: '3 Method',
+          pageStart: 4,
+          pageEnd: 5,
+          chunkId: 'chunk-1',
+        ),
+      ],
+      suggestedFollowUps: [],
+      threadId: 'thread-1',
+    );
+  }
+}

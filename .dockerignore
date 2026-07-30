@@ -1,0 +1,9 @@
+.git
+.env
+.DS_Store
+**/target
+mobile/.dart_tool
+mobile/build
+mobile/ios/Pods
+demo/verification_report*.json
+*.log

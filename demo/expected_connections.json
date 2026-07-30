@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "papers": {
+    "1810.04805": {
+      "must_resolve": ["1706.03762"],
+      "minimum_key_connections": 3
+    },
+    "1907.11692": {
+      "must_resolve": ["1810.04805", "1706.03762"],
+      "minimum_key_connections": 5
+    },
+    "1910.10683": {
+      "must_resolve": ["1810.04805", "1706.03762"],
+      "minimum_key_connections": 5
+    },
+    "2005.11401": {
+      "must_resolve": ["1706.03762"],
+      "minimum_key_connections": 5
+    }
+  },
+  "policy": {
+    "automatic_link_threshold": 0.9,
+    "ambiguous_upper_bound": 0.9,
+    "ambiguous_lower_bound": 0.8,
+    "maximum_cards": 5
+  }
+}
+

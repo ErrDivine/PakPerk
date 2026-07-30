@@ -1,0 +1,31 @@
+name: pakperk
+description: A phone-first arXiv reader for abstracts, introductions, and paper connections.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dio: ^5.8.0+1
+  flutter_markdown: ^0.7.7+1
+  flutter_riverpod: ^2.6.1
+  shared_preferences: ^2.5.3
+  url_launcher: ^6.3.1
+  uuid: ^4.5.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/fallback_feed.json
+    - assets/prepared_introductions.json
+    - assets/prepared_connections.json

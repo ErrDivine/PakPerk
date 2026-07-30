@@ -1,0 +1,679 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-29T15:15:32Z",
+  "api_base": "http://127.0.0.1:8080",
+  "anonymous_session_id": "00000000-0000-4000-8000-000000000021",
+  "notice": "Raw API responses for manual review. This report does not populate or claim observed evaluation labels.",
+  "cases": [
+    {
+      "arxiv_id": "1706.03762",
+      "paper_id": "387fc70a-a95a-4c45-aa9d-f6252934da33",
+      "specification": {
+        "case_id": "transformer-architecture",
+        "question": "What architecture does the paper propose?",
+        "expected_behavior": "answer",
+        "target_label": "answer_supported",
+        "evidence_requirements": [
+          {
+            "section_kinds": [
+              "introduction",
+              "method"
+            ],
+            "required_concepts": [
+              "Transformer",
+              "attention mechanisms"
+            ]
+          }
+        ],
+        "abstention_reason": null,
+        "observed_label": "answer_supported",
+        "review_notes": "The cited Model Architecture chunk names the Transformer and explains its stacked self-attention encoder-decoder architecture."
+      },
+      "response": {
+        "thread_id": "494f5801-2481-4e27-b513-4d558ddab5cd",
+        "answer_markdown": "The paper's method section states: “Most competitive neural sequence transduction models have an encoder-decoder structure [5, 2, 35] . Here, the encoder maps an input sequence of symbol representations (x 1 , ..., x n ) to a sequence of continuous representations z = (z 1 , ..., z n ). Given z, the decoder then generates …”\n\nThe paper's method section states: “… ..., y m ) of symbols one element at a time. At each step the model is auto-regressive [10] , consuming the previously generated symbols as additional input when generating the next. The Transformer follows this overall architecture using stacked self-attention and point-wise, fully connected layers for both the encoder and decoder, …”\n\nThis offline answer is extractive and does not infer claims beyond those excerpts.",
+        "insufficient_evidence": false,
+        "evidence": [
+          {
+            "section_kind": "method",
+            "section_heading": "Model Architecture",
+            "page_start": 2,
+            "page_end": 3,
+            "chunk_id": "019fae47-b01c-7402-aad4-d7336396e4dc"
+          }
+        ],
+        "suggested_follow_ups": [
+          "What other evidence does the paper give for this?"
+        ],
+        "model_id": "deterministic-chat-v2",
+        "provider_request_id": null,
+        "prompt_version": "paper-chat-v1-deterministic-v2"
+      },
+      "diagnostics": {
+        "provider_abstained": false,
+        "evidence_count": 1,
+        "returned_chunk_ids": [
+          "019fae47-b01c-7402-aad4-d7336396e4dc"
+        ]
+      }
+    },
+    {
+      "arxiv_id": "1706.03762",
+      "paper_id": "387fc70a-a95a-4c45-aa9d-f6252934da33",
+      "specification": {
+        "case_id": "transformer-no-recurrence",
+        "question": "Why does the architecture avoid recurrence?",
+        "expected_behavior": "answer",
+        "target_label": "answer_supported",
+        "evidence_requirements": [
+          {
+            "section_kinds": [
+              "introduction",
+              "method"
+            ],
+            "required_concepts": [
+              "parallelization",
+              "sequential computation"
+            ]
+          }
+        ],
+        "abstention_reason": null,
+        "observed_label": "answer_supported",
+        "review_notes": "The cited Introduction explains the sequential-computation constraint of recurrence, the recurrence-free design, and the resulting parallelization."
+      },
+      "response": {
+        "thread_id": "b1e2a604-7d65-40f3-970e-0693f2d6ea55",
+        "answer_markdown": "The paper's introduction section states: “… as language modeling and machine translation [35, 2, 5] . Numerous efforts have since continued to push the boundaries of recurrent language models and encoder-decoder architectures [38, 24, 15] . Recurrent models typically factor computation along the symbol positions of the input and output sequences. Aligning the positions to steps in computation …”\n\nThe paper's introduction section states: “… improvements in computational efficiency through factorization tricks [21] and conditional computation [32] , while also improving model performance in case of the latter. The fundamental constraint of sequential computation, however, remains. Attention mechanisms have become an integral part of compelling sequence modeling and transduction models in various tasks, allowing modeling of dependencies …”\n\nThe paper's introduction section states: “… a few cases [27] , however, such attention mechanisms are used in conjunction with a recurrent network. In this work we propose the Transformer, a model architecture eschewing recurrence and instead relying entirely on an attention mechanism to draw global dependencies between input and output. The Transformer allows for significantly more parallelization …”\n\nThis offline answer is extractive and does not infer claims beyond those excerpts.",
+        "insufficient_evidence": false,
+        "evidence": [
+          {
+            "section_kind": "introduction",
+            "section_heading": "Introduction",
+            "page_start": 2,
+            "page_end": 2,
+            "chunk_id": "019fae47-b01c-7402-aad4-d718ff9725dd"
+          }
+        ],
+        "suggested_follow_ups": [
+          "What other evidence does the paper give for this?"
+        ],
+        "model_id": "deterministic-chat-v2",
+        "provider_request_id": null,
+        "prompt_version": "paper-chat-v1-deterministic-v2"
+      },
+      "diagnostics": {
+        "provider_abstained": false,
+        "evidence_count": 1,
+        "returned_chunk_ids": [
+          "019fae47-b01c-7402-aad4-d718ff9725dd"
+        ]
+      }
+    },
+    {
+      "arxiv_id": "1706.03762",
+      "paper_id": "387fc70a-a95a-4c45-aa9d-f6252934da33",
+      "specification": {
+        "case_id": "transformer-bert-finetuning-rate",
+        "question": "Which learning rate does this paper use to fine-tune BERT?",
+        "expected_behavior": "abstain",
+        "target_label": "correct_abstention",
+        "evidence_requirements": [],
+        "abstention_reason": "The paper predates BERT and contains no BERT fine-tuning experiment.",
+        "observed_label": "correct_abstention",
+        "review_notes": "The response declined to infer a BERT fine-tuning rate and returned no evidence; this Transformer paper predates BERT."
+      },
+      "response": {
+        "thread_id": "495ec401-482a-4d3d-9580-061142c2ecfd",
+        "answer_markdown": "The indexed sections do not clearly answer that question in offline deterministic mode. A configured chat model may synthesize the supplied excerpts, but Pakperk will not infer a claim without matching evidence.",
+        "insufficient_evidence": true,
+        "evidence": [],
+        "suggested_follow_ups": [],
+        "model_id": "deterministic-chat-v2",
+        "provider_request_id": null,
+        "prompt_version": "paper-chat-v1-deterministic-v2"
+      },
+      "diagnostics": {
+        "provider_abstained": true,
+        "evidence_count": 0,
+        "returned_chunk_ids": []
+      }
+    },
+    {
+      "arxiv_id": "1810.04805",
+      "paper_id": "a3a0c57e-8313-4d99-9628-5d8456490b5c",
+      "specification": {
+        "case_id": "bert-pretraining",
+        "question": "How is BERT pre-trained?",
+        "expected_behavior": "answer",
+        "target_label": "answer_supported",
+        "evidence_requirements": [
+          {
+            "section_kinds": [
+              "introduction",
+              "method"
+            ],
+            "required_concepts": [
+              "masked language model",
+              "next sentence prediction"
+            ]
+          }
+        ],
+        "abstention_reason": null,
+        "observed_label": "answer_supported",
+        "review_notes": "The cited Pre-training BERT chunk explicitly covers both masked language modeling and next sentence prediction."
+      },
+      "response": {
+        "thread_id": "364142c3-71f7-4a73-844b-69386efe8616",
+        "answer_markdown": "The paper's method section states: “Unlike Peters et al. (2018a) and Radford et al. (2018) , we do not use traditional left-to-right or right-to-left language models to pre-train BERT. Instead, we pre-train BERT using two unsupervised tasks, described in this section. This step is presented in the left part of Figure 1 . Task #1: Masked LM …”\n\nThe paper's method section states: “… mask some percentage of the input tokens at random, and then predict those masked tokens. We refer to this procedure as a masked LM (MLM), although it is often referred to as a Cloze task in the literature (Taylor, 1953) . In this case, the final hidden vectors corresponding to the mask …”\n\nThe paper's method section states: “… Next Sentence Prediction (NSP) Many important downstream tasks such as Question Answering (QA) and Natural Language Inference (NLI) are based on understanding the relationship between two sentences, which is not directly captured by language modeling. In order to train a model that understands sentence relationships, we pre-train for a binarized next sentence …”\n\nThis offline answer is extractive and does not infer claims beyond those excerpts.",
+        "insufficient_evidence": false,
+        "evidence": [
+          {
+            "section_kind": "method",
+            "section_heading": "Pre-training BERT",
+            "page_start": 4,
+            "page_end": 4,
+            "chunk_id": "019fae49-0767-7dd2-b179-58fb4f08a944"
+          }
+        ],
+        "suggested_follow_ups": [
+          "What other evidence does the paper give for this?"
+        ],
+        "model_id": "deterministic-chat-v2",
+        "provider_request_id": null,
+        "prompt_version": "paper-chat-v1-deterministic-v2"
+      },
+      "diagnostics": {
+        "provider_abstained": false,
+        "evidence_count": 1,
+        "returned_chunk_ids": [
+          "019fae49-0767-7dd2-b179-58fb4f08a944"
+        ]
+      }
+    },
+    {
+      "arxiv_id": "1810.04805",
+      "paper_id": "a3a0c57e-8313-4d99-9628-5d8456490b5c",
+      "specification": {
+        "case_id": "bert-downstream-tasks",
+        "question": "What downstream tasks are evaluated?",
+        "expected_behavior": "answer",
+        "target_label": "answer_supported",
+        "evidence_requirements": [
+          {
+            "section_kinds": [
+              "experiment",
+              "result"
+            ],
+            "required_concepts": [
+              "GLUE",
+              "SQuAD"
+            ]
+          }
+        ],
+        "abstention_reason": null,
+        "observed_label": "answer_supported",
+        "review_notes": "The cited experiment chunk identifies SQuAD question answering and the GLUE evaluation submission, satisfying both required downstream-task cues."
+      },
+      "response": {
+        "thread_id": "2b60201e-9ea8-439c-ad20-778bac580d6e",
+        "answer_markdown": "The paper's experiment section states: “The Stanford Question Answering Dataset (SQuAD v1.1) is a collection of 100k crowdsourced question/answer pairs (Rajpurkar et al., 2016) . Given a question and a passage from 9 The GLUE data set distribution does not include the Test labels, and we only made a single GLUE evaluation server submission for each of …”\n\nThe paper's experiment section states: “… Test labels, and we only made a single GLUE evaluation server submission for each of BERTBASE and BERTLARGE. 10 https://gluebenchmark.com/leaderboard Wikipedia containing the answer, the task is to predict the answer text span in the passage. As shown in Figure 1 , in the question answering task, we represent the input question …”\n\nThe paper's experiment section states: “… passage. As shown in Figure 1 , in the question answering task, we represent the input question and passage as a single packed sequence, with the question using the A embedding and the passage using the B embedding. We only introduce a start vector S ∈ R H and an end vector …”\n\nThis offline answer is extractive and does not infer claims beyond those excerpts.",
+        "insufficient_evidence": false,
+        "evidence": [
+          {
+            "section_kind": "experiment",
+            "section_heading": "SQuAD v1.1",
+            "page_start": 6,
+            "page_end": 7,
+            "chunk_id": "019fae49-0767-7dd2-b179-594377bbdfed"
+          }
+        ],
+        "suggested_follow_ups": [
+          "What other evidence does the paper give for this?"
+        ],
+        "model_id": "deterministic-chat-v2",
+        "provider_request_id": null,
+        "prompt_version": "paper-chat-v1-deterministic-v2"
+      },
+      "diagnostics": {
+        "provider_abstained": false,
+        "evidence_count": 1,
+        "returned_chunk_ids": [
+          "019fae49-0767-7dd2-b179-594377bbdfed"
+        ]
+      }
+    },
+    {
+      "arxiv_id": "1810.04805",
+      "paper_id": "a3a0c57e-8313-4d99-9628-5d8456490b5c",
+      "specification": {
+        "case_id": "bert-retrieval-index",
+        "question": "How many Wikipedia passages does BERT retrieve from a dense index for each prediction?",
+        "expected_behavior": "abstain",
+        "target_label": "correct_abstention",
+        "evidence_requirements": [],
+        "abstention_reason": "BERT as described here has no retrieval-augmented dense index.",
+        "observed_label": "correct_abstention",
+        "review_notes": "The response returned no evidence and correctly declined the unsupported premise that BERT retrieves Wikipedia passages from a dense index."
+      },
+      "response": {
+        "thread_id": "a81ff777-d63b-4798-83da-7009a1fbcdea",
+        "answer_markdown": "The indexed sections do not clearly answer that question in offline deterministic mode. A configured chat model may synthesize the supplied excerpts, but Pakperk will not infer a claim without matching evidence.",
+        "insufficient_evidence": true,
+        "evidence": [],
+        "suggested_follow_ups": [],
+        "model_id": "deterministic-chat-v2",
+        "provider_request_id": null,
+        "prompt_version": "paper-chat-v1-deterministic-v2"
+      },
+      "diagnostics": {
+        "provider_abstained": true,
+        "evidence_count": 0,
+        "returned_chunk_ids": []
+      }
+    },
+    {
+      "arxiv_id": "1907.11692",
+      "paper_id": "a54a7eba-fe46-4f60-9017-72211964a5f2",
+      "specification": {
+        "case_id": "roberta-training-changes",
+        "question": "Which BERT training choices does RoBERTa change?",
+        "expected_behavior": "answer",
+        "target_label": "answer_supported",
+        "evidence_requirements": [
+          {
+            "section_kinds": [
+              "method",
+              "experiment"
+            ],
+            "required_concepts": [
+              "dynamic masking",
+              "next sentence prediction",
+              "larger batches"
+            ]
+          }
+        ],
+        "abstention_reason": null,
+        "observed_label": "answer_supported",
+        "review_notes": "The cited RoBERTa method chunk explicitly lists dynamic masking, training without the NSP loss, and large mini-batches."
+      },
+      "response": {
+        "thread_id": "d7ad0ad7-4c9a-485b-acf6-12a5645866e0",
+        "answer_markdown": "The paper's method section states: “… modifications to the BERT pretraining procedure that improve end-task performance. We now aggregate these improvements and evaluate their combined impact. We call this configuration RoBERTa for Robustly optimized BERT approach. Specifically, RoBERTa is trained with dynamic masking (Section 4.1), FULL-SENTENCES without NSP loss (Section 4.2), large mini-batches (Section 4.3) and a larger …”\n\nThe paper's method section states: “… number of training passes through the data. For example, the recently proposed XLNet architecture (Yang et al., 2019 ) is pretrained using nearly 10 times more data than the original BERT (Devlin et al., 2019) . It is also trained with a batch size eight times larger for half as many optimization …”\n\nThe paper's method section states: “… also trained with a batch size eight times larger for half as many optimization steps, thus seeing four times as many sequences in pretraining compared to BERT. To help disentangle the importance of these factors from other modeling choices (e.g., the pretraining objective), we begin by training RoBERTa following the BERT LARGE …”\n\nThis offline answer is extractive and does not infer claims beyond those excerpts.",
+        "insufficient_evidence": false,
+        "evidence": [
+          {
+            "section_kind": "method",
+            "section_heading": "RoBERTa",
+            "page_start": 6,
+            "page_end": 7,
+            "chunk_id": "019fae4a-66e8-7811-b445-e693dc7920b3"
+          }
+        ],
+        "suggested_follow_ups": [
+          "What other evidence does the paper give for this?"
+        ],
+        "model_id": "deterministic-chat-v2",
+        "provider_request_id": null,
+        "prompt_version": "paper-chat-v1-deterministic-v2"
+      },
+      "diagnostics": {
+        "provider_abstained": false,
+        "evidence_count": 1,
+        "returned_chunk_ids": [
+          "019fae4a-66e8-7811-b445-e693dc7920b3"
+        ]
+      }
+    },
+    {
+      "arxiv_id": "1907.11692",
+      "paper_id": "a54a7eba-fe46-4f60-9017-72211964a5f2",
+      "specification": {
+        "case_id": "roberta-ablation-conclusion",
+        "question": "What does the ablation study conclude?",
+        "expected_behavior": "answer",
+        "target_label": "answer_supported",
+        "evidence_requirements": [
+          {
+            "section_kinds": [
+              "introduction",
+              "experiment",
+              "result"
+            ],
+            "required_concepts": [
+              "undertrained",
+              "training data",
+              "hyperparameters"
+            ]
+          }
+        ],
+        "abstention_reason": null,
+        "observed_label": "answer_supported",
+        "review_notes": "The paper summarizes its replication-study conclusions in the cited Introduction: hyperparameter tuning and training-set size matter, BERT was undertrained, and longer training with larger batches and more data improves it. Introduction was added to the allowed source kinds because this is the paper's actual summary location."
+      },
+      "response": {
+        "thread_id": "51d99fe9-9215-4557-b9f1-61a3e856d5d2",
+        "answer_markdown": "The paper's introduction section states: “… replication study of BERT pretraining (Devlin et al., 2019) , which includes a careful evaluation of the effects of hyperparmeter tuning and training set size. We find that BERT was significantly undertrained and propose an improved recipe for training BERT models, which we call RoBERTa, that can match or exceed the performance …”\n\nThe paper's introduction section states: “… match or exceed the performance of all of the post-BERT methods. Our modifications are simple, they include: (1) training the model longer, with bigger batches, over more data; (2) removing the next sentence prediction objective; (3) training on longer sequences; and (4) dynamically changing the masking pattern applied to the training data. …”\n\nThe paper's introduction section states: “… pattern applied to the training data. We also collect a large new dataset (CC-NEWS) of comparable size to other privately used datasets, to better control for training set size effects. When controlling for training data, our improved training procedure improves upon the published BERT results on both GLUE and SQuAD. When trained …”\n\nThis offline answer is extractive and does not infer claims beyond those excerpts.",
+        "insufficient_evidence": false,
+        "evidence": [
+          {
+            "section_kind": "introduction",
+            "section_heading": "Introduction",
+            "page_start": 1,
+            "page_end": 2,
+            "chunk_id": "019fae4a-66e8-7811-b445-e532cda92159"
+          }
+        ],
+        "suggested_follow_ups": [
+          "What other evidence does the paper give for this?"
+        ],
+        "model_id": "deterministic-chat-v2",
+        "provider_request_id": null,
+        "prompt_version": "paper-chat-v1-deterministic-v2"
+      },
+      "diagnostics": {
+        "provider_abstained": false,
+        "evidence_count": 1,
+        "returned_chunk_ids": [
+          "019fae4a-66e8-7811-b445-e532cda92159"
+        ]
+      }
+    },
+    {
+      "arxiv_id": "1907.11692",
+      "paper_id": "a54a7eba-fe46-4f60-9017-72211964a5f2",
+      "specification": {
+        "case_id": "roberta-live-retrieval",
+        "question": "Which external document index does RoBERTa query during every inference request?",
+        "expected_behavior": "abstain",
+        "target_label": "correct_abstention",
+        "evidence_requirements": [],
+        "abstention_reason": "RoBERTa is a pre-trained encoder and the paper does not define live document retrieval at inference.",
+        "observed_label": "correct_abstention",
+        "review_notes": "The response returned no evidence and correctly rejected the unsupported premise that RoBERTa queries an external document index at inference."
+      },
+      "response": {
+        "thread_id": "d69d4b0f-e216-41d8-ae4f-0f215568a36f",
+        "answer_markdown": "The indexed sections do not clearly answer that question in offline deterministic mode. A configured chat model may synthesize the supplied excerpts, but Pakperk will not infer a claim without matching evidence.",
+        "insufficient_evidence": true,
+        "evidence": [],
+        "suggested_follow_ups": [],
+        "model_id": "deterministic-chat-v2",
+        "provider_request_id": null,
+        "prompt_version": "paper-chat-v1-deterministic-v2"
+      },
+      "diagnostics": {
+        "provider_abstained": true,
+        "evidence_count": 0,
+        "returned_chunk_ids": []
+      }
+    },
+    {
+      "arxiv_id": "1910.10683",
+      "paper_id": "ecd609be-496f-483e-ab76-3d302d290db2",
+      "specification": {
+        "case_id": "t5-text-to-text",
+        "question": "How are NLP tasks cast into one format?",
+        "expected_behavior": "answer",
+        "target_label": "answer_supported",
+        "evidence_requirements": [
+          {
+            "section_kinds": [
+              "introduction",
+              "method"
+            ],
+            "required_concepts": [
+              "text-to-text",
+              "input",
+              "target"
+            ]
+          }
+        ],
+        "abstention_reason": null,
+        "observed_label": "answer_supported",
+        "review_notes": "The cited Input and Output Format chunk describes the text-to-text framework, a common task format, input prefixes, and generated output targets."
+      },
+      "response": {
+        "thread_id": "4b809584-d84e-4f93-88a9-1fbe07a8bdb8",
+        "answer_markdown": "The paper's method section states: “Our text-to-text framework follows previous work that casts multiple NLP tasks into a common format: McCann et al. (2018) propose the Natural Language Decathlon , a benchmark that uses a consistent question-answering format for a suite of ten NLP tasks. The Natural Language Decathlon also stipulates that all models must be multi-task, …”\n\nThe paper's method section states: “… short task prefixes instead of an explicit question-answer format. Radford et al. (2019) evaluate the zero-shot learning capabilities of language models by feeding some input to the model as a prefix and then autoregressively sampling an output. For example, automatic summarization is done by feeding in a document followed by the text …”\n\nThe paper's method section states: “… convert the Winograd tasks (WNLI from GLUE, WSC from Super-GLUE, and the DPR data set we add to SuperGLUE) into a simpler format that is more amenable to the text-to-text framework. Examples from the Winograd tasks consist of a text passage containing an ambiguous pronoun that could refer to more than one …”\n\nThis offline answer is extractive and does not infer claims beyond those excerpts.",
+        "insufficient_evidence": false,
+        "evidence": [
+          {
+            "section_kind": "method",
+            "section_heading": "Input and Output Format",
+            "page_start": 9,
+            "page_end": 9,
+            "chunk_id": "019fae4b-a29a-7ca0-91d6-e380220fe14f"
+          }
+        ],
+        "suggested_follow_ups": [
+          "What other evidence does the paper give for this?"
+        ],
+        "model_id": "deterministic-chat-v2",
+        "provider_request_id": null,
+        "prompt_version": "paper-chat-v1-deterministic-v2"
+      },
+      "diagnostics": {
+        "provider_abstained": false,
+        "evidence_count": 1,
+        "returned_chunk_ids": [
+          "019fae4b-a29a-7ca0-91d6-e380220fe14f"
+        ]
+      }
+    },
+    {
+      "arxiv_id": "1910.10683",
+      "paper_id": "ecd609be-496f-483e-ab76-3d302d290db2",
+      "specification": {
+        "case_id": "t5-c4",
+        "question": "What is the Colossal Clean Crawled Corpus?",
+        "expected_behavior": "answer",
+        "target_label": "answer_supported",
+        "evidence_requirements": [
+          {
+            "section_kinds": [
+              "method",
+              "experiment"
+            ],
+            "required_concepts": [
+              "Common Crawl",
+              "cleaning",
+              "pre-training"
+            ]
+          }
+        ],
+        "abstention_reason": null,
+        "observed_label": "answer_supported",
+        "review_notes": "The cited C4 method chunk identifies Common Crawl as the web source, its use for pre-training, and cleaning steps including deduplication and language filtering."
+      },
+      "response": {
+        "thread_id": "22c1f29c-4b23-4f70-8e81-5312bf3bb8f3",
+        "answer_markdown": "The paper's method section states: “… measuring the effect of the quality, characteristics, and size of this unlabeled data. To generate data sets that satisfy our needs, we leverage Common Crawl as a source of text scraped from the web. Common Crawl has previously been used as a source of text data for NLP, for example to train …”\n\nThe paper's method section states: “… for machine translation (Smith et al., 2013) , as a pre-training data set (Grave et al., 2018; Zellers et al., 2019; Liu et al., 2019c) , and even simply as a giant text corpus for testing optimizers (Anil et al., 2019) . Common Crawl is a publicly-available web archive that provides web …”\n\nThe paper's method section states: “… uses cookies , use of cookies , or use cookies . • To deduplicate the data set, we discarded all but one of any three-sentence span occurring more than once in the data set. Additionally, since most of our downstream tasks are focused on English-language text, we used langdetect 7 to filter …”\n\nThis offline answer is extractive and does not infer claims beyond those excerpts.",
+        "insufficient_evidence": false,
+        "evidence": [
+          {
+            "section_kind": "method",
+            "section_heading": "The Colossal Clean Crawled Corpus",
+            "page_start": 5,
+            "page_end": 6,
+            "chunk_id": "019fae4b-a29a-7ca0-91d6-e3485afb4034"
+          }
+        ],
+        "suggested_follow_ups": [
+          "What other evidence does the paper give for this?"
+        ],
+        "model_id": "deterministic-chat-v2",
+        "provider_request_id": null,
+        "prompt_version": "paper-chat-v1-deterministic-v2"
+      },
+      "diagnostics": {
+        "provider_abstained": false,
+        "evidence_count": 1,
+        "returned_chunk_ids": [
+          "019fae4b-a29a-7ca0-91d6-e3485afb4034"
+        ]
+      }
+    },
+    {
+      "arxiv_id": "1910.10683",
+      "paper_id": "ecd609be-496f-483e-ab76-3d302d290db2",
+      "specification": {
+        "case_id": "t5-retrieved-passages",
+        "question": "How many passages does T5 retrieve from Wikipedia per generated token?",
+        "expected_behavior": "abstain",
+        "target_label": "correct_abstention",
+        "evidence_requirements": [],
+        "abstention_reason": "The T5 paper studies text-to-text transfer learning, not per-token retrieval from a Wikipedia index.",
+        "observed_label": "correct_abstention",
+        "review_notes": "The response returned no evidence and correctly rejected the unsupported premise that T5 performs per-token Wikipedia retrieval."
+      },
+      "response": {
+        "thread_id": "ed20f285-5f96-44e1-a426-6642937c265c",
+        "answer_markdown": "The indexed sections do not clearly answer that question in offline deterministic mode. A configured chat model may synthesize the supplied excerpts, but Pakperk will not infer a claim without matching evidence.",
+        "insufficient_evidence": true,
+        "evidence": [],
+        "suggested_follow_ups": [],
+        "model_id": "deterministic-chat-v2",
+        "provider_request_id": null,
+        "prompt_version": "paper-chat-v1-deterministic-v2"
+      },
+      "diagnostics": {
+        "provider_abstained": true,
+        "evidence_count": 0,
+        "returned_chunk_ids": []
+      }
+    },
+    {
+      "arxiv_id": "2005.11401",
+      "paper_id": "29b1e798-2b5d-4bbf-b581-79d5df90730d",
+      "specification": {
+        "case_id": "rag-two-memories",
+        "question": "How does RAG combine parametric and non-parametric memory?",
+        "expected_behavior": "answer",
+        "target_label": "answer_supported",
+        "evidence_requirements": [
+          {
+            "section_kinds": [
+              "introduction",
+              "method"
+            ],
+            "required_concepts": [
+              "seq2seq",
+              "dense vector index",
+              "neural retriever"
+            ]
+          }
+        ],
+        "abstention_reason": null,
+        "observed_label": "answer_supported",
+        "review_notes": "The cited Introduction explains that the parametric memory is a pre-trained seq2seq Transformer while the non-parametric memory is a dense Wikipedia vector index accessed by a neural retriever."
+      },
+      "response": {
+        "thread_id": "9a62bfef-99a1-49d0-bd5d-3203baed6e76",
+        "answer_markdown": "The paper's introduction section states: “… retriever (Query Encoder + Document Index) with a pre-trained seq2seq model (Generator) and fine-tune end-to-end. For query x, we use Maximum Inner Product Search (MIPS) to find the top-K documents z i . For final prediction y, we treat z as a latent variable and marginalize over seq2seq predictions given different documents. …”\n\nThe paper's introduction section states: “… Here, we bring hybrid parametric and non-parametric memory to the workhorse of NLP, i.e. sequence-to-sequence (seq2seq) models. We endow pre-trained, parametric-memory generation models with a non-parametric memory through a general-purpose fine-tuning approach which we refer to as retrieval-augmented generation (RAG). We build RAG models where the parametric memory is a pre-trained seq2seq …”\n\nThe paper's introduction section states: “… as retrieval-augmented generation (RAG). We build RAG models where the parametric memory is a pre-trained seq2seq transformer, and the non-parametric memory is a dense vector index of Wikipedia, accessed with a pre-trained neural retriever. We combine these components in a probabilistic model trained end-to-end (Fig. 1 ). The retriever (Dense Passage Retriever …”\n\nThis offline answer is extractive and does not infer claims beyond those excerpts.",
+        "insufficient_evidence": false,
+        "evidence": [
+          {
+            "section_kind": "introduction",
+            "section_heading": "Introduction",
+            "page_start": 1,
+            "page_end": 2,
+            "chunk_id": "019fae4c-db84-7830-89e4-97233026912b"
+          }
+        ],
+        "suggested_follow_ups": [
+          "What other evidence does the paper give for this?"
+        ],
+        "model_id": "deterministic-chat-v2",
+        "provider_request_id": null,
+        "prompt_version": "paper-chat-v1-deterministic-v2"
+      },
+      "diagnostics": {
+        "provider_abstained": false,
+        "evidence_count": 1,
+        "returned_chunk_ids": [
+          "019fae4c-db84-7830-89e4-97233026912b"
+        ]
+      }
+    },
+    {
+      "arxiv_id": "2005.11401",
+      "paper_id": "29b1e798-2b5d-4bbf-b581-79d5df90730d",
+      "specification": {
+        "case_id": "rag-formulations",
+        "question": "How do the two RAG formulations differ?",
+        "expected_behavior": "answer",
+        "target_label": "answer_supported",
+        "evidence_requirements": [
+          {
+            "section_kinds": [
+              "method"
+            ],
+            "required_concepts": [
+              "same retrieved passages",
+              "per token"
+            ]
+          }
+        ],
+        "abstention_reason": null,
+        "observed_label": "answer_supported",
+        "review_notes": "The cited Methods chunk states that RAG-Sequence uses the same document for each target token whereas RAG-Token may use a different document per token."
+      },
+      "response": {
+        "thread_id": "82d9f0ae-6c23-4da0-b5db-0f3787c73b03",
+        "answer_markdown": "The paper's method section states: “We explore RAG models, which use the input sequence x to retrieve text documents z and use them as additional context when generating the target sequence y. As shown in Figure 1 , our models leverage two components: (i) a retriever p η (z|x) with parameters η that returns (top-K truncated) distributions …”\n\nThe paper's method section states: “… current token based on a context of the previous i -1 tokens y 1:i-1 , the original input x and a retrieved passage z. To train the retriever and generator end-to-end, we treat the retrieved document as a latent variable. We propose two models that marginalize over the latent documents in different …”\n\nThe paper's method section states: “… a latent variable. We propose two models that marginalize over the latent documents in different ways to produce a distribution over generated text. In one approach, RAG-Sequence, the model uses the same document to predict each target token. The second approach, RAG-Token, can predict each target token based on a different document. …”\n\nThis offline answer is extractive and does not infer claims beyond those excerpts.",
+        "insufficient_evidence": false,
+        "evidence": [
+          {
+            "section_kind": "method",
+            "section_heading": "Methods",
+            "page_start": 2,
+            "page_end": 3,
+            "chunk_id": "019fae4c-db84-7830-89e4-974311f8abaa"
+          }
+        ],
+        "suggested_follow_ups": [
+          "What other evidence does the paper give for this?"
+        ],
+        "model_id": "deterministic-chat-v2",
+        "provider_request_id": null,
+        "prompt_version": "paper-chat-v1-deterministic-v2"
+      },
+      "diagnostics": {
+        "provider_abstained": false,
+        "evidence_count": 1,
+        "returned_chunk_ids": [
+          "019fae4c-db84-7830-89e4-974311f8abaa"
+        ]
+      }
+    },
+    {
+      "arxiv_id": "2005.11401",
+      "paper_id": "29b1e798-2b5d-4bbf-b581-79d5df90730d",
+      "specification": {
+        "case_id": "rag-bert-masking",
+        "question": "What masking probability does RAG use to pre-train BERT from scratch?",
+        "expected_behavior": "abstain",
+        "target_label": "correct_abstention",
+        "evidence_requirements": [],
+        "abstention_reason": "RAG does not report pre-training BERT from scratch with a masking objective.",
+        "observed_label": "correct_abstention",
+        "review_notes": "The response returned no evidence and correctly rejected the unsupported premise that RAG pre-trains BERT from scratch with a masking probability."
+      },
+      "response": {
+        "thread_id": "e8d68235-7dfe-4b9f-94bd-e8e7b9cbbae6",
+        "answer_markdown": "The indexed sections do not clearly answer that question in offline deterministic mode. A configured chat model may synthesize the supplied excerpts, but Pakperk will not infer a claim without matching evidence.",
+        "insufficient_evidence": true,
+        "evidence": [],
+        "suggested_follow_ups": [],
+        "model_id": "deterministic-chat-v2",
+        "provider_request_id": null,
+        "prompt_version": "paper-chat-v1-deterministic-v2"
+      },
+      "diagnostics": {
+        "provider_abstained": true,
+        "evidence_count": 0,
+        "returned_chunk_ids": []
+      }
+    }
+  ]
+}

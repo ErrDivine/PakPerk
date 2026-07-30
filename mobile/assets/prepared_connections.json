@@ -1,0 +1,3321 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "kind": "bundled_api_cache",
+    "content_form": "persisted_reference_relationships",
+    "exported_at": "2026-07-29T16:03:25Z",
+    "source": "GET /v1/papers/{paper_id}/connections",
+    "notice": "Exported from the ordinary prepared-paper API; not a separately coded demo result."
+  },
+  "papers": {
+    "387fc70a-a95a-4c45-aa9d-f6252934da33": {
+      "paper_id": "387fc70a-a95a-4c45-aa9d-f6252934da33",
+      "ready": true,
+      "key_connections": [
+        {
+          "reference_id": "019fae47-1639-78f0-8472-c90336400429",
+          "paper_id": "b4bc9238-144b-4aa1-86cc-b1d41436ab21",
+          "arxiv_id": "1409.0473v7",
+          "title": "Neural Machine Translation by Jointly Learning to Align and Translate",
+          "authors": [
+            "Dzmitry Bahdanau",
+            "Kyunghyun Cho",
+            "Yoshua Bengio"
+          ],
+          "year": 2014,
+          "relation_type": "unknown",
+          "summary": "The citation context mentions the cited work but does not explicitly state its role.",
+          "confidence": 0.25
+        },
+        {
+          "reference_id": "019fae47-163a-7160-9c5a-d53e19e61d2d",
+          "paper_id": "887c13ce-4809-4b3f-90ae-3e0f608c9aae",
+          "arxiv_id": "1705.03122v2",
+          "title": "Convolutional Sequence to Sequence Learning",
+          "authors": [
+            "Jonas Gehring",
+            "Michael Auli",
+            "David Grangier",
+            "Denis Yarats",
+            "Yann N. Dauphin"
+          ],
+          "year": 2017,
+          "relation_type": "background",
+          "summary": "The citation matters because the context identifies the cited work as an earlier source.",
+          "confidence": 0.58
+        },
+        {
+          "reference_id": "019fae47-163d-75a3-94d6-295bbfcb1e70",
+          "paper_id": "b18af4f0-5f43-49be-a03d-ac3d41d02ae8",
+          "arxiv_id": "1609.08144v2",
+          "title": "Google's Neural Machine Translation System: Bridging the Gap between Human and Machine Translation",
+          "authors": [
+            "Yonghui Wu",
+            "Mike Schuster",
+            "Zhifeng Chen",
+            "Quoc V. Le",
+            "Mohammad Norouzi",
+            "Wolfgang Macherey",
+            "Maxim Krikun",
+            "Yuan Cao",
+            "Qin Gao",
+            "Klaus Macherey",
+            "Jeff Klingner",
+            "Apurva Shah",
+            "Melvin Johnson",
+            "Xiaobing Liu",
+            "Łukasz Kaiser",
+            "Stephan Gouws",
+            "Yoshikiyo Kato",
+            "Taku Kudo",
+            "Hideto Kazawa",
+            "Keith Stevens",
+            "George Kurian",
+            "Nishant Patil",
+            "Wei Wang",
+            "Cliff Young",
+            "Jason Smith",
+            "Jason Riesa",
+            "Alex Rudnick",
+            "Oriol Vinyals",
+            "Greg Corrado",
+            "Macduff Hughes",
+            "Jeffrey Dean"
+          ],
+          "year": 2016,
+          "relation_type": "uses",
+          "summary": "The citation matters because the context explicitly says the current work uses the cited work.",
+          "confidence": 0.8
+        },
+        {
+          "reference_id": "019fae47-163a-7160-9c5a-d4fbc3508232",
+          "paper_id": "5fb5bfe6-ebf9-43fb-8904-c09e26f95e40",
+          "arxiv_id": "1406.1078v3",
+          "title": "Learning Phrase Representations using RNN Encoder-Decoder for Statistical Machine Translation",
+          "authors": [
+            "Kyunghyun Cho",
+            "Bart van Merrienboer",
+            "Caglar Gulcehre",
+            "Dzmitry Bahdanau",
+            "Fethi Bougares",
+            "Holger Schwenk",
+            "Yoshua Bengio"
+          ],
+          "year": 2014,
+          "relation_type": "unknown",
+          "summary": "The citation context mentions the cited work but does not explicitly state its role.",
+          "confidence": 0.25
+        },
+        {
+          "reference_id": "019fae47-163b-70d0-ac32-aea4987da47c",
+          "paper_id": "65f27f5d-797b-4886-98bc-3b4e12af49ea",
+          "arxiv_id": "1610.10099v2",
+          "title": "Neural Machine Translation in Linear Time",
+          "authors": [
+            "Nal Kalchbrenner",
+            "Lasse Espeholt",
+            "Karen Simonyan",
+            "Aaron van den Oord",
+            "Alex Graves",
+            "Koray Kavukcuoglu"
+          ],
+          "year": 2017,
+          "relation_type": "background",
+          "summary": "The citation matters because the context identifies the cited work as an earlier source.",
+          "confidence": 0.62
+        }
+      ],
+      "references": [
+        {
+          "ordinal": 0,
+          "raw_text": "Ashish Vaswani avaswani@google.com Google Brain Noam Shazeer Niki Parmar nikip@google.com Google Research Jakob Uszkoreit Llion Jones Aidan N Gomez Łukasz Kaiser lukaszkaiser@google.com Illia Polosukhin illia.polosukhin@gmail.com Work performed while at Google Research. 31st Conference on Neural Information Processing Systems (NIPS 2017) Long Beach CA USA University of Toronto Attention Is All You Need 2 Aug 2023 18E1B007A1DAB45B30CC861BA2DFDA25 arXiv:1706.03762v7[cs.CL]",
+          "resolved": true,
+          "paper_id": "387fc70a-a95a-4c45-aa9d-f6252934da33",
+          "title": "Attention Is All You Need",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 1,
+          "raw_text": "Jimmy Lei Ba, Jamie Ryan Kiros, and Geoffrey E Hinton. Layer normalization. arXiv preprint arXiv:1607.06450, 2016.",
+          "resolved": true,
+          "paper_id": "7cf10a46-828f-43a8-8883-ab9f82650fd9",
+          "title": "Layer Normalization",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 2,
+          "raw_text": "Dzmitry Bahdanau, Kyunghyun Cho, and Yoshua Bengio. Neural machine translation by jointly learning to align and translate. CoRR, abs/1409.0473, 2014.",
+          "resolved": true,
+          "paper_id": "b4bc9238-144b-4aa1-86cc-b1d41436ab21",
+          "title": "Neural Machine Translation by Jointly Learning to Align and Translate",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 3,
+          "raw_text": "Denny Britz, Anna Goldie, Minh-Thang Luong, and Quoc V. Le. Massive exploration of neural machine translation architectures. CoRR, abs/1703.03906, 2017.",
+          "resolved": true,
+          "paper_id": "24b1b3bc-c695-4ff1-9f71-400cb5465065",
+          "title": "Massive Exploration of Neural Machine Translation Architectures",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 4,
+          "raw_text": "Jianpeng Cheng, Li Dong, and Mirella Lapata. Long short-term memory-networks for machine reading. arXiv preprint arXiv:1601.06733, 2016.",
+          "resolved": true,
+          "paper_id": "7797d73a-54ce-476e-b30c-1235bda2e563",
+          "title": "Long Short-Term Memory-Networks for Machine Reading",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 5,
+          "raw_text": "Kyunghyun Cho, Bart van Merrienboer, Caglar Gulcehre, Fethi Bougares, Holger Schwenk, and Yoshua Bengio. Learning phrase representations using rnn encoder-decoder for statistical machine translation. CoRR, abs/1406.1078, 2014.",
+          "resolved": true,
+          "paper_id": "5fb5bfe6-ebf9-43fb-8904-c09e26f95e40",
+          "title": "Learning Phrase Representations using RNN Encoder-Decoder for Statistical Machine Translation",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 6,
+          "raw_text": "Francois Chollet. Xception: Deep learning with depthwise separable convolutions. arXiv preprint arXiv:1610.02357, 2016.",
+          "resolved": true,
+          "paper_id": "6f0d185c-d839-42ff-b399-9a8f5be84b84",
+          "title": "Xception: Deep Learning with Depthwise Separable Convolutions",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 7,
+          "raw_text": "Junyoung Chung, Çaglar Gülçehre, Kyunghyun Cho, and Yoshua Bengio. Empirical evaluation of gated recurrent neural networks on sequence modeling. CoRR, abs/1412.3555, 2014.",
+          "resolved": true,
+          "paper_id": "acc76539-35f8-4deb-a21b-c92dae5c8ecd",
+          "title": "Empirical Evaluation of Gated Recurrent Neural Networks on Sequence Modeling",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 8,
+          "raw_text": "Chris Dyer, Adhiguna Kuncoro, Miguel Ballesteros, and Noah A. Smith. Recurrent neural network grammars. In Proc. of NAACL, 2016.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 9,
+          "raw_text": "Jonas Gehring, Michael Auli, David Grangier, Denis Yarats, and Yann N. Dauphin. Convolu- tional sequence to sequence learning. arXiv preprint arXiv:1705.03122v2, 2017.",
+          "resolved": true,
+          "paper_id": "887c13ce-4809-4b3f-90ae-3e0f608c9aae",
+          "title": "Convolutional Sequence to Sequence Learning",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 10,
+          "raw_text": "Alex Graves. Generating sequences with recurrent neural networks. arXiv preprint arXiv:1308.0850, 2013.",
+          "resolved": true,
+          "paper_id": "81ae536d-c2cf-4f14-9cba-1811293480dd",
+          "title": "Generating Sequences With Recurrent Neural Networks",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 11,
+          "raw_text": "Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep residual learning for im- age recognition. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pages 770-778, 2016.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "ambiguous"
+        },
+        {
+          "ordinal": 12,
+          "raw_text": "Sepp Hochreiter, Yoshua Bengio, Paolo Frasconi, and Jürgen Schmidhuber. Gradient flow in recurrent nets: the difficulty of learning long-term dependencies, 2001.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 13,
+          "raw_text": "Sepp Hochreiter and Jürgen Schmidhuber. Long short-term memory. Neural computation, 9(8):1735-1780, 1997.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 14,
+          "raw_text": "Zhongqiang Huang and Mary Harper. Self-training PCFG grammars with latent annotations across languages. In Proceedings of the 2009 Conference on Empirical Methods in Natural Language Processing, pages 832-841. ACL, August 2009.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 15,
+          "raw_text": "Rafal Jozefowicz, Oriol Vinyals, Mike Schuster, Noam Shazeer, and Yonghui Wu. Exploring the limits of language modeling. arXiv preprint arXiv:1602.02410, 2016.",
+          "resolved": true,
+          "paper_id": "a972f2bc-a96b-4ce6-b5c9-cd1d9acec1d0",
+          "title": "Exploring the Limits of Language Modeling",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 16,
+          "raw_text": "Łukasz Kaiser and Samy Bengio. Can active memory replace attention? In Advances in Neural Information Processing Systems, (NIPS), 2016.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 17,
+          "raw_text": "Łukasz Kaiser and Ilya Sutskever. Neural GPUs learn algorithms. In International Conference on Learning Representations (ICLR), 2016.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 18,
+          "raw_text": "Nal Kalchbrenner, Lasse Espeholt, Karen Simonyan, Aaron van den Oord, Alex Graves, and Ko- ray Kavukcuoglu. Neural machine translation in linear time. arXiv preprint arXiv:1610.10099v2, 2017.",
+          "resolved": true,
+          "paper_id": "65f27f5d-797b-4886-98bc-3b4e12af49ea",
+          "title": "Neural Machine Translation in Linear Time",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 19,
+          "raw_text": "Yoon Kim, Carl Denton, Luong Hoang, and Alexander M. Rush. Structured attention networks. In International Conference on Learning Representations, 2017.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 20,
+          "raw_text": "Diederik Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In ICLR, 2015.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 21,
+          "raw_text": "Oleksii Kuchaiev and Boris Ginsburg. Factorization tricks for LSTM networks. arXiv preprint arXiv:1703.10722, 2017.",
+          "resolved": true,
+          "paper_id": "38a57d98-1f10-4643-bac0-e4641e5c37c5",
+          "title": "Factorization tricks for LSTM networks",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 22,
+          "raw_text": "Zhouhan Lin, Minwei Feng, Cicero Nogueira dos Santos, Mo Yu, Bing Xiang, Bowen Zhou, and Yoshua Bengio. A structured self-attentive sentence embedding. arXiv preprint arXiv:1703.03130, 2017.",
+          "resolved": true,
+          "paper_id": "456ac27b-b029-4ae9-958e-07d8c523d0f6",
+          "title": "A Structured Self-attentive Sentence Embedding",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 23,
+          "raw_text": "Minh-Thang Luong, Quoc V. Le, Ilya Sutskever, Oriol Vinyals, and Lukasz Kaiser. Multi-task sequence to sequence learning. arXiv preprint arXiv:1511.06114, 2015.",
+          "resolved": true,
+          "paper_id": "c2da840c-517f-48a0-ae73-1cd61bf8bbf6",
+          "title": "Multi-task Sequence to Sequence Learning",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 24,
+          "raw_text": "Minh-Thang Luong, Hieu Pham, and Christopher D Manning. Effective approaches to attention- based neural machine translation. arXiv preprint arXiv:1508.04025, 2015.",
+          "resolved": true,
+          "paper_id": "937d7943-ee20-4204-973e-a34aabee97b2",
+          "title": "Effective Approaches to Attention-based Neural Machine Translation",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 25,
+          "raw_text": "Mitchell P Marcus, Mary Ann Marcinkiewicz, and Beatrice Santorini. Building a large annotated corpus of english: The penn treebank. Computational linguistics, 19(2):313-330, 1993.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 26,
+          "raw_text": "David McClosky, Eugene Charniak, and Mark Johnson. Effective self-training for parsing. In Proceedings of the Human Language Technology Conference of the NAACL, Main Conference, pages 152-159. ACL, June 2006.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 27,
+          "raw_text": "Ankur Parikh, Oscar Täckström, Dipanjan Das, and Jakob Uszkoreit. A decomposable attention model. In Empirical Methods in Natural Language Processing, 2016.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 28,
+          "raw_text": "Romain Paulus, Caiming Xiong, and Richard Socher. A deep reinforced model for abstractive summarization. arXiv preprint arXiv:1705.04304, 2017.",
+          "resolved": true,
+          "paper_id": "f2f3502d-ee41-49b5-8355-68f8aee066c1",
+          "title": "A Deep Reinforced Model for Abstractive Summarization",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 29,
+          "raw_text": "Slav Petrov, Leon Barrett, Romain Thibaux, and Dan Klein. Learning accurate, compact, and interpretable tree annotation. In Proceedings of the 21st International Conference on Computational Linguistics and 44th Annual Meeting of the ACL, pages 433-440. ACL, July 2006.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 30,
+          "raw_text": "Ofir Press and Lior Wolf. Using the output embedding to improve language models. arXiv preprint arXiv:1608.05859, 2016.",
+          "resolved": true,
+          "paper_id": "b7ba9618-d905-46fe-939d-0a5dc822d0e4",
+          "title": "Using the Output Embedding to Improve Language Models",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 31,
+          "raw_text": "Rico Sennrich, Barry Haddow, and Alexandra Birch. Neural machine translation of rare words with subword units. arXiv preprint arXiv:1508.07909, 2015.",
+          "resolved": true,
+          "paper_id": "419ec1e5-5eeb-49b7-a0a8-85ded6f28207",
+          "title": "Neural Machine Translation of Rare Words with Subword Units",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 32,
+          "raw_text": "Noam Shazeer, Azalia Mirhoseini, Krzysztof Maziarz, Andy Davis, Quoc Le, Geoffrey Hinton, and Jeff Dean. Outrageously large neural networks: The sparsely-gated mixture-of-experts layer. arXiv preprint arXiv:1701.06538, 2017.",
+          "resolved": true,
+          "paper_id": "018115a3-08ce-4607-a173-3072ad586092",
+          "title": "Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 33,
+          "raw_text": "Nitish Srivastava, Geoffrey E Hinton, Alex Krizhevsky, Ilya Sutskever, and Ruslan Salakhutdi- nov. Dropout: a simple way to prevent neural networks from overfitting. Journal of Machine Learning Research, 15(1):1929-1958, 2014.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 34,
+          "raw_text": "Sainbayar Sukhbaatar, Arthur Szlam, Jason Weston, and Rob Fergus. End-to-end memory networks. In C. Cortes, N. D. Lawrence, D. D. Lee, M. Sugiyama, and R. Garnett, editors, Advances in Neural Information Processing Systems 28, pages 2440-2448. Curran Associates, Inc., 2015.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 35,
+          "raw_text": "Ilya Sutskever, Oriol Vinyals, and Quoc VV Le. Sequence to sequence learning with neural networks. In Advances in Neural Information Processing Systems, pages 3104-3112, 2014.",
+          "resolved": true,
+          "paper_id": "79017809-26b1-4354-b036-20498ccc53ed",
+          "title": "Sequence to Sequence Learning with Neural Networks",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 36,
+          "raw_text": "Christian Szegedy, Vincent Vanhoucke, Sergey Ioffe, Jonathon Shlens, and Zbigniew Wojna. Rethinking the inception architecture for computer vision. CoRR, abs/1512.00567, 2015.",
+          "resolved": true,
+          "paper_id": "6d51daad-b416-4a9f-9c39-a10f8af914ae",
+          "title": "Rethinking the Inception Architecture for Computer Vision",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 37,
+          "raw_text": "Vinyals & Kaiser, Koo, Petrov, Sutskever, and Hinton. Grammar as a foreign language. In Advances in Neural Information Processing Systems, 2015.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 38,
+          "raw_text": "Yonghui Wu, Mike Schuster, Zhifeng Chen, Quoc V Le, Mohammad Norouzi, Wolfgang Macherey, Maxim Krikun, Yuan Cao, Qin Gao, Klaus Macherey, et al. Google ' s neural machine translation system: Bridging the gap between human and machine translation. arXiv preprint arXiv:1609.08144, 2016.",
+          "resolved": true,
+          "paper_id": "b18af4f0-5f43-49be-a03d-ac3d41d02ae8",
+          "title": "Google's Neural Machine Translation System: Bridging the Gap between Human and Machine Translation",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 39,
+          "raw_text": "Jie Zhou, Ying Cao, Xuguang Wang, Peng Li, and Wei Xu. Deep recurrent models with fast-forward connections for neural machine translation. CoRR, abs/1606.04199, 2016.",
+          "resolved": true,
+          "paper_id": "0e1c3282-e090-4cd4-b082-2ebb2add3f02",
+          "title": "Deep Recurrent Models with Fast-Forward Connections for Neural Machine Translation",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 40,
+          "raw_text": "Muhua Zhu, Yue Zhang, Wenliang Chen, Min Zhang, and Jingbo Zhu. Fast and accurate shift-reduce constituent parsing. In Proceedings of the 51st Annual Meeting of the ACL (Volume 1: Long Papers), pages 434-443. ACL, August 2013.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        }
+      ]
+    },
+    "a3a0c57e-8313-4d99-9628-5d8456490b5c": {
+      "paper_id": "a3a0c57e-8313-4d99-9628-5d8456490b5c",
+      "ready": true,
+      "key_connections": [
+        {
+          "reference_id": "019fae47-3b04-7df3-a3b3-d70aebc51d5f",
+          "paper_id": "3dc3fb80-38ae-40ad-a4ac-872f531f91c8",
+          "arxiv_id": "1801.06146v5",
+          "title": "Universal Language Model Fine-tuning for Text Classification",
+          "authors": [
+            "Jeremy Howard",
+            "Sebastian Ruder"
+          ],
+          "year": 2018,
+          "relation_type": "unknown",
+          "summary": "The citation context mentions the cited work but does not explicitly state its role.",
+          "confidence": 0.25
+        },
+        {
+          "reference_id": "019fae47-3b05-7ab0-af88-bc0fc3b89f76",
+          "paper_id": "64064865-b87f-4cf7-aa2d-3e01edc7ee59",
+          "arxiv_id": "1606.05250v3",
+          "title": "SQuAD: 100,000+ Questions for Machine Comprehension of Text",
+          "authors": [
+            "Pranav Rajpurkar",
+            "Jian Zhang",
+            "Konstantin Lopyrev",
+            "Percy Liang"
+          ],
+          "year": 2016,
+          "relation_type": "unknown",
+          "summary": "The citation context mentions the cited work but does not explicitly state its role.",
+          "confidence": 0.25
+        },
+        {
+          "reference_id": "019fae47-3b06-7ac1-b8b9-b41d5b46de99",
+          "paper_id": "387fc70a-a95a-4c45-aa9d-f6252934da33",
+          "arxiv_id": "1706.03762v7",
+          "title": "Attention Is All You Need",
+          "authors": [
+            "Ashish Vaswani",
+            "Noam Shazeer",
+            "Niki Parmar",
+            "Jakob Uszkoreit",
+            "Llion Jones",
+            "Aidan N. Gomez",
+            "Lukasz Kaiser",
+            "Illia Polosukhin"
+          ],
+          "year": 2017,
+          "relation_type": "builds_on",
+          "summary": "The citation matters because the context explicitly says the current work builds on the cited work.",
+          "confidence": 0.82
+        },
+        {
+          "reference_id": "019fae47-3b02-79b0-828d-a83112e5986d",
+          "paper_id": "69edeab4-c65e-41df-b995-fc9819a20d6b",
+          "arxiv_id": "1508.05326v1",
+          "title": "A large annotated corpus for learning natural language inference",
+          "authors": [
+            "Samuel R. Bowman",
+            "Gabor Angeli",
+            "Christopher Potts",
+            "Christopher D. Manning"
+          ],
+          "year": 2015,
+          "relation_type": "unknown",
+          "summary": "The citation context mentions the cited work but does not explicitly state its role.",
+          "confidence": 0.25
+        },
+        {
+          "reference_id": "019fae47-3b04-7df3-a3b3-d7739d6983cb",
+          "paper_id": "7649b456-f20e-4e28-87db-bc702d8c6c19",
+          "arxiv_id": "1803.02893v1",
+          "title": "An efficient framework for learning sentence representations",
+          "authors": [
+            "Lajanugen Logeswaran",
+            "Honglak Lee"
+          ],
+          "year": 2018,
+          "relation_type": "unknown",
+          "summary": "The citation context mentions the cited work but does not explicitly state its role.",
+          "confidence": 0.25
+        }
+      ],
+      "references": [
+        {
+          "ordinal": 0,
+          "raw_text": "Jacob Devlin jacobdevlin@google.com Ming-Wei Chang mingweichang@google.com Kenton Lee kentonl@google.com Kristina Toutanova BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding 24 May 2019 EB00EE1CACEC4CDC5FDB41BEFF58F944 arXiv:1810.04805v2[cs.CL]",
+          "resolved": true,
+          "paper_id": "a3a0c57e-8313-4d99-9628-5d8456490b5c",
+          "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 1,
+          "raw_text": "Alan Akbik, Duncan Blythe, and Roland Vollgraf. 2018. Contextual string embeddings for sequence labeling. In Proceedings of the 27th International Conference on Computational Linguistics, pages 1638-1649.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 2,
+          "raw_text": "Rami Al-Rfou, Dokook Choe, Noah Constant, Mandy Guo, and Llion Jones. 2018. Character-level lan- guage modeling with deeper self-attention. arXiv preprint arXiv:1808.04444.",
+          "resolved": true,
+          "paper_id": "289efd98-be6a-44f6-89a9-7d627b3b7c57",
+          "title": "Character-Level Language Modeling with Deeper Self-Attention",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 3,
+          "raw_text": "Rie Kubota Ando and Tong Zhang. 2005. A framework for learning predictive structures from multiple tasks and unlabeled data. Journal of Machine Learning Research, 6(Nov):1817-1853.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 4,
+          "raw_text": "Luisa Bentivogli, Bernardo Magnini, Ido Dagan, Hoa Trang Dang, and Danilo Giampiccolo. 2009. The fifth PASCAL recognizing textual entailment challenge. In TAC. NIST.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 5,
+          "raw_text": "John Blitzer, Ryan McDonald, and Fernando Pereira. 2006. Domain adaptation with structural correspon- dence learning. In Proceedings of the 2006 confer- ence on empirical methods in natural language pro- cessing, pages 120-128. Association for Computa- tional Linguistics.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 6,
+          "raw_text": "Samuel R. Bowman, Gabor Angeli, Christopher Potts, and Christopher D. Manning. 2015. A large anno- tated corpus for learning natural language inference. In EMNLP. Association for Computational Linguis- tics.",
+          "resolved": true,
+          "paper_id": "69edeab4-c65e-41df-b995-fc9819a20d6b",
+          "title": "A large annotated corpus for learning natural language inference",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 7,
+          "raw_text": "Peter F Brown, Peter V Desouza, Robert L Mercer, Vincent J Della Pietra, and Jenifer C Lai. 1992. Class-based n-gram models of natural language. Computational linguistics, 18(4):467-479.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 8,
+          "raw_text": "Daniel Cer, Mona Diab, Eneko Agirre, Inigo Lopez- Gazpio, and Lucia Specia. 2017. Semeval-2017 task 1: Semantic textual similarity multilingual and crosslingual focused evaluation. In Proceedings of the 11th International Workshop on Semantic Evaluation (SemEval-2017), pages 1-14, Vancou- ver, Canada. Association for Computational Lin- guistics.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 9,
+          "raw_text": "Ciprian Chelba, Tomas Mikolov, Mike Schuster, Qi Ge, Thorsten Brants, Phillipp Koehn, and Tony Robin- son. 2013. One billion word benchmark for measur- ing progress in statistical language modeling. arXiv preprint arXiv:1312.3005.",
+          "resolved": true,
+          "paper_id": "38c3e139-9705-4f6b-b9bf-34ae2270f1ef",
+          "title": "One Billion Word Benchmark for Measuring Progress in Statistical Language Modeling",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 10,
+          "raw_text": "Z. Chen, H. Zhang, X. Zhang, and L. Zhao. 2018. Quora question pairs.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "not_arxiv"
+        },
+        {
+          "ordinal": 11,
+          "raw_text": "Christopher Clark and Matt Gardner. 2018. Simple and effective multi-paragraph reading comprehen- sion. In ACL.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 12,
+          "raw_text": "Kevin Clark, Minh-Thang Luong, Christopher D Man- ning, and Quoc Le. 2018. Semi-supervised se- quence modeling with cross-view training. In Pro- ceedings of the 2018 Conference on Empirical Meth- ods in Natural Language Processing, pages 1914- 1925.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 13,
+          "raw_text": "Ronan Collobert and Jason Weston. 2008. A unified architecture for natural language processing: Deep neural networks with multitask learning. In Pro- ceedings of the 25th international conference on Machine learning, pages 160-167. ACM.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 14,
+          "raw_text": "Alexis Conneau, Douwe Kiela, Holger Schwenk, Loïc Barrault, and Antoine Bordes. 2017. Supervised learning of universal sentence representations from natural language inference data. In Proceedings of the 2017 Conference on Empirical Methods in Nat- ural Language Processing, pages 670-680, Copen- hagen, Denmark. Association for Computational Linguistics.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 15,
+          "raw_text": "Andrew M Dai and Quoc V Le. 2015. Semi-supervised sequence learning. In Advances in neural informa- tion processing systems, pages 3079-3087.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 16,
+          "raw_text": "J. Deng, W. Dong, R. Socher, L.-J. Li, K. Li, and L. Fei- Fei. 2009. ImageNet: A Large-Scale Hierarchical Image Database. In CVPR09.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 17,
+          "raw_text": "William B Dolan and Chris Brockett. 2005. Automati- cally constructing a corpus of sentential paraphrases. In Proceedings of the Third International Workshop on Paraphrasing (IWP2005).",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 18,
+          "raw_text": "William Fedus, Ian Goodfellow, and Andrew M Dai. 2018. Maskgan: Better text generation via filling in the . arXiv preprint arXiv:1801.07736.",
+          "resolved": true,
+          "paper_id": "015cce64-7db1-44f2-b337-3d6a9466f334",
+          "title": "MaskGAN: Better Text Generation via Filling in the______",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 19,
+          "raw_text": "Dan Hendrycks and Kevin Gimpel. 2016. Bridging nonlinearities and stochastic regularizers with gaus- sian error linear units. CoRR, abs/1606.08415.",
+          "resolved": true,
+          "paper_id": "be775b07-c5bd-40c1-96c6-07063b44aaad",
+          "title": "Gaussian Error Linear Units (GELUs)",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 20,
+          "raw_text": "Felix Hill, Kyunghyun Cho, and Anna Korhonen. 2016. Learning distributed representations of sentences from unlabelled data. In Proceedings of the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies. Association for Computa- tional Linguistics.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 21,
+          "raw_text": "Jeremy Howard and Sebastian Ruder. 2018. Universal language model fine-tuning for text classification. In ACL. Association for Computational Linguistics.",
+          "resolved": true,
+          "paper_id": "3dc3fb80-38ae-40ad-a4ac-872f531f91c8",
+          "title": "Universal Language Model Fine-tuning for Text Classification",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 22,
+          "raw_text": "Minghao Hu, Yuxing Peng, Zhen Huang, Xipeng Qiu, Furu Wei, and Ming Zhou. 2018. Reinforced mnemonic reader for machine reading comprehen- sion. In IJCAI.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 23,
+          "raw_text": "Yacine Jernite, Samuel R. Bowman, and David Son- tag. 2017. Discourse-based objectives for fast un- supervised sentence representation learning. CoRR, abs/1705.00557.",
+          "resolved": true,
+          "paper_id": "a73c3e36-804b-4c7e-81c4-1bb423515f7a",
+          "title": "Discourse-Based Objectives for Fast Unsupervised Sentence Representation Learning",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 24,
+          "raw_text": "Mandar Joshi, Eunsol Choi, Daniel S Weld, and Luke Zettlemoyer. 2017. Triviaqa: A large scale distantly supervised challenge dataset for reading comprehen- sion. In ACL.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 25,
+          "raw_text": "Ryan Kiros, Yukun Zhu, Ruslan R Salakhutdinov, Richard Zemel, Raquel Urtasun, Antonio Torralba, and Sanja Fidler. 2015. Skip-thought vectors. In Advances in neural information processing systems, pages 3294-3302.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 26,
+          "raw_text": "Quoc Le and Tomas Mikolov. 2014. Distributed rep- resentations of sentences and documents. In Inter- national Conference on Machine Learning, pages 1188-1196.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 27,
+          "raw_text": "Hector J Levesque, Ernest Davis, and Leora Morgen- stern. 2011. The winograd schema challenge. In Aaai spring symposium: Logical formalizations of commonsense reasoning, volume 46, page 47.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 28,
+          "raw_text": "Lajanugen Logeswaran and Honglak Lee. 2018. An efficient framework for learning sentence represen- tations. In International Conference on Learning Representations.",
+          "resolved": true,
+          "paper_id": "7649b456-f20e-4e28-87db-bc702d8c6c19",
+          "title": "An efficient framework for learning sentence representations",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 29,
+          "raw_text": "Bryan McCann, James Bradbury, Caiming Xiong, and Richard Socher. 2017. Learned in translation: Con- textualized word vectors. In NIPS.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 30,
+          "raw_text": "Oren Melamud, Jacob Goldberger, and Ido Dagan. 2016. context2vec: Learning generic context em- bedding with bidirectional LSTM. In CoNLL.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 31,
+          "raw_text": "Tomas Mikolov, Ilya Sutskever, Kai Chen, Greg S Cor- rado, and Jeff Dean. 2013. Distributed representa- tions of words and phrases and their compositional- ity. In Advances in Neural Information Processing Systems 26, pages 3111-3119. Curran Associates, Inc. Andriy Mnih and Geoffrey E Hinton. 2009. A scal- able hierarchical distributed language model. In D. Koller, D. Schuurmans, Y. Bengio, and L. Bot- tou, editors, Advances in Neural Information Pro- cessing Systems 21, pages 1081-1088. Curran As- sociates, Inc.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 32,
+          "raw_text": "Ankur P Parikh, Oscar Täckström, Dipanjan Das, and Jakob Uszkoreit. 2016. A decomposable attention model for natural language inference. In EMNLP.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 33,
+          "raw_text": "Jeffrey Pennington, Richard Socher, and Christo- pher D. Manning. 2014. Glove: Global vectors for word representation. In Empirical Methods in Nat- ural Language Processing (EMNLP), pages 1532- 1543.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 34,
+          "raw_text": "Matthew Peters, Waleed Ammar, Chandra Bhagavat- ula, and Russell Power. 2017. Semi-supervised se- quence tagging with bidirectional language models. In ACL.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 35,
+          "raw_text": "Matthew Peters, Mark Neumann, Mohit Iyyer, Matt Gardner, Christopher Clark, Kenton Lee, and Luke Zettlemoyer. 2018a. Deep contextualized word rep- resentations. In NAACL.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 36,
+          "raw_text": "Matthew Peters, Mark Neumann, Luke Zettlemoyer, and Wen-tau Yih. 2018b. Dissecting contextual word embeddings: Architecture and representation. In Proceedings of the 2018 Conference on Empiri- cal Methods in Natural Language Processing, pages 1499-1509.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 37,
+          "raw_text": "Alec Radford, Karthik Narasimhan, Tim Salimans, and Ilya Sutskever. 2018. Improving language under- standing with unsupervised learning. Technical re- port, OpenAI.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 38,
+          "raw_text": "Pranav Rajpurkar, Jian Zhang, Konstantin Lopyrev, and Percy Liang. 2016. Squad: 100,000+ questions for machine comprehension of text. In Proceedings of the 2016 Conference on Empirical Methods in Nat- ural Language Processing, pages 2383-2392.",
+          "resolved": true,
+          "paper_id": "64064865-b87f-4cf7-aa2d-3e01edc7ee59",
+          "title": "SQuAD: 100,000+ Questions for Machine Comprehension of Text",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 39,
+          "raw_text": "Minjoon Seo, Aniruddha Kembhavi, Ali Farhadi, and Hannaneh Hajishirzi. 2017. Bidirectional attention flow for machine comprehension. In ICLR.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 40,
+          "raw_text": "Richard Socher, Alex Perelygin, Jean Wu, Jason Chuang, Christopher D Manning, Andrew Ng, and Christopher Potts. 2013. Recursive deep models for semantic compositionality over a sentiment tree- bank. In Proceedings of the 2013 conference on empirical methods in natural language processing, pages 1631-1642.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 41,
+          "raw_text": "Fu Sun, Linyang Li, Xipeng Qiu, and Yang Liu. 2018. U-net: Machine reading comprehension with unanswerable questions. arXiv preprint arXiv:1810.06638.",
+          "resolved": true,
+          "paper_id": "0dc1e24b-5694-4942-8997-3e1bea992fe7",
+          "title": "U-Net: Machine Reading Comprehension with Unanswerable Questions",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 42,
+          "raw_text": "Wilson L Taylor. 1953. Cloze procedure: A new tool for measuring readability. Journalism Bulletin, 30(4):415-433.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 43,
+          "raw_text": "Erik F Tjong Kim Sang and Fien De Meulder. 2003. Introduction to the conll-2003 shared task: Language-independent named entity recognition. In CoNLL.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 44,
+          "raw_text": "Joseph Turian, Lev Ratinov, and Yoshua Bengio. 2010. Word representations: A simple and general method for semi-supervised learning. In Proceedings of the 48th Annual Meeting of the Association for Compu- tational Linguistics, ACL ' 10, pages 384-394.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 45,
+          "raw_text": "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Lukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. In Advances in Neural Information Pro- cessing Systems, pages 6000-6010.",
+          "resolved": true,
+          "paper_id": "387fc70a-a95a-4c45-aa9d-f6252934da33",
+          "title": "Attention Is All You Need",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 46,
+          "raw_text": "Pascal Vincent, Hugo Larochelle, Yoshua Bengio, and Pierre-Antoine Manzagol. 2008. Extracting and composing robust features with denoising autoen- coders. In Proceedings of the 25th international conference on Machine learning, pages 1096-1103. ACM.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 47,
+          "raw_text": "Alex Wang, Amanpreet Singh, Julian Michael, Fe- lix Hill, Omer Levy, and Samuel Bowman. 2018a. Glue: A multi-task benchmark and analysis platform for natural language understanding. In Proceedings of the 2018 EMNLP Workshop BlackboxNLP: An- alyzing and Interpreting Neural Networks for NLP, pages 353-355.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 48,
+          "raw_text": "Wei Wang, Ming Yan, and Chen Wu. 2018b. Multi- granularity hierarchical attention fusion networks for reading comprehension and question answering. In Proceedings of the 56th Annual Meeting of the As- sociation for Computational Linguistics (Volume 1: Long Papers). Association for Computational Lin- guistics.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 49,
+          "raw_text": "Alex Warstadt, Amanpreet Singh, and Samuel R Bow- man. 2018. Neural network acceptability judg- ments. arXiv preprint arXiv:1805.12471.",
+          "resolved": true,
+          "paper_id": "716518ba-b73d-4436-807d-ece337ae86cc",
+          "title": "Neural Network Acceptability Judgments",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 50,
+          "raw_text": "Adina Williams, Nikita Nangia, and Samuel R Bow- man. 2018. A broad-coverage challenge corpus for sentence understanding through inference. In NAACL.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 51,
+          "raw_text": "Yonghui Wu, Mike Schuster, Zhifeng Chen, Quoc V Le, Mohammad Norouzi, Wolfgang Macherey, Maxim Krikun, Yuan Cao, Qin Gao, Klaus Macherey, et al. 2016. Google ' s neural ma- chine translation system: Bridging the gap between human and machine translation. arXiv preprint arXiv:1609.08144.",
+          "resolved": true,
+          "paper_id": "b18af4f0-5f43-49be-a03d-ac3d41d02ae8",
+          "title": "Google's Neural Machine Translation System: Bridging the Gap between Human and Machine Translation",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 52,
+          "raw_text": "Jason Yosinski, Jeff Clune, Yoshua Bengio, and Hod Lipson. 2014. How transferable are features in deep neural networks? In Advances in neural information processing systems, pages 3320-3328.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 53,
+          "raw_text": "Adams Wei Yu, David Dohan, Minh-Thang Luong, Rui Zhao, Kai Chen, Mohammad Norouzi, and Quoc V Le. 2018. QANet: Combining local convolution with global self-attention for reading comprehen- sion. In ICLR.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 54,
+          "raw_text": "Rowan Zellers, Yonatan Bisk, Roy Schwartz, and Yejin Choi. 2018. Swag: A large-scale adversarial dataset for grounded commonsense inference. In Proceed- ings of the 2018 Conference on Empirical Methods in Natural Language Processing (EMNLP).",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 55,
+          "raw_text": "Yukun Zhu, Ryan Kiros, Rich Zemel, Ruslan Salakhut- dinov, Raquel Urtasun, Antonio Torralba, and Sanja Fidler. 2015. Aligning books and movies: Towards story-like visual explanations by watching movies and reading books. In Proceedings of the IEEE international conference on computer vision, pages 19-27.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        }
+      ]
+    },
+    "a54a7eba-fe46-4f60-9017-72211964a5f2": {
+      "paper_id": "a54a7eba-fe46-4f60-9017-72211964a5f2",
+      "ready": true,
+      "key_connections": [
+        {
+          "reference_id": "019fae47-61e8-76e2-8336-fea3f547ff4a",
+          "paper_id": "a3a0c57e-8313-4d99-9628-5d8456490b5c",
+          "arxiv_id": "1810.04805v2",
+          "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+          "authors": [
+            "Jacob Devlin",
+            "Ming-Wei Chang",
+            "Kenton Lee",
+            "Kristina Toutanova"
+          ],
+          "year": 2019,
+          "relation_type": "compares_with",
+          "summary": "The citation matters because the context explicitly compares the current approach with the cited work.",
+          "confidence": 0.87
+        },
+        {
+          "reference_id": "019fae47-61eb-7283-8a80-7767a8371766",
+          "paper_id": "c41d9cd1-6f37-416f-82ff-6cd164bffb37",
+          "arxiv_id": "1904.00962v5",
+          "title": "Large Batch Optimization for Deep Learning: Training BERT in 76 minutes",
+          "authors": [
+            "Yang You",
+            "Jing Li",
+            "Sashank Reddi",
+            "Jonathan Hseu",
+            "Sanjiv Kumar",
+            "Srinadh Bhojanapalli",
+            "Xiaodan Song",
+            "James Demmel",
+            "Kurt Keutzer",
+            "Cho-Jui Hsieh"
+          ],
+          "year": 2019,
+          "relation_type": "uses",
+          "summary": "The citation matters because the context explicitly says the current work uses the cited work.",
+          "confidence": 0.8
+        },
+        {
+          "reference_id": "019fae47-61e9-7332-a906-785c8a9bf4e2",
+          "paper_id": "6706dfef-0313-4839-8ab5-be255717a4c6",
+          "arxiv_id": "1901.07291v1",
+          "title": "Cross-lingual Language Model Pretraining",
+          "authors": [
+            "Guillaume Lample",
+            "Alexis Conneau"
+          ],
+          "year": 2019,
+          "relation_type": "related_work",
+          "summary": "The citation matters because the context discusses the cited work as prior or related work.",
+          "confidence": 0.6
+        },
+        {
+          "reference_id": "019fae47-61e7-7432-8f59-dd0efffd267c",
+          "paper_id": "d6d2a1b7-b6ab-45ea-848e-6285fecd5cdd",
+          "arxiv_id": "1903.07785v1",
+          "title": "Cloze-driven Pretraining of Self-attention Networks",
+          "authors": [
+            "Alexei Baevski",
+            "Sergey Edunov",
+            "Yinhan Liu",
+            "Luke Zettlemoyer",
+            "Michael Auli"
+          ],
+          "year": 2019,
+          "relation_type": "related_work",
+          "summary": "The citation matters because the context discusses the cited work as prior or related work.",
+          "confidence": 0.6
+        },
+        {
+          "reference_id": "019fae47-61e8-76e2-8336-fecd88de8456",
+          "paper_id": "64bf2d1b-4eaf-4ea5-90ad-2760c4b9f74a",
+          "arxiv_id": "1905.03197v3",
+          "title": "Unified Language Model Pre-training for Natural Language Understanding and Generation",
+          "authors": [
+            "Li Dong",
+            "Nan Yang",
+            "Wenhui Wang",
+            "Furu Wei",
+            "Xiaodong Liu",
+            "Yu Wang",
+            "Jianfeng Gao",
+            "Ming Zhou",
+            "Hsiao-Wuen Hon"
+          ],
+          "year": 2019,
+          "relation_type": "related_work",
+          "summary": "The citation matters because the context discusses the cited work as prior or related work.",
+          "confidence": 0.6
+        }
+      ],
+      "references": [
+        {
+          "ordinal": 0,
+          "raw_text": "Yinhan Liu yinhanliu@fb.com Facebook AI Equal contribution Myle Ott myleott@fb.com Facebook AI Equal contribution Naman Goyal Facebook AI Equal contribution Jingfei Du jingfeidu@fb.com Facebook AI Equal contribution Mandar Joshi mandar90@cs.washington.edu Danqi Chen Facebook AI Omer Levy omerlevy@fb.com Facebook AI Mike Lewis mikelewis@fb.com Facebook AI Luke Zettlemoyer Facebook AI Veselin Stoyanov Facebook AI School of Computer Science & Engineering University of Washington Paul G. Allen Seattle WA RoBERTa: A Robustly Optimized BERT Pretraining Approach 26 Jul 2019 EA612FD39A49DC1EAC3E46B181498B3F arXiv:1907.11692v1[cs.CL]",
+          "resolved": true,
+          "paper_id": "a54a7eba-fe46-4f60-9017-72211964a5f2",
+          "title": "RoBERTa: A Robustly Optimized BERT Pretraining Approach",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 1,
+          "raw_text": "Eneko Agirre, Llu ' is M ' arquez, and Richard Wicen- towski, editors. 2007. Proceedings of the Fourth International Workshop on Semantic Evaluations (SemEval-2007).",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 2,
+          "raw_text": "Alexei Baevski, Sergey Edunov, Yinhan Liu, Luke Zettlemoyer, and Michael Auli. 2019. Cloze- driven pretraining of self-attention networks. arXiv preprint arXiv:1903.07785.",
+          "resolved": true,
+          "paper_id": "d6d2a1b7-b6ab-45ea-848e-6285fecd5cdd",
+          "title": "Cloze-driven Pretraining of Self-attention Networks",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 3,
+          "raw_text": "Roy Bar-Haim, Ido Dagan, Bill Dolan, Lisa Ferro, Danilo Giampiccolo, Bernardo Magnini, and Idan Szpektor. 2006. The second PASCAL recognising textual entailment challenge. In Proceedings of the second PASCAL challenges workshop on recognis- ing textual entailment.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 4,
+          "raw_text": "Luisa Bentivogli, Ido Dagan, Hoa Trang Dang, Danilo Giampiccolo, and Bernardo Magnini. 2009. The fifth PASCAL recognizing textual entailment chal- lenge.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 5,
+          "raw_text": "Samuel R Bowman, Gabor Angeli, Christopher Potts, and Christopher D Manning. 2015. A large anno- tated corpus for learning natural language inference. In Empirical Methods in Natural Language Process- ing (EMNLP).",
+          "resolved": true,
+          "paper_id": "69edeab4-c65e-41df-b995-fc9819a20d6b",
+          "title": "A large annotated corpus for learning natural language inference",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 6,
+          "raw_text": "William Chan, Nikita Kitaev, Kelvin Guu, Mitchell Stern, and Jakob Uszkoreit. 2019. KERMIT: Gener- ative insertion-based modeling for sequences. arXiv preprint arXiv:1906.01604.",
+          "resolved": true,
+          "paper_id": "d05cb513-2b45-4ced-8a23-ee4f37c1ee96",
+          "title": "KERMIT: Generative Insertion-Based Modeling for Sequences",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 7,
+          "raw_text": "Ido Dagan, Oren Glickman, and Bernardo Magnini. 2006. The PASCAL recognising textual entailment challenge. In Machine learning challenges. evalu- ating predictive uncertainty, visual object classifica- tion, and recognising tectual entailment.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 8,
+          "raw_text": "Andrew M Dai and Quoc V Le. 2015. Semi-supervised sequence learning. In Advances in Neural Informa- tion Processing Systems (NIPS).",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 9,
+          "raw_text": "Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. 2019. BERT: Pre-training of deep bidirectional transformers for language under- standing. In North American Association for Com- putational Linguistics (NAACL).",
+          "resolved": true,
+          "paper_id": "a3a0c57e-8313-4d99-9628-5d8456490b5c",
+          "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 10,
+          "raw_text": "William B Dolan and Chris Brockett. 2005. Auto- matically constructing a corpus of sentential para- phrases. In Proceedings of the International Work- shop on Paraphrasing.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 11,
+          "raw_text": "Li Dong, Nan Yang, Wenhui Wang, Furu Wei, Xiaodong Liu, Yu Wang, Jianfeng Gao, Ming Zhou, and Hsiao-Wuen Hon. 2019. Unified language model pre-training for natural language understanding and generation. arXiv preprint arXiv:1905.03197.",
+          "resolved": true,
+          "paper_id": "64bf2d1b-4eaf-4ea5-90ad-2760c4b9f74a",
+          "title": "Unified Language Model Pre-training for Natural Language Understanding and Generation",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 12,
+          "raw_text": "Danilo Giampiccolo, Bernardo Magnini, Ido Dagan, and Bill Dolan. 2007. The third PASCAL recog- nizing textual entailment challenge. In Proceedings of the ACL-PASCAL workshop on textual entailment and paraphrasing.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 13,
+          "raw_text": "Aaron Gokaslan and Vanya Cohen. 2019. Openweb- text corpus. http://web.archive.org/ save/http://Skylion007.github.io/ OpenWebTextCorpus.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 14,
+          "raw_text": "Felix Hamborg, Norman Meuschke, Corinna Bre- itinger, and Bela Gipp. 2017. news-please: A generic news crawler and extractor. In Proceedings of the 15th International Symposium of Information Science.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 15,
+          "raw_text": "Dan Hendrycks and Kevin Gimpel. 2016. Gaus- sian error linear units (gelus). arXiv preprint arXiv:1606.08415.",
+          "resolved": true,
+          "paper_id": "be775b07-c5bd-40c1-96c6-07063b44aaad",
+          "title": "Gaussian Error Linear Units (GELUs)",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 16,
+          "raw_text": "Matthew Honnibal and Ines Montani. 2017. spaCy 2: Natural language understanding with Bloom embed- dings, convolutional neural networks and incremen- tal parsing. To appear.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 17,
+          "raw_text": "Jeremy Howard and Sebastian Ruder. 2018. Universal language model fine-tuning for text classification. arXiv preprint arXiv:1801.06146.",
+          "resolved": true,
+          "paper_id": "3dc3fb80-38ae-40ad-a4ac-872f531f91c8",
+          "title": "Universal Language Model Fine-tuning for Text Classification",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 18,
+          "raw_text": "Shankar Iyer, Nikhil Dandekar, and Kornl Cser- nai. 2016. First quora dataset release: Question pairs. https://data.quora.com/First- Quora-Dataset-Release-Question- Pairs.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 19,
+          "raw_text": "Mandar Joshi, Danqi Chen, Yinhan Liu, Daniel S. Weld, Luke Zettlemoyer, and Omer Levy. 2019. SpanBERT: Improving pre-training by repre- senting and predicting spans. arXiv preprint arXiv:1907.10529.",
+          "resolved": true,
+          "paper_id": "94e8f4b0-1108-480b-92ca-265bac87c90a",
+          "title": "SpanBERT: Improving Pre-training by Representing and Predicting Spans",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 20,
+          "raw_text": "Diederik Kingma and Jimmy Ba. 2015. Adam: A method for stochastic optimization. In International Conference on Learning Representations (ICLR).",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 21,
+          "raw_text": "Vid Kocijan, Ana-Maria Cretu, Oana-Maria Camburu, Yordan Yordanov, and Thomas Lukasiewicz. 2019. A surprisingly robust trick for winograd schema challenge. arXiv preprint arXiv:1905.06290.",
+          "resolved": true,
+          "paper_id": "93479dd6-bacd-45aa-88a7-40e909b727b7",
+          "title": "A Surprisingly Robust Trick for Winograd Schema Challenge",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 22,
+          "raw_text": "Guokun Lai, Qizhe Xie, Hanxiao Liu, Yiming Yang, and Eduard Hovy. 2017. Race: Large-scale reading comprehension dataset from examinations. arXiv preprint arXiv:1704.04683.",
+          "resolved": true,
+          "paper_id": "cba1e41e-651f-495f-b402-e73252b0a522",
+          "title": "RACE: Large-scale ReAding Comprehension Dataset From Examinations",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 23,
+          "raw_text": "Guillaume Lample and Alexis Conneau. 2019. Cross- lingual language model pretraining. arXiv preprint arXiv:1901.07291.",
+          "resolved": true,
+          "paper_id": "6706dfef-0313-4839-8ab5-be255717a4c6",
+          "title": "Cross-lingual Language Model Pretraining",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 24,
+          "raw_text": "Hector J Levesque, Ernest Davis, and Leora Morgen- stern. 2011. The Winograd schema challenge. In AAAI Spring Symposium: Logical Formalizations of Commonsense Reasoning.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 25,
+          "raw_text": "Xiaodong Liu, Pengcheng He, Weizhu Chen, and Jianfeng Gao. 2019a. Improving multi-task deep neural networks via knowledge distillation for natural language understanding. arXiv preprint arXiv:1904.09482.",
+          "resolved": true,
+          "paper_id": "6efd2ae2-c1ac-4624-bf1c-2f77adbcce80",
+          "title": "Improving Multi-Task Deep Neural Networks via Knowledge Distillation for Natural Language Understanding",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 26,
+          "raw_text": "Xiaodong Liu, Pengcheng He, Weizhu Chen, and Jian- feng Gao. 2019b. Multi-task deep neural networks for natural language understanding. arXiv preprint arXiv:1901.11504.",
+          "resolved": true,
+          "paper_id": "f85feac4-6196-4801-aa29-e629f87cf11b",
+          "title": "Multi-Task Deep Neural Networks for Natural Language Understanding",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 27,
+          "raw_text": "Bryan McCann, James Bradbury, Caiming Xiong, and Richard Socher. 2017. Learned in translation: Con- textualized word vectors. In Advances in Neural In- formation Processing Systems (NIPS), pages 6297- 6308.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 28,
+          "raw_text": "Paulius Micikevicius, Sharan Narang, Jonah Alben, Gregory Diamos, Erich Elsen, David Garcia, Boris Ginsburg, Michael Houston, Oleksii Kuchaiev, Ganesh Venkatesh, and Hao Wu. 2018. Mixed preci- sion training. In International Conference on Learn- ing Representations.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 29,
+          "raw_text": "Sebastian Nagel. 2016. Cc-news. http: //web.archive.org/save/http: //commoncrawl.org/2016/10/news- dataset-available.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 30,
+          "raw_text": "Myle Ott, Sergey Edunov, Alexei Baevski, Angela Fan, Sam Gross, Nathan Ng, David Grangier, and Michael Auli. 2019. FAIRSEQ: A fast, exten- sible toolkit for sequence modeling. In North American Association for Computational Linguis- tics (NAACL): System Demonstrations.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 31,
+          "raw_text": "Myle Ott, Sergey Edunov, David Grangier, and Michael Auli. 2018. Scaling neural machine trans- lation. In Proceedings of the Third Conference on Machine Translation (WMT).",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 32,
+          "raw_text": "Adam Paszke, Sam Gross, Soumith Chintala, Gre- gory Chanan, Edward Yang, Zachary DeVito, Zem- ing Lin, Alban Desmaison, Luca Antiga, and Adam Lerer. 2017. Automatic differentiation in PyTorch. In NIPS Autodiff Workshop.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 33,
+          "raw_text": "Matthew Peters, Mark Neumann, Mohit Iyyer, Matt Gardner, Christopher Clark, Kenton Lee, and Luke Zettlemoyer. 2018. Deep contextualized word repre- sentations. In North American Association for Com- putational Linguistics (NAACL).",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 34,
+          "raw_text": "Alec Radford, Karthik Narasimhan, Time Salimans, and Ilya Sutskever. 2018. Improving language un- derstanding with unsupervised learning. Technical report, OpenAI.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 35,
+          "raw_text": "Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, and Ilya Sutskever. 2019. Language models are unsupervised multitask learners. Techni- cal report, OpenAI.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 36,
+          "raw_text": "Pranav Rajpurkar, Robin Jia, and Percy Liang. 2018. Know what you don ' t know: Unanswerable ques- tions for squad. In Association for Computational Linguistics (ACL).",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 37,
+          "raw_text": "Pranav Rajpurkar, Jian Zhang, Konstantin Lopyrev, and Percy Liang. 2016. SQuAD: 100,000+ questions for machine comprehension of text. In Empirical Meth- ods in Natural Language Processing (EMNLP).",
+          "resolved": true,
+          "paper_id": "64064865-b87f-4cf7-aa2d-3e01edc7ee59",
+          "title": "SQuAD: 100,000+ Questions for Machine Comprehension of Text",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 38,
+          "raw_text": "Rico Sennrich, Barry Haddow, and Alexandra Birch. 2016. Neural machine translation of rare words with subword units. In Association for Computational Linguistics (ACL), pages 1715-1725.",
+          "resolved": true,
+          "paper_id": "419ec1e5-5eeb-49b7-a0a8-85ded6f28207",
+          "title": "Neural Machine Translation of Rare Words with Subword Units",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 39,
+          "raw_text": "Richard Socher, Alex Perelygin, Jean Wu, Jason Chuang, Christopher D Manning, Andrew Ng, and Christopher Potts. 2013. Recursive deep models for semantic compositionality over a sentiment tree- bank. In Empirical Methods in Natural Language Processing (EMNLP).",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 40,
+          "raw_text": "Kaitao Song, Xu Tan, Tao Qin, Jianfeng Lu, and Tie-Yan Liu. 2019. MASS: Masked sequence to sequence pre-training for language generation. In International Conference on Machine Learning (ICML).",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 41,
+          "raw_text": "Yu Stephanie Sun, Shuohuan Wang, Yukun Li, Shikun Feng, Xuyi Chen, Han Zhang, Xinlun Tian, Danxi- ang Zhu, Hao Tian, and Hua Wu. 2019. ERNIE: En- hanced representation through knowledge integra- tion. arXiv preprint arXiv:1904.09223.",
+          "resolved": true,
+          "paper_id": "22d2020d-8659-4cff-afe5-857f31325bf2",
+          "title": "ERNIE: Enhanced Representation through Knowledge Integration",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 42,
+          "raw_text": "Trieu H Trinh and Quoc V Le. 2018. A simple method for commonsense reasoning. arXiv preprint arXiv:1806.02847.",
+          "resolved": true,
+          "paper_id": "111b0860-7db8-4815-b6ce-cd7cd06dc4c5",
+          "title": "A Simple Method for Commonsense Reasoning",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 43,
+          "raw_text": "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. In Advances in neural information pro- cessing systems.",
+          "resolved": true,
+          "paper_id": "387fc70a-a95a-4c45-aa9d-f6252934da33",
+          "title": "Attention Is All You Need",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 44,
+          "raw_text": "Alex Wang, Yada Pruksachatkun, Nikita Nangia, Amanpreet Singh, Julian Michael, Felix Hill, Omer Levy, and Samuel R. Bowman. 2019a. SuperGLUE: A stickier benchmark for general-purpose language understanding systems. arXiv preprint 1905.00537.",
+          "resolved": true,
+          "paper_id": "4901bd2c-d576-41de-aaf2-8509ee4adfbc",
+          "title": "SuperGLUE: A Stickier Benchmark for General-Purpose Language Understanding Systems",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 45,
+          "raw_text": "Alex Wang, Amanpreet Singh, Julian Michael, Felix Hill, Omer Levy, and Samuel R. Bowman. 2019b. GLUE: A multi-task benchmark and analysis plat- form for natural language understanding. In Inter- national Conference on Learning Representations (ICLR).",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 46,
+          "raw_text": "Alex Warstadt, Amanpreet Singh, and Samuel R. Bow- man. 2018. Neural network acceptability judg- ments. arXiv preprint 1805.12471.",
+          "resolved": true,
+          "paper_id": "716518ba-b73d-4436-807d-ece337ae86cc",
+          "title": "Neural Network Acceptability Judgments",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 47,
+          "raw_text": "Adina Williams, Nikita Nangia, and Samuel Bowman. 2018. A broad-coverage challenge corpus for sen- tence understanding through inference. In North American Association for Computational Linguis- tics (NAACL).",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 48,
+          "raw_text": "Zhilin Yang, Zihang Dai, Yiming Yang, Jaime Car- bonell, Ruslan Salakhutdinov, and Quoc V Le. 2019. Xlnet: Generalized autoregressive pretrain- ing for language understanding. arXiv preprint arXiv:1906.08237.",
+          "resolved": true,
+          "paper_id": "14a7b98e-9a3b-437d-9501-f7bf30956b82",
+          "title": "XLNet: Generalized Autoregressive Pretraining for Language Understanding",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 49,
+          "raw_text": "Yang You, Jing Li, Jonathan Hseu, Xiaodan Song, James Demmel, and Cho-Jui Hsieh. 2019. Reduc- ing bert pre-training time from 3 days to 76 minutes. arXiv preprint arXiv:1904.00962.",
+          "resolved": true,
+          "paper_id": "c41d9cd1-6f37-416f-82ff-6cd164bffb37",
+          "title": "Large Batch Optimization for Deep Learning: Training BERT in 76 minutes",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 50,
+          "raw_text": "Rowan Zellers, Ari Holtzman, Hannah Rashkin, Yonatan Bisk, Ali Farhadi, Franziska Roesner, and Yejin Choi. 2019. Defending against neural fake news. arXiv preprint arXiv:1905.12616.",
+          "resolved": true,
+          "paper_id": "0204f0c0-6afc-4b0b-8d71-0ac1199adcc6",
+          "title": "Defending Against Neural Fake News",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 51,
+          "raw_text": "Yukun Zhu, Ryan Kiros, Richard Zemel, Ruslan Salakhutdinov, Raquel Urtasun, Antonio Torralba, and Sanja Fidler. 2015. Aligning books and movies: Towards story-like visual explanations by watch- ing movies and reading books. In arXiv preprint arXiv:1506.06724.",
+          "resolved": true,
+          "paper_id": "e950f260-171b-4852-89f3-44494677dd8b",
+          "title": "Aligning Books and Movies: Towards Story-like Visual Explanations by Watching Movies and Reading Books",
+          "resolution_status": "resolved"
+        }
+      ]
+    },
+    "ecd609be-496f-483e-ab76-3d302d290db2": {
+      "paper_id": "ecd609be-496f-483e-ab76-3d302d290db2",
+      "ready": true,
+      "key_connections": [
+        {
+          "reference_id": "019fae47-8f19-7bc1-938f-9d63b166d8d8",
+          "paper_id": "a3a0c57e-8313-4d99-9628-5d8456490b5c",
+          "arxiv_id": "1810.04805v2",
+          "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+          "authors": [
+            "Jacob Devlin",
+            "Ming-Wei Chang",
+            "Kenton Lee",
+            "Kristina Toutanova"
+          ],
+          "year": 2018,
+          "relation_type": "compares_with",
+          "summary": "The citation matters because the context explicitly compares the current approach with the cited work.",
+          "confidence": 0.87
+        },
+        {
+          "reference_id": "019fae47-8f1d-7ee1-a384-c2c3b4bb3cc3",
+          "paper_id": "8afd39da-1e9c-4138-a432-f06a16e9b42d",
+          "arxiv_id": "1903.10318v2",
+          "title": "Fine-tune BERT for Extractive Summarization",
+          "authors": [
+            "Yang Liu"
+          ],
+          "year": 2019,
+          "relation_type": "compares_with",
+          "summary": "The citation matters because the context explicitly compares the current approach with the cited work.",
+          "confidence": 0.87
+        },
+        {
+          "reference_id": "019fae47-8f1a-7b53-be8d-4f5e39096686",
+          "paper_id": "3dc3fb80-38ae-40ad-a4ac-872f531f91c8",
+          "arxiv_id": "1801.06146v5",
+          "title": "Universal Language Model Fine-tuning for Text Classification",
+          "authors": [
+            "Jeremy Howard",
+            "Sebastian Ruder"
+          ],
+          "year": 2018,
+          "relation_type": "builds_on",
+          "summary": "The citation matters because the context explicitly says the current work builds on the cited work.",
+          "confidence": 0.82
+        },
+        {
+          "reference_id": "019fae47-8f19-7bc1-938f-9d8d1b5bbf89",
+          "paper_id": "64bf2d1b-4eaf-4ea5-90ad-2760c4b9f74a",
+          "arxiv_id": "1905.03197v3",
+          "title": "Unified Language Model Pre-training for Natural Language Understanding and Generation",
+          "authors": [
+            "Li Dong",
+            "Nan Yang",
+            "Wenhui Wang",
+            "Furu Wei",
+            "Xiaodong Liu",
+            "Yu Wang",
+            "Jianfeng Gao",
+            "Ming Zhou",
+            "Hsiao-Wuen Hon"
+          ],
+          "year": 2019,
+          "relation_type": "background",
+          "summary": "The citation matters because the context identifies the cited work as an earlier source.",
+          "confidence": 0.58
+        },
+        {
+          "reference_id": "019fae47-8f1a-7b53-be8d-4f4e2f80b1f7",
+          "paper_id": "1a1aa5b6-d628-454d-88e1-ffcdfb469b87",
+          "arxiv_id": "1902.00751v2",
+          "title": "Parameter-Efficient Transfer Learning for NLP",
+          "authors": [
+            "Neil Houlsby",
+            "Andrei Giurgiu",
+            "Stanislaw Jastrzebski",
+            "Bruna Morrone",
+            "Quentin de Laroussilhe",
+            "Andrea Gesmundo",
+            "Mona Attariyan",
+            "Sylvain Gelly"
+          ],
+          "year": 2019,
+          "relation_type": "unknown",
+          "summary": "The citation context mentions the cited work but does not explicitly state its role.",
+          "confidence": 0.25
+        }
+      ],
+      "references": [
+        {
+          "ordinal": 0,
+          "raw_text": "Colin Raffel craffel@gmail.com 94043 Google Mountain View CA USA Noam Shazeer 94043 Google Mountain View CA USA Adam Roberts 94043 Google Mountain View CA USA Katherine Lee katherinelee@google.com 94043 Google Mountain View CA USA Sharan Narang sharannarang@google.com 94043 Google Mountain View CA USA Michael Matena mmatena@google.com 94043 Google Mountain View CA USA Yanqi Zhou yanqiz@google.com 94043 Google Mountain View CA USA Wei Li mweili@google.com 94043 Google Mountain View CA USA Peter J Liu peterjliu@google.com 94043 Google Mountain View CA USA Colin ©2020 94043 Google Mountain View CA USA Noam Raffel 94043 Google Mountain View CA USA Adam Shazeer 94043 Google Mountain View CA USA Katherine Roberts 94043 Google Mountain View CA USA Sharan Lee 94043 Google Mountain View CA USA Michael Narang 94043 Google Mountain View CA USA Yanqi Matena 94043 Google Mountain View CA USA Wei Zhou 94043 Google Mountain View CA USA Peter J Li 94043 Google Mountain View CA USA Liu 94043 Google Mountain View CA USA Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer 19 Sep 2023 49B1FA1D57F270285FE831C6A4FC893A arXiv:1910.10683v4[cs.LG] Submitted 1/20; Revised 6/20;",
+          "resolved": true,
+          "paper_id": "ecd609be-496f-483e-ab76-3d302d290db2",
+          "title": "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 1,
+          "raw_text": "Rami Al-Rfou, Dokook Choe, Noah Constant, Mandy Guo, and Llion Jones. Character-level language modeling with deeper self-attention. In Proceedings of the AAAI Conference on Artificial Intelligence, 2019.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "ambiguous"
+        },
+        {
+          "ordinal": 2,
+          "raw_text": "Rohan Anil, Vineet Gupta, Tomer Koren, and Yoram Singer. Memory-efficient adaptive optimization for large-scale learning. arXiv preprint arXiv:1901.11150, 2019.",
+          "resolved": true,
+          "paper_id": "ad8b097e-3032-447a-a0b4-e1c867288e17",
+          "title": "Memory-Efficient Adaptive Optimization",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 3,
+          "raw_text": "Naveen Arivazhagan, Ankur Bapna, Orhan Firat, Dmitry Lepikhin, Melvin Johnson, Maxim Krikun, Mia Xu Chen, Yuan Cao, George Foster, Colin Cherry, et al. Massively multi- lingual neural machine translation in the wild: Findings and challenges. arXiv preprint arXiv:1907.05019, 2019.",
+          "resolved": true,
+          "paper_id": "ceda3aa9-a376-447a-adb1-3d6682304321",
+          "title": "Massively Multilingual Neural Machine Translation in the Wild: Findings and Challenges",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 4,
+          "raw_text": "Jimmy Lei Ba, Jamie Ryan Kiros, and Geoffrey E. Hinton. Layer normalization. arXiv preprint arXiv:1607.06450, 2016.",
+          "resolved": true,
+          "paper_id": "7cf10a46-828f-43a8-8883-ab9f82650fd9",
+          "title": "Layer Normalization",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 5,
+          "raw_text": "Alexei Baevski, Sergey Edunov, Yinhan Liu, Luke Zettlemoyer, and Michael Auli. Cloze- driven pretraining of self-attention networks. arXiv preprint arXiv:1903.07785, 2019.",
+          "resolved": true,
+          "paper_id": "d6d2a1b7-b6ab-45ea-848e-6285fecd5cdd",
+          "title": "Cloze-driven Pretraining of Self-attention Networks",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 6,
+          "raw_text": "Dzmitry Bahdanau, Kyunghyun Cho, and Yoshua Bengio. Neural machine translation by jointly learning to align and translate. In Third International Conference on Learning Representations, 2015.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "ambiguous"
+        },
+        {
+          "ordinal": 7,
+          "raw_text": "Ankur Bapna, Naveen Arivazhagan, and Orhan Firat. Simple, scalable adaptation for neural machine translation. arXiv preprint arXiv:1909.08478, 2019.",
+          "resolved": true,
+          "paper_id": "5bb6dcca-0411-43cc-b03e-f69e7856aefe",
+          "title": "Simple, Scalable Adaptation for Neural Machine Translation",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 8,
+          "raw_text": "Iz Beltagy, Kyle Lo, and Arman Cohan. SciBERT: A pretrained language model for scientific text. In Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP), 2019.",
+          "resolved": true,
+          "paper_id": "e28c7672-c409-4798-ad3d-ca90950b5214",
+          "title": "SciBERT: A Pretrained Language Model for Scientific Text",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 9,
+          "raw_text": "Ondřej Bojar, Christian Buck, Christian Federmann, Barry Haddow, Philipp Koehn, Jo- hannes Leveling, Christof Monz, Pavel Pecina, Matt Post, Herve Saint-Amand, et al. Findings of the 2014 workshop on statistical machine translation. In Proceedings of the Ninth Workshop on Statistical Machine Translation, 2014.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 10,
+          "raw_text": "Ondřej Bojar, Rajen Chatterjee, Christian Federmann, Barry Haddow, Matthias Huck, Chris Hokamp, Philipp Koehn, Varvara Logacheva, Christof Monz, Matteo Negri, et al. Findings of the 2015 workshop on statistical machine translation. In Proceedings of the Tenth Workshop on Statistical Machine Translation, 2015.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 11,
+          "raw_text": "Ondřej Bojar, Rajen Chatterjee, Christian Federmann, Yvette Graham, Barry Haddow, Matthias Huck, Antonio Jimeno Yepes, Philipp Koehn, Varvara Logacheva, Christof Monz, et al. Findings of the 2016 conference on machine translation. In Proceedings of the First Conference on Machine Translation, 2016.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 12,
+          "raw_text": "Samuel R. Bowman, Luke Vilnis, Oriol Vinyals, Andrew M. Dai, Rafal Jozefowicz, and Samy Bengio. Generating sentences from a continuous space. arXiv preprint arXiv:1511.06349, 2015.",
+          "resolved": true,
+          "paper_id": "20dcfe44-76ef-4d98-bfb5-74cbf9212fdc",
+          "title": "Generating Sentences from a Continuous Space",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 13,
+          "raw_text": "Christian Buck, Kenneth Heafield, and Bas Van Ooyen. N-gram counts and language models from the common crawl. In LREC, 2014.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 14,
+          "raw_text": "Rich Caruana. Multitask learning. Machine learning, 28(1), 1997.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 15,
+          "raw_text": "Daniel Cer, Mona Diab, Eneko Agirre, Inigo Lopez-Gazpio, and Lucia Specia. Semeval-2017 task 1: Semantic textual similarity-multilingual and cross-lingual focused evaluation. arXiv preprint arXiv:1708.00055, 2017.",
+          "resolved": true,
+          "paper_id": "323ddf14-ddc8-4dfa-8ffa-151b56467e1e",
+          "title": "SemEval-2017 Task 1: Semantic Textual Similarity - Multilingual and Cross-lingual Focused Evaluation",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 16,
+          "raw_text": "Jianpeng Cheng, Li Dong, and Mirella Lapata. Long short-term memory-networks for machine reading. arXiv preprint arXiv:1601.06733, 2016.",
+          "resolved": true,
+          "paper_id": "7797d73a-54ce-476e-b30c-1235bda2e563",
+          "title": "Long Short-Term Memory-Networks for Machine Reading",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 17,
+          "raw_text": "Christopher Clark, Kenton Lee, Ming-Wei Chang, Tom Kwiatkowski, Michael Collins, and Kristina Toutanova. BoolQ: Exploring the surprising difficulty of natural yes/no questions. arXiv preprint arXiv:1905.10044, 2019.",
+          "resolved": true,
+          "paper_id": "84bf1a15-8bf7-40a3-a0c3-cd4a043a6dc1",
+          "title": "BoolQ: Exploring the Surprising Difficulty of Natural Yes/No Questions",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 18,
+          "raw_text": "Kevin Clark, Minh-Thang Luong, Quoc V Le, and Christopher D Manning. Electra: Pre-training text encoders as discriminators rather than generators. arXiv preprint arXiv:2003.10555, 2020.",
+          "resolved": true,
+          "paper_id": "7805c1b4-8e68-4af5-9b6a-3555432c4b79",
+          "title": "ELECTRA: Pre-training Text Encoders as Discriminators Rather Than Generators",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 19,
+          "raw_text": "Alexis Conneau and Douwe Kiela. SentEval: An evaluation toolkit for universal sentence representations. arXiv preprint arXiv:1803.05449, 2018.",
+          "resolved": true,
+          "paper_id": "288d1fce-f98c-4064-87d9-b6223ad215f0",
+          "title": "SentEval: An Evaluation Toolkit for Universal Sentence Representations",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 20,
+          "raw_text": "Alexis Conneau, Douwe Kiela, Holger Schwenk, Loic Barrault, and Antoine Bordes. Super- vised learning of universal sentence representations from natural language inference data. arXiv preprint arXiv:1705.02364, 2017.",
+          "resolved": true,
+          "paper_id": "c97634b8-3595-4607-866a-cefcf041167d",
+          "title": "Supervised Learning of Universal Sentence Representations from Natural Language Inference Data",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 21,
+          "raw_text": "Ido Dagan, Oren Glickman, and Bernardo Magnini. The PASCAL recognising textual entailment challenge. In Machine Learning Challenges Workshop, 2005.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 22,
+          "raw_text": "Andrew M. Dai and Quoc V. Le. Semi-supervised sequence learning. In Advances in neural information processing systems, 2015.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 23,
+          "raw_text": "Marie-Catherine De Marneff, Mandy Simons, and Judith Tonhauser. The CommitmentBank: Investigating projection in naturally occurring discourse. In Sinn und Bedeutung 23, 2019.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 24,
+          "raw_text": "Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li, and Li Fei-Fei. ImageNet: A large-scale hierarchical image database. In 2009 IEEE conference on computer vision and pattern recognition, 2009.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 25,
+          "raw_text": "Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. BERT: Pre- training of deep bidirectional transformers for language understanding. arXiv preprint arXiv:1810.04805, 2018.",
+          "resolved": true,
+          "paper_id": "a3a0c57e-8313-4d99-9628-5d8456490b5c",
+          "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 26,
+          "raw_text": "William B. Dolan and Chris Brockett. Automatically constructing a corpus of sentential para- phrases. In Proceedings of the Third International Workshop on Paraphrasing (IWP2005), 2005.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 27,
+          "raw_text": "Li Dong, Nan Yang, Wenhui Wang, Furu Wei, Xiaodong Liu, Yu Wang, Jianfeng Gao, Ming Zhou, and Hsiao-Wuen Hon. Unified language model pre-training for natural language understanding and generation. arXiv preprint arXiv:1905.03197, 2019.",
+          "resolved": true,
+          "paper_id": "64bf2d1b-4eaf-4ea5-90ad-2760c4b9f74a",
+          "title": "Unified Language Model Pre-training for Natural Language Understanding and Generation",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 28,
+          "raw_text": "Sergey Edunov, Myle Ott, Michael Auli, and David Grangier. Understanding back-translation at scale. arXiv preprint arXiv:1808.09381, 2018.",
+          "resolved": true,
+          "paper_id": "036af186-4598-4587-9aba-506cc5654236",
+          "title": "Understanding Back-Translation at Scale",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 29,
+          "raw_text": "Edouard Grave, Piotr Bojanowski, Prakhar Gupta, Armand Joulin, and Tomas Mikolov. Learning word vectors for 157 languages. arXiv preprint arXiv:1802.06893, 2018.",
+          "resolved": true,
+          "paper_id": "342bd40b-06c0-4006-8a76-ef3b5c5e6ad5",
+          "title": "Learning Word Vectors for 157 Languages",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 30,
+          "raw_text": "Alex Graves. Generating sequences with recurrent neural networks. arXiv preprint arXiv:1308.0850, 2013.",
+          "resolved": true,
+          "paper_id": "81ae536d-c2cf-4f14-9cba-1811293480dd",
+          "title": "Generating Sequences With Recurrent Neural Networks",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 31,
+          "raw_text": "Ivan Habernal, Omnia Zayed, and Iryna Gurevych. C4Corpus: Multilingual web-size corpus with free license. In Proceedings of the Tenth International Conference on Language Resources and Evaluation (LREC ' 16), pages 914-922, 2016.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 32,
+          "raw_text": "Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep residual learning for image recognition. In Proceedings of the IEEE conference on computer vision and pattern recognition, 2016.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 33,
+          "raw_text": "Kaiming He, Ross Girshick, and Piotr Dollár. Rethinking ImageNet pre-training. arXiv preprint arXiv:1811.08883, 2018.",
+          "resolved": true,
+          "paper_id": "c75834fc-de83-451b-b9c3-f562e54a57ae",
+          "title": "Rethinking ImageNet Pre-training",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 34,
+          "raw_text": "Pengcheng He, Xiaodong Liu, Weizhu Chen, and Jianfeng Gao. A hybrid neural network model for commonsense reasoning. arXiv preprint arXiv:1907.11983, 2019.",
+          "resolved": true,
+          "paper_id": "fc154707-7e14-4364-9226-bf5fd1f5fce9",
+          "title": "A Hybrid Neural Network Model for Commonsense Reasoning",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 35,
+          "raw_text": "Karl Moritz Hermann, Tomas Kocisky, Edward Grefenstette, Lasse Espeholt, Will Kay, Mustafa Suleyman, and Phil Blunsom. Teaching machines to read and comprehend. In Advances in neural information processing systems, 2015.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 36,
+          "raw_text": "Joel Hestness, Sharan Narang, Newsha Ardalani, Gregory Diamos, Heewoo Jun, Hassan Kianinejad, Md. Mostofa Ali Patwary, Yang Yang, and Yanqi Zhou. Deep learning scaling is predictable, empirically. arXiv preprint arXiv:1712.00409, 2017.",
+          "resolved": true,
+          "paper_id": "7dc18583-eb72-41f7-bda2-9b11abb7f16e",
+          "title": "Deep Learning Scaling is Predictable, Empirically",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 37,
+          "raw_text": "Felix Hill, Kyunghyun Cho, and Anna Korhonen. Learning distributed representations of sentences from unlabelled data. arXiv preprint arXiv:1602.03483, 2016.",
+          "resolved": true,
+          "paper_id": "e1e452a1-33b7-47b9-9293-28efe35d9889",
+          "title": "Learning Distributed Representations of Sentences from Unlabelled Data",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 38,
+          "raw_text": "Geoffrey Hinton, Oriol Vinyals, and Jeff Dean. Distilling the knowledge in a neural network. arXiv preprint arXiv:1503.02531, 2015.",
+          "resolved": true,
+          "paper_id": "7a919a70-2280-43e5-93de-374474fa50fb",
+          "title": "Distilling the Knowledge in a Neural Network",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 39,
+          "raw_text": "Neil Houlsby, Andrei Giurgiu, Stanislaw Jastrzebski, Bruna Morrone, Quentin De Laroussilhe, Andrea Gesmundo, Mona Attariyan, and Sylvain Gelly. Parameter-efficient transfer learning for NLP. arXiv preprint arXiv:1902.00751, 2019.",
+          "resolved": true,
+          "paper_id": "1a1aa5b6-d628-454d-88e1-ffcdfb469b87",
+          "title": "Parameter-Efficient Transfer Learning for NLP",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 40,
+          "raw_text": "Jeremy Howard and Sebastian Ruder. Universal language model fine-tuning for text classifi- cation. arXiv preprint arXiv:1801.06146, 2018.",
+          "resolved": true,
+          "paper_id": "3dc3fb80-38ae-40ad-a4ac-872f531f91c8",
+          "title": "Universal Language Model Fine-tuning for Text Classification",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 41,
+          "raw_text": "Cheng-Zhi Anna Huang, Ashish Vaswani, Jakob Uszkoreit, Ian Simon, Curtis Hawthorne, Noam Shazeer, Andrew M. Dai, Matthew D. Hoffman, Monica Dinculescu, and Dou- glas Eck. Music transformer: Generating music with long-term structure. In Seventh International Conference on Learning Representations, 2018a.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 42,
+          "raw_text": "Yanping Huang, Yonglong Cheng, Dehao Chen, HyoukJoong Lee, Jiquan Ngiam, Quoc V Le, and Zhifeng Chen. GPipe: Efficient training of giant neural networks using pipeline parallelism. arXiv preprint arXiv:1811.06965, 2018b.",
+          "resolved": true,
+          "paper_id": "97f811c2-8e5f-4602-a919-37b14de669ff",
+          "title": "GPipe: Efficient Training of Giant Neural Networks using Pipeline Parallelism",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 43,
+          "raw_text": "Minyoung Huh, Pulkit Agrawal, and Alexei A. Efros. What makes ImageNet good for transfer learning? arXiv preprint arXiv:1608.08614, 2016.",
+          "resolved": true,
+          "paper_id": "2ed89401-3699-4078-b266-e749b9798160",
+          "title": "What makes ImageNet good for transfer learning?",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 44,
+          "raw_text": "Shankar Iyer, Nikhil Dandekar, and Kornel Csernai. First Quora dataset release: Question pairs. https://data.quora.com/First-Quora-Dataset-Release-Question-Pairs, 2017.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 45,
+          "raw_text": "Yangqing Jia, Evan Shelhamer, Jeff Donahue, Sergey Karayev, Jonathan Long, Ross Girshick, Sergio Guadarrama, and Trevor Darrell. Caffe: Convolutional architecture for fast feature embedding. In Proceedings of the 22nd ACM international conference on Multimedia, 2014.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 46,
+          "raw_text": "Xiaoqi Jiao, Yichun Yin, Lifeng Shang, Xin Jiang, Xiao Chen, Linlin Li, Fang Wang, and Qun Liu. TinyBERT: Distilling BERT for natural language understanding. arXiv preprint arXiv:1909.10351, 2019.",
+          "resolved": true,
+          "paper_id": "f1531094-e078-46f5-afb6-25d4c63537bb",
+          "title": "TinyBERT: Distilling BERT for Natural Language Understanding",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 47,
+          "raw_text": "Mandar Joshi, Eunsol Choi, Daniel S. Weld, and Luke Zettlemoyer. TriviaQA: A large scale distantly supervised challenge dataset for reading comprehension. arXiv preprint arXiv:1705.03551, 2017.",
+          "resolved": true,
+          "paper_id": "f5247905-1985-4ca6-8642-cd92f59345d3",
+          "title": "TriviaQA: A Large Scale Distantly Supervised Challenge Dataset for Reading Comprehension",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 48,
+          "raw_text": "Mandar Joshi, Danqi Chen, Yinhan Liu, Daniel S. Weld, Luke Zettlemoyer, and Omer Levy. SpanBERT: Improving pre-training by representing and predicting spans. arXiv preprint arXiv:1907.10529, 2019.",
+          "resolved": true,
+          "paper_id": "94e8f4b0-1108-480b-92ca-265bac87c90a",
+          "title": "SpanBERT: Improving Pre-training by Representing and Predicting Spans",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 49,
+          "raw_text": "Rafal Jozefowicz, Oriol Vinyals, Mike Schuster, Noam Shazeer, and Yonghui Wu. Exploring the limits of language modeling. arXiv preprint arXiv:1602.02410, 2016.",
+          "resolved": true,
+          "paper_id": "a972f2bc-a96b-4ce6-b5c9-cd1d9acec1d0",
+          "title": "Exploring the Limits of Language Modeling",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 50,
+          "raw_text": "Nal Kalchbrenner, Edward Grefenstette, and Phil Blunsom. A convolutional neural network for modelling sentences. In Proceedings of the 52nd Annual Meeting of the Association for Computational Linguistics, 2014.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 51,
+          "raw_text": "Nitish Shirish Keskar, Bryan McCann, Lav R. Varshney, Caiming Xiong, and Richard Socher. CTRL: A conditional transformer language model for controllable generation. arXiv preprint arXiv:1909.05858, 2019a.",
+          "resolved": true,
+          "paper_id": "aca1ee42-f08b-4131-b678-f70d7812f437",
+          "title": "CTRL: A Conditional Transformer Language Model for Controllable Generation",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 52,
+          "raw_text": "Nitish Shirish Keskar, Bryan McCann, Caiming Xiong, and Richard Socher. Unifying question answering and text classification via span extraction. arXiv preprint arXiv:1904.09286, 2019b.",
+          "resolved": true,
+          "paper_id": "f57f17d5-06f3-42ef-bdde-03c901afc3f1",
+          "title": "Unifying Question Answering, Text Classification, and Regression via Span Extraction",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 53,
+          "raw_text": "Daniel Khashabi, Snigdha Chaturvedi, Michael Roth, Shyam Upadhyay, and Dan Roth. Looking beyond the surface: A challenge set for reading comprehension over multiple sentences. In Proceedings of North American Chapter of the Association for Computational Linguistics (NAACL), 2018.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 54,
+          "raw_text": "Ryan Kiros, Yukun Zhu, Ruslan R. Salakhutdinov, Richard Zemel, Raquel Urtasun, Antonio Torralba, and Sanja Fidler. Skip-thought vectors. In Advances in neural information processing systems, 2015.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 55,
+          "raw_text": "Vid Kocijan, Ana-Maria Cretu, Oana-Maria Camburu, Yordan Yordanov, and Thomas Lukasiewicz. A surprisingly robust trick for Winograd schema challenge. arXiv preprint arXiv:1905.06290, 2019.",
+          "resolved": true,
+          "paper_id": "93479dd6-bacd-45aa-88a7-40e909b727b7",
+          "title": "A Surprisingly Robust Trick for Winograd Schema Challenge",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 56,
+          "raw_text": "Jakub Konečnỳ, Brendan McMahan, and Daniel Ramage. Federated optimization: Dis- tributed optimization beyond the datacenter. arXiv preprint arXiv:1511.03575, 2015.",
+          "resolved": true,
+          "paper_id": "1a69651d-20f1-4336-b448-0d9e83304795",
+          "title": "Federated Optimization:Distributed Optimization Beyond the Datacenter",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 57,
+          "raw_text": "Jakub Konečnỳ, H. Brendan McMahan, Felix X. Yu, Peter Richtárik, Ananda Theertha Suresh, and Dave Bacon. Federated learning: Strategies for improving communication efficiency. arXiv preprint arXiv:1610.05492, 2016.",
+          "resolved": true,
+          "paper_id": "49aa74b2-9dec-4b26-b651-5d72c4a3fee6",
+          "title": "Federated Learning: Strategies for Improving Communication Efficiency",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 58,
+          "raw_text": "Simon Kornblith, Jonathon Shlens, and Quoc V. Le. Do better ImageNet models transfer better? arXiv preprint arXiv:1805.08974, 2018.",
+          "resolved": true,
+          "paper_id": "02c6d5a7-985f-4083-b2ce-e8c80fe5fda0",
+          "title": "Do Better ImageNet Models Transfer Better?",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 59,
+          "raw_text": "Alex Krizhevsky. One weird trick for parallelizing convolutional neural networks. arXiv preprint arXiv:1404.5997, 2014.",
+          "resolved": true,
+          "paper_id": "66499b6b-5596-46ef-9cf7-be8bc37d54f6",
+          "title": "One weird trick for parallelizing convolutional neural networks",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 60,
+          "raw_text": "Taku Kudo. Subword regularization: Improving neural network translation models with multiple subword candidates. arXiv preprint arXiv:1804.10959, 2018.",
+          "resolved": true,
+          "paper_id": "5b3ad381-e31f-4fb6-9c5e-c2072f9b7193",
+          "title": "Subword Regularization: Improving Neural Network Translation Models with Multiple Subword Candidates",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 61,
+          "raw_text": "Taku Kudo and John Richardson. SentencePiece: A simple and language independent sub- word tokenizer and detokenizer for neural text processing. arXiv preprint arXiv:1808.06226, 2018.",
+          "resolved": true,
+          "paper_id": "b4cfa13d-523d-4b47-aa82-0f790c123dfc",
+          "title": "SentencePiece: A simple and language independent subword tokenizer and detokenizer for Neural Text Processing",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 62,
+          "raw_text": "Guillaume Lample and Alexis Conneau. Cross-lingual language model pretraining. arXiv preprint arXiv:1901.07291, 2019.",
+          "resolved": true,
+          "paper_id": "6706dfef-0313-4839-8ab5-be255717a4c6",
+          "title": "Cross-lingual Language Model Pretraining",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 63,
+          "raw_text": "Zhenzhong Lan, Mingda Chen, Sebastian Goodman, Kevin Gimpel, Piyush Sharma, and Radu Soricut. ALBERT: A lite BERT for self-supervised learning of language representa- tions. arXiv preprint arXiv:1909.11942, 2019.",
+          "resolved": true,
+          "paper_id": "8e88591a-74a7-48f4-81dc-04afca9234ae",
+          "title": "ALBERT: A Lite BERT for Self-supervised Learning of Language Representations",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 64,
+          "raw_text": "Hector Levesque, Ernest Davis, and Leora Morgenstern. The Winograd schema challenge. In Thirteenth International Conference on the Principles of Knowledge Representation and Reasoning, 2012.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 65,
+          "raw_text": "Qi Li. Literature survey: domain adaptation algorithms for natural language processing. 2012. Chin-Yew Lin. ROUGE: A package for automatic evaluation of summaries. In Text summarization branches out, 2004.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 66,
+          "raw_text": "Peter J. Liu, Mohammad Saleh, Etienne Pot, Ben Goodrich, Ryan Sepassi, Lukasz Kaiser, and Noam Shazeer. Generating Wikipedia by summarizing long sequences. arXiv preprint arXiv:1801.10198, 2018.",
+          "resolved": true,
+          "paper_id": "ac71cb61-5fa6-44cf-8346-f9a1ebcf29a9",
+          "title": "Generating Wikipedia by Summarizing Long Sequences",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 67,
+          "raw_text": "Peter J. Liu, Yu-An Chung, and Jie Ren. SummAE: Zero-shot abstractive text summarization using length-agnostic auto-encoders. arXiv preprint arXiv:1910.00998, 2019a.",
+          "resolved": true,
+          "paper_id": "9b14af3f-87b8-419c-9e7d-5024ea33ae5d",
+          "title": "SummAE: Zero-Shot Abstractive Text Summarization using Length-Agnostic Auto-Encoders",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 68,
+          "raw_text": "Xiaodong Liu, Jianfeng Gao, Xiaodong He, Li Deng, Kevin Duh, and Ye-Yi Wang. Rep- resentation learning using multi-task deep neural networks for semantic classification and information retrieval. In Proceedings of the 2015 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, 2015.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 69,
+          "raw_text": "Xiaodong Liu, Pengcheng He, Weizhu Chen, and Jianfeng Gao. Multi-task deep neural networks for natural language understanding. arXiv preprint arXiv:1901.11504, 2019b.",
+          "resolved": true,
+          "paper_id": "f85feac4-6196-4801-aa29-e629f87cf11b",
+          "title": "Multi-Task Deep Neural Networks for Natural Language Understanding",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 70,
+          "raw_text": "Yang Liu. Fine-tune BERT for extractive summarization. arXiv preprint arXiv:1903.10318, 2019.",
+          "resolved": true,
+          "paper_id": "8afd39da-1e9c-4138-a432-f06a16e9b42d",
+          "title": "Fine-tune BERT for Extractive Summarization",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 71,
+          "raw_text": "Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Mandar Joshi, Danqi Chen, Omer Levy, Mike Lewis, Luke Zettlemoyer, and Veselin Stoyanov. RoBERTa: A robustly optimized BERT pretraining approach. arXiv preprint arXiv:1907.11692, 2019c.",
+          "resolved": true,
+          "paper_id": "a54a7eba-fe46-4f60-9017-72211964a5f2",
+          "title": "RoBERTa: A Robustly Optimized BERT Pretraining Approach",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 72,
+          "raw_text": "Lajanugen Logeswaran and Honglak Lee. An efficient framework for learning sentence representations. arXiv preprint arXiv:1803.02893, 2018.",
+          "resolved": true,
+          "paper_id": "7649b456-f20e-4e28-87db-bc702d8c6c19",
+          "title": "An efficient framework for learning sentence representations",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 73,
+          "raw_text": "Dhruv Mahajan, Ross Girshick, Vignesh Ramanathan, Kaiming He, Manohar Paluri, Yixuan Li, Ashwin Bharambe, and Laurens van der Maaten. Exploring the limits of weakly supervised pretraining. In Proceedings of the European Conference on Computer Vision (ECCV), 2018.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 74,
+          "raw_text": "Bryan McCann, Nitish Shirish Keskar, Caiming Xiong, and Richard Socher. The nat- ural language decathlon: Multitask learning as question answering. arXiv preprint arXiv:1806.08730, 2018.",
+          "resolved": true,
+          "paper_id": "dc2218a4-cba9-41e3-b4fa-8d245ac1802c",
+          "title": "The Natural Language Decathlon: Multitask Learning as Question Answering",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 75,
+          "raw_text": "Tomas Mikolov, Kai Chen, Greg Corrado, and Jeffrey Dean. Efficient estimation of word representations in vector space. arXiv preprint arXiv:1301.3781, 2013a.",
+          "resolved": true,
+          "paper_id": "3e1bf837-e779-4913-a865-2c0bdb406dc6",
+          "title": "Efficient Estimation of Word Representations in Vector Space",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 76,
+          "raw_text": "Tomas Mikolov, Ilya Sutskever, Kai Chen, Greg S. Corrado, and Jeff Dean. Distributed representations of words and phrases and their compositionality. In Advances in neural information processing systems, 2013b.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 77,
+          "raw_text": "Ramesh Nallapati, Bowen Zhou, Cicero Nogueira dos santos, Caglar Gulcehre, and Bing Xiang. Abstractive text summarization using sequence-to-sequence RNNs and beyond. arXiv preprint arXiv:1602.06023, 2016.",
+          "resolved": true,
+          "paper_id": "7f42250c-5e19-49fe-b045-3f0bbb9d7cce",
+          "title": "Abstractive Text Summarization Using Sequence-to-Sequence RNNs and Beyond",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 78,
+          "raw_text": "Maxime Oquab, Leon Bottou, Ivan Laptev, and Josef Sivic. Learning and transferring mid-level image representations using convolutional neural networks. In Proceedings of the IEEE conference on computer vision and pattern recognition, 2014.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 79,
+          "raw_text": "Kishore Papineni, Salim Roukos, Todd Ward, and Wei-Jing Zhu. BLEU: a method for automatic evaluation of machine translation. In Proceedings of the 40th annual meeting on association for computational linguistics. Association for Computational Linguistics, 2002.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 80,
+          "raw_text": "Romain Paulus, Caiming Xiong, and Richard Socher. A deep reinforced model for abstractive summarization. arXiv preprint arXiv:1705.04304, 2017.",
+          "resolved": true,
+          "paper_id": "f2f3502d-ee41-49b5-8355-68f8aee066c1",
+          "title": "A Deep Reinforced Model for Abstractive Summarization",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 81,
+          "raw_text": "Jeffrey Pennington, Richard Socher, and Christopher Manning. GloVe: Global vectors for word representation. In Proceedings of the 2014 conference on empirical methods in natural language processing (EMNLP), 2014.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 82,
+          "raw_text": "Matthew Peters, Sebastian Ruder, and Noah A. Smith. To tune or not to tune? adapting pretrained representations to diverse tasks. arXiv preprint arXiv:1903.05987, 2019.",
+          "resolved": true,
+          "paper_id": "0de1f451-4e00-4ad6-8df9-4a66fe74b074",
+          "title": "To Tune or Not to Tune? Adapting Pretrained Representations to Diverse Tasks",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 83,
+          "raw_text": "Matthew E. Peters, Mark Neumann, Mohit Iyyer, Matt Gardner, Christopher Clark, Kenton Lee, and Luke Zettlemoyer. Deep contextualized word representations. arXiv preprint arXiv:1802.05365, 2018.",
+          "resolved": true,
+          "paper_id": "8155cba2-8549-40d5-aca3-25c20019867b",
+          "title": "Deep contextualized word representations",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 84,
+          "raw_text": "Jason Phang, Thibault Févry, and Samuel R. Bowman. Sentence encoders on STILTs: Sup- plementary training on intermediate labeled-data tasks. arXiv preprint arXiv:1811.01088, 2018.",
+          "resolved": true,
+          "paper_id": "d38c4b23-7c9c-4ab7-b51f-8ea55111af44",
+          "title": "Sentence Encoders on STILTs: Supplementary Training on Intermediate Labeled-data Tasks",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 85,
+          "raw_text": "Mohammad Taher Pilehvar and Jose Camacho-Collados. WIC: 10,000 example pairs for evaluating context-sensitive representations. arXiv preprint arXiv:1808.09121, 2018.",
+          "resolved": true,
+          "paper_id": "c0e0e67f-8d5e-4d8f-b77e-006685cfa94a",
+          "title": "WiC: the Word-in-Context Dataset for Evaluating Context-Sensitive Meaning Representations",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 86,
+          "raw_text": "Matt Post. A call for clarity in reporting BLEU scores. arXiv preprint arXiv:1804.08771, 2018.",
+          "resolved": true,
+          "paper_id": "6db624ba-17f5-4b34-96d5-824bfe472cb3",
+          "title": "A Call for Clarity in Reporting BLEU Scores",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 87,
+          "raw_text": "Alec Radford, Karthik Narasimhan, Tim Salimans, and Ilya Sutskever. Improving language understanding by generative pre-training, 2018.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 88,
+          "raw_text": "Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, and Ilya Sutskever. Language models are unsupervised multitask learners, 2019.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 89,
+          "raw_text": "Altaf Rahman and Vincent Ng. Resolving complex cases of definite pronouns: the Winograd schema challenge. In Proceedings of the 2012 Joint Conference on Empirical Methods in Natural Language Processing and Computational Natural Language Learning. Association for Computational Linguistics, 2012.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 90,
+          "raw_text": "Pranav Rajpurkar, Jian Zhang, Konstantin Lopyrev, and Percy Liang. Squad: 100,000+ questions for machine comprehension of text. arXiv preprint arXiv:1606.05250, 2016.",
+          "resolved": true,
+          "paper_id": "64064865-b87f-4cf7-aa2d-3e01edc7ee59",
+          "title": "SQuAD: 100,000+ Questions for Machine Comprehension of Text",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 91,
+          "raw_text": "Prajit Ramachandran, Peter J. Liu, and Quoc V. Le. Unsupervised pretraining for sequence to sequence learning. arXiv preprint arXiv:1611.02683, 2016.",
+          "resolved": true,
+          "paper_id": "dae339e4-58ab-462b-a23e-82af0c0fd729",
+          "title": "Unsupervised Pretraining for Sequence to Sequence Learning",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 92,
+          "raw_text": "Alex Ratner, Braden Hancock, Jared Dunnmon, Roger Goldman, and Christopher Ré. Snorkel MeTaL: Weak supervision for multi-task learning. In Proceedings of the Second Workshop on Data Management for End-To-End Machine Learning, 2018.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 93,
+          "raw_text": "Melissa Roemmele, Cosmin Adrian Bejan, and Andrew S Gordon. Choice of plausible alternatives: An evaluation of commonsense causal reasoning. In 2011 AAAI Spring Symposium Series, 2011.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 94,
+          "raw_text": "Sebastian Ruder. An overview of multi-task learning in deep neural networks. arXiv preprint arXiv:1706.05098, 2017.",
+          "resolved": true,
+          "paper_id": "209013a9-1a27-4e52-a539-ce3e1272ef91",
+          "title": "An Overview of Multi-Task Learning in Deep Neural Networks",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 95,
+          "raw_text": "Sebastian Ruder. Neural transfer learning for natural language processing. PhD thesis, NUI Galway, 2019.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 96,
+          "raw_text": "Sebastian Ruder, Matthew E. Peters, Swabha Swayamdipta, and Thomas Wolf. Transfer learning in natural language processing. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Tutorials, pages 15-18, 2019.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 97,
+          "raw_text": "Olga Russakovsky, Jia Deng, Hao Su, Jonathan Krause, Sanjeev Satheesh, Sean Ma, Zhiheng Huang, Andrej Karpathy, Aditya Khosla, Michael Bernstein, et al. ImageNet large scale visual recognition challenge. International journal of computer vision, 2015.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 98,
+          "raw_text": "Victor Sanh, Lysandre Debut, Julien Chaumond, and Thomas Wolf. DistilBERT, a distilled version of BERT: smaller, faster, cheaper and lighter. arXiv preprint arXiv:1910.01108, 2019.",
+          "resolved": true,
+          "paper_id": "f87d37c9-3381-463f-8679-e679fa24498a",
+          "title": "DistilBERT, a distilled version of BERT: smaller, faster, cheaper and lighter",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 99,
+          "raw_text": "Abigail See, Peter J. Liu, and Christopher D. Manning. Get to the point: Summarization with pointer-generator networks. arXiv preprint arXiv:1704.04368, 2017.",
+          "resolved": true,
+          "paper_id": "136e6228-b8de-40cf-893f-f6e744bdc708",
+          "title": "Get To The Point: Summarization with Pointer-Generator Networks",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 100,
+          "raw_text": "Rico Sennrich, Barry Haddow, and Alexandra Birch. Neural machine translation of rare words with subword units. arXiv preprint arXiv:1508.07909, 2015.",
+          "resolved": true,
+          "paper_id": "419ec1e5-5eeb-49b7-a0a8-85ded6f28207",
+          "title": "Neural Machine Translation of Rare Words with Subword Units",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 101,
+          "raw_text": "Christopher J Shallue, Jaehoon Lee, Joe Antognini, Jascha Sohl-Dickstein, Roy Frostig, and George E. Dahl. Measuring the effects of data parallelism on neural network training. arXiv preprint arXiv:1811.03600, 2018.",
+          "resolved": true,
+          "paper_id": "3c16f019-0ef0-4cac-9de6-7a7cf6d94874",
+          "title": "Measuring the Effects of Data Parallelism on Neural Network Training",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 102,
+          "raw_text": "Peter Shaw, Jakob Uszkoreit, and Ashish Vaswani. Self-attention with relative position representations. arXiv preprint arXiv:1803.02155, 2018.",
+          "resolved": true,
+          "paper_id": "5bbb6cbd-fb04-4b71-a51f-dccb4967f3da",
+          "title": "Self-Attention with Relative Position Representations",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 103,
+          "raw_text": "Noam Shazeer and Mitchell Stern. Adafactor: Adaptive learning rates with sublinear memory cost. arXiv preprint arXiv:1804.04235, 2018.",
+          "resolved": true,
+          "paper_id": "80d440bc-e206-4175-a30d-29a18e86bbed",
+          "title": "Adafactor: Adaptive Learning Rates with Sublinear Memory Cost",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 104,
+          "raw_text": "Noam Shazeer, Azalia Mirhoseini, Krzysztof Maziarz, Andy Davis, Quoc Le, Geoffrey Hinton, and Jeff Dean. Outrageously large neural networks: The sparsely-gated mixture-of-experts layer. arXiv preprint arXiv:1701.06538, 2017.",
+          "resolved": true,
+          "paper_id": "018115a3-08ce-4607-a173-3072ad586092",
+          "title": "Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 105,
+          "raw_text": "Noam Shazeer, Youlong Cheng, Niki Parmar, Dustin Tran, Ashish Vaswani, Penporn Koanantakool, Peter Hawkins, HyoukJoong Lee, Mingsheng Hong, Cliff Young, Ryan Sepassi, and Blake Hechtman. Mesh-tensorflow: Deep learning for supercomputers. In Advances in Neural Information Processing Systems, 2018.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 106,
+          "raw_text": "Jason R. Smith, Herve Saint-Amand, Magdalena Plamada, Philipp Koehn, Chris Callison- Burch, and Adam Lopez. Dirt cheap web-scale parallel text from the common crawl. In Proceedings of the 51st Annual Meeting of the Association for Computational Linguistics, 2013.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 107,
+          "raw_text": "Richard Socher, Alex Perelygin, Jean Wu, Jason Chuang, Christopher D. Manning, Andrew Ng, and Christopher Potts. Recursive deep models for semantic compositionality over a sentiment treebank. In Proceedings of the 2013 conference on empirical methods in natural language processing, 2013.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 108,
+          "raw_text": "Kaitao Song, Xu Tan, Tao Qin, Jianfeng Lu, and Tie-Yan Liu. MASS: Masked sequence to sequence pre-training for language generation. arXiv preprint arXiv:1905.02450, 2019.",
+          "resolved": true,
+          "paper_id": "d6929636-cd0d-4d58-8aa6-25732ce20e9b",
+          "title": "MASS: Masked Sequence to Sequence Pre-training for Language Generation",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 109,
+          "raw_text": "Nitish Srivastava, Geoffrey Hinton, Alex Krizhevsky, Ilya Sutskever, and Ruslan Salakhutdi- nov. Dropout: a simple way to prevent neural networks from overfitting. The Journal of Machine Learning Research, 2014.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 110,
+          "raw_text": "Sandeep Subramanian, Adam Trischler, Yoshua Bengio, and Christopher J. Pal. Learning general purpose distributed sentence representations via large scale multi-task learning. arXiv preprint arXiv:1804.00079, 2018.",
+          "resolved": true,
+          "paper_id": "802c2e9e-f7f1-4785-be51-d17aeb2b2b50",
+          "title": "Learning General Purpose Distributed Sentence Representations via Large Scale Multi-task Learning",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 111,
+          "raw_text": "Ilya Sutskever, Oriol Vinyals, and Quoc V. Le. Sequence to sequence learning with neural networks. In Advances in neural information processing systems, 2014.",
+          "resolved": true,
+          "paper_id": "79017809-26b1-4354-b036-20498ccc53ed",
+          "title": "Sequence to Sequence Learning with Neural Networks",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 112,
+          "raw_text": "Richard S. Sutton. The bitter lesson. http://www.incompleteideas.net/IncIdeas/ BitterLesson.html, 2019.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 113,
+          "raw_text": "Wilson L. Taylor. \" Cloze procedure \" : A new tool for measuring readability. Journalism Bulletin, 1953.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 114,
+          "raw_text": "Trieu H. Trinh and Quoc V. Le. A simple method for commonsense reasoning. arXiv preprint arXiv:1806.02847, 2018.",
+          "resolved": true,
+          "paper_id": "111b0860-7db8-4815-b6ce-cd7cd06dc4c5",
+          "title": "A Simple Method for Commonsense Reasoning",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 115,
+          "raw_text": "Adam Trischler, Tong Wang, Xingdi Yuan, Justin Harris, Alessandro Sordoni, Philip Bachman, and Kaheer Suleman. NewsQA: A machine comprehension dataset. arXiv preprint arXiv:1611.09830, 2016.",
+          "resolved": true,
+          "paper_id": "f8f2ffd9-945f-4bb9-8a06-1db4442f1b31",
+          "title": "NewsQA: A Machine Comprehension Dataset",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 116,
+          "raw_text": "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need. In Advances in neural information processing systems, 2017.",
+          "resolved": true,
+          "paper_id": "387fc70a-a95a-4c45-aa9d-f6252934da33",
+          "title": "Attention Is All You Need",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 117,
+          "raw_text": "Elena Voita, Rico Sennrich, and Ivan Titov. The bottom-up evolution of representations in the transformer: A study with machine translation and language modeling objectives. arXiv preprint arXiv:1909.01380, 2019.",
+          "resolved": true,
+          "paper_id": "8f901408-2339-4140-ae0a-14aaa87aebc7",
+          "title": "The Bottom-up Evolution of Representations in the Transformer: A Study with Machine Translation and Language Modeling Objectives",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 118,
+          "raw_text": "Alex Wang, Amapreet Singh, Julian Michael, Felix Hill, Omer Levy, and Samuel R. Bowman. GLUE: A multi-task benchmark and analysis platform for natural language understanding. arXiv preprint arXiv:1804.07461, 2018.",
+          "resolved": true,
+          "paper_id": "1b362765-4811-4bf8-970a-f6c8442fa057",
+          "title": "GLUE: A Multi-Task Benchmark and Analysis Platform for Natural Language Understanding",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 119,
+          "raw_text": "Alex Wang, Jan Hula, Patrick Xia, Raghavendra Pappagari, R. Thomas McCoy, Roma Patel, Najoung Kim, Ian Tenney, Yinghui Huang, Katherin Yu, et al. Can you tell me how to get past Sesame Street? Sentence-level pretraining beyond language modeling. In Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics, 2019a.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 120,
+          "raw_text": "Alex Wang, Yada Pruksachatkun, Nikita Nangia, Amanpreet Singh, Julian Michael, Felix Hill, Omer Levy, and Samuel R. Bowman. SuperGLUE: A stickier benchmark for general- purpose language understanding systems. arXiv preprint arXiv:1905.00537, 2019b.",
+          "resolved": true,
+          "paper_id": "4901bd2c-d576-41de-aaf2-8509ee4adfbc",
+          "title": "SuperGLUE: A Stickier Benchmark for General-Purpose Language Understanding Systems",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 121,
+          "raw_text": "Wei Wang, Bin Bi, Ming Yan, Chen Wu, Zuyi Bao, Liwei Peng, and Luo Si. StructBERT: Incorporating language structures into pre-training for deep language understanding. arXiv preprint arXiv:1908.04577, 2019c.",
+          "resolved": true,
+          "paper_id": "a2c2f821-9176-4c0c-9d1f-b55552863540",
+          "title": "StructBERT: Incorporating Language Structures into Pre-training for Deep Language Understanding",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 122,
+          "raw_text": "Alex Warstadt, Amanpreet Singh, and Samuel R. Bowman. Neural network acceptability judgments. arXiv preprint arXiv:1805.12471, 2018.",
+          "resolved": true,
+          "paper_id": "716518ba-b73d-4436-807d-ece337ae86cc",
+          "title": "Neural Network Acceptability Judgments",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 123,
+          "raw_text": "Adina Williams, Nikita Nangia, and Samuel R. Bowman. A broad-coverage challenge corpus for sentence understanding through inference. arXiv preprint arXiv:1704.05426, 2017.",
+          "resolved": true,
+          "paper_id": "edc7ee49-fe7f-426b-82f7-2d9e43a253c1",
+          "title": "A Broad-Coverage Challenge Corpus for Sentence Understanding through Inference",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 124,
+          "raw_text": "Ronald J. Williams and David Zipser. A learning algorithm for continually running fully recurrent neural networks. Neural computation, 1989.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 125,
+          "raw_text": "Yonghui Wu, Mike Schuster, Zhifeng Chen, Quoc V. Le, Mohammad Norouzi, Wolfgang Macherey, Maxim Krikun, Yuan Cao, Qin Gao, Klaus Macherey, et al. Google ' s neural machine translation system: Bridging the gap between human and machine translation. arXiv preprint arXiv:1609.08144, 2016.",
+          "resolved": true,
+          "paper_id": "b18af4f0-5f43-49be-a03d-ac3d41d02ae8",
+          "title": "Google's Neural Machine Translation System: Bridging the Gap between Human and Machine Translation",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 126,
+          "raw_text": "Zhilin Yang, Zihang Dai, Yiming Yang, Jaime Carbonell, Ruslan Salakhutdinov, and Quoc V. Le. XLNet: Generalized autoregressive pretraining for language understanding. arXiv preprint arXiv:1906.08237, 2019.",
+          "resolved": true,
+          "paper_id": "14a7b98e-9a3b-437d-9501-f7bf30956b82",
+          "title": "XLNet: Generalized Autoregressive Pretraining for Language Understanding",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 127,
+          "raw_text": "Jason Yosinski, Jeff Clune, Yoshua Bengio, and Hod Lipson. How transferable are features in deep neural networks? In Advances in neural information processing systems, 2014.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 128,
+          "raw_text": "Adams Wei Yu, David Dohan, Minh-Thang Luong, Rui Zhao, Kai Chen, Mohammad Norouzi, and Quoc V. Le. QAnet: Combining local convolution with global self-attention for reading comprehension. arXiv preprint arXiv:1804.09541, 2018.",
+          "resolved": true,
+          "paper_id": "abc08c17-6641-4e4c-9969-3debfe44893f",
+          "title": "QANet: Combining Local Convolution with Global Self-Attention for Reading Comprehension",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 129,
+          "raw_text": "Rowan Zellers, Ari Holtzman, Hannah Rashkin, Yonatan Bisk, Ali Farhadi, Franziska Roes- ner, and Yejin Choi. Defending against neural fake news. arXiv preprint arXiv:1905.12616, 2019.",
+          "resolved": true,
+          "paper_id": "0204f0c0-6afc-4b0b-8d71-0ac1199adcc6",
+          "title": "Defending Against Neural Fake News",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 130,
+          "raw_text": "Sheng Zhang, Xiaodong Liu, Jingjing Liu, Jianfeng Gao, Kevin Duh, and Benjamin Van Durme. ReCoRD: Bridging the gap between human and machine commonsense reading comprehension. arXiv preprint arXiv:1810.12885, 2018.",
+          "resolved": true,
+          "paper_id": "abd43597-0c3b-4202-bfee-f8daf45aa677",
+          "title": "ReCoRD: Bridging the Gap between Human and Machine Commonsense Reading Comprehension",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 131,
+          "raw_text": "Chen Zhu, Yu Cheng, Zhe Gan, Siqi Sun, Thomas Goldstein, and Jingjing Liu. Freelb: En- hanced adversarial training for language understanding. arXiv preprint arXiv:1909.11764, 2019.",
+          "resolved": true,
+          "paper_id": "8fb47bd9-caa0-4e97-99d4-2ac02c99bd40",
+          "title": "FreeLB: Enhanced Adversarial Training for Natural Language Understanding",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 132,
+          "raw_text": "Yukun Zhu, Ryan Kiros, Rich Zemel, Ruslan Salakhutdinov, Raquel Urtasun, Antonio Torralba, and Sanja Fidler. Aligning books and movies: Towards story-like visual expla- nations by watching movies and reading books. In Proceedings of the IEEE international conference on computer vision, 2015.",
+          "resolved": true,
+          "paper_id": "e950f260-171b-4852-89f3-44494677dd8b",
+          "title": "Aligning Books and Movies: Towards Story-like Visual Explanations by Watching Movies and Reading Books",
+          "resolution_status": "resolved"
+        }
+      ]
+    },
+    "29b1e798-2b5d-4bbf-b581-79d5df90730d": {
+      "paper_id": "29b1e798-2b5d-4bbf-b581-79d5df90730d",
+      "ready": true,
+      "key_connections": [
+        {
+          "reference_id": "019fae47-b00e-7381-9523-9a1f08915b19",
+          "paper_id": "38ea1046-0206-4dc3-8e4b-9eb2d81d6e13",
+          "arxiv_id": "2004.04906v3",
+          "title": "Dense Passage Retrieval for Open-Domain Question Answering",
+          "authors": [
+            "Vladimir Karpukhin",
+            "Barlas Oğuz",
+            "Sewon Min",
+            "Patrick Lewis",
+            "Ledell Wu",
+            "Sergey Edunov",
+            "Danqi Chen",
+            "Wen-tau Yih"
+          ],
+          "year": 2020,
+          "relation_type": "compares_with",
+          "summary": "The citation matters because the context explicitly compares the current approach with the cited work.",
+          "confidence": 0.87
+        },
+        {
+          "reference_id": "019fae47-b00d-7433-a982-132b3db0e7a2",
+          "paper_id": "07bd2b92-9757-4320-9098-639f43f5eead",
+          "arxiv_id": "2002.08909v1",
+          "title": "REALM: Retrieval-Augmented Language Model Pre-Training",
+          "authors": [
+            "Kelvin Guu",
+            "Kenton Lee",
+            "Zora Tung",
+            "Panupong Pasupat",
+            "Ming-Wei Chang"
+          ],
+          "year": 2020,
+          "relation_type": "compares_with",
+          "summary": "The citation matters because the context explicitly compares the current approach with the cited work.",
+          "confidence": 0.87
+        },
+        {
+          "reference_id": "019fae47-b00e-7381-9523-9a7a83d35c9a",
+          "paper_id": "bdbb4226-ea01-4cfe-b1fd-95282adb9c29",
+          "arxiv_id": "1910.13461v1",
+          "title": "BART: Denoising Sequence-to-Sequence Pre-training for Natural Language Generation, Translation, and Comprehension",
+          "authors": [
+            "Mike Lewis",
+            "Yinhan Liu",
+            "Naman Goyal",
+            "Marjan Ghazvininejad",
+            "Abdelrahman Mohamed",
+            "Omer Levy",
+            "Ves Stoyanov",
+            "Luke Zettlemoyer"
+          ],
+          "year": 2019,
+          "relation_type": "uses",
+          "summary": "The citation matters because the context explicitly says the current work uses the cited work.",
+          "confidence": 0.84000003
+        },
+        {
+          "reference_id": "019fae47-b00e-7381-9523-9a666bf881d8",
+          "paper_id": "87df3c2f-59b1-45a5-a2a4-d5c03ffb3741",
+          "arxiv_id": "1906.00300v3",
+          "title": "Latent Retrieval for Weakly Supervised Open Domain Question Answering",
+          "authors": [
+            "Kenton Lee",
+            "Ming-Wei Chang",
+            "Kristina Toutanova"
+          ],
+          "year": 2019,
+          "relation_type": "compares_with",
+          "summary": "The citation matters because the context explicitly compares the current approach with the cited work.",
+          "confidence": 0.87
+        },
+        {
+          "reference_id": "019fae47-b010-7072-b617-1f1a4b130d7f",
+          "paper_id": "ab617412-e63e-4cca-adfb-05a06cfd02fe",
+          "arxiv_id": "2002.08910v4",
+          "title": "How Much Knowledge Can You Pack Into the Parameters of a Language Model?",
+          "authors": [
+            "Adam Roberts",
+            "Colin Raffel",
+            "Noam Shazeer"
+          ],
+          "year": 2020,
+          "relation_type": "compares_with",
+          "summary": "The citation matters because the context explicitly compares the current approach with the cited work.",
+          "confidence": 0.87
+        }
+      ],
+      "references": [
+        {
+          "ordinal": 0,
+          "raw_text": "Patrick Lewis plewis@fb.com Facebook AI Research ‡ University College London New York University Ethan Perez Facebook AI Research ‡ University College London New York University Aleksandra Piktus Facebook AI Research ‡ University College London New York University Fabio Petroni Facebook AI Research ‡ University College London New York University Vladimir Karpukhin Facebook AI Research ‡ University College London New York University Naman Goyal Facebook AI Research ‡ University College London New York University Heinrich Küttler Facebook AI Research ‡ University College London New York University Mike Lewis Facebook AI Research ‡ University College London New York University Wen-Tau Yih Facebook AI Research ‡ University College London New York University Tim Rocktäschel Facebook AI Research ‡ University College London New York University Sebastian Riedel Facebook AI Research ‡ University College London New York University Douwe Kiela Facebook AI Research ‡ University College London New York University Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks 12 Apr 2021 2BD227682DDB17D259D48455A8B9D951 arXiv:2005.11401v4[cs.CL]",
+          "resolved": true,
+          "paper_id": "29b1e798-2b5d-4bbf-b581-79d5df90730d",
+          "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 1,
+          "raw_text": "Payal Bajaj, Daniel Campos, Nick Craswell, Li Deng, Jianfeng Gao, Xiaodong Liu, Rangan Majumder, Andrew McNamara, Bhaskar Mitra, Tri Nguyen, Mir Rosenberg, Xia Song, Alina Stoica, Saurabh Tiwary, and Tong Wang. MS MARCO: A Human Generated MAchine Reading COmprehension Dataset. arXiv:1611.09268 [cs], November 2016. URL http: //arxiv.org/abs/1611.09268. arXiv: 1611.09268.",
+          "resolved": true,
+          "paper_id": "fb632dfb-0c1d-4a6b-bf8f-21153895e080",
+          "title": "MS MARCO: A Human Generated MAchine Reading COmprehension Dataset",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 2,
+          "raw_text": "Petr Baudiš and Jan Šedivỳ. Modeling of the question answering task in the yodaqa system. In International Conference of the Cross-Language Evaluation Forum for European Languages, pages 222-228. Springer, 2015. URL https://link.springer.com/chapter/10.1007% 2F978-3-319-24027-5_20.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 3,
+          "raw_text": "Jonathan Berant, Andrew Chou, Roy Frostig, and Percy Liang. Semantic Parsing on Freebase from Question-Answer Pairs. In Proceedings of the 2013 Conference on Empirical Methods in Natural Language Processing, pages 1533-1544, Seattle, Washington, USA, October 2013. Association for Computational Linguistics. URL http://www.aclweb.org/anthology/ D13-1160.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 4,
+          "raw_text": "Bin Bi, Chenliang Li, Chen Wu, Ming Yan, and Wei Wang. Palm: Pre-training an autoencod- ing & autoregressive language model for context-conditioned generation. ArXiv, abs/2004.07159, 2020. URL https://arxiv.org/abs/2004.07159.",
+          "resolved": true,
+          "paper_id": "4a182f84-8daf-497f-8b21-4414d15ba0a0",
+          "title": "PALM: Pre-training an Autoencoding&Autoregressive Language Model for Context-conditioned Generation",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 5,
+          "raw_text": "Danqi Chen, Adam Fisch, Jason Weston, and Antoine Bordes. Reading Wikipedia to Answer Open-Domain Questions. In Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), pages 1870-1879, Vancouver, Canada, July 2017. Association for Computational Linguistics. doi: 10.18653/v1/P17-1171. URL https://www.aclweb.org/anthology/P17-1171.",
+          "resolved": true,
+          "paper_id": "2c94cb8f-4819-4f2d-96f8-9442dfc7cc98",
+          "title": "Reading Wikipedia to Answer Open-Domain Questions",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 6,
+          "raw_text": "Eunsol Choi, Daniel Hewlett, Jakob Uszkoreit, Illia Polosukhin, Alexandre Lacoste, and Jonathan Berant. Coarse-to-fine question answering for long documents. In Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), pages 209-220, Vancouver, Canada, July 2017. Association for Computational Linguistics. doi: 10.18653/v1/P17-1020. URL https://www.aclweb.org/anthology/P17-1020.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 7,
+          "raw_text": "Christopher Clark and Matt Gardner. Simple and Effective Multi-Paragraph Reading Compre- hension. arXiv:1710.10723 [cs], October 2017. URL http://arxiv.org/abs/1710.10723. arXiv: 1710.10723.",
+          "resolved": true,
+          "paper_id": "44a4277a-63cc-420f-9a00-58eda2d274a8",
+          "title": "Simple and Effective Multi-Paragraph Reading Comprehension",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 8,
+          "raw_text": "Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding. In Proceedings of the 2019 Con- ference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers), pages 4171-4186, Minneapolis, Minnesota, June 2019. Association for Computational Linguistics. doi: 10.18653/v1/N19-1423. URL https://www.aclweb.org/anthology/N19-1423.",
+          "resolved": true,
+          "paper_id": "a3a0c57e-8313-4d99-9628-5d8456490b5c",
+          "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 9,
+          "raw_text": "Emily Dinan, Stephen Roller, Kurt Shuster, Angela Fan, Michael Auli, and Jason Weston. Wiz- ard of wikipedia: Knowledge-powered conversational agents. In International Conference on Learning Representations, 2019. URL https://openreview.net/forum?id=r1l73iRqKm.",
+          "resolved": true,
+          "paper_id": "5d6ddeb0-18ef-4e83-8d37-0897134a581f",
+          "title": "Wizard of Wikipedia: Knowledge-Powered Conversational agents",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 10,
+          "raw_text": "Matthew Dunn, Levent Sagun, Mike Higgins, V. Ugur Guney, Volkan Cirik, and Kyunghyun Cho. SearchQA: A New Q & A Dataset Augmented with Context from a Search Engine. arXiv:1704.05179 [cs], April 2017. URL http://arxiv.org/abs/1704.05179. arXiv: 1704.05179.",
+          "resolved": true,
+          "paper_id": "0238c6de-5b3f-4eea-ae66-d4786b3490c4",
+          "title": "SearchQA: A New Q&A Dataset Augmented with Context from a Search Engine",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 11,
+          "raw_text": "Angela Fan, Mike Lewis, and Yann Dauphin. Hierarchical neural story generation. In Proceed- ings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), pages 889-898, Melbourne, Australia, July 2018. Association for Computational Linguistics. doi: 10.18653/v1/P18-1082. URL https://www.aclweb.org/anthology/ P18-1082.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 12,
+          "raw_text": "Angela Fan, Yacine Jernite, Ethan Perez, David Grangier, Jason Weston, and Michael Auli. ELI5: Long form question answering. In Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics, pages 3558-3567, Florence, Italy, July 2019. Association for Computational Linguistics. doi: 10.18653/v1/P19-1346. URL https://www.aclweb.org/ anthology/P19-1346.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 13,
+          "raw_text": "Angela Fan, Claire Gardent, Chloe Braud, and Antoine Bordes. Augmenting transformers with KNN-based composite memory, 2020. URL https://openreview.net/forum?id= H1gx1CNKPH.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 14,
+          "raw_text": "Thibault Févry, Livio Baldini Soares, Nicholas FitzGerald, Eunsol Choi, and Tom Kwiatkowski. Entities as experts: Sparse memory access with entity supervision. ArXiv, abs/2004.07202, 2020. URL https://arxiv.org/abs/2004.07202.",
+          "resolved": true,
+          "paper_id": "e05ca810-3cb0-4ff2-9c7d-ae3a068cdaef",
+          "title": "Entities as Experts: Sparse Memory Access with Entity Supervision",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 15,
+          "raw_text": "Marjan Ghazvininejad, Chris Brockett, Ming-Wei Chang, Bill Dolan, Jianfeng Gao, Wen tau Yih, and Michel Galley. A knowledge-grounded neural conversation model. In AAAI Conference on Artificial Intelligence, 2018. URL https://www.aaai.org/ocs/index.php/ AAAI/AAAI18/paper/view/16710.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 16,
+          "raw_text": "Katja Grace, John Salvatier, Allan Dafoe, Baobao Zhang, and Owain Evans. When will AI exceed human performance? evidence from AI experts. CoRR, abs/1705.08807, 2017. URL http://arxiv.org/abs/1705.08807.",
+          "resolved": true,
+          "paper_id": "e467a5e3-4535-46a0-b7c5-c7d80d1fa90e",
+          "title": "When Will AI Exceed Human Performance? Evidence from AI Experts",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 17,
+          "raw_text": "Jiatao Gu, Yong Wang, Kyunghyun Cho, and Victor O.K. Li. Search engine guided neural machine translation. In AAAI Conference on Artificial Intelligence, 2018. URL https: //www.aaai.org/ocs/index.php/AAAI/AAAI18/paper/view/17282.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 18,
+          "raw_text": "Jiatao Gu, Yong Wang, Kyunghyun Cho, and Victor O.K. Li. Search engine guided neural machine translation. In 32nd AAAI Conference on Artificial Intelligence, AAAI 2018, 32nd AAAI Conference on Artificial Intelligence, AAAI 2018, pages 5133-5140. AAAI press, 2018. 32nd AAAI Conference on Artificial Intelligence, AAAI 2018 ; Conference date: 02-02-2018 Through 07-02-2018.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 19,
+          "raw_text": "Kelvin Guu, Tatsunori B. Hashimoto, Yonatan Oren, and Percy Liang. Generating sentences by editing prototypes. Transactions of the Association for Computational Linguistics, 6:437-450, 2018. doi: 10.1162/tacl_a_00030. URL https://www.aclweb.org/anthology/Q18-1031.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 20,
+          "raw_text": "Kelvin Guu, Kenton Lee, Zora Tung, Panupong Pasupat, and Ming-Wei Chang. REALM: Retrieval-augmented language model pre-training. ArXiv, abs/2002.08909, 2020. URL https: //arxiv.org/abs/2002.08909.",
+          "resolved": true,
+          "paper_id": "07bd2b92-9757-4320-9098-639f43f5eead",
+          "title": "REALM: Retrieval-Augmented Language Model Pre-Training",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 21,
+          "raw_text": "Tatsunori B Hashimoto, Kelvin Guu, Yonatan Oren, and Percy S Liang. A retrieve-and-edit framework for predicting structured outputs. In S. Bengio, H. Wallach, H. Larochelle, K. Grauman, N. Cesa-Bianchi, and R. Garnett, ed- itors, Advances in Neural Information Processing Systems 31, pages 10052- 10062. Curran Associates, Inc., 2018. URL http://papers.nips.cc/paper/",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 22,
+          "raw_text": "Nabil Hossain, Marjan Ghazvininejad, and Luke Zettlemoyer. Simple and effective retrieve- edit-rerank text generation. In Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics, pages 2532-2538, Online, July 2020. Association for Computa- tional Linguistics. doi: 10.18653/v1/2020.acl-main.228. URL https://www.aclweb.org/ anthology/2020.acl-main.228.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 23,
+          "raw_text": "Jeff Johnson, Matthijs Douze, and Hervé Jégou. Billion-scale similarity search with gpus. arXiv preprint arXiv:1702.08734, 2017. URL https://arxiv.org/abs/1702.08734.",
+          "resolved": true,
+          "paper_id": "2c14e540-628f-41d3-9756-d88bacb1a514",
+          "title": "Billion-scale similarity search with GPUs",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 24,
+          "raw_text": "Mandar Joshi, Eunsol Choi, Daniel Weld, and Luke Zettlemoyer. TriviaQA: A Large Scale Distantly Supervised Challenge Dataset for Reading Comprehension. In Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), pages 1601-1611, Vancouver, Canada, July 2017. Association for Computational Linguistics. doi: 10.18653/v1/P17-1147. URL https://www.aclweb.org/anthology/P17-1147.",
+          "resolved": true,
+          "paper_id": "f5247905-1985-4ca6-8642-cd92f59345d3",
+          "title": "TriviaQA: A Large Scale Distantly Supervised Challenge Dataset for Reading Comprehension",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 25,
+          "raw_text": "Armand Joulin and Tomas Mikolov. Inferring algorithmic patterns with stack- augmented recurrent nets. In Proceedings of the 28th International Conference on Neural Information Processing Systems -Volume 1, NIPS ' 15, page 190-198, Cam- bridge, MA, USA, 2015. MIT Press. URL https://papers.nips.cc/paper/ 5857-inferring-algorithmic-patterns-with-stack-augmented-recurrent-nets.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 26,
+          "raw_text": "Vladimir Karpukhin, Barlas Oguz, Sewon Min, Ledell Wu, Sergey Edunov, Danqi Chen, and Wen-tau Yih. Dense passage retrieval for open-domain question answering. arXiv preprint arXiv:2004.04906, 2020. URL https://arxiv.org/abs/2004.04906.",
+          "resolved": true,
+          "paper_id": "38ea1046-0206-4dc3-8e4b-9eb2d81d6e13",
+          "title": "Dense Passage Retrieval for Open-Domain Question Answering",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 27,
+          "raw_text": "Urvashi Khandelwal, Omer Levy, Dan Jurafsky, Luke Zettlemoyer, and Mike Lewis. Generaliza- tion through memorization: Nearest neighbor language models. In International Conference on Learning Representations, 2020. URL https://openreview.net/forum?id=HklBjCEKvH.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 28,
+          "raw_text": "Diederik P. Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In Yoshua Bengio and Yann LeCun, editors, 3rd International Conference on Learning Representations, ICLR 2015, San Diego, CA, USA, May 7-9, 2015, Conference Track Proceedings, 2015. URL http://arxiv.org/abs/1412.6980.",
+          "resolved": true,
+          "paper_id": "c87db58b-7d22-4026-91bf-eaa79de06243",
+          "title": "Adam: A Method for Stochastic Optimization",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 29,
+          "raw_text": "Tom Kwiatkowski, Jennimaria Palomaki, Olivia Redfield, Michael Collins, Ankur Parikh, Chris Alberti, Danielle Epstein, Illia Polosukhin, Matthew Kelcey, Jacob Devlin, Ken- ton Lee, Kristina N. Toutanova, Llion Jones, Ming-Wei Chang, Andrew Dai, Jakob Uszkoreit, Quoc Le, and Slav Petrov. Natural Questions: a Benchmark for Ques- tion Answering Research. Transactions of the Association of Computational Lin- guistics, 2019. URL https://tomkwiat.users.x20web.corp.google.com/papers/ natural-questions/main-1455-kwiatkowski.pdf.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 30,
+          "raw_text": "Guillaume Lample, Alexandre Sablayrolles, Marc ' Aurelio Ranzato, Ludovic Denoyer, and Herve Jegou. Large memory layers with product keys. In H. Wallach, H. Larochelle, A. Beygelzimer, F. d ' Alché-Buc, E. Fox, and R. Garnett, editors, Advances in Neural In- formation Processing Systems 32, pages 8548-8559. Curran Associates, Inc., 2019. URL http: //papers.nips.cc/paper/9061-large-memory-layers-with-product-keys.pdf.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 31,
+          "raw_text": "Kenton Lee, Ming-Wei Chang, and Kristina Toutanova. Latent retrieval for weakly supervised open domain question answering. In Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics, pages 6086-6096, Florence, Italy, July 2019. Association for Computational Linguistics. doi: 10.18653/v1/P19-1612. URL https://www.aclweb.org/ anthology/P19-1612.",
+          "resolved": true,
+          "paper_id": "87df3c2f-59b1-45a5-a2a4-d5c03ffb3741",
+          "title": "Latent Retrieval for Weakly Supervised Open Domain Question Answering",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 32,
+          "raw_text": "Mike Lewis, Yinhan Liu, Naman Goyal, Marjan Ghazvininejad, Abdelrahman Mohamed, Omer Levy, Veselin Stoyanov, and Luke Zettlemoyer. BART: Denoising sequence-to-sequence pre-training for natural language generation, translation, and comprehension. arXiv preprint arXiv:1910.13461, 2019. URL https://arxiv.org/abs/1910.13461.",
+          "resolved": true,
+          "paper_id": "bdbb4226-ea01-4cfe-b1fd-95282adb9c29",
+          "title": "BART: Denoising Sequence-to-Sequence Pre-training for Natural Language Generation, Translation, and Comprehension",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 33,
+          "raw_text": "Jiwei Li, Michel Galley, Chris Brockett, Jianfeng Gao, and Bill Dolan. A diversity-promoting objective function for neural conversation models. In Proceedings of the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, pages 110-119, San Diego, California, June 2016. Association for Computational Linguistics. doi: 10.18653/v1/N16-1014. URL https://www.aclweb.org/anthology/ N16-1014.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 34,
+          "raw_text": "Margaret Li, Jason Weston, and Stephen Roller. Acute-eval: Improved dialogue evaluation with optimized questions and multi-turn comparisons. ArXiv, abs/1909.03087, 2019. URL https://arxiv.org/abs/1909.03087.",
+          "resolved": true,
+          "paper_id": "863d5812-fe05-4009-b3da-6b5479533680",
+          "title": "ACUTE-EVAL: Improved Dialogue Evaluation with Optimized Questions and Multi-turn Comparisons",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 35,
+          "raw_text": "Hairong Liu, Mingbo Ma, Liang Huang, Hao Xiong, and Zhongjun He. Robust neural machine translation with joint textual and phonetic embedding. In Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics, pages 3044-3049, Florence, Italy, July 2019. Association for Computational Linguistics. doi: 10.18653/v1/P19-1291. URL https://www.aclweb.org/anthology/P19-1291.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 36,
+          "raw_text": "Peter J. Liu*, Mohammad Saleh*, Etienne Pot, Ben Goodrich, Ryan Sepassi, Lukasz Kaiser, and Noam Shazeer. Generating wikipedia by summarizing long sequences. In International Conference on Learning Representations, 2018. URL https://openreview.net/forum? id=Hyg0vbWC-.",
+          "resolved": true,
+          "paper_id": "ac71cb61-5fa6-44cf-8346-f9a1ebcf29a9",
+          "title": "Generating Wikipedia by Summarizing Long Sequences",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 37,
+          "raw_text": "Yury A. Malkov and D. A. Yashunin. Efficient and robust approximate nearest neighbor search using hierarchical navigable small world graphs. IEEE Transactions on Pattern Analysis and Machine Intelligence, 42:824-836, 2016. URL https://arxiv.org/abs/1603.09320.",
+          "resolved": true,
+          "paper_id": "83f1c264-0d84-42d7-91fe-18a7c2fc3499",
+          "title": "Efficient and robust approximate nearest neighbor search using Hierarchical Navigable Small World graphs",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 38,
+          "raw_text": "Gary Marcus. The next decade in ai: four steps towards robust artificial intelligence. arXiv preprint arXiv:2002.06177, 2020. URL https://arxiv.org/abs/2002.06177.",
+          "resolved": true,
+          "paper_id": "e01eaaa7-6b3a-4d9a-a377-e68df3f932a4",
+          "title": "The Next Decade in AI: Four Steps Towards Robust Artificial Intelligence",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 39,
+          "raw_text": "Luca Massarelli, Fabio Petroni, Aleksandra Piktus, Myle Ott, Tim Rocktäschel, Vassilis Plachouras, Fabrizio Silvestri, and Sebastian Riedel. How decoding strategies affect the verifiability of generated text. arXiv preprint arXiv:1911.03587, 2019. URL https: //arxiv.org/abs/1911.03587.",
+          "resolved": true,
+          "paper_id": "1f4cce62-2d42-4247-a31c-e2081898a8ff",
+          "title": "How Decoding Strategies Affect the Verifiability of Generated Text",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 40,
+          "raw_text": "Paulius Micikevicius, Sharan Narang, Jonah Alben, Gregory Diamos, Erich Elsen, David Garcia, Boris Ginsburg, Michael Houston, Oleksii Kuchaiev, Ganesh Venkatesh, and Hao Wu. Mixed precision training. In ICLR, 2018. URL https://openreview.net/forum?id=r1gs9JgRZ.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 41,
+          "raw_text": "Nikita Moghe, Siddhartha Arora, Suman Banerjee, and Mitesh M. Khapra. Towards exploit- ing background knowledge for building conversation systems. In Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing, pages 2322-2332, Brus- sels, Belgium, October-November 2018. Association for Computational Linguistics. doi: 10.18653/v1/D18-1255. URL https://www.aclweb.org/anthology/D18-1255.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 42,
+          "raw_text": "Preksha Nema and Mitesh M. Khapra. Towards a better metric for evaluating question generation systems. In Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing, pages 3950-3959, Brussels, Belgium, October-November 2018. Association for Computational Linguistics. doi: 10.18653/v1/D18-1429. URL https://www.aclweb.org/ anthology/D18-1429.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 43,
+          "raw_text": "Tri Nguyen, Mir Rosenberg, Xia Song, Jianfeng Gao, Saurabh Tiwary, Rangan Majumder, and Li Deng. MS MARCO: A human generated machine reading comprehension dataset. In Tarek Richard Besold, Antoine Bordes, Artur S. d ' Avila Garcez, and Greg Wayne, editors, Proceedings of the Workshop on Cognitive Computation: Integrating neural and symbolic approaches 2016 co-located with the 30th Annual Conference on Neural Information Processing Systems (NIPS 2016), Barcelona, Spain, December 9, 2016, volume 1773 of CEUR Workshop Proceedings. CEUR-WS.org, 2016. URL http://ceur-ws.org/Vol-1773/CoCoNIPS_ 2016_paper9.pdf.",
+          "resolved": true,
+          "paper_id": "fb632dfb-0c1d-4a6b-bf8f-21153895e080",
+          "title": "MS MARCO: A Human Generated MAchine Reading COmprehension Dataset",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 44,
+          "raw_text": "Rodrigo Nogueira and Kyunghyun Cho. Passage re-ranking with BERT. arXiv preprint arXiv:1901.04085, 2019. URL https://arxiv.org/abs/1901.04085.",
+          "resolved": true,
+          "paper_id": "f8e4776c-fba6-4c7b-8c06-4df6c9432f2f",
+          "title": "Passage Re-ranking with BERT",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 45,
+          "raw_text": "Myle Ott, Sergey Edunov, Alexei Baevski, Angela Fan, Sam Gross, Nathan Ng, David Grangier, and Michael Auli. fairseq: A fast, extensible toolkit for sequence modeling. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics (Demonstrations), pages 48-53, Minneapolis, Minnesota, June 2019. Association for Computational Linguistics. doi: 10.18653/v1/N19-4009. URL https://www.aclweb. org/anthology/N19-4009.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 46,
+          "raw_text": "Ethan Perez, Siddharth Karamcheti, Rob Fergus, Jason Weston, Douwe Kiela, and Kyunghyun Cho. Finding generalizable evidence by learning to convince q & a models. In Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP), pages 2402-2411, Hong Kong, China, November 2019. Association for Computational Linguistics. doi: 10.18653/v1/D19-1244. URL https://www.aclweb.org/anthology/D19-1244.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 47,
+          "raw_text": "Fabio Petroni, Tim Rocktäschel, Sebastian Riedel, Patrick Lewis, Anton Bakhtin, Yuxiang Wu, and Alexander Miller. Language models as knowledge bases? In Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP), pages 2463-2473, Hong Kong, China, November 2019. Association for Computational Linguistics. doi: 10.18653/v1/ D19-1250. URL https://www.aclweb.org/anthology/D19-1250.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 48,
+          "raw_text": "Fabio Petroni, Patrick Lewis, Aleksandra Piktus, Tim Rocktäschel, Yuxiang Wu, Alexander H. Miller, and Sebastian Riedel. How context affects language models ' factual predictions. In Automated Knowledge Base Construction, 2020. URL https://openreview.net/forum? id=025X0zPfn.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 49,
+          "raw_text": "Alec Radford, Karthik Narasimhan, Tim Salimans, and Ilya Sutskever. Im- proving Language Understanding by Generative Pre-Training, 2018. URL https://s3-us-west-2.amazonaws.com/openai-assets/research-covers/ language-unsupervised/language_understanding_paper.pdf.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 50,
+          "raw_text": "Alec Radford, Jeff Wu, Rewon Child, David Luan, Dario Amodei, and Ilya Sutskever. Language models are unsupervised multitask learners, 2019. URL https://d4mucfpksywv.cloudfront.net/better-language-models/language_ models_are_unsupervised_multitask_learners.pdf.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 51,
+          "raw_text": "Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J. Liu. Exploring the limits of transfer learning with a unified text-to-text transformer. arXiv e-prints, 2019. URL https://arxiv.org/abs/1910.10683.",
+          "resolved": true,
+          "paper_id": "ecd609be-496f-483e-ab76-3d302d290db2",
+          "title": "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 52,
+          "raw_text": "Adam Roberts, Colin Raffel, and Noam Shazeer. How much knowledge can you pack into the parameters of a language model? arXiv e-prints, 2020. URL https://arxiv.org/abs/ 2002.08910.",
+          "resolved": true,
+          "paper_id": "ab617412-e63e-4cca-adfb-05a06cfd02fe",
+          "title": "How Much Knowledge Can You Pack Into the Parameters of a Language Model?",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 53,
+          "raw_text": "Stephen Robertson and Hugo Zaragoza. The probabilistic relevance framework: Bm25 and beyond. Found. Trends Inf. Retr., 3(4):333-389, April 2009. ISSN 1554-0669. doi: 10.1561/ 1500000019. URL https://doi.org/10.1561/1500000019.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 54,
+          "raw_text": "Irene Solaiman, Miles Brundage, Jack Clark, Amanda Askell, Ariel Herbert-Voss, Jeff Wu, Alec Radford, and Jian-Bing Wang. Release strategies and the social impacts of language models. ArXiv, abs/1908.09203, 2019.",
+          "resolved": true,
+          "paper_id": "d2dcae2a-cc44-45a0-bd16-eff1a0ea0593",
+          "title": "Release Strategies and the Social Impacts of Language Models",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 55,
+          "raw_text": "Sainbayar Sukhbaatar, Arthur Szlam, Jason Weston, and Rob Fergus. End-to-end memory net- works.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 56,
+          "raw_text": "In C. Cortes, N. D. Lawrence, D. D. Lee, M. Sugiyama, and R. Garnett, editors, Advances in Neural Information Processing Systems 28, pages 2440-2448. Curran Associates, Inc., 2015. URL http://papers.nips.cc/paper/5846-end-to-end-memory-networks.pdf.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 57,
+          "raw_text": "James Thorne, Andreas Vlachos, Christos Christodoulopoulos, and Arpit Mittal. FEVER: a large-scale dataset for fact extraction and VERification. In Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long Papers), pages 809-819, New Orleans, Louisiana, June 2018. Association for Computational Linguistics. doi: 10.18653/v1/N18-1074. URL https://www.aclweb.org/anthology/N18-1074.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 58,
+          "raw_text": "James H. Thorne and Andreas Vlachos. Avoiding catastrophic forgetting in mitigating model biases in sentence-pair classification with elastic weight consolidation. ArXiv, abs/2004.14366, 2020. URL https://arxiv.org/abs/2004.14366.",
+          "resolved": true,
+          "paper_id": "59ae0162-46a0-4e61-87b0-6308ca654b0d",
+          "title": "Elastic weight consolidation for better bias inoculation",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 59,
+          "raw_text": "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Ł ukasz Kaiser, and Illia Polosukhin. Attention is all you need. In I. Guyon, U. V. Luxburg, S. Bengio, H. Wallach, R. Fergus, S. Vishwanathan, and R. Garnett, editors, Advances in Neural Information Processing Systems 30, pages 5998-6008. Curran Associates, Inc., 2017. URL http://papers.nips.cc/paper/7181-attention-is-all-you-need.pdf.",
+          "resolved": true,
+          "paper_id": "387fc70a-a95a-4c45-aa9d-f6252934da33",
+          "title": "Attention Is All You Need",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 60,
+          "raw_text": "Ashwin Vijayakumar, Michael Cogswell, Ramprasaath Selvaraju, Qing Sun, Stefan Lee, David Crandall, and Dhruv Batra. Diverse beam search for improved description of complex scenes. AAAI Conference on Artificial Intelligence, 2018. URL https://www.aaai.org/ocs/index. php/AAAI/AAAI18/paper/view/17329.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 61,
+          "raw_text": "Alex Wang, Amanpreet Singh, Julian Michael, Felix Hill, Omer Levy, and Samuel Bowman. GLUE: A multi-task benchmark and analysis platform for natural language understanding. In Proceedings of the 2018 EMNLP Workshop BlackboxNLP: Analyzing and Interpreting Neural Networks for NLP, pages 353-355, Brussels, Belgium, November 2018. Association for Computational Linguistics. doi: 10.18653/v1/W18-5446. URL https://www.aclweb.org/ anthology/W18-5446.",
+          "resolved": true,
+          "paper_id": "1b362765-4811-4bf8-970a-f6c8442fa057",
+          "title": "GLUE: A Multi-Task Benchmark and Analysis Platform for Natural Language Understanding",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 62,
+          "raw_text": "Alex Wang, Yada Pruksachatkun, Nikita Nangia, Amanpreet Singh, Julian Michael, Felix Hill, Omer Levy, and Samuel Bowman. SuperGLUE: A Stickier Benchmark for General- Purpose Language Understanding Systems. In H. Wallach, H. Larochelle, A. Beygelzimer, F. d\\textquotesingle Alché-Buc, E. Fox, and R. Garnett, editors, Advances in Neural Information Processing Systems 32, pages 3261-3275. Curran Associates, Inc., 2019. URL https:// arxiv.org/abs/1905.00537.",
+          "resolved": true,
+          "paper_id": "4901bd2c-d576-41de-aaf2-8509ee4adfbc",
+          "title": "SuperGLUE: A Stickier Benchmark for General-Purpose Language Understanding Systems",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 63,
+          "raw_text": "Shuohang Wang, Mo Yu, Xiaoxiao Guo, Zhiguo Wang, Tim Klinger, Wei Zhang, Shiyu Chang, Gerry Tesauro, Bowen Zhou, and Jing Jiang. R 3 : Reinforced ranker-reader for open-domain question answering. In Sheila A. McIlraith and Kilian Q. Weinberger, editors, Proceedings of the Thirty-Second AAAI Conference on Artificial Intelligence, (AAAI-18), the 30th innovative Applications of Artificial Intelligence (IAAI-18), and the 8th AAAI Symposium on Educational Advances in Artificial Intelligence (EAAI-18), New Orleans, Louisiana, USA, February 2-7, 2018, pages 5981-5988. AAAI Press, 2018. URL https://www.aaai.org/ocs/index. php/AAAI/AAAI18/paper/view/16712.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 64,
+          "raw_text": "Shuohang Wang, Mo Yu, Jing Jiang, Wei Zhang, Xiaoxiao Guo, Shiyu Chang, Zhiguo Wang, Tim Klinger, Gerald Tesauro, and Murray Campbell. Evidence aggregation for answer re- ranking in open-domain question answering. In ICLR, 2018. URL https://openreview. net/forum?id=rJl3yM-Ab.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 65,
+          "raw_text": "Jason Weston, Sumit Chopra, and Antoine Bordes. Memory networks. In Yoshua Bengio and Yann LeCun, editors, 3rd International Conference on Learning Representations, ICLR 2015, San Diego, CA, USA, May 7-9, 2015, Conference Track Proceedings, 2015. URL http://arxiv.org/abs/1410.3916.",
+          "resolved": true,
+          "paper_id": "243c328b-6c53-43be-b16a-3e2a2e83ab49",
+          "title": "Memory Networks",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 66,
+          "raw_text": "Jason Weston, Emily Dinan, and Alexander Miller. Retrieve and refine: Improved sequence generation models for dialogue. In Proceedings of the 2018 EMNLP Workshop SCAI: The 2nd International Workshop on Search-Oriented Conversational AI, pages 87-92, Brussels, Belgium, October 2018. Association for Computational Linguistics. doi: 10.18653/v1/W18-5713. URL https://www.aclweb.org/anthology/W18-5713.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 67,
+          "raw_text": "Thomas Wolf, Lysandre Debut, Victor Sanh, Julien Chaumond, Clement Delangue, Anthony Moi, Pierric Cistac, Tim Rault, Rémi Louf, Morgan Funtowicz, Joe Davison, Sam Shleifer, Patrick von Platen, Clara Ma, Yacine Jernite, Julien Plu, Canwen Xu, Teven Le Scao, Sylvain Gugger, Mariama Drame, Quentin Lhoest, and Alexander M. Rush. Huggingface ' s transformers: State-of-the-art natural language processing. ArXiv, abs/1910.03771, 2019.",
+          "resolved": true,
+          "paper_id": "f156803d-7e9c-471d-a16f-4817b8135ab4",
+          "title": "HuggingFace's Transformers: State-of-the-art Natural Language Processing",
+          "resolution_status": "resolved"
+        },
+        {
+          "ordinal": 68,
+          "raw_text": "Shiyue Zhang and Mohit Bansal. Addressing semantic drift in question generation for semi- supervised question answering. In Proceedings of the 2019 Conference on Empirical Meth- ods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP), pages 2495-2509, Hong Kong, China, Novem- ber 2019. Association for Computational Linguistics. doi: 10.18653/v1/D19-1253. URL https://www.aclweb.org/anthology/D19-1253.",
+          "resolved": false,
+          "paper_id": null,
+          "title": null,
+          "resolution_status": "unresolved"
+        },
+        {
+          "ordinal": 69,
+          "raw_text": "Wanjun Zhong, Jingjing Xu, Duyu Tang, Zenan Xu, Nan Duan, Ming Zhou, Jiahai Wang, and Jian Yin. Reasoning over semantic-level graph for fact checking. ArXiv, abs/1909.03745, 2019. URL https://arxiv.org/abs/1909.03745.",
+          "resolved": true,
+          "paper_id": "c50cfd20-a9d1-4e06-b6f3-6830a464ec42",
+          "title": "Reasoning Over Semantic-Level Graph for Fact Checking",
+          "resolution_status": "resolved"
+        }
+      ]
+    }
+  }
+}

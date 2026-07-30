@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<t:TEI xmlns:t="http://www.tei-c.org/ns/1.0" xmlns:xml="http://www.w3.org/XML/1998/namespace">
+  <t:teiHeader>
+    <t:fileDesc>
+      <t:titleStmt><t:title>Fixture Paper</t:title></t:titleStmt>
+    </t:fileDesc>
+  </t:teiHeader>
+  <t:text>
+    <t:body>
+      <t:div xml:id="sec-intro">
+        <t:head n="1">1 Introduction</t:head>
+        <t:p coords="1,10.0,20.0,400.0,80.0">
+          This paper builds on <t:ref type="bibr" target="#b0">[1]</t:ref> to study
+          robust scientific reading on phones. The remainder explains the design
+          and establishes enough substantial introductory context for detection.
+        </t:p>
+        <t:div xml:id="sec-motivation">
+          <t:head n="1.1">1.1 Motivation</t:head>
+          <t:p coords="2,10.0,20.0,400.0,80.0">
+            Mobile readers need a carefully bounded interaction model with enough
+            context to make long scientific documents approachable.
+          </t:p>
+        </t:div>
+      </t:div>
+      <t:div xml:id="sec-method">
+        <t:head n="2">2 Method</t:head>
+        <t:p coords="3,10.0,20.0,400.0,80.0">
+          Our method compares against <t:ref type="bibr" target="#b1">[2]</t:ref>.
+          It retrieves paragraph-aware evidence and does not trust document text
+          as instructions.
+        </t:p>
+      </t:div>
+      <t:div xml:id="sec-related">
+        <t:head n="3">Related Work</t:head>
+        <t:p coords="4,10.0,20.0,400.0,80.0">Prior work is summarized here.</t:p>
+      </t:div>
+    </t:body>
+    <t:back>
+      <t:div type="references">
+        <t:listBibl>
+          <t:biblStruct xml:id="b0">
+            <t:analytic>
+              <t:author><t:persName><t:forename>Ashish</t:forename><t:surname>Vaswani</t:surname></t:persName></t:author>
+              <t:title level="a">Foundational Attention</t:title>
+            </t:analytic>
+            <t:monogr>
+              <t:title level="j">Fixture Journal</t:title>
+              <t:imprint><t:date when="2017"/></t:imprint>
+            </t:monogr>
+            <t:idno type="DOI">10.1000/foundation</t:idno>
+            <t:ptr target="https://arxiv.org/abs/1706.03762v7"/>
+            <t:note type="raw_reference">A. Vaswani. Foundational Attention. arXiv:1706.03762v7, 2017.</t:note>
+          </t:biblStruct>
+          <t:biblStruct xml:id="b1">
+            <t:analytic>
+              <t:author><t:persName><t:forename>Jane</t:forename><t:surname>Doe</t:surname></t:persName></t:author>
+              <t:title level="a">A Strong Baseline</t:title>
+            </t:analytic>
+            <t:monogr><t:imprint><t:date when="2020"/></t:imprint></t:monogr>
+            <t:note type="raw_reference">J. Doe. A Strong Baseline. 2020.</t:note>
+          </t:biblStruct>
+        </t:listBibl>
+      </t:div>
+    </t:back>
+  </t:text>
+</t:TEI>

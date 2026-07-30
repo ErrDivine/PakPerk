@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <title>arXiv Query: test</title>
+  <entry>
+    <id>http://arxiv.org/abs/2401.12345v2</id>
+    <updated>2024-01-20T12:00:00Z</updated>
+    <published>2024-01-10T10:00:00Z</published>
+    <title>
+      A Paper with XML &amp;
+      Whitespace
+    </title>
+    <summary>  An abstract with
+      normalized whitespace. </summary>
+    <author><name>Ada Lovelace</name></author>
+    <author><name>Alan Turing</name></author>
+    <arxiv:primary_category term="cs.AI"/>
+    <category term="cs.AI"/>
+    <category term="cs.LG"/>
+    <link href="https://arxiv.org/abs/2401.12345v2" rel="alternate" type="text/html"/>
+    <link title="pdf" href="https://arxiv.org/pdf/2401.12345v2" rel="related" type="application/pdf"/>
+    <link href="https://creativecommons.org/licenses/by/4.0/" rel="license"/>
+    <arxiv:doi>10.1000/example</arxiv:doi>
+    <arxiv:journal_ref>Journal of Useful Fixtures 1 (2024)</arxiv:journal_ref>
+    <arxiv:comment>12 pages</arxiv:comment>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/hep-th/9901001v3</id>
+    <updated>2000-01-01T00:00:00Z</updated>
+    <published>1999-01-01T00:00:00Z</published>
+    <title>Legacy Identifier</title>
+    <summary>Legacy archive identifiers remain supported.</summary>
+    <author><name>Grace Hopper</name></author>
+    <arxiv:primary_category term="hep-th"/>
+    <category term="hep-th"/>
+  </entry>
+</feed>

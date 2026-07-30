@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "topic": "Transformers and retrieval-augmented language models",
+  "papers": [
+    {
+      "arxiv_id": "1706.03762",
+      "prepared": true,
+      "highlight": true,
+      "expected_questions": [
+        "What architecture does the paper propose?",
+        "Why does it avoid recurrence?"
+      ]
+    },
+    {
+      "arxiv_id": "1810.04805",
+      "prepared": true,
+      "highlight": true,
+      "expected_questions": [
+        "How is BERT pre-trained?",
+        "What downstream tasks are evaluated?"
+      ]
+    },
+    {
+      "arxiv_id": "1907.11692",
+      "prepared": true,
+      "highlight": true,
+      "expected_questions": [
+        "Which BERT training choices does RoBERTa change?",
+        "What does the ablation study conclude?"
+      ]
+    },
+    {
+      "arxiv_id": "1910.10683",
+      "prepared": true,
+      "highlight": true,
+      "expected_questions": [
+        "How are NLP tasks cast into one format?",
+        "What is the Colossal Clean Crawled Corpus?"
+      ]
+    },
+    {
+      "arxiv_id": "2005.11401",
+      "prepared": true,
+      "highlight": true,
+      "expected_questions": [
+        "How does RAG combine parametric and non-parametric memory?",
+        "How do the two RAG formulations differ?"
+      ]
+    },
+    {
+      "arxiv_id": "2106.09685v2",
+      "prepared": false,
+      "highlight": false,
+      "demo_role": "lazy_trigger"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg16-bookworm
+        env:
+          POSTGRES_DB: pakperk
+          POSTGRES_USER: pakperk
+          POSTGRES_PASSWORD: pakperk
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pakperk -d pakperk"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgres://pakperk:pakperk@localhost:5432/pakperk
+      TEST_DATABASE_URL: postgres://pakperk:pakperk@localhost:5432/pakperk
+      EMBEDDING_DIMENSION: "64"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.91.1
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - run: bash -n scripts/*.sh
+      - run: >-
+          jq empty
+          demo/seed_manifest.json
+          demo/fallback_feed.json
+          demo/expected_connections.json
+          demo/content_evaluation.json
+          mobile/assets/fallback_feed.json
+          mobile/assets/prepared_introductions.json
+          mobile/assets/prepared_connections.json
+      - run: ./scripts/validate_demo_content.sh
+        env:
+          PAKPERK_USE_DOCKER: "0"
+      - run: cargo fmt --manifest-path backend/Cargo.toml --all -- --check
+      - run: cargo clippy --manifest-path backend/Cargo.toml --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --manifest-path backend/Cargo.toml --workspace --all-features
+
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - working-directory: mobile
+        run: flutter pub get
+      - working-directory: mobile
+        run: dart format --output=none --set-exit-if-changed .
+      - working-directory: mobile
+        run: flutter analyze
+      - working-directory: mobile
+        run: flutter test

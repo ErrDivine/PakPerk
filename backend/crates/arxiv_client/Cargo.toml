@@ -1,0 +1,26 @@
+[package]
+name = "arxiv_client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+chrono.workspace = true
+domain.workspace = true
+httpdate = "1.0.3"
+quick-xml.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true
