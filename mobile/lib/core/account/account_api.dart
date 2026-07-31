@@ -17,13 +17,14 @@ final class AccountApi {
 
   final Dio _dio;
 
-  Future<AccountApiResult> getCurrent() async {
+  Future<AccountApiResult> getCurrent({required int expectedAuthEpoch}) async {
     try {
       final response = await _dio.get<Object?>(
         '/v1/me',
         options: pakPerkRequestOptions(
           auth: RequestAuthPolicy.required,
           retry: AuthRetryPolicy.safe,
+          expectedAuthEpoch: expectedAuthEpoch,
         ),
       );
       return _decode(response);
@@ -40,6 +41,7 @@ final class AccountApi {
   }
 
   Future<AccountApiResult> update({
+    required int expectedAuthEpoch,
     required int expectedProfileVersion,
     required AccountProfilePatch patch,
   }) async {
@@ -55,6 +57,7 @@ final class AccountApi {
         options: pakPerkRequestOptions(
           auth: RequestAuthPolicy.required,
           retry: AuthRetryPolicy.idempotencyProtected,
+          expectedAuthEpoch: expectedAuthEpoch,
           headers: {'If-Match': '"profile-$expectedProfileVersion"'},
         ),
       );

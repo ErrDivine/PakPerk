@@ -9,25 +9,43 @@ enum AuthRetryPolicy { safe, idempotencyProtected, never }
 const _authPolicyKey = 'pakperk.auth_policy';
 const _authRetryPolicyKey = 'pakperk.auth_retry_policy';
 const _authRetriedKey = 'pakperk.auth_retried';
+const _expectedAuthEpochKey = 'pakperk.expected_auth_epoch';
 const _authorizationHeader = 'Authorization';
 
 /// Builds request metadata consumed only by [AuthInterceptor].
 ///
 /// Public calls use [RequestAuthPolicy.none] or `optional`; neither waits for
 /// secure storage or token refresh. Account-owned calls use `required` and
-/// must declare whether replay after one 401 is safe.
+/// must bind the auth epoch that created the operation and declare whether
+/// replay after one 401 is safe.
 Options pakPerkRequestOptions({
   required RequestAuthPolicy auth,
   AuthRetryPolicy retry = AuthRetryPolicy.never,
+  int? expectedAuthEpoch,
   Map<String, Object?>? headers,
   Duration? receiveTimeout,
   bool Function(int?)? validateStatus,
-}) => Options(
-  headers: headers,
-  receiveTimeout: receiveTimeout,
-  validateStatus: validateStatus,
-  extra: {_authPolicyKey: auth, _authRetryPolicyKey: retry},
-);
+}) {
+  final validEpoch = expectedAuthEpoch != null && expectedAuthEpoch >= 0;
+  if ((auth == RequestAuthPolicy.required && !validEpoch) ||
+      (auth != RequestAuthPolicy.required && expectedAuthEpoch != null)) {
+    throw ArgumentError.value(
+      expectedAuthEpoch,
+      'expectedAuthEpoch',
+      'Authenticated requests require a non-negative expected epoch.',
+    );
+  }
+  return Options(
+    headers: headers,
+    receiveTimeout: receiveTimeout,
+    validateStatus: validateStatus,
+    extra: {
+      _authPolicyKey: auth,
+      _authRetryPolicyKey: retry,
+      if (expectedAuthEpoch != null) _expectedAuthEpochKey: expectedAuthEpoch,
+    },
+  );
+}
 
 /// Adds a bearer only to the exact configured Pakperk origin and performs at
 /// most one policy-authorized replay after a 401 challenge.
@@ -51,12 +69,29 @@ final class AuthInterceptor extends Interceptor {
   ) async {
     final policy = _authPolicy(options);
     if (options.extra[_authRetriedKey] == true) {
-      if (policy == RequestAuthPolicy.required &&
-          _isApiRequest(options) &&
-          _bearerValue(options.headers[_authorizationHeader]) != null) {
-        handler.next(options);
-      } else {
+      if (policy != RequestAuthPolicy.required || !_isApiRequest(options)) {
         handler.reject(_authFailure(options, 'AUTH_ORIGIN_REJECTED'));
+        return;
+      }
+      final expectedAuthEpoch = _expectedAuthEpoch(options);
+      if (expectedAuthEpoch == null) {
+        handler.reject(_authFailure(options, 'AUTH_EPOCH_REQUIRED'));
+        return;
+      }
+      try {
+        final token = await _tokenSource.accessTokenForRequest(
+          expectedAuthEpoch: expectedAuthEpoch,
+        );
+        if (token == null || token.isEmpty) {
+          handler.reject(_authFailure(options, 'UNAUTHENTICATED'));
+          return;
+        }
+        options.headers[_authorizationHeader] = 'Bearer $token';
+        handler.next(options);
+      } on AuthFailure catch (failure) {
+        handler.reject(_authFailure(options, _safeAuthCode(failure)));
+      } on Object {
+        handler.reject(_authFailure(options, 'AUTH_UNAVAILABLE'));
       }
       return;
     }
@@ -71,8 +106,15 @@ final class AuthInterceptor extends Interceptor {
       handler.reject(_authFailure(options, 'AUTH_ORIGIN_REJECTED'));
       return;
     }
+    final expectedAuthEpoch = _expectedAuthEpoch(options);
+    if (expectedAuthEpoch == null) {
+      handler.reject(_authFailure(options, 'AUTH_EPOCH_REQUIRED'));
+      return;
+    }
     try {
-      final token = await _tokenSource.accessTokenForRequest();
+      final token = await _tokenSource.accessTokenForRequest(
+        expectedAuthEpoch: expectedAuthEpoch,
+      );
       if (token == null || token.isEmpty) {
         handler.reject(_authFailure(options, 'UNAUTHENTICATED'));
         return;
@@ -103,9 +145,15 @@ final class AuthInterceptor extends Interceptor {
       handler.next(err);
       return;
     }
+    final expectedAuthEpoch = _expectedAuthEpoch(options);
+    if (expectedAuthEpoch == null) {
+      handler.reject(_authFailure(options, 'AUTH_EPOCH_REQUIRED'));
+      return;
+    }
     try {
       final token = await _tokenSource.refreshAfterUnauthorized(
         rejectedAccessToken: rejectedToken,
+        expectedAuthEpoch: expectedAuthEpoch,
       );
       if (token == null || token.isEmpty) {
         handler.reject(_authFailure(options, 'UNAUTHENTICATED'));
@@ -128,6 +176,11 @@ final class AuthInterceptor extends Interceptor {
   RequestAuthPolicy _authPolicy(RequestOptions options) =>
       options.extra[_authPolicyKey] as RequestAuthPolicy? ??
       RequestAuthPolicy.none;
+
+  int? _expectedAuthEpoch(RequestOptions options) {
+    final value = options.extra[_expectedAuthEpochKey];
+    return value is int && value >= 0 ? value : null;
+  }
 
   bool _isApiRequest(RequestOptions options) =>
       _Origin.fromUri(options.uri) == _apiOrigin;

@@ -16,6 +16,7 @@ chrono.workspace = true
 db.workspace = true
 domain.workspace = true
 jobs.workspace = true
+library.workspace = true
 llm_provider.workspace = true
 observability.workspace = true
 pgvector.workspace = true

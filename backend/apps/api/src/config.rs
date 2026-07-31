@@ -44,16 +44,23 @@ impl ApiEnvironment {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct FeatureFlags {
     pub accounts: bool,
     pub library: bool,
+    /// Allows operators to freeze account-owned mutations while preserving
+    /// synchronized library reads.
+    pub library_writes: bool,
     pub comments: bool,
 }
 
 impl FeatureFlags {
-    fn validate(self) -> anyhow::Result<Self> {
+    pub(crate) fn validate(self) -> anyhow::Result<Self> {
         if self.library && !self.accounts {
             anyhow::bail!("LIBRARY_ENABLED requires ACCOUNTS_ENABLED");
+        }
+        if self.library_writes && !self.library {
+            anyhow::bail!("LIBRARY_WRITES_ENABLED requires LIBRARY_ENABLED");
         }
         if self.comments && !self.accounts {
             anyhow::bail!("COMMENTS_ENABLED requires ACCOUNTS_ENABLED");
@@ -70,6 +77,8 @@ pub struct ApiConfig {
     /// optional means guest-only deployments do not need placeholder identity
     /// settings and cannot accidentally initialize an OIDC client.
     pub accounts: Option<AccountFeatureConfig>,
+    /// Present exactly when synchronized library routes are enabled.
+    pub library: Option<LibraryFeatureConfig>,
     pub bind: SocketAddr,
     pub database_url: String,
     pub database_pool_size: u32,
@@ -96,6 +105,40 @@ pub struct AccountFeatureConfig {
     pub profile_update_window: Duration,
     pub auth_retry_initial: Duration,
     pub auth_retry_maximum: Duration,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LibraryFeatureConfig {
+    pub mutation_limit: u32,
+    pub mutation_window: Duration,
+}
+
+impl LibraryFeatureConfig {
+    fn from_env() -> anyhow::Result<Self> {
+        let config = Self {
+            mutation_limit: env_parse("LIBRARY_MUTATION_LIMIT", 120_u32)?,
+            mutation_window: Duration::from_secs(env_parse(
+                "LIBRARY_MUTATION_WINDOW_SECONDS",
+                60 * 60_u64,
+            )?),
+        };
+        config.validate()?;
+        Ok(config)
+    }
+
+    fn validate(self) -> anyhow::Result<Self> {
+        if self.mutation_limit == 0 {
+            anyhow::bail!("LIBRARY_MUTATION_LIMIT must be greater than zero");
+        }
+        if self.mutation_window < Duration::from_secs(1)
+            || self.mutation_window > Duration::from_secs(30 * 24 * 60 * 60)
+        {
+            anyhow::bail!(
+                "LIBRARY_MUTATION_WINDOW_SECONDS must be between one second and thirty days"
+            );
+        }
+        Ok(self)
+    }
 }
 
 impl AccountFeatureConfig {
@@ -181,6 +224,7 @@ impl AccountFeatureConfig {
 }
 
 impl ApiConfig {
+    #[allow(clippy::too_many_lines)]
     pub fn from_env() -> anyhow::Result<Self> {
         let environment = std::env::var("APP_ENV")
             .unwrap_or_else(|_| "development".to_owned())
@@ -188,12 +232,17 @@ impl ApiConfig {
         let features = FeatureFlags {
             accounts: env_bool("ACCOUNTS_ENABLED", false)?,
             library: env_bool("LIBRARY_ENABLED", false)?,
+            library_writes: env_bool("LIBRARY_WRITES_ENABLED", false)?,
             comments: env_bool("COMMENTS_ENABLED", false)?,
         }
         .validate()?;
         let accounts = features
             .accounts
             .then(|| AccountFeatureConfig::from_env(environment))
+            .transpose()?;
+        let library = features
+            .library
+            .then(LibraryFeatureConfig::from_env)
             .transpose()?;
         let bind = std::env::var("API_BIND")
             .unwrap_or_else(|_| "0.0.0.0:8080".to_owned())
@@ -249,6 +298,7 @@ impl ApiConfig {
             environment,
             features,
             accounts,
+            library,
             bind,
             database_url,
             database_pool_size: env_parse("DATABASE_POOL_SIZE", 10_u32)?,
@@ -284,6 +334,7 @@ impl ApiConfig {
     }
 
     fn validate(&self) -> anyhow::Result<()> {
+        self.features.validate()?;
         match (self.features.accounts, self.accounts.as_ref()) {
             (true, Some(accounts)) => {
                 accounts.validate()?;
@@ -299,6 +350,18 @@ impl ApiConfig {
             }
             (false, Some(_)) => {
                 anyhow::bail!("account configuration requires accounts to be enabled")
+            }
+        }
+        match (self.features.library, self.library) {
+            (true, Some(library)) => {
+                library.validate()?;
+            }
+            (false, None) => {}
+            (true, None) => {
+                anyhow::bail!("library configuration is required when library is enabled")
+            }
+            (false, Some(_)) => {
+                anyhow::bail!("library configuration requires library to be enabled")
             }
         }
         if self.database_pool_size == 0 {
@@ -534,6 +597,7 @@ mod tests {
             FeatureFlags {
                 accounts: false,
                 library: true,
+                library_writes: false,
                 comments: false
             }
             .validate()
@@ -543,6 +607,7 @@ mod tests {
             FeatureFlags {
                 accounts: false,
                 library: false,
+                library_writes: false,
                 comments: true
             }
             .validate()
@@ -552,10 +617,57 @@ mod tests {
             FeatureFlags {
                 accounts: true,
                 library: true,
+                library_writes: true,
                 comments: true
             }
             .validate()
             .is_ok()
+        );
+        assert!(
+            FeatureFlags {
+                accounts: true,
+                library: false,
+                library_writes: true,
+                comments: false,
+            }
+            .validate()
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn library_policy_bounds_and_write_dependency_are_typed() {
+        assert!(
+            LibraryFeatureConfig {
+                mutation_limit: 120,
+                mutation_window: Duration::from_secs(60 * 60),
+            }
+            .validate()
+            .is_ok()
+        );
+        assert!(
+            LibraryFeatureConfig {
+                mutation_limit: 0,
+                mutation_window: Duration::from_secs(60),
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            LibraryFeatureConfig {
+                mutation_limit: 1,
+                mutation_window: Duration::from_secs(0),
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            LibraryFeatureConfig {
+                mutation_limit: 1,
+                mutation_window: Duration::from_secs(30 * 24 * 60 * 60 + 1),
+            }
+            .validate()
+            .is_err()
         );
     }
 
@@ -657,6 +769,7 @@ mod tests {
             environment: ApiEnvironment::Production,
             features: FeatureFlags::default(),
             accounts: None,
+            library: None,
             bind: "0.0.0.0:8080".parse().unwrap(),
             database_url: "postgresql://api@database/pakperk".to_owned(),
             database_pool_size: 10,

@@ -79,6 +79,14 @@ impl RateLimitRequest {
         Self::new("profile_update", format!("user:{user_id}"), limit, window)
     }
 
+    pub fn library_mutation(
+        user_id: AuthenticatedUserId,
+        limit: u32,
+        window: Duration,
+    ) -> Result<Self, RateLimitConfigError> {
+        Self::new("library_mutation", format!("user:{user_id}"), limit, window)
+    }
+
     #[must_use]
     pub fn bucket(&self) -> &str {
         &self.bucket
@@ -253,6 +261,18 @@ mod tests {
         let request =
             RateLimitRequest::profile_update(user_id, 3, Duration::from_secs(60)).unwrap();
         assert_eq!(request.bucket(), "profile_update");
+        assert_eq!(
+            request.scope_key(),
+            "user:00000000-0000-0000-0000-000000000000"
+        );
+    }
+
+    #[test]
+    fn library_bucket_is_shared_by_user() {
+        let user_id = AuthenticatedUserId::new(Uuid::nil());
+        let request =
+            RateLimitRequest::library_mutation(user_id, 120, Duration::from_secs(3_600)).unwrap();
+        assert_eq!(request.bucket(), "library_mutation");
         assert_eq!(
             request.scope_key(),
             "user:00000000-0000-0000-0000-000000000000"

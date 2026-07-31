@@ -90,6 +90,17 @@ native builds, live PostgreSQL scenarios, and real Keycloak/Mailpit PKCE flow
 passed, so Phase 3 is **complete**. Evidence is recorded in the
 [Phase 3 report](phase-reports/phase-3.md).
 
+Phase 4 is **complete**. Its bounded contract is a single `to_read` set,
+authenticated list and account-scoped revision-change reads, idempotent
+save/remove writes, 90-day tombstones with a safe reset signal, and mobile
+optimistic outbox convergence. Another account's mutations never advance or
+leak through a reader's watermark. Library routes require the account and
+library gates; an independent write gate can freeze mutations without removing
+reads or affecting public paper access. The detailed contract is in
+[To Read library synchronization](library-sync.md), and the repository, live
+OIDC/PostgreSQL, two-client, no-preparation, write-kill, and native-build
+evidence is recorded in the [Phase 4 report](phase-reports/phase-4.md).
+
 Phase 0's exit criteria require unchanged demo behavior and API fixtures,
 passing `./scripts/check.sh`, complete OpenAPI coverage for its existing routes,
 and no public account controls. Phase 2 additionally requires offline migration,

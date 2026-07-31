@@ -259,10 +259,12 @@ X-Request-Id, ETag, Retry-After
 Native Flutter requests do not rely on CORS, but this contract prevents web
 tooling from requiring broader wildcard or credential behavior.
 
-## Deliberately deferred
+## Later-phase extensions
 
-Phase 3 does not publish library, comment, block, report, or account-deletion
-routes. The identity-admin types include an honest Keycloak adapter skeleton,
-but destructive provider calls remain unwired until the idempotent Phase 6
-deletion state machine lands. Comments remain disabled until every Phase 5 UGC
-safety gate is complete.
+Phase 4 now publishes library routes only when its independent account,
+library, and write gates allow them. Saving does not require a handle or terms
+acceptance; remote sync additionally requires an epoch-bound `/v1/me` account
+verification. The identity-admin types still include an honest Keycloak
+adapter skeleton, and destructive provider calls remain unwired until the
+idempotent Phase 6 deletion state machine lands. Comments remain disabled until
+every Phase 5 UGC safety gate is complete.

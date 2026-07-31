@@ -8,6 +8,7 @@ import 'package:pakperk/app/account_providers.dart';
 import 'package:pakperk/app/feature_flags.dart';
 import 'package:pakperk/app/startup_controller.dart';
 import 'package:pakperk/core/api/auth_interceptor.dart';
+import 'package:pakperk/core/auth/auth.dart';
 import 'package:pakperk/core/providers.dart';
 
 import '../core/auth/auth_fakes.dart';
@@ -92,6 +93,72 @@ void main() {
       expect(tokens.record?.accountId, accountId);
     },
   );
+
+  test(
+    'profile survives same-epoch refresh and clears before new identity load',
+    () async {
+      const accountA = '018f47a6-4b56-7f4c-8c7a-e2656e820001';
+      const accountB = '018f47a6-4b56-7f4c-8c7a-e2656e820002';
+      final delegate = _StartupDelegate();
+      final oidc = FakeOidcClient();
+      final tokens = MemorySecureTokenStore(storedRecord(accountId: accountA));
+      final store = MemoryLocalStore();
+      final container = ProviderContainer(
+        overrides: [
+          appBuildConfigProvider.overrideWithValue(_accountConfig()),
+          localStoreProvider.overrideWithValue(store),
+          initialAnonymousSessionIdProvider.overrideWithValue(
+            await store.getOrCreateSessionId(),
+          ),
+          oidcClientProvider.overrideWithValue(oidc),
+          secureTokenStoreProvider.overrideWithValue(tokens),
+          ...accountApplicationOverrides(delegate),
+        ],
+      );
+      addTearDown(container.dispose);
+      final adapter = _AccountAdapter(accountId: accountA);
+      container.read(pakPerkDioProvider).httpClientAdapter = adapter;
+      final startup = container.read(startupBootstrapperProvider);
+      await startup.checkAuthenticatedSession();
+      await startup.runPostReadyWork();
+      final auth = container.read(authSessionProvider.notifier);
+      final account = container.read(currentAccountProvider.notifier);
+      expect(container.read(currentAccountProvider).profile?.id, accountA);
+
+      oidc.refreshHandler = (_) async => tokenSet(
+        accessToken: 'account-a-refreshed',
+        refreshToken: 'account-a-refresh',
+      );
+      await auth.refreshAfterUnauthorized(rejectedAccessToken: 'access-token');
+      expect(
+        container.read(currentAccountProvider).profile?.id,
+        accountA,
+        reason: 'token refresh within one identity must preserve the profile',
+      );
+
+      oidc.refreshHandler = (_) async =>
+          throw const OidcClientException.invalidGrant();
+      await expectLater(
+        auth.refreshAfterUnauthorized(
+          rejectedAccessToken: 'account-a-refreshed',
+        ),
+        throwsA(isA<AuthFailure>()),
+      );
+      expect(container.read(authSessionProvider).isAuthenticated, isFalse);
+      expect(container.read(currentAccountProvider).profile, isNull);
+
+      adapter.accountId = accountB;
+      oidc.authorizeHandler = () async => tokenSet(
+        accessToken: 'account-b-access',
+        refreshToken: 'account-b-refresh',
+      );
+      expect(await auth.signIn(), isTrue);
+      expect(container.read(currentAccountProvider).profile, isNull);
+      expect((await account.load())?.id, accountB);
+      expect(container.read(currentAccountProvider).profile?.id, accountB);
+      expect(tokens.record?.accountId, accountB);
+    },
+  );
 }
 
 AppBuildConfig _accountConfig() => AppBuildConfig.fromValues(const {
@@ -124,7 +191,7 @@ final class _StartupDelegate implements StartupBootstrapper {
 final class _AccountAdapter implements HttpClientAdapter {
   _AccountAdapter({this.accountId = '018f47a6-4b56-7f4c-8c7a-e2656e820001'});
 
-  final String accountId;
+  String accountId;
   final List<String> paths = [];
 
   @override

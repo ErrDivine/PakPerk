@@ -150,9 +150,112 @@ void main() {
       expect(await signIn, isFalse);
       expect(controller.state.phase, AuthSessionPhase.guest);
       expect(store.record, isNull);
-      expect(accountDataClearCount, 1);
+      expect(accountDataClearCount, 2);
     },
   );
+
+  test(
+    'new sign-in clears the prior account before opening the browser',
+    () async {
+      const oldAccountId = '00000000-0000-4000-8000-000000000444';
+      final oidc = FakeOidcClient();
+      final store = MemorySecureTokenStore(
+        storedRecord(accountId: oldAccountId),
+      );
+      final cleared = <String?>[];
+      final controller = AuthSessionController(
+        repository: repository(oidc: oidc, store: store),
+        clearAccountOwnedData: (accountId) async => cleared.add(accountId),
+      );
+      addTearDown(controller.dispose);
+      await controller.inspectStoredSession();
+
+      expect(await controller.signIn(), isTrue);
+
+      expect(cleared, [oldAccountId]);
+      expect(oidc.authorizeCalls, 1);
+      expect(controller.state.phase, AuthSessionPhase.authenticated);
+      expect(controller.state.accountId, isNull);
+    },
+  );
+
+  test(
+    'verified identity replacement clears stale account rows before binding',
+    () async {
+      const accountA = '00000000-0000-4000-8000-000000000444';
+      const accountB = '00000000-0000-4000-8000-000000000555';
+      final store = MemorySecureTokenStore(storedRecord(accountId: accountA));
+      final cleared = <String?>[];
+      late final AuthSessionController controller;
+      controller = AuthSessionController(
+        repository: repository(oidc: FakeOidcClient(), store: store),
+        clearAccountOwnedData: (accountId) async {
+          expect(store.record?.accountId, accountA);
+          expect(controller.state.accountId, accountA);
+          cleared.add(accountId);
+        },
+      );
+      addTearDown(controller.dispose);
+      await controller.inspectStoredSession();
+
+      await controller.bindAccountId(accountB);
+
+      expect(cleared, [accountA]);
+      expect(store.record?.accountId, accountB);
+      expect(controller.state.accountId, accountB);
+      expect(controller.state.phase, AuthSessionPhase.authenticated);
+    },
+  );
+
+  test('stale identity cleanup failure prevents replacement binding', () async {
+    const accountA = '00000000-0000-4000-8000-000000000444';
+    const accountB = '00000000-0000-4000-8000-000000000555';
+    final store = MemorySecureTokenStore(storedRecord(accountId: accountA));
+    final controller = AuthSessionController(
+      repository: repository(oidc: FakeOidcClient(), store: store),
+      clearAccountOwnedData: (_) async {
+        throw StateError('private cleanup detail');
+      },
+    );
+    addTearDown(controller.dispose);
+    await controller.inspectStoredSession();
+
+    await expectLater(
+      controller.bindAccountId(accountB),
+      throwsA(
+        isA<AuthFailure>().having(
+          (failure) => failure.kind,
+          'kind',
+          AuthFailureKind.accountDataCleanup,
+        ),
+      ),
+    );
+
+    expect(store.record?.accountId, accountA);
+    expect(controller.state.accountId, accountA);
+    expect(controller.state.phase, AuthSessionPhase.unavailable);
+    expect(
+      controller.state.failure?.toString(),
+      isNot(contains('private cleanup detail')),
+    );
+  });
+
+  test('account cleanup failure blocks a new browser sign-in', () async {
+    final oidc = FakeOidcClient();
+    final controller = AuthSessionController(
+      repository: repository(oidc: oidc, store: MemorySecureTokenStore()),
+      clearAccountOwnedData: (_) async {
+        throw StateError('injected cleanup failure');
+      },
+    );
+    addTearDown(controller.dispose);
+
+    expect(await controller.signIn(), isFalse);
+
+    expect(oidc.authorizeCalls, 0);
+    expect(controller.state.phase, AuthSessionPhase.unavailable);
+    expect(controller.state.failure?.kind, AuthFailureKind.accountDataCleanup);
+  });
 
   test(
     'sign-out clears account data while a public cache remains intact',

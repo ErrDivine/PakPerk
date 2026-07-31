@@ -6,14 +6,16 @@ final class AccountRepository {
 
   final AccountApi _api;
 
-  Future<AccountProfile> getCurrent() async =>
-      (await _api.getCurrent()).profile;
+  Future<AccountProfile> getCurrent({required int expectedAuthEpoch}) async =>
+      (await _api.getCurrent(expectedAuthEpoch: expectedAuthEpoch)).profile;
 
   Future<AccountProfile> update({
+    required int expectedAuthEpoch,
     required int expectedProfileVersion,
     required AccountProfilePatch patch,
   }) async {
     final result = await _api.update(
+      expectedAuthEpoch: expectedAuthEpoch,
       expectedProfileVersion: expectedProfileVersion,
       patch: patch,
     );

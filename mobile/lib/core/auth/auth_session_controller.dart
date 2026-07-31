@@ -80,6 +80,33 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
   /// Returns false for a user-cancelled browser flow without surfacing an
   /// error. All other failures are represented only by a safe failure code.
   Future<bool> signIn() async {
+    // A new interactive identity must never inherit another account's local
+    // library, drafts, or outbox. A null ID deliberately asks the application
+    // clearer to remove all account-owned rows left by an unbound session.
+    final previousEpoch = _repository.epoch;
+    final previousAccountId = _repository.accountId ?? state.accountId;
+    _setIfCurrent(
+      previousEpoch,
+      AuthSessionState.authenticating(epoch: previousEpoch),
+    );
+    try {
+      await _clearAccountOwnedData(previousAccountId);
+    } on Object {
+      if (_isCurrent(previousEpoch)) {
+        state = AuthSessionState.unavailable(
+          epoch: previousEpoch,
+          accountId: previousAccountId,
+          failure: AuthFailure(
+            AuthFailureKind.accountDataCleanup,
+            AuthFailureCode.accountDataCleanup,
+            sessionEpoch: previousEpoch,
+          ),
+        );
+      }
+      return false;
+    }
+    if (!_isCurrent(previousEpoch)) return false;
+
     final operation = _repository.signIn();
     final operationEpoch = _repository.epoch;
     _setIfCurrent(
@@ -106,7 +133,26 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
 
   Future<void> bindAccountId(String accountId) async {
     final operationEpoch = _repository.epoch;
+    final previousAccountId = _repository.accountId ?? state.accountId;
     try {
+      if (previousAccountId != null && previousAccountId != accountId) {
+        try {
+          await _clearAccountOwnedData(previousAccountId);
+        } on Object {
+          throw AuthFailure(
+            AuthFailureKind.accountDataCleanup,
+            AuthFailureCode.accountDataCleanup,
+            sessionEpoch: operationEpoch,
+          );
+        }
+        if (!_isCurrent(operationEpoch)) {
+          throw AuthFailure(
+            AuthFailureKind.superseded,
+            AuthFailureCode.operationSuperseded,
+            sessionEpoch: operationEpoch,
+          );
+        }
+      }
       await _repository.bindAccountId(accountId);
       if (_isCurrent(operationEpoch)) {
         state = AuthSessionState.authenticated(
@@ -165,10 +211,12 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
   }
 
   @override
-  Future<String?> accessTokenForRequest() async {
-    final operationEpoch = _repository.epoch;
+  Future<String?> accessTokenForRequest({int? expectedAuthEpoch}) async {
+    final operationEpoch = expectedAuthEpoch ?? _repository.epoch;
     try {
-      final token = await _repository.accessTokenForRequest();
+      final token = await _repository.accessTokenForRequest(
+        expectedAuthEpoch: operationEpoch,
+      );
       if (!_isCurrent(operationEpoch)) return null;
       if (token != null) {
         state = AuthSessionState.authenticated(
@@ -186,8 +234,9 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
   @override
   Future<String?> refreshAfterUnauthorized({
     required String rejectedAccessToken,
+    int? expectedAuthEpoch,
   }) async {
-    final operationEpoch = _repository.epoch;
+    final operationEpoch = expectedAuthEpoch ?? _repository.epoch;
     _setIfCurrent(
       operationEpoch,
       AuthSessionState.refreshing(
@@ -198,6 +247,7 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
     try {
       final token = await _repository.refreshAfterUnauthorized(
         rejectedAccessToken: rejectedAccessToken,
+        expectedAuthEpoch: operationEpoch,
       );
       if (!_isCurrent(operationEpoch)) return null;
       state = token == null

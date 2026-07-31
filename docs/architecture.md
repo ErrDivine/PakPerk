@@ -11,20 +11,23 @@ the same database-backed rate gate.
 ## Production v0.0 phase state
 
 The production migration is specified in
-[the Production v0.0 plan](production-v0.0-plan.md). Phases 0–2 are accepted:
+[the Production v0.0 plan](production-v0.0-plan.md). Phases 0–4 are accepted:
 the Flutter client now has the Read/You shell and a bounded relational
 Drift/SQLite public-content cache, while the existing Rust modular monolith and
 paper pipeline remain intact. Phase 3 account integration is accepted with its
 live-provider, database, native-build, and repository-gate evidence in the
-[verification report](phase-reports/phase-3.md).
+[verification report](phase-reports/phase-3.md). Phase 4 adds a synchronized,
+offline-first To Read set with per-account revisions, durable idempotency,
+tombstone reset, and an independent write kill switch; its evidence is in the
+[Phase 4 report](phase-reports/phase-4.md).
 
 Phase 3 keeps identity inside the same product backend. Keycloak is the
 reference OIDC deployment, but JWT verification, Pakperk account mapping, and
 destructive identity administration remain separate provider-neutral
 boundaries. PostgreSQL stores local accounts and shared rate-limit buckets; no
-account, social, queue, or rate-limit network service is introduced. Public
-comments, synchronized library operations, and account deletion remain later
-phase capabilities.
+account, social, queue, or rate-limit network service is introduced. To Read
+operations remain in the same backend and PostgreSQL database. Public comments
+and account deletion remain later-phase capabilities.
 
 The migration must preserve the capability-publication and reader-transition
 invariants documented below: metadata/abstract prefetch is permitted, but PDF
@@ -36,6 +39,7 @@ flowchart LR
   M -->|"authorization code + PKCE"| I["OIDC provider / Keycloak"]
   A -->|"bounded discovery + JWKS"| I
   M --> D[("Drift / SQLite public cache")]
+  M --> T[("Drift account library + outbox")]
   M --> S["Platform secure storage"]
   A --> P[("PostgreSQL + pgvector")]
   A -->|"idempotent enqueue"| J[("jobs table")]
@@ -64,6 +68,12 @@ explicit safety policy. Sign-out clears secure and account-owned data while
 preserving the public Drift cache and reader restoration. The exact setup and
 wire contract are documented in
 [Account authentication and profile contract](account-authentication.md).
+
+Remote library synchronization starts only after `/v1/me` verifies the exact
+account ID for the current authentication epoch. A stored account ID may scope
+offline display while credentials refresh, but it cannot authorize an outbox
+upload or remote response. Identity mismatch clears the old account rows before
+the newly verified account begins synchronization.
 
 ## Capability publication
 

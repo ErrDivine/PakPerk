@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -32,7 +33,7 @@ void main() {
           PendingAuthenticatedActionController<AppPendingAuthenticatedAction>()
             ..replace(
               AppPendingAuthenticatedAction(
-                kind: AppPendingActionKind.savePaper,
+                kind: AppPendingActionKind.openComposer,
                 targetId: '17060376-2000-4000-8000-000000000001',
               ),
             );
@@ -51,7 +52,7 @@ void main() {
               action,
             ) async {
               resumed += 1;
-              expect(action.actionType, 'savePaper');
+              expect(action.actionType, 'openComposer');
             }),
           ],
           child: MaterialApp.router(routerConfig: router),
@@ -105,6 +106,108 @@ void main() {
       expect(controllers.account.state.profile?.isProfileComplete, isTrue);
     },
   );
+
+  testWidgets(
+    'pending save resumes after active account without profile onboarding',
+    (tester) async {
+      final oidc = FakeOidcClient();
+      final adapter = _ProfileAdapter(completeOnGet: false);
+      final controllers = _controllers(
+        oidc: oidc,
+        secureStore: MemorySecureTokenStore(),
+        adapter: adapter,
+      );
+      final pending =
+          PendingAuthenticatedActionController<AppPendingAuthenticatedAction>()
+            ..replace(
+              AppPendingAuthenticatedAction(
+                kind: AppPendingActionKind.savePaper,
+                targetId: '17060376-2000-4000-8000-000000000001',
+              ),
+            );
+      var resumed = 0;
+      final router = _authRouter();
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appBuildConfigProvider.overrideWithValue(_accountConfig()),
+            authSessionProvider.overrideWith((ref) => controllers.auth),
+            currentAccountProvider.overrideWith((ref) => controllers.account),
+            pendingAuthenticatedActionProvider.overrideWith((ref) => pending),
+            pendingAuthenticatedActionExecutorProvider.overrideWithValue((
+              action,
+            ) async {
+              resumed += 1;
+              expect(action.kind, AppPendingActionKind.savePaper);
+            }),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('You destination'), findsOneWidget);
+      expect(find.text('Finish account setup'), findsNothing);
+      expect(resumed, 1);
+      expect(pending.state, isNull);
+      expect(adapter.requests.map((request) => request.method), ['GET']);
+      expect(controllers.account.state.profile?.isProfileComplete, isFalse);
+    },
+  );
+
+  testWidgets('pending save failure is visible after successful sign-in', (
+    tester,
+  ) async {
+    final controllers = _controllers(
+      oidc: FakeOidcClient(),
+      secureStore: MemorySecureTokenStore(),
+      adapter: _ProfileAdapter(completeOnGet: false),
+    );
+    final pending =
+        PendingAuthenticatedActionController<AppPendingAuthenticatedAction>()
+          ..replace(
+            AppPendingAuthenticatedAction(
+              kind: AppPendingActionKind.savePaper,
+              targetId: '17060376-2000-4000-8000-000000000001',
+            ),
+          );
+    final router = _authRouter(initialLocation: '/you');
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appBuildConfigProvider.overrideWithValue(_accountConfig()),
+          authSessionProvider.overrideWith((ref) => controllers.auth),
+          currentAccountProvider.overrideWith((ref) => controllers.account),
+          pendingAuthenticatedActionProvider.overrideWith((ref) => pending),
+          pendingAuthenticatedActionExecutorProvider.overrideWithValue((
+            action,
+          ) async {
+            throw StateError('simulated local write failure');
+          }),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    unawaited(router.push<void>('/auth'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Save could not be completed'), findsOneWidget);
+    expect(
+      find.text('You are signed in, but this paper was not saved. Try again.'),
+      findsOneWidget,
+    );
+    expect(pending.state?.kind, AppPendingActionKind.savePaper);
+
+    expect(await tester.binding.handlePopRoute(), isTrue);
+    await tester.pumpAndSettle();
+
+    expect(find.text('You destination'), findsOneWidget);
+    expect(pending.state, isNull);
+  });
 
   testWidgets('cancelled AppAuth clears pending action and returns in place', (
     tester,
@@ -162,10 +265,18 @@ void main() {
       adapter: adapter,
       clearAccountData: (_) async => accountRows.clear(),
     );
-    await tester.runAsync(() async {
-      expect(await controllers.auth.signIn(), isTrue);
-      expect(await controllers.account.load(), isNotNull);
-    });
+    expect(await controllers.auth.signIn(), isTrue);
+    final profileLoad = controllers.account.load();
+    for (
+      var attempt = 0;
+      attempt < 100 &&
+          controllers.account.state.phase == CurrentAccountPhase.loading;
+      attempt += 1
+    ) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(controllers.account.state.phase, CurrentAccountPhase.ready);
+    expect(await profileLoad, isNotNull);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -195,26 +306,22 @@ void main() {
 
     expect(find.text('Ada Reader'), findsOneWidget);
     expect(find.text('@ada_reader'), findsOneWidget);
-    expect(find.text('Sync arrives with the Phase 4 library.'), findsOneWidget);
+    expect(find.text('To Read'), findsNothing);
     await tester.scrollUntilVisible(
       find.text('Sign out'),
       260,
       scrollable: find.byType(Scrollable).first,
     );
-    final signOut = tester
-        .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Sign out'))
-        .onPressed!;
-    await tester.runAsync(() async {
-      signOut();
-      final deadline = DateTime.now().add(const Duration(seconds: 1));
-      while (controllers.auth.state.phase == AuthSessionPhase.signingOut) {
-        if (DateTime.now().isAfter(deadline)) {
-          fail('Sign-out did not leave its transient state.');
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 1));
-      }
-    });
-    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Sign out'));
+    for (
+      var attempt = 0;
+      attempt < 100 && controllers.auth.state.phase != AuthSessionPhase.guest;
+      attempt += 1
+    ) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(controllers.auth.state.phase, AuthSessionPhase.guest);
+    await tester.pump();
 
     expect(
       find.text(
@@ -302,8 +409,8 @@ void main() {
   return (auth: auth, account: account);
 }
 
-GoRouter _authRouter() => GoRouter(
-  initialLocation: '/auth',
+GoRouter _authRouter({String initialLocation = '/auth'}) => GoRouter(
+  initialLocation: initialLocation,
   routes: [
     GoRoute(path: '/auth', builder: (_, __) => const AuthFlowScreen()),
     GoRoute(

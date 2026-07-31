@@ -3794,6 +3794,87 @@ class $LibraryItemsTable extends LibraryItems
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _savedAtMeta = const VerificationMeta(
+    'savedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> savedAt = GeneratedColumn<DateTime>(
+    'saved_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _removedAtMeta = const VerificationMeta(
+    'removedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> removedAt = GeneratedColumn<DateTime>(
+    'removed_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastOperationIdMeta = const VerificationMeta(
+    'lastOperationId',
+  );
+  @override
+  late final GeneratedColumn<String> lastOperationId = GeneratedColumn<String>(
+    'last_operation_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _canonicalDeletedMeta = const VerificationMeta(
+    'canonicalDeleted',
+  );
+  @override
+  late final GeneratedColumn<bool> canonicalDeleted = GeneratedColumn<bool>(
+    'canonical_deleted',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("canonical_deleted" IN (0, 1))',
+    ),
+  );
+  static const VerificationMeta _canonicalSavedAtMeta = const VerificationMeta(
+    'canonicalSavedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> canonicalSavedAt =
+      GeneratedColumn<DateTime>(
+        'canonical_saved_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _canonicalRemovedAtMeta =
+      const VerificationMeta('canonicalRemovedAt');
+  @override
+  late final GeneratedColumn<DateTime> canonicalRemovedAt =
+      GeneratedColumn<DateTime>(
+        'canonical_removed_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     accountId,
@@ -3802,6 +3883,13 @@ class $LibraryItemsTable extends LibraryItems
     clientUpdatedAt,
     serverUpdatedAt,
     deleted,
+    savedAt,
+    removedAt,
+    revision,
+    lastOperationId,
+    canonicalDeleted,
+    canonicalSavedAt,
+    canonicalRemovedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3863,6 +3951,60 @@ class $LibraryItemsTable extends LibraryItems
         deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta),
       );
     }
+    if (data.containsKey('saved_at')) {
+      context.handle(
+        _savedAtMeta,
+        savedAt.isAcceptableOrUnknown(data['saved_at']!, _savedAtMeta),
+      );
+    }
+    if (data.containsKey('removed_at')) {
+      context.handle(
+        _removedAtMeta,
+        removedAt.isAcceptableOrUnknown(data['removed_at']!, _removedAtMeta),
+      );
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('last_operation_id')) {
+      context.handle(
+        _lastOperationIdMeta,
+        lastOperationId.isAcceptableOrUnknown(
+          data['last_operation_id']!,
+          _lastOperationIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('canonical_deleted')) {
+      context.handle(
+        _canonicalDeletedMeta,
+        canonicalDeleted.isAcceptableOrUnknown(
+          data['canonical_deleted']!,
+          _canonicalDeletedMeta,
+        ),
+      );
+    }
+    if (data.containsKey('canonical_saved_at')) {
+      context.handle(
+        _canonicalSavedAtMeta,
+        canonicalSavedAt.isAcceptableOrUnknown(
+          data['canonical_saved_at']!,
+          _canonicalSavedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('canonical_removed_at')) {
+      context.handle(
+        _canonicalRemovedAtMeta,
+        canonicalRemovedAt.isAcceptableOrUnknown(
+          data['canonical_removed_at']!,
+          _canonicalRemovedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -3896,6 +4038,34 @@ class $LibraryItemsTable extends LibraryItems
         DriftSqlType.bool,
         data['${effectivePrefix}deleted'],
       )!,
+      savedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}saved_at'],
+      ),
+      removedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}removed_at'],
+      ),
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      ),
+      lastOperationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_operation_id'],
+      ),
+      canonicalDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}canonical_deleted'],
+      ),
+      canonicalSavedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}canonical_saved_at'],
+      ),
+      canonicalRemovedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}canonical_removed_at'],
+      ),
     );
   }
 
@@ -3912,6 +4082,13 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
   final DateTime clientUpdatedAt;
   final DateTime? serverUpdatedAt;
   final bool deleted;
+  final DateTime? savedAt;
+  final DateTime? removedAt;
+  final int? revision;
+  final String? lastOperationId;
+  final bool? canonicalDeleted;
+  final DateTime? canonicalSavedAt;
+  final DateTime? canonicalRemovedAt;
   const LibraryItemRow({
     required this.accountId,
     required this.paperId,
@@ -3919,6 +4096,13 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
     required this.clientUpdatedAt,
     this.serverUpdatedAt,
     required this.deleted,
+    this.savedAt,
+    this.removedAt,
+    this.revision,
+    this.lastOperationId,
+    this.canonicalDeleted,
+    this.canonicalSavedAt,
+    this.canonicalRemovedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3931,6 +4115,27 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
       map['server_updated_at'] = Variable<DateTime>(serverUpdatedAt);
     }
     map['deleted'] = Variable<bool>(deleted);
+    if (!nullToAbsent || savedAt != null) {
+      map['saved_at'] = Variable<DateTime>(savedAt);
+    }
+    if (!nullToAbsent || removedAt != null) {
+      map['removed_at'] = Variable<DateTime>(removedAt);
+    }
+    if (!nullToAbsent || revision != null) {
+      map['revision'] = Variable<int>(revision);
+    }
+    if (!nullToAbsent || lastOperationId != null) {
+      map['last_operation_id'] = Variable<String>(lastOperationId);
+    }
+    if (!nullToAbsent || canonicalDeleted != null) {
+      map['canonical_deleted'] = Variable<bool>(canonicalDeleted);
+    }
+    if (!nullToAbsent || canonicalSavedAt != null) {
+      map['canonical_saved_at'] = Variable<DateTime>(canonicalSavedAt);
+    }
+    if (!nullToAbsent || canonicalRemovedAt != null) {
+      map['canonical_removed_at'] = Variable<DateTime>(canonicalRemovedAt);
+    }
     return map;
   }
 
@@ -3944,6 +4149,27 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
           ? const Value.absent()
           : Value(serverUpdatedAt),
       deleted: Value(deleted),
+      savedAt: savedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(savedAt),
+      removedAt: removedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(removedAt),
+      revision: revision == null && nullToAbsent
+          ? const Value.absent()
+          : Value(revision),
+      lastOperationId: lastOperationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastOperationId),
+      canonicalDeleted: canonicalDeleted == null && nullToAbsent
+          ? const Value.absent()
+          : Value(canonicalDeleted),
+      canonicalSavedAt: canonicalSavedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(canonicalSavedAt),
+      canonicalRemovedAt: canonicalRemovedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(canonicalRemovedAt),
     );
   }
 
@@ -3959,6 +4185,17 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
       clientUpdatedAt: serializer.fromJson<DateTime>(json['clientUpdatedAt']),
       serverUpdatedAt: serializer.fromJson<DateTime?>(json['serverUpdatedAt']),
       deleted: serializer.fromJson<bool>(json['deleted']),
+      savedAt: serializer.fromJson<DateTime?>(json['savedAt']),
+      removedAt: serializer.fromJson<DateTime?>(json['removedAt']),
+      revision: serializer.fromJson<int?>(json['revision']),
+      lastOperationId: serializer.fromJson<String?>(json['lastOperationId']),
+      canonicalDeleted: serializer.fromJson<bool?>(json['canonicalDeleted']),
+      canonicalSavedAt: serializer.fromJson<DateTime?>(
+        json['canonicalSavedAt'],
+      ),
+      canonicalRemovedAt: serializer.fromJson<DateTime?>(
+        json['canonicalRemovedAt'],
+      ),
     );
   }
   @override
@@ -3971,6 +4208,13 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
       'clientUpdatedAt': serializer.toJson<DateTime>(clientUpdatedAt),
       'serverUpdatedAt': serializer.toJson<DateTime?>(serverUpdatedAt),
       'deleted': serializer.toJson<bool>(deleted),
+      'savedAt': serializer.toJson<DateTime?>(savedAt),
+      'removedAt': serializer.toJson<DateTime?>(removedAt),
+      'revision': serializer.toJson<int?>(revision),
+      'lastOperationId': serializer.toJson<String?>(lastOperationId),
+      'canonicalDeleted': serializer.toJson<bool?>(canonicalDeleted),
+      'canonicalSavedAt': serializer.toJson<DateTime?>(canonicalSavedAt),
+      'canonicalRemovedAt': serializer.toJson<DateTime?>(canonicalRemovedAt),
     };
   }
 
@@ -3981,6 +4225,13 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
     DateTime? clientUpdatedAt,
     Value<DateTime?> serverUpdatedAt = const Value.absent(),
     bool? deleted,
+    Value<DateTime?> savedAt = const Value.absent(),
+    Value<DateTime?> removedAt = const Value.absent(),
+    Value<int?> revision = const Value.absent(),
+    Value<String?> lastOperationId = const Value.absent(),
+    Value<bool?> canonicalDeleted = const Value.absent(),
+    Value<DateTime?> canonicalSavedAt = const Value.absent(),
+    Value<DateTime?> canonicalRemovedAt = const Value.absent(),
   }) => LibraryItemRow(
     accountId: accountId ?? this.accountId,
     paperId: paperId ?? this.paperId,
@@ -3990,6 +4241,21 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
         ? serverUpdatedAt.value
         : this.serverUpdatedAt,
     deleted: deleted ?? this.deleted,
+    savedAt: savedAt.present ? savedAt.value : this.savedAt,
+    removedAt: removedAt.present ? removedAt.value : this.removedAt,
+    revision: revision.present ? revision.value : this.revision,
+    lastOperationId: lastOperationId.present
+        ? lastOperationId.value
+        : this.lastOperationId,
+    canonicalDeleted: canonicalDeleted.present
+        ? canonicalDeleted.value
+        : this.canonicalDeleted,
+    canonicalSavedAt: canonicalSavedAt.present
+        ? canonicalSavedAt.value
+        : this.canonicalSavedAt,
+    canonicalRemovedAt: canonicalRemovedAt.present
+        ? canonicalRemovedAt.value
+        : this.canonicalRemovedAt,
   );
   LibraryItemRow copyWithCompanion(LibraryItemsCompanion data) {
     return LibraryItemRow(
@@ -4003,6 +4269,21 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
           ? data.serverUpdatedAt.value
           : this.serverUpdatedAt,
       deleted: data.deleted.present ? data.deleted.value : this.deleted,
+      savedAt: data.savedAt.present ? data.savedAt.value : this.savedAt,
+      removedAt: data.removedAt.present ? data.removedAt.value : this.removedAt,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      lastOperationId: data.lastOperationId.present
+          ? data.lastOperationId.value
+          : this.lastOperationId,
+      canonicalDeleted: data.canonicalDeleted.present
+          ? data.canonicalDeleted.value
+          : this.canonicalDeleted,
+      canonicalSavedAt: data.canonicalSavedAt.present
+          ? data.canonicalSavedAt.value
+          : this.canonicalSavedAt,
+      canonicalRemovedAt: data.canonicalRemovedAt.present
+          ? data.canonicalRemovedAt.value
+          : this.canonicalRemovedAt,
     );
   }
 
@@ -4014,7 +4295,14 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
           ..write('listState: $listState, ')
           ..write('clientUpdatedAt: $clientUpdatedAt, ')
           ..write('serverUpdatedAt: $serverUpdatedAt, ')
-          ..write('deleted: $deleted')
+          ..write('deleted: $deleted, ')
+          ..write('savedAt: $savedAt, ')
+          ..write('removedAt: $removedAt, ')
+          ..write('revision: $revision, ')
+          ..write('lastOperationId: $lastOperationId, ')
+          ..write('canonicalDeleted: $canonicalDeleted, ')
+          ..write('canonicalSavedAt: $canonicalSavedAt, ')
+          ..write('canonicalRemovedAt: $canonicalRemovedAt')
           ..write(')'))
         .toString();
   }
@@ -4027,6 +4315,13 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
     clientUpdatedAt,
     serverUpdatedAt,
     deleted,
+    savedAt,
+    removedAt,
+    revision,
+    lastOperationId,
+    canonicalDeleted,
+    canonicalSavedAt,
+    canonicalRemovedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -4037,7 +4332,14 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
           other.listState == this.listState &&
           other.clientUpdatedAt == this.clientUpdatedAt &&
           other.serverUpdatedAt == this.serverUpdatedAt &&
-          other.deleted == this.deleted);
+          other.deleted == this.deleted &&
+          other.savedAt == this.savedAt &&
+          other.removedAt == this.removedAt &&
+          other.revision == this.revision &&
+          other.lastOperationId == this.lastOperationId &&
+          other.canonicalDeleted == this.canonicalDeleted &&
+          other.canonicalSavedAt == this.canonicalSavedAt &&
+          other.canonicalRemovedAt == this.canonicalRemovedAt);
 }
 
 class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
@@ -4047,6 +4349,13 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
   final Value<DateTime> clientUpdatedAt;
   final Value<DateTime?> serverUpdatedAt;
   final Value<bool> deleted;
+  final Value<DateTime?> savedAt;
+  final Value<DateTime?> removedAt;
+  final Value<int?> revision;
+  final Value<String?> lastOperationId;
+  final Value<bool?> canonicalDeleted;
+  final Value<DateTime?> canonicalSavedAt;
+  final Value<DateTime?> canonicalRemovedAt;
   final Value<int> rowid;
   const LibraryItemsCompanion({
     this.accountId = const Value.absent(),
@@ -4055,6 +4364,13 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     this.clientUpdatedAt = const Value.absent(),
     this.serverUpdatedAt = const Value.absent(),
     this.deleted = const Value.absent(),
+    this.savedAt = const Value.absent(),
+    this.removedAt = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.lastOperationId = const Value.absent(),
+    this.canonicalDeleted = const Value.absent(),
+    this.canonicalSavedAt = const Value.absent(),
+    this.canonicalRemovedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LibraryItemsCompanion.insert({
@@ -4064,6 +4380,13 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     required DateTime clientUpdatedAt,
     this.serverUpdatedAt = const Value.absent(),
     this.deleted = const Value.absent(),
+    this.savedAt = const Value.absent(),
+    this.removedAt = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.lastOperationId = const Value.absent(),
+    this.canonicalDeleted = const Value.absent(),
+    this.canonicalSavedAt = const Value.absent(),
+    this.canonicalRemovedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : accountId = Value(accountId),
        paperId = Value(paperId),
@@ -4075,6 +4398,13 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     Expression<DateTime>? clientUpdatedAt,
     Expression<DateTime>? serverUpdatedAt,
     Expression<bool>? deleted,
+    Expression<DateTime>? savedAt,
+    Expression<DateTime>? removedAt,
+    Expression<int>? revision,
+    Expression<String>? lastOperationId,
+    Expression<bool>? canonicalDeleted,
+    Expression<DateTime>? canonicalSavedAt,
+    Expression<DateTime>? canonicalRemovedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -4084,6 +4414,14 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
       if (clientUpdatedAt != null) 'client_updated_at': clientUpdatedAt,
       if (serverUpdatedAt != null) 'server_updated_at': serverUpdatedAt,
       if (deleted != null) 'deleted': deleted,
+      if (savedAt != null) 'saved_at': savedAt,
+      if (removedAt != null) 'removed_at': removedAt,
+      if (revision != null) 'revision': revision,
+      if (lastOperationId != null) 'last_operation_id': lastOperationId,
+      if (canonicalDeleted != null) 'canonical_deleted': canonicalDeleted,
+      if (canonicalSavedAt != null) 'canonical_saved_at': canonicalSavedAt,
+      if (canonicalRemovedAt != null)
+        'canonical_removed_at': canonicalRemovedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -4095,6 +4433,13 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     Value<DateTime>? clientUpdatedAt,
     Value<DateTime?>? serverUpdatedAt,
     Value<bool>? deleted,
+    Value<DateTime?>? savedAt,
+    Value<DateTime?>? removedAt,
+    Value<int?>? revision,
+    Value<String?>? lastOperationId,
+    Value<bool?>? canonicalDeleted,
+    Value<DateTime?>? canonicalSavedAt,
+    Value<DateTime?>? canonicalRemovedAt,
     Value<int>? rowid,
   }) {
     return LibraryItemsCompanion(
@@ -4104,6 +4449,13 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
       clientUpdatedAt: clientUpdatedAt ?? this.clientUpdatedAt,
       serverUpdatedAt: serverUpdatedAt ?? this.serverUpdatedAt,
       deleted: deleted ?? this.deleted,
+      savedAt: savedAt ?? this.savedAt,
+      removedAt: removedAt ?? this.removedAt,
+      revision: revision ?? this.revision,
+      lastOperationId: lastOperationId ?? this.lastOperationId,
+      canonicalDeleted: canonicalDeleted ?? this.canonicalDeleted,
+      canonicalSavedAt: canonicalSavedAt ?? this.canonicalSavedAt,
+      canonicalRemovedAt: canonicalRemovedAt ?? this.canonicalRemovedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4129,6 +4481,29 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     if (deleted.present) {
       map['deleted'] = Variable<bool>(deleted.value);
     }
+    if (savedAt.present) {
+      map['saved_at'] = Variable<DateTime>(savedAt.value);
+    }
+    if (removedAt.present) {
+      map['removed_at'] = Variable<DateTime>(removedAt.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (lastOperationId.present) {
+      map['last_operation_id'] = Variable<String>(lastOperationId.value);
+    }
+    if (canonicalDeleted.present) {
+      map['canonical_deleted'] = Variable<bool>(canonicalDeleted.value);
+    }
+    if (canonicalSavedAt.present) {
+      map['canonical_saved_at'] = Variable<DateTime>(canonicalSavedAt.value);
+    }
+    if (canonicalRemovedAt.present) {
+      map['canonical_removed_at'] = Variable<DateTime>(
+        canonicalRemovedAt.value,
+      );
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4144,6 +4519,13 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
           ..write('clientUpdatedAt: $clientUpdatedAt, ')
           ..write('serverUpdatedAt: $serverUpdatedAt, ')
           ..write('deleted: $deleted, ')
+          ..write('savedAt: $savedAt, ')
+          ..write('removedAt: $removedAt, ')
+          ..write('revision: $revision, ')
+          ..write('lastOperationId: $lastOperationId, ')
+          ..write('canonicalDeleted: $canonicalDeleted, ')
+          ..write('canonicalSavedAt: $canonicalSavedAt, ')
+          ..write('canonicalRemovedAt: $canonicalRemovedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4747,6 +5129,38 @@ class $SyncOutboxTable extends SyncOutbox
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _stateMeta = const VerificationMeta('state');
+  @override
+  late final GeneratedColumn<String> state = GeneratedColumn<String>(
+    'state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('queued'),
+  );
+  static const VerificationMeta _startedAtMeta = const VerificationMeta(
+    'startedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> startedAt = GeneratedColumn<DateTime>(
+    'started_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     operationId,
@@ -4759,6 +5173,9 @@ class $SyncOutboxTable extends SyncOutbox
     attemptCount,
     nextAttemptAt,
     lastErrorCode,
+    state,
+    startedAt,
+    updatedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -4859,6 +5276,24 @@ class $SyncOutboxTable extends SyncOutbox
         ),
       );
     }
+    if (data.containsKey('state')) {
+      context.handle(
+        _stateMeta,
+        state.isAcceptableOrUnknown(data['state']!, _stateMeta),
+      );
+    }
+    if (data.containsKey('started_at')) {
+      context.handle(
+        _startedAtMeta,
+        startedAt.isAcceptableOrUnknown(data['started_at']!, _startedAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -4908,6 +5343,18 @@ class $SyncOutboxTable extends SyncOutbox
         DriftSqlType.string,
         data['${effectivePrefix}last_error_code'],
       ),
+      state: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}state'],
+      )!,
+      startedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}started_at'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      ),
     );
   }
 
@@ -4928,6 +5375,9 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
   final int attemptCount;
   final DateTime? nextAttemptAt;
   final String? lastErrorCode;
+  final String state;
+  final DateTime? startedAt;
+  final DateTime? updatedAt;
   const SyncOutboxRow({
     required this.operationId,
     this.accountId,
@@ -4939,6 +5389,9 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
     required this.attemptCount,
     this.nextAttemptAt,
     this.lastErrorCode,
+    required this.state,
+    this.startedAt,
+    this.updatedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4958,6 +5411,13 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
     }
     if (!nullToAbsent || lastErrorCode != null) {
       map['last_error_code'] = Variable<String>(lastErrorCode);
+    }
+    map['state'] = Variable<String>(state);
+    if (!nullToAbsent || startedAt != null) {
+      map['started_at'] = Variable<DateTime>(startedAt);
+    }
+    if (!nullToAbsent || updatedAt != null) {
+      map['updated_at'] = Variable<DateTime>(updatedAt);
     }
     return map;
   }
@@ -4980,6 +5440,13 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
       lastErrorCode: lastErrorCode == null && nullToAbsent
           ? const Value.absent()
           : Value(lastErrorCode),
+      state: Value(state),
+      startedAt: startedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(startedAt),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
     );
   }
 
@@ -4999,6 +5466,9 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
       attemptCount: serializer.fromJson<int>(json['attemptCount']),
       nextAttemptAt: serializer.fromJson<DateTime?>(json['nextAttemptAt']),
       lastErrorCode: serializer.fromJson<String?>(json['lastErrorCode']),
+      state: serializer.fromJson<String>(json['state']),
+      startedAt: serializer.fromJson<DateTime?>(json['startedAt']),
+      updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
     );
   }
   @override
@@ -5015,6 +5485,9 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
       'attemptCount': serializer.toJson<int>(attemptCount),
       'nextAttemptAt': serializer.toJson<DateTime?>(nextAttemptAt),
       'lastErrorCode': serializer.toJson<String?>(lastErrorCode),
+      'state': serializer.toJson<String>(state),
+      'startedAt': serializer.toJson<DateTime?>(startedAt),
+      'updatedAt': serializer.toJson<DateTime?>(updatedAt),
     };
   }
 
@@ -5029,6 +5502,9 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
     int? attemptCount,
     Value<DateTime?> nextAttemptAt = const Value.absent(),
     Value<String?> lastErrorCode = const Value.absent(),
+    String? state,
+    Value<DateTime?> startedAt = const Value.absent(),
+    Value<DateTime?> updatedAt = const Value.absent(),
   }) => SyncOutboxRow(
     operationId: operationId ?? this.operationId,
     accountId: accountId.present ? accountId.value : this.accountId,
@@ -5044,6 +5520,9 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
     lastErrorCode: lastErrorCode.present
         ? lastErrorCode.value
         : this.lastErrorCode,
+    state: state ?? this.state,
+    startedAt: startedAt.present ? startedAt.value : this.startedAt,
+    updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
   );
   SyncOutboxRow copyWithCompanion(SyncOutboxCompanion data) {
     return SyncOutboxRow(
@@ -5069,6 +5548,9 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
       lastErrorCode: data.lastErrorCode.present
           ? data.lastErrorCode.value
           : this.lastErrorCode,
+      state: data.state.present ? data.state.value : this.state,
+      startedAt: data.startedAt.present ? data.startedAt.value : this.startedAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
 
@@ -5084,7 +5566,10 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
           ..write('createdAt: $createdAt, ')
           ..write('attemptCount: $attemptCount, ')
           ..write('nextAttemptAt: $nextAttemptAt, ')
-          ..write('lastErrorCode: $lastErrorCode')
+          ..write('lastErrorCode: $lastErrorCode, ')
+          ..write('state: $state, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
@@ -5101,6 +5586,9 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
     attemptCount,
     nextAttemptAt,
     lastErrorCode,
+    state,
+    startedAt,
+    updatedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -5115,7 +5603,10 @@ class SyncOutboxRow extends DataClass implements Insertable<SyncOutboxRow> {
           other.createdAt == this.createdAt &&
           other.attemptCount == this.attemptCount &&
           other.nextAttemptAt == this.nextAttemptAt &&
-          other.lastErrorCode == this.lastErrorCode);
+          other.lastErrorCode == this.lastErrorCode &&
+          other.state == this.state &&
+          other.startedAt == this.startedAt &&
+          other.updatedAt == this.updatedAt);
 }
 
 class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
@@ -5129,6 +5620,9 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
   final Value<int> attemptCount;
   final Value<DateTime?> nextAttemptAt;
   final Value<String?> lastErrorCode;
+  final Value<String> state;
+  final Value<DateTime?> startedAt;
+  final Value<DateTime?> updatedAt;
   final Value<int> rowid;
   const SyncOutboxCompanion({
     this.operationId = const Value.absent(),
@@ -5141,6 +5635,9 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
     this.attemptCount = const Value.absent(),
     this.nextAttemptAt = const Value.absent(),
     this.lastErrorCode = const Value.absent(),
+    this.state = const Value.absent(),
+    this.startedAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SyncOutboxCompanion.insert({
@@ -5154,6 +5651,9 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
     this.attemptCount = const Value.absent(),
     this.nextAttemptAt = const Value.absent(),
     this.lastErrorCode = const Value.absent(),
+    this.state = const Value.absent(),
+    this.startedAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : operationId = Value(operationId),
        entityKind = Value(entityKind),
@@ -5172,6 +5672,9 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
     Expression<int>? attemptCount,
     Expression<DateTime>? nextAttemptAt,
     Expression<String>? lastErrorCode,
+    Expression<String>? state,
+    Expression<DateTime>? startedAt,
+    Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -5185,6 +5688,9 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
       if (attemptCount != null) 'attempt_count': attemptCount,
       if (nextAttemptAt != null) 'next_attempt_at': nextAttemptAt,
       if (lastErrorCode != null) 'last_error_code': lastErrorCode,
+      if (state != null) 'state': state,
+      if (startedAt != null) 'started_at': startedAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -5200,6 +5706,9 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
     Value<int>? attemptCount,
     Value<DateTime?>? nextAttemptAt,
     Value<String?>? lastErrorCode,
+    Value<String>? state,
+    Value<DateTime?>? startedAt,
+    Value<DateTime?>? updatedAt,
     Value<int>? rowid,
   }) {
     return SyncOutboxCompanion(
@@ -5213,6 +5722,9 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
       attemptCount: attemptCount ?? this.attemptCount,
       nextAttemptAt: nextAttemptAt ?? this.nextAttemptAt,
       lastErrorCode: lastErrorCode ?? this.lastErrorCode,
+      state: state ?? this.state,
+      startedAt: startedAt ?? this.startedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -5250,6 +5762,15 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
     if (lastErrorCode.present) {
       map['last_error_code'] = Variable<String>(lastErrorCode.value);
     }
+    if (state.present) {
+      map['state'] = Variable<String>(state.value);
+    }
+    if (startedAt.present) {
+      map['started_at'] = Variable<DateTime>(startedAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -5269,6 +5790,349 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxRow> {
           ..write('attemptCount: $attemptCount, ')
           ..write('nextAttemptAt: $nextAttemptAt, ')
           ..write('lastErrorCode: $lastErrorCode, ')
+          ..write('state: $state, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LibrarySyncStatesTable extends LibrarySyncStates
+    with TableInfo<$LibrarySyncStatesTable, LibrarySyncStateRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LibrarySyncStatesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+    'account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lastRevisionMeta = const VerificationMeta(
+    'lastRevision',
+  );
+  @override
+  late final GeneratedColumn<int> lastRevision = GeneratedColumn<int>(
+    'last_revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _initializedMeta = const VerificationMeta(
+    'initialized',
+  );
+  @override
+  late final GeneratedColumn<bool> initialized = GeneratedColumn<bool>(
+    'initialized',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("initialized" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _lastFullSyncAtMeta = const VerificationMeta(
+    'lastFullSyncAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastFullSyncAt =
+      GeneratedColumn<DateTime>(
+        'last_full_sync_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountId,
+    lastRevision,
+    initialized,
+    lastFullSyncAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'library_sync_states';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LibrarySyncStateRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('last_revision')) {
+      context.handle(
+        _lastRevisionMeta,
+        lastRevision.isAcceptableOrUnknown(
+          data['last_revision']!,
+          _lastRevisionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('initialized')) {
+      context.handle(
+        _initializedMeta,
+        initialized.isAcceptableOrUnknown(
+          data['initialized']!,
+          _initializedMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_full_sync_at')) {
+      context.handle(
+        _lastFullSyncAtMeta,
+        lastFullSyncAt.isAcceptableOrUnknown(
+          data['last_full_sync_at']!,
+          _lastFullSyncAtMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountId};
+  @override
+  LibrarySyncStateRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LibrarySyncStateRow(
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}account_id'],
+      )!,
+      lastRevision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}last_revision'],
+      )!,
+      initialized: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}initialized'],
+      )!,
+      lastFullSyncAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_full_sync_at'],
+      ),
+    );
+  }
+
+  @override
+  $LibrarySyncStatesTable createAlias(String alias) {
+    return $LibrarySyncStatesTable(attachedDatabase, alias);
+  }
+}
+
+class LibrarySyncStateRow extends DataClass
+    implements Insertable<LibrarySyncStateRow> {
+  final String accountId;
+  final int lastRevision;
+  final bool initialized;
+  final DateTime? lastFullSyncAt;
+  const LibrarySyncStateRow({
+    required this.accountId,
+    required this.lastRevision,
+    required this.initialized,
+    this.lastFullSyncAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['account_id'] = Variable<String>(accountId);
+    map['last_revision'] = Variable<int>(lastRevision);
+    map['initialized'] = Variable<bool>(initialized);
+    if (!nullToAbsent || lastFullSyncAt != null) {
+      map['last_full_sync_at'] = Variable<DateTime>(lastFullSyncAt);
+    }
+    return map;
+  }
+
+  LibrarySyncStatesCompanion toCompanion(bool nullToAbsent) {
+    return LibrarySyncStatesCompanion(
+      accountId: Value(accountId),
+      lastRevision: Value(lastRevision),
+      initialized: Value(initialized),
+      lastFullSyncAt: lastFullSyncAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastFullSyncAt),
+    );
+  }
+
+  factory LibrarySyncStateRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LibrarySyncStateRow(
+      accountId: serializer.fromJson<String>(json['accountId']),
+      lastRevision: serializer.fromJson<int>(json['lastRevision']),
+      initialized: serializer.fromJson<bool>(json['initialized']),
+      lastFullSyncAt: serializer.fromJson<DateTime?>(json['lastFullSyncAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountId': serializer.toJson<String>(accountId),
+      'lastRevision': serializer.toJson<int>(lastRevision),
+      'initialized': serializer.toJson<bool>(initialized),
+      'lastFullSyncAt': serializer.toJson<DateTime?>(lastFullSyncAt),
+    };
+  }
+
+  LibrarySyncStateRow copyWith({
+    String? accountId,
+    int? lastRevision,
+    bool? initialized,
+    Value<DateTime?> lastFullSyncAt = const Value.absent(),
+  }) => LibrarySyncStateRow(
+    accountId: accountId ?? this.accountId,
+    lastRevision: lastRevision ?? this.lastRevision,
+    initialized: initialized ?? this.initialized,
+    lastFullSyncAt: lastFullSyncAt.present
+        ? lastFullSyncAt.value
+        : this.lastFullSyncAt,
+  );
+  LibrarySyncStateRow copyWithCompanion(LibrarySyncStatesCompanion data) {
+    return LibrarySyncStateRow(
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      lastRevision: data.lastRevision.present
+          ? data.lastRevision.value
+          : this.lastRevision,
+      initialized: data.initialized.present
+          ? data.initialized.value
+          : this.initialized,
+      lastFullSyncAt: data.lastFullSyncAt.present
+          ? data.lastFullSyncAt.value
+          : this.lastFullSyncAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LibrarySyncStateRow(')
+          ..write('accountId: $accountId, ')
+          ..write('lastRevision: $lastRevision, ')
+          ..write('initialized: $initialized, ')
+          ..write('lastFullSyncAt: $lastFullSyncAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(accountId, lastRevision, initialized, lastFullSyncAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LibrarySyncStateRow &&
+          other.accountId == this.accountId &&
+          other.lastRevision == this.lastRevision &&
+          other.initialized == this.initialized &&
+          other.lastFullSyncAt == this.lastFullSyncAt);
+}
+
+class LibrarySyncStatesCompanion extends UpdateCompanion<LibrarySyncStateRow> {
+  final Value<String> accountId;
+  final Value<int> lastRevision;
+  final Value<bool> initialized;
+  final Value<DateTime?> lastFullSyncAt;
+  final Value<int> rowid;
+  const LibrarySyncStatesCompanion({
+    this.accountId = const Value.absent(),
+    this.lastRevision = const Value.absent(),
+    this.initialized = const Value.absent(),
+    this.lastFullSyncAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LibrarySyncStatesCompanion.insert({
+    required String accountId,
+    this.lastRevision = const Value.absent(),
+    this.initialized = const Value.absent(),
+    this.lastFullSyncAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : accountId = Value(accountId);
+  static Insertable<LibrarySyncStateRow> custom({
+    Expression<String>? accountId,
+    Expression<int>? lastRevision,
+    Expression<bool>? initialized,
+    Expression<DateTime>? lastFullSyncAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (accountId != null) 'account_id': accountId,
+      if (lastRevision != null) 'last_revision': lastRevision,
+      if (initialized != null) 'initialized': initialized,
+      if (lastFullSyncAt != null) 'last_full_sync_at': lastFullSyncAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LibrarySyncStatesCompanion copyWith({
+    Value<String>? accountId,
+    Value<int>? lastRevision,
+    Value<bool>? initialized,
+    Value<DateTime?>? lastFullSyncAt,
+    Value<int>? rowid,
+  }) {
+    return LibrarySyncStatesCompanion(
+      accountId: accountId ?? this.accountId,
+      lastRevision: lastRevision ?? this.lastRevision,
+      initialized: initialized ?? this.initialized,
+      lastFullSyncAt: lastFullSyncAt ?? this.lastFullSyncAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (lastRevision.present) {
+      map['last_revision'] = Variable<int>(lastRevision.value);
+    }
+    if (initialized.present) {
+      map['initialized'] = Variable<bool>(initialized.value);
+    }
+    if (lastFullSyncAt.present) {
+      map['last_full_sync_at'] = Variable<DateTime>(lastFullSyncAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LibrarySyncStatesCompanion(')
+          ..write('accountId: $accountId, ')
+          ..write('lastRevision: $lastRevision, ')
+          ..write('initialized: $initialized, ')
+          ..write('lastFullSyncAt: $lastFullSyncAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -5562,6 +6426,8 @@ abstract class _$PakPerkDatabase extends GeneratedDatabase {
   late final $LibraryItemsTable libraryItems = $LibraryItemsTable(this);
   late final $CommentDraftsTable commentDrafts = $CommentDraftsTable(this);
   late final $SyncOutboxTable syncOutbox = $SyncOutboxTable(this);
+  late final $LibrarySyncStatesTable librarySyncStates =
+      $LibrarySyncStatesTable(this);
   late final $CacheMetadataTable cacheMetadata = $CacheMetadataTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -5579,6 +6445,7 @@ abstract class _$PakPerkDatabase extends GeneratedDatabase {
     libraryItems,
     commentDrafts,
     syncOutbox,
+    librarySyncStates,
     cacheMetadata,
   ];
   @override
@@ -9204,6 +10071,13 @@ typedef $$LibraryItemsTableCreateCompanionBuilder =
       required DateTime clientUpdatedAt,
       Value<DateTime?> serverUpdatedAt,
       Value<bool> deleted,
+      Value<DateTime?> savedAt,
+      Value<DateTime?> removedAt,
+      Value<int?> revision,
+      Value<String?> lastOperationId,
+      Value<bool?> canonicalDeleted,
+      Value<DateTime?> canonicalSavedAt,
+      Value<DateTime?> canonicalRemovedAt,
       Value<int> rowid,
     });
 typedef $$LibraryItemsTableUpdateCompanionBuilder =
@@ -9214,6 +10088,13 @@ typedef $$LibraryItemsTableUpdateCompanionBuilder =
       Value<DateTime> clientUpdatedAt,
       Value<DateTime?> serverUpdatedAt,
       Value<bool> deleted,
+      Value<DateTime?> savedAt,
+      Value<DateTime?> removedAt,
+      Value<int?> revision,
+      Value<String?> lastOperationId,
+      Value<bool?> canonicalDeleted,
+      Value<DateTime?> canonicalSavedAt,
+      Value<DateTime?> canonicalRemovedAt,
       Value<int> rowid,
     });
 
@@ -9253,6 +10134,41 @@ class $$LibraryItemsTableFilterComposer
 
   ColumnFilters<bool> get deleted => $composableBuilder(
     column: $table.deleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get savedAt => $composableBuilder(
+    column: $table.savedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get removedAt => $composableBuilder(
+    column: $table.removedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastOperationId => $composableBuilder(
+    column: $table.lastOperationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get canonicalDeleted => $composableBuilder(
+    column: $table.canonicalDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get canonicalSavedAt => $composableBuilder(
+    column: $table.canonicalSavedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get canonicalRemovedAt => $composableBuilder(
+    column: $table.canonicalRemovedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -9295,6 +10211,41 @@ class $$LibraryItemsTableOrderingComposer
     column: $table.deleted,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get savedAt => $composableBuilder(
+    column: $table.savedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get removedAt => $composableBuilder(
+    column: $table.removedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastOperationId => $composableBuilder(
+    column: $table.lastOperationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get canonicalDeleted => $composableBuilder(
+    column: $table.canonicalDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get canonicalSavedAt => $composableBuilder(
+    column: $table.canonicalSavedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get canonicalRemovedAt => $composableBuilder(
+    column: $table.canonicalRemovedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$LibraryItemsTableAnnotationComposer
@@ -9327,6 +10278,35 @@ class $$LibraryItemsTableAnnotationComposer
 
   GeneratedColumn<bool> get deleted =>
       $composableBuilder(column: $table.deleted, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get savedAt =>
+      $composableBuilder(column: $table.savedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get removedAt =>
+      $composableBuilder(column: $table.removedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<String> get lastOperationId => $composableBuilder(
+    column: $table.lastOperationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get canonicalDeleted => $composableBuilder(
+    column: $table.canonicalDeleted,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get canonicalSavedAt => $composableBuilder(
+    column: $table.canonicalSavedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get canonicalRemovedAt => $composableBuilder(
+    column: $table.canonicalRemovedAt,
+    builder: (column) => column,
+  );
 }
 
 class $$LibraryItemsTableTableManager
@@ -9372,6 +10352,13 @@ class $$LibraryItemsTableTableManager
                 Value<DateTime> clientUpdatedAt = const Value.absent(),
                 Value<DateTime?> serverUpdatedAt = const Value.absent(),
                 Value<bool> deleted = const Value.absent(),
+                Value<DateTime?> savedAt = const Value.absent(),
+                Value<DateTime?> removedAt = const Value.absent(),
+                Value<int?> revision = const Value.absent(),
+                Value<String?> lastOperationId = const Value.absent(),
+                Value<bool?> canonicalDeleted = const Value.absent(),
+                Value<DateTime?> canonicalSavedAt = const Value.absent(),
+                Value<DateTime?> canonicalRemovedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LibraryItemsCompanion(
                 accountId: accountId,
@@ -9380,6 +10367,13 @@ class $$LibraryItemsTableTableManager
                 clientUpdatedAt: clientUpdatedAt,
                 serverUpdatedAt: serverUpdatedAt,
                 deleted: deleted,
+                savedAt: savedAt,
+                removedAt: removedAt,
+                revision: revision,
+                lastOperationId: lastOperationId,
+                canonicalDeleted: canonicalDeleted,
+                canonicalSavedAt: canonicalSavedAt,
+                canonicalRemovedAt: canonicalRemovedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -9390,6 +10384,13 @@ class $$LibraryItemsTableTableManager
                 required DateTime clientUpdatedAt,
                 Value<DateTime?> serverUpdatedAt = const Value.absent(),
                 Value<bool> deleted = const Value.absent(),
+                Value<DateTime?> savedAt = const Value.absent(),
+                Value<DateTime?> removedAt = const Value.absent(),
+                Value<int?> revision = const Value.absent(),
+                Value<String?> lastOperationId = const Value.absent(),
+                Value<bool?> canonicalDeleted = const Value.absent(),
+                Value<DateTime?> canonicalSavedAt = const Value.absent(),
+                Value<DateTime?> canonicalRemovedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LibraryItemsCompanion.insert(
                 accountId: accountId,
@@ -9398,6 +10399,13 @@ class $$LibraryItemsTableTableManager
                 clientUpdatedAt: clientUpdatedAt,
                 serverUpdatedAt: serverUpdatedAt,
                 deleted: deleted,
+                savedAt: savedAt,
+                removedAt: removedAt,
+                revision: revision,
+                lastOperationId: lastOperationId,
+                canonicalDeleted: canonicalDeleted,
+                canonicalSavedAt: canonicalSavedAt,
+                canonicalRemovedAt: canonicalRemovedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -9806,6 +10814,9 @@ typedef $$SyncOutboxTableCreateCompanionBuilder =
       Value<int> attemptCount,
       Value<DateTime?> nextAttemptAt,
       Value<String?> lastErrorCode,
+      Value<String> state,
+      Value<DateTime?> startedAt,
+      Value<DateTime?> updatedAt,
       Value<int> rowid,
     });
 typedef $$SyncOutboxTableUpdateCompanionBuilder =
@@ -9820,6 +10831,9 @@ typedef $$SyncOutboxTableUpdateCompanionBuilder =
       Value<int> attemptCount,
       Value<DateTime?> nextAttemptAt,
       Value<String?> lastErrorCode,
+      Value<String> state,
+      Value<DateTime?> startedAt,
+      Value<DateTime?> updatedAt,
       Value<int> rowid,
     });
 
@@ -9879,6 +10893,21 @@ class $$SyncOutboxTableFilterComposer
 
   ColumnFilters<String> get lastErrorCode => $composableBuilder(
     column: $table.lastErrorCode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get state => $composableBuilder(
+    column: $table.state,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get startedAt => $composableBuilder(
+    column: $table.startedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -9941,6 +10970,21 @@ class $$SyncOutboxTableOrderingComposer
     column: $table.lastErrorCode,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get state => $composableBuilder(
+    column: $table.state,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get startedAt => $composableBuilder(
+    column: $table.startedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SyncOutboxTableAnnotationComposer
@@ -9993,6 +11037,15 @@ class $$SyncOutboxTableAnnotationComposer
     column: $table.lastErrorCode,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get state =>
+      $composableBuilder(column: $table.state, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get startedAt =>
+      $composableBuilder(column: $table.startedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 }
 
 class $$SyncOutboxTableTableManager
@@ -10036,6 +11089,9 @@ class $$SyncOutboxTableTableManager
                 Value<int> attemptCount = const Value.absent(),
                 Value<DateTime?> nextAttemptAt = const Value.absent(),
                 Value<String?> lastErrorCode = const Value.absent(),
+                Value<String> state = const Value.absent(),
+                Value<DateTime?> startedAt = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SyncOutboxCompanion(
                 operationId: operationId,
@@ -10048,6 +11104,9 @@ class $$SyncOutboxTableTableManager
                 attemptCount: attemptCount,
                 nextAttemptAt: nextAttemptAt,
                 lastErrorCode: lastErrorCode,
+                state: state,
+                startedAt: startedAt,
+                updatedAt: updatedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -10062,6 +11121,9 @@ class $$SyncOutboxTableTableManager
                 Value<int> attemptCount = const Value.absent(),
                 Value<DateTime?> nextAttemptAt = const Value.absent(),
                 Value<String?> lastErrorCode = const Value.absent(),
+                Value<String> state = const Value.absent(),
+                Value<DateTime?> startedAt = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SyncOutboxCompanion.insert(
                 operationId: operationId,
@@ -10074,6 +11136,9 @@ class $$SyncOutboxTableTableManager
                 attemptCount: attemptCount,
                 nextAttemptAt: nextAttemptAt,
                 lastErrorCode: lastErrorCode,
+                state: state,
+                startedAt: startedAt,
+                updatedAt: updatedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -10099,6 +11164,206 @@ typedef $$SyncOutboxTableProcessedTableManager =
         BaseReferences<_$PakPerkDatabase, $SyncOutboxTable, SyncOutboxRow>,
       ),
       SyncOutboxRow,
+      PrefetchHooks Function()
+    >;
+typedef $$LibrarySyncStatesTableCreateCompanionBuilder =
+    LibrarySyncStatesCompanion Function({
+      required String accountId,
+      Value<int> lastRevision,
+      Value<bool> initialized,
+      Value<DateTime?> lastFullSyncAt,
+      Value<int> rowid,
+    });
+typedef $$LibrarySyncStatesTableUpdateCompanionBuilder =
+    LibrarySyncStatesCompanion Function({
+      Value<String> accountId,
+      Value<int> lastRevision,
+      Value<bool> initialized,
+      Value<DateTime?> lastFullSyncAt,
+      Value<int> rowid,
+    });
+
+class $$LibrarySyncStatesTableFilterComposer
+    extends Composer<_$PakPerkDatabase, $LibrarySyncStatesTable> {
+  $$LibrarySyncStatesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get lastRevision => $composableBuilder(
+    column: $table.lastRevision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get initialized => $composableBuilder(
+    column: $table.initialized,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastFullSyncAt => $composableBuilder(
+    column: $table.lastFullSyncAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LibrarySyncStatesTableOrderingComposer
+    extends Composer<_$PakPerkDatabase, $LibrarySyncStatesTable> {
+  $$LibrarySyncStatesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get lastRevision => $composableBuilder(
+    column: $table.lastRevision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get initialized => $composableBuilder(
+    column: $table.initialized,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastFullSyncAt => $composableBuilder(
+    column: $table.lastFullSyncAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LibrarySyncStatesTableAnnotationComposer
+    extends Composer<_$PakPerkDatabase, $LibrarySyncStatesTable> {
+  $$LibrarySyncStatesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<int> get lastRevision => $composableBuilder(
+    column: $table.lastRevision,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get initialized => $composableBuilder(
+    column: $table.initialized,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastFullSyncAt => $composableBuilder(
+    column: $table.lastFullSyncAt,
+    builder: (column) => column,
+  );
+}
+
+class $$LibrarySyncStatesTableTableManager
+    extends
+        RootTableManager<
+          _$PakPerkDatabase,
+          $LibrarySyncStatesTable,
+          LibrarySyncStateRow,
+          $$LibrarySyncStatesTableFilterComposer,
+          $$LibrarySyncStatesTableOrderingComposer,
+          $$LibrarySyncStatesTableAnnotationComposer,
+          $$LibrarySyncStatesTableCreateCompanionBuilder,
+          $$LibrarySyncStatesTableUpdateCompanionBuilder,
+          (
+            LibrarySyncStateRow,
+            BaseReferences<
+              _$PakPerkDatabase,
+              $LibrarySyncStatesTable,
+              LibrarySyncStateRow
+            >,
+          ),
+          LibrarySyncStateRow,
+          PrefetchHooks Function()
+        > {
+  $$LibrarySyncStatesTableTableManager(
+    _$PakPerkDatabase db,
+    $LibrarySyncStatesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LibrarySyncStatesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LibrarySyncStatesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LibrarySyncStatesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> accountId = const Value.absent(),
+                Value<int> lastRevision = const Value.absent(),
+                Value<bool> initialized = const Value.absent(),
+                Value<DateTime?> lastFullSyncAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LibrarySyncStatesCompanion(
+                accountId: accountId,
+                lastRevision: lastRevision,
+                initialized: initialized,
+                lastFullSyncAt: lastFullSyncAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String accountId,
+                Value<int> lastRevision = const Value.absent(),
+                Value<bool> initialized = const Value.absent(),
+                Value<DateTime?> lastFullSyncAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LibrarySyncStatesCompanion.insert(
+                accountId: accountId,
+                lastRevision: lastRevision,
+                initialized: initialized,
+                lastFullSyncAt: lastFullSyncAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LibrarySyncStatesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PakPerkDatabase,
+      $LibrarySyncStatesTable,
+      LibrarySyncStateRow,
+      $$LibrarySyncStatesTableFilterComposer,
+      $$LibrarySyncStatesTableOrderingComposer,
+      $$LibrarySyncStatesTableAnnotationComposer,
+      $$LibrarySyncStatesTableCreateCompanionBuilder,
+      $$LibrarySyncStatesTableUpdateCompanionBuilder,
+      (
+        LibrarySyncStateRow,
+        BaseReferences<
+          _$PakPerkDatabase,
+          $LibrarySyncStatesTable,
+          LibrarySyncStateRow
+        >,
+      ),
+      LibrarySyncStateRow,
       PrefetchHooks Function()
     >;
 typedef $$CacheMetadataTableCreateCompanionBuilder =
@@ -10299,6 +11564,8 @@ class $PakPerkDatabaseManager {
       $$CommentDraftsTableTableManager(_db, _db.commentDrafts);
   $$SyncOutboxTableTableManager get syncOutbox =>
       $$SyncOutboxTableTableManager(_db, _db.syncOutbox);
+  $$LibrarySyncStatesTableTableManager get librarySyncStates =>
+      $$LibrarySyncStatesTableTableManager(_db, _db.librarySyncStates);
   $$CacheMetadataTableTableManager get cacheMetadata =>
       $$CacheMetadataTableTableManager(_db, _db.cacheMetadata);
 }

@@ -5,7 +5,7 @@ use db::Database;
 use observability::{ObservabilityConfig, init};
 use pakperk_api::{
     ApiConfig, AppState, build_router, initialize_auth_runtime, spawn_account_maintenance,
-    spawn_auth_recovery,
+    spawn_auth_recovery, spawn_library_maintenance,
 };
 use tokio::net::TcpListener;
 use tracing::info;
@@ -43,6 +43,7 @@ async fn main() -> Result<()> {
         .and_then(|accounts| spawn_auth_recovery(auth.clone(), accounts));
     let state = AppState::new_with_auth(database, &config, auth)
         .context("could not initialize API state")?;
+    let _library_maintenance = spawn_library_maintenance(state.library_service());
     let app = build_router(state, &config);
     let listener = TcpListener::bind(config.bind)
         .await

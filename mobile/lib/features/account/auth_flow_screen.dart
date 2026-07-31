@@ -64,6 +64,7 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
   Widget build(BuildContext context) {
     final account = ref.watch(currentAccountProvider);
     final profile = account.profile;
+    final pending = ref.watch(pendingAuthenticatedActionProvider);
     if (profile != null && _initializedProfileId != profile.id) {
       _initializedProfileId = profile.id;
       _handle.text = profile.handle ?? '';
@@ -74,9 +75,15 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
     final needsSetup =
         profile != null &&
         profile.isActive &&
-        (profile.handle == null || !profile.termsCurrent);
+        (profile.handle == null || !profile.termsCurrent) &&
+        pending?.kind != AppPendingActionKind.savePaper;
     return PopScope(
       canPop: !_running,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) {
+          ref.read(pendingAuthenticatedActionProvider.notifier).clear();
+        }
+      },
       child: Scaffold(
         appBar: AppBar(
           leading: IconButton(
@@ -107,16 +114,25 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
         ),
       );
     }
+    final pendingKind = ref.watch(pendingAuthenticatedActionProvider)?.kind;
+    final saveFailed = pendingKind == AppPendingActionKind.savePaper;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.lock_clock_outlined, size: 48),
+            Icon(
+              saveFailed
+                  ? Icons.bookmark_add_outlined
+                  : Icons.lock_clock_outlined,
+              size: 48,
+            ),
             const SizedBox(height: 16),
             Text(
-              'Account service unavailable',
+              saveFailed
+                  ? 'Save could not be completed'
+                  : 'Account service unavailable',
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: 8),
@@ -273,6 +289,15 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
       _close();
       return;
     }
+    // Saving is account-owned but is intentionally not gated on a public
+    // handle or terms acceptance. Resume it as soon as JIT provisioning has
+    // returned an active `/v1/me`; comment/moderation actions still continue
+    // through onboarding below.
+    final pending = ref.read(pendingAuthenticatedActionProvider);
+    if (pending?.kind == AppPendingActionKind.savePaper) {
+      await _resumePendingAndClose();
+      return;
+    }
     if (profile.handle != null && profile.termsCurrent) {
       await _resumePendingAndClose();
       return;
@@ -324,22 +349,28 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
   }
 
   Future<void> _resumePendingAndClose() async {
-    final pending = ref
-        .read(pendingAuthenticatedActionProvider.notifier)
-        .take();
-    final executor = ref.read(pendingAuthenticatedActionExecutorProvider);
-    _close();
-    // Resume from the original Read/You surface, not from underneath the
-    // full-screen auth route. This matters for actions that open a composer.
-    await Future<void>.delayed(Duration.zero);
-    if (pending != null) {
-      try {
-        await executor(pending);
-      } on Object {
-        // The slot was taken before execution, so an action owner can surface
-        // its own failure without creating an accidental duplicate write.
-      }
+    final pendingController = ref.read(
+      pendingAuthenticatedActionProvider.notifier,
+    );
+    final pending = pendingController.take();
+    if (pending == null) {
+      _close();
+      return;
     }
+    final executor = ref.read(pendingAuthenticatedActionExecutorProvider);
+    try {
+      await executor(pending);
+    } on Object {
+      pendingController.restoreIfEmpty(pending);
+      if (mounted) {
+        setState(() {
+          _running = false;
+          _safeError = _pendingFailureMessage(pending.kind);
+        });
+      }
+      return;
+    }
+    if (mounted) _close();
   }
 
   void _cancelAndClose() {
@@ -355,3 +386,14 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
     }
   }
 }
+
+String _pendingFailureMessage(AppPendingActionKind kind) => switch (kind) {
+  AppPendingActionKind.savePaper =>
+    'You are signed in, but this paper was not saved. Try again.',
+  AppPendingActionKind.openComposer =>
+    'Signed in, but the comment composer could not be opened. Try again.',
+  AppPendingActionKind.reportComment =>
+    'Signed in, but the report could not be opened. Try again.',
+  AppPendingActionKind.blockUser =>
+    'Signed in, but this user could not be blocked. Try again.',
+};

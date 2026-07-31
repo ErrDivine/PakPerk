@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -21,6 +22,20 @@ void main() {
     expect(adapter.authorizationHeaders, [null]);
   });
 
+  test('authenticated request metadata requires an epoch binding', () {
+    expect(
+      () => pakPerkRequestOptions(auth: RequestAuthPolicy.required),
+      throwsArgumentError,
+    );
+    expect(
+      () => pakPerkRequestOptions(
+        auth: RequestAuthPolicy.optional,
+        expectedAuthEpoch: 1,
+      ),
+      throwsArgumentError,
+    );
+  });
+
   test('required auth is attached only to the exact API origin', () async {
     final tokens = _TokenSource();
     final adapter = _SequenceAdapter([200]);
@@ -31,6 +46,7 @@ void main() {
       options: pakPerkRequestOptions(
         auth: RequestAuthPolicy.required,
         retry: AuthRetryPolicy.safe,
+        expectedAuthEpoch: 1,
       ),
     );
     expect(adapter.authorizationHeaders, ['Bearer access-one']);
@@ -41,6 +57,7 @@ void main() {
         options: pakPerkRequestOptions(
           auth: RequestAuthPolicy.required,
           retry: AuthRetryPolicy.safe,
+          expectedAuthEpoch: 1,
         ),
       ),
       throwsA(
@@ -64,6 +81,7 @@ void main() {
       options: pakPerkRequestOptions(
         auth: RequestAuthPolicy.required,
         retry: AuthRetryPolicy.safe,
+        expectedAuthEpoch: 1,
       ),
     );
 
@@ -88,6 +106,7 @@ void main() {
           options: pakPerkRequestOptions(
             auth: RequestAuthPolicy.required,
             retry: AuthRetryPolicy.idempotencyProtected,
+            expectedAuthEpoch: 1,
           ),
         ),
         throwsA(isA<DioException>()),
@@ -104,6 +123,7 @@ void main() {
         options: pakPerkRequestOptions(
           auth: RequestAuthPolicy.required,
           retry: AuthRetryPolicy.idempotencyProtected,
+          expectedAuthEpoch: 1,
           headers: const {'If-Match': '"profile-3"'},
         ),
       );
@@ -111,9 +131,74 @@ void main() {
       expect(allowedAdapter.requests, 2);
     },
   );
+
+  test(
+    'epoch-bound request is rejected before transport after account switch',
+    () async {
+      final accessStarted = Completer<void>();
+      final releaseAccess = Completer<void>();
+      final tokens = _EpochTokenSource(
+        epoch: 7,
+        token: 'account-a-access',
+        accessStarted: accessStarted,
+        releaseAccess: releaseAccess,
+      );
+      final adapter = _SequenceAdapter([200]);
+      final dio = _dio(tokens, adapter);
+
+      final request = dio.get<Object?>(
+        '/v1/me/library',
+        options: pakPerkRequestOptions(
+          auth: RequestAuthPolicy.required,
+          retry: AuthRetryPolicy.safe,
+          expectedAuthEpoch: 7,
+        ),
+      );
+      final rejected = expectLater(
+        request,
+        throwsA(_authError('AUTH_SUPERSEDED')),
+      );
+      await accessStarted.future;
+      tokens.switchSession(epoch: 8, token: 'account-b-access');
+      releaseAccess.complete();
+
+      await rejected;
+      expect(adapter.requests, 0);
+      expect(adapter.authorizationHeaders, isEmpty);
+    },
+  );
+
+  test('epoch-bound 401 is not replayed after account switch', () async {
+    final tokens = _EpochTokenSource(epoch: 7, token: 'account-a-access');
+    final adapter = _DelayedUnauthorizedAdapter();
+    final dio = _dio(tokens, adapter);
+
+    final request = dio.patch<Object?>(
+      '/v1/me',
+      data: const {'display_name': 'Ada'},
+      options: pakPerkRequestOptions(
+        auth: RequestAuthPolicy.required,
+        retry: AuthRetryPolicy.idempotencyProtected,
+        expectedAuthEpoch: 7,
+        headers: const {'If-Match': '"profile-3"'},
+      ),
+    );
+    final rejected = expectLater(
+      request,
+      throwsA(_authError('AUTH_SUPERSEDED')),
+    );
+    await adapter.firstFetchStarted.future;
+    tokens.switchSession(epoch: 8, token: 'account-b-access');
+    adapter.releaseUnauthorized.complete();
+
+    await rejected;
+    expect(adapter.requests, 1);
+    expect(adapter.authorizationHeaders, ['Bearer account-a-access']);
+    expect(tokens.refreshCalls, 1);
+  });
 }
 
-Dio _dio(_TokenSource tokens, _SequenceAdapter adapter) {
+Dio _dio(AuthTokenSource tokens, HttpClientAdapter adapter) {
   final dio = Dio(
     BaseOptions(baseUrl: 'https://api.pakperk.app', followRedirects: false),
   )..httpClientAdapter = adapter;
@@ -127,23 +212,80 @@ Dio _dio(_TokenSource tokens, _SequenceAdapter adapter) {
   return dio;
 }
 
+Matcher _authError(String code) => isA<DioException>().having(
+  (error) => (error.error! as AuthRequestFailure).code,
+  'safe code',
+  code,
+);
+
 final class _TokenSource implements AuthTokenSource {
   int accessCalls = 0;
   int refreshCalls = 0;
+  String currentToken = 'access-one';
 
   @override
-  Future<String?> accessTokenForRequest() async {
+  Future<String?> accessTokenForRequest({int? expectedAuthEpoch}) async {
     accessCalls += 1;
-    return 'access-one';
+    return currentToken;
   }
 
   @override
   Future<String?> refreshAfterUnauthorized({
     required String rejectedAccessToken,
+    int? expectedAuthEpoch,
   }) async {
     refreshCalls += 1;
     expect(rejectedAccessToken, 'access-one');
-    return 'access-two';
+    return currentToken = 'access-two';
+  }
+}
+
+final class _EpochTokenSource implements AuthTokenSource {
+  _EpochTokenSource({
+    required this.epoch,
+    required this.token,
+    this.accessStarted,
+    this.releaseAccess,
+  });
+
+  int epoch;
+  String token;
+  final Completer<void>? accessStarted;
+  final Completer<void>? releaseAccess;
+  int refreshCalls = 0;
+
+  void switchSession({required int epoch, required String token}) {
+    this.epoch = epoch;
+    this.token = token;
+  }
+
+  @override
+  Future<String?> accessTokenForRequest({int? expectedAuthEpoch}) async {
+    accessStarted?.complete();
+    _requireEpoch(expectedAuthEpoch);
+    await releaseAccess?.future;
+    _requireEpoch(expectedAuthEpoch);
+    return token;
+  }
+
+  @override
+  Future<String?> refreshAfterUnauthorized({
+    required String rejectedAccessToken,
+    int? expectedAuthEpoch,
+  }) async {
+    refreshCalls += 1;
+    _requireEpoch(expectedAuthEpoch);
+    return token;
+  }
+
+  void _requireEpoch(int? expectedAuthEpoch) {
+    if (expectedAuthEpoch != null && expectedAuthEpoch != epoch) {
+      throw AuthFailure(
+        AuthFailureKind.superseded,
+        AuthFailureCode.operationSuperseded,
+        sessionEpoch: expectedAuthEpoch,
+      );
+    }
   }
 }
 
@@ -167,6 +309,44 @@ final class _SequenceAdapter implements HttpClientAdapter {
     return ResponseBody.fromString(
       jsonEncode(status == 401 ? const {'error': 'unauthorized'} : const {}),
       status,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+final class _DelayedUnauthorizedAdapter implements HttpClientAdapter {
+  final firstFetchStarted = Completer<void>();
+  final releaseUnauthorized = Completer<void>();
+  final List<String?> authorizationHeaders = [];
+  int requests = 0;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    requests += 1;
+    authorizationHeaders.add(options.headers['Authorization'] as String?);
+    if (requests == 1) {
+      firstFetchStarted.complete();
+      await releaseUnauthorized.future;
+      return ResponseBody.fromString(
+        jsonEncode(const {'error': 'unauthorized'}),
+        401,
+        headers: {
+          Headers.contentTypeHeader: ['application/json'],
+        },
+      );
+    }
+    return ResponseBody.fromString(
+      jsonEncode(const {}),
+      200,
       headers: {
         Headers.contentTypeHeader: ['application/json'],
       },

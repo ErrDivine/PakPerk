@@ -142,6 +142,18 @@ class LibraryItems extends Table {
   DateTimeColumn get clientUpdatedAt => dateTime()();
   DateTimeColumn get serverUpdatedAt => dateTime().nullable()();
   BoolColumn get deleted => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get savedAt => dateTime().nullable()();
+  DateTimeColumn get removedAt => dateTime().nullable()();
+  IntColumn get revision => integer().nullable()();
+  TextColumn get lastOperationId => text().nullable()();
+
+  // The visible [deleted]/[savedAt] pair is the optimistic projection. These
+  // nullable fields retain the last server-confirmed state so a permanent
+  // mutation failure can roll back without guessing. Null canonicalDeleted
+  // means this paper has never been observed on the server.
+  BoolColumn get canonicalDeleted => boolean().nullable()();
+  DateTimeColumn get canonicalSavedAt => dateTime().nullable()();
+  DateTimeColumn get canonicalRemovedAt => dateTime().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {accountId, paperId};
@@ -174,9 +186,23 @@ class SyncOutbox extends Table {
   IntColumn get attemptCount => integer().withDefault(const Constant(0))();
   DateTimeColumn get nextAttemptAt => dateTime().nullable()();
   TextColumn get lastErrorCode => text().nullable()();
+  TextColumn get state => text().withDefault(const Constant('queued'))();
+  DateTimeColumn get startedAt => dateTime().nullable()();
+  DateTimeColumn get updatedAt => dateTime().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {operationId};
+}
+
+@DataClassName('LibrarySyncStateRow')
+class LibrarySyncStates extends Table {
+  TextColumn get accountId => text()();
+  IntColumn get lastRevision => integer().withDefault(const Constant(0))();
+  BoolColumn get initialized => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get lastFullSyncAt => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {accountId};
 }
 
 @DataClassName('CacheMetadataRow')
@@ -202,6 +228,7 @@ class CacheMetadata extends Table {
     LibraryItems,
     CommentDrafts,
     SyncOutbox,
+    LibrarySyncStates,
     CacheMetadata,
   ],
 )
@@ -232,7 +259,7 @@ class PakPerkDatabase extends _$PakPerkDatabase {
   final Future<String>? _databasePath;
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -278,10 +305,95 @@ class PakPerkDatabase extends _$PakPerkDatabase {
           await migrator.createTable(cachedChats);
         }
       }
+      if (from < 4) {
+        if (!await _columnExists('library_items', 'saved_at')) {
+          await migrator.addColumn(libraryItems, libraryItems.savedAt);
+        }
+        if (!await _columnExists('library_items', 'removed_at')) {
+          await migrator.addColumn(libraryItems, libraryItems.removedAt);
+        }
+        if (!await _columnExists('library_items', 'revision')) {
+          await migrator.addColumn(libraryItems, libraryItems.revision);
+        }
+        if (!await _columnExists('library_items', 'last_operation_id')) {
+          await migrator.addColumn(libraryItems, libraryItems.lastOperationId);
+        }
+        if (!await _columnExists('library_items', 'canonical_deleted')) {
+          await migrator.addColumn(libraryItems, libraryItems.canonicalDeleted);
+        }
+        if (!await _columnExists('library_items', 'canonical_saved_at')) {
+          await migrator.addColumn(libraryItems, libraryItems.canonicalSavedAt);
+        }
+        if (!await _columnExists('library_items', 'canonical_removed_at')) {
+          await migrator.addColumn(
+            libraryItems,
+            libraryItems.canonicalRemovedAt,
+          );
+        }
+        if (!await _columnExists('sync_outbox', 'state')) {
+          await migrator.addColumn(syncOutbox, syncOutbox.state);
+        }
+        if (!await _columnExists('sync_outbox', 'started_at')) {
+          await migrator.addColumn(syncOutbox, syncOutbox.startedAt);
+        }
+        if (!await _columnExists('sync_outbox', 'updated_at')) {
+          await migrator.addColumn(syncOutbox, syncOutbox.updatedAt);
+        }
+        await migrator.createTable(librarySyncStates);
+        await customStatement('''
+              UPDATE library_items
+              SET saved_at = CASE WHEN deleted = 0 THEN client_updated_at END,
+                  removed_at = CASE WHEN deleted = 1 THEN client_updated_at END,
+                  canonical_deleted = CASE
+                    WHEN server_updated_at IS NULL THEN NULL
+                    ELSE deleted
+                  END,
+                  canonical_saved_at = CASE
+                    WHEN server_updated_at IS NOT NULL AND deleted = 0
+                    THEN client_updated_at
+                  END,
+                  canonical_removed_at = CASE
+                    WHEN server_updated_at IS NOT NULL AND deleted = 1
+                    THEN client_updated_at
+                  END
+            ''');
+        await customStatement('''
+              UPDATE sync_outbox
+              SET updated_at = created_at
+              WHERE updated_at IS NULL
+            ''');
+        await customStatement('''
+              DELETE FROM sync_outbox AS older
+              WHERE older.entity_kind = 'library_item'
+                AND older.state = 'queued'
+                AND EXISTS (
+                  SELECT 1 FROM sync_outbox AS newer
+                  WHERE newer.account_id IS older.account_id
+                    AND newer.entity_kind = older.entity_kind
+                    AND newer.entity_id = older.entity_id
+                    AND newer.state = 'queued'
+                    AND (
+                      newer.created_at > older.created_at OR
+                      (newer.created_at = older.created_at AND
+                       newer.operation_id > older.operation_id)
+                    )
+                )
+            ''');
+        await customStatement('''
+              UPDATE cached_papers
+              SET pinned_by_library = EXISTS (
+                SELECT 1 FROM library_items
+                WHERE library_items.paper_id = cached_papers.paper_id
+                  AND library_items.deleted = 0
+              )
+            ''');
+      }
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
       await customSelect('PRAGMA journal_mode = WAL').get();
+      await _installLibraryIndexes();
+      await _installLibraryPinTriggers();
     },
   );
 
@@ -331,6 +443,84 @@ class PakPerkDatabase extends _$PakPerkDatabase {
   Future<bool> _columnExists(String table, String column) async {
     final rows = await customSelect('PRAGMA table_info($table)').get();
     return rows.any((row) => row.read<String>('name') == column);
+  }
+
+  Future<void> _installLibraryPinTriggers() async {
+    await customStatement('''
+          CREATE TRIGGER IF NOT EXISTS library_pin_after_insert
+          AFTER INSERT ON library_items
+          BEGIN
+            UPDATE cached_papers
+            SET pinned_by_library = EXISTS (
+              SELECT 1 FROM library_items
+              WHERE paper_id = NEW.paper_id AND deleted = 0
+            )
+            WHERE paper_id = NEW.paper_id;
+          END
+        ''');
+    await customStatement('''
+          CREATE TRIGGER IF NOT EXISTS library_pin_after_update
+          AFTER UPDATE OF paper_id, deleted ON library_items
+          BEGIN
+            UPDATE cached_papers
+            SET pinned_by_library = EXISTS (
+              SELECT 1 FROM library_items
+              WHERE paper_id = OLD.paper_id AND deleted = 0
+            )
+            WHERE paper_id = OLD.paper_id;
+            UPDATE cached_papers
+            SET pinned_by_library = EXISTS (
+              SELECT 1 FROM library_items
+              WHERE paper_id = NEW.paper_id AND deleted = 0
+            )
+            WHERE paper_id = NEW.paper_id;
+          END
+        ''');
+    await customStatement('''
+          CREATE TRIGGER IF NOT EXISTS library_pin_after_delete
+          AFTER DELETE ON library_items
+          BEGIN
+            UPDATE cached_papers
+            SET pinned_by_library = EXISTS (
+              SELECT 1 FROM library_items
+              WHERE paper_id = OLD.paper_id AND deleted = 0
+            )
+            WHERE paper_id = OLD.paper_id;
+          END
+        ''');
+    await customStatement('''
+          CREATE TRIGGER IF NOT EXISTS library_pin_after_paper_insert
+          AFTER INSERT ON cached_papers
+          BEGIN
+            UPDATE cached_papers
+            SET pinned_by_library = EXISTS (
+              SELECT 1 FROM library_items
+              WHERE paper_id = NEW.paper_id AND deleted = 0
+            )
+            WHERE paper_id = NEW.paper_id;
+          END
+        ''');
+  }
+
+  Future<void> _installLibraryIndexes() async {
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS library_items_account_saved
+          ON library_items(account_id, deleted, saved_at DESC, paper_id DESC)
+        ''');
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS library_items_account_revision
+          ON library_items(account_id, revision)
+        ''');
+    await customStatement('''
+          CREATE UNIQUE INDEX IF NOT EXISTS sync_outbox_one_queued_library
+          ON sync_outbox(account_id, entity_id)
+          WHERE entity_kind = 'library_item' AND state = 'queued'
+        ''');
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS sync_outbox_library_due
+          ON sync_outbox(account_id, state, next_attempt_at, created_at)
+          WHERE entity_kind = 'library_item'
+        ''');
   }
 
   Future<void> putMetadata(String key, Object? value, {DateTime? updatedAt}) =>

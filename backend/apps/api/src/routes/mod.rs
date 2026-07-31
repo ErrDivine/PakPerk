@@ -36,6 +36,7 @@ pub(crate) mod account;
 pub(crate) mod chat;
 pub(crate) mod feed;
 pub(crate) mod health;
+pub(crate) mod library;
 pub(crate) mod papers;
 pub(crate) mod support;
 
@@ -50,6 +51,7 @@ pub(crate) use account::{get_me, patch_me, private_account_cache_control};
 pub(crate) use chat::chat;
 pub(crate) use feed::feed;
 pub(crate) use health::{health_live, health_ready};
+pub(crate) use library::{library_changes, list_library, remove_library_item, save_library_item};
 pub(crate) use papers::{
     connections, introduction, paper_by_arxiv, paper_metadata, prepare, processing,
 };
@@ -490,6 +492,7 @@ mod tests {
             environment: ApiEnvironment::Development,
             features: FeatureFlags::default(),
             accounts: None,
+            library: None,
             bind: SocketAddr::from(([127, 0, 0, 1], 0)),
             database_url: database_url.to_owned(),
             database_pool_size: 6,

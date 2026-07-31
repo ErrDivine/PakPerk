@@ -28,11 +28,17 @@ use crate::FeedCursor;
 
 mod accounts;
 mod chat;
+mod library;
 mod papers;
 mod rate_limits;
 mod rows;
 
 pub use accounts::{AccountRepository, ProfilePatch, ProfileUpdateOutcome};
+pub use library::{
+    LibraryChangesOutcome, LibraryMutationIntent, LibraryMutationOutcome,
+    LibraryOperationResolution, LibraryReadOutcome, LibraryRepository, StoredLibraryChangesPage,
+    StoredLibraryPage,
+};
 pub use rate_limits::{
     RateLimitConfigError, RateLimitDecision, RateLimitRepository, RateLimitRequest,
 };
@@ -159,6 +165,11 @@ impl Database {
     #[must_use]
     pub fn accounts(&self) -> AccountRepository {
         AccountRepository::new(self.pool.clone())
+    }
+
+    #[must_use]
+    pub fn library(&self) -> LibraryRepository {
+        LibraryRepository::new(self.pool.clone())
     }
 
     #[must_use]

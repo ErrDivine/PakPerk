@@ -15,6 +15,7 @@ import '../connections/connections_controller.dart';
 import '../connections/connections_view.dart';
 import '../introduction/introduction_controller.dart';
 import '../introduction/introduction_view.dart';
+import '../library/paper_save_control.dart';
 import 'abstract_view.dart';
 import 'paper_processing_controller.dart';
 import 'reader_navigation_controller.dart';
@@ -249,6 +250,10 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
               onSelected: _goToStage,
             ),
             const Divider(height: 1),
+            if (ref.watch(featureFlagsProvider).library) ...[
+              PaperSaveControl(paper: widget.paper),
+              const Divider(height: 1),
+            ],
             Expanded(
               child: PageView(
                 key: ValueKey('paper-reader-${widget.readerKey}'),

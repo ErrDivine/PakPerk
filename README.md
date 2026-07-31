@@ -21,9 +21,10 @@ and its [documentation entrypoint](docs/production-v0.0-plan.md).
 
 ## Production migration status
 
-Phases 0–3 are complete. Phase 3 OIDC account integration is
-[accepted](docs/phase-reports/phase-3.md); Phase 4 To Read synchronization is
-the next production-migration boundary.
+Phases 0–4 are complete. Phase 3 OIDC account integration is
+[accepted](docs/phase-reports/phase-3.md), and Phase 4 To Read synchronization
+is [accepted](docs/phase-reports/phase-4.md) with its exact server/mobile
+contract in [the To Read synchronization document](docs/library-sync.md).
 The backend has safe extension seams,
 typed deployment configuration, a checked code-first OpenAPI contract,
 conditional feed responses, and the accepted Phase 3 account/authentication
@@ -31,8 +32,15 @@ foundation.
 The mobile app has a persistent Read/You shell, exact paper and arXiv links,
 light/dark design tokens, native launch assets, a bounded cached-first opening
 transition, a relational cache-ahead feed, and the account session/onboarding
-foundation. Account controls remain off by default; library, comments, and
-deletion remain later independently gated phases.
+foundation plus an offline-first synchronized To Read list. Account and library
+controls remain off by default; later comments and deletion work remain
+independently gated.
+
+The accepted Phase 4 API uses authenticated list/change/save/remove routes with durable
+operation IDs, server revisions, removal tombstones, and an independent
+read-only kill switch. Its exact synchronization and preparation boundaries
+are documented in [the To Read contract](docs/library-sync.md). Both library
+flags remain off by default so deployments can dark-launch the capability.
 
 The demo baseline is frozen at the annotated `production-v0.0-baseline` tag.
 Architecture choices for OIDC, Drift, stateful navigation, comments, and shared

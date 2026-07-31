@@ -9,6 +9,7 @@ mod connection;
 mod content_policy;
 mod document;
 mod error;
+mod library;
 mod paper;
 mod processing;
 
@@ -33,6 +34,9 @@ pub use document::{
     ParsedPaper, ParsedParagraph, ParsedReference, ParsedSection, SectionKind,
 };
 pub use error::{ApiErrorBody, ApiErrorEnvelope, DomainError};
+pub use library::{
+    LibraryChange, LibraryItem, LibraryState, LibraryStateParseError, SavedLibraryPaper,
+};
 pub use paper::{
     ArxivIdentifier, Author, FeedPage, Paper, PaperId, PaperMetadata, PaperSummary,
     ProcessingGeneration,

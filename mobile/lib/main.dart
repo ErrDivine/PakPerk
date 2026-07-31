@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app/application_bootstrap.dart';
 import 'app/account_providers.dart';
 import 'app/feature_flags.dart';
+import 'app/library_providers.dart';
 import 'app/startup_controller.dart';
 import 'core/content_policy.dart';
 import 'core/providers.dart';
@@ -26,6 +27,7 @@ void main() {
         startupLaunchModeProvider.overrideWithValue(launchMode),
         ...applicationStartupDataOverrides(bootstrapper),
         ...accountApplicationOverrides(bootstrapper),
+        ...libraryApplicationOverrides(),
       ],
       child: PakPerkBootstrapApp(bootstrapper: bootstrapper),
     ),

@@ -9,8 +9,8 @@ use utoipa::{Modify, OpenApi, ToSchema};
 
 use crate::{
     dto::{
-        AccountProfileEnvelope, AccountProfileResponse, AccountStatusSchema, ChatBody, PrepareBody,
-        ProfileUpdateBody,
+        AccountProfileEnvelope, AccountProfileResponse, AccountStatusSchema, ChatBody,
+        LibrarySaveBody, PrepareBody, ProfileUpdateBody,
     },
     routes,
 };
@@ -20,7 +20,7 @@ use crate::{
     info(
         title = "Pakperk API",
         version = "1.0.0",
-        description = "Stable v1 paper-reading API with optional OIDC-backed account profiles. Library and comment routes remain feature-gated until their production phases are complete."
+        description = "Stable v1 paper-reading API with optional OIDC-backed account profiles and synchronized To Read libraries. Account, library, and library-write capabilities are independently feature-gated; comment routes remain unavailable until their production phase is complete."
     ),
     paths(
         routes::health::health_live,
@@ -35,6 +35,10 @@ use crate::{
         routes::papers::connections,
         routes::account::get_me,
         routes::account::patch_me,
+        routes::library::list_library,
+        routes::library::library_changes,
+        routes::library::save_library_item,
+        routes::library::remove_library_item,
     ),
     components(schemas(
         PrepareBody,
@@ -66,13 +70,22 @@ use crate::{
         AccountProfileEnvelope,
         AccountProfileResponse,
         AccountStatusSchema,
-        ProfileUpdateBody
+        ProfileUpdateBody,
+        LibrarySaveBody,
+        LibraryStateSchema,
+        LibraryItemSchema,
+        LibraryMutationEnvelopeSchema,
+        LibraryListEntrySchema,
+        LibraryListEnvelopeSchema,
+        LibraryChangeEntrySchema,
+        LibraryChangesEnvelopeSchema
     )),
     modifiers(&OidcSecurity),
     tags(
         (name = "health", description = "Process and dependency health"),
         (name = "papers", description = "Public paper reading and processing"),
-        (name = "accounts", description = "OIDC-authenticated account profile")
+        (name = "accounts", description = "OIDC-authenticated account profile"),
+        (name = "library", description = "OIDC-authenticated synchronized To Read library")
     )
 )]
 pub struct ApiDoc;
@@ -165,6 +178,71 @@ pub(crate) struct PaperSummarySchema {
 pub(crate) struct FeedPageSchema {
     items: Vec<PaperSummarySchema>,
     next_cursor: Option<String>,
+}
+
+#[derive(Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum LibraryStateSchema {
+    ToRead,
+}
+
+#[derive(ToSchema)]
+pub(crate) struct LibraryItemSchema {
+    pub(crate) paper_id: uuid::Uuid,
+    pub(crate) state: LibraryStateSchema,
+    #[schema(value_type = String, format = DateTime)]
+    pub(crate) saved_at: String,
+    #[schema(value_type = String, format = DateTime)]
+    pub(crate) updated_at: String,
+    pub(crate) removed: bool,
+    #[schema(required = true, nullable, value_type = String, format = DateTime)]
+    pub(crate) removed_at: Option<String>,
+    /// Monotonic revision within the authenticated account; opaque outside
+    /// that account.
+    #[schema(minimum = 1)]
+    pub(crate) revision: i64,
+    pub(crate) last_operation_id: uuid::Uuid,
+}
+
+#[derive(ToSchema)]
+pub(crate) struct LibraryMutationEnvelopeSchema {
+    pub(crate) item: LibraryItemSchema,
+}
+
+#[derive(ToSchema)]
+pub(crate) struct LibraryListEntrySchema {
+    pub(crate) item: LibraryItemSchema,
+    pub(crate) paper: PaperSummarySchema,
+}
+
+#[derive(ToSchema)]
+pub(crate) struct LibraryListEnvelopeSchema {
+    pub(crate) items: Vec<LibraryListEntrySchema>,
+    #[schema(required = true, nullable)]
+    pub(crate) next_cursor: Option<String>,
+    /// Committed account-scoped watermark captured by the first list page.
+    #[schema(minimum = 0)]
+    pub(crate) sync_revision: i64,
+}
+
+#[derive(ToSchema)]
+pub(crate) struct LibraryChangeEntrySchema {
+    pub(crate) item: LibraryItemSchema,
+    #[schema(required = true, nullable)]
+    pub(crate) paper: Option<PaperSummarySchema>,
+}
+
+#[derive(ToSchema)]
+pub(crate) struct LibraryChangesEnvelopeSchema {
+    pub(crate) items: Vec<LibraryChangeEntrySchema>,
+    /// Next fully applied revision within the authenticated account.
+    #[schema(minimum = 0)]
+    pub(crate) next_after_revision: i64,
+    pub(crate) has_more: bool,
+    /// Committed account-scoped watermark; unrelated accounts never advance
+    /// it.
+    #[schema(minimum = 0)]
+    pub(crate) sync_revision: i64,
 }
 
 #[derive(ToSchema)]
@@ -397,6 +475,9 @@ mod tests {
             "/v1/papers/{paper_id}/chat",
             "/v1/papers/{paper_id}/connections",
             "/v1/me",
+            "/v1/me/library",
+            "/v1/me/library/changes",
+            "/v1/me/library/{paper_id}",
         ];
         for path in expected {
             assert!(actual.contains(&path), "OpenAPI is missing {path}");
@@ -482,6 +563,115 @@ mod tests {
         for path in ["/health/live", "/health/ready"] {
             assert!(document["paths"][path]["get"].get("security").is_none());
         }
+    }
+
+    #[test]
+    fn library_contract_requires_auth_idempotency_and_private_responses() {
+        let document = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        for (path, method) in [
+            ("/v1/me/library", "get"),
+            ("/v1/me/library/changes", "get"),
+            ("/v1/me/library/{paper_id}", "put"),
+            ("/v1/me/library/{paper_id}", "delete"),
+        ] {
+            let operation = &document["paths"][path][method];
+            assert_eq!(operation["security"][0]["oidcBearer"], json!([]));
+            assert!(
+                operation["responses"]["200"]["headers"]["Cache-Control"].is_object(),
+                "{method} {path} must document private cache control"
+            );
+            assert!(operation["responses"]["401"]["headers"]["WWW-Authenticate"].is_object());
+            assert!(
+                operation["description"]
+                    .as_str()
+                    .is_some_and(|description| description.contains("never schedules")
+                        || description.contains("never schedules preparation")
+                        || method == "put"
+                        || method == "delete")
+            );
+        }
+
+        for method in ["put", "delete"] {
+            let parameters = document["paths"]["/v1/me/library/{paper_id}"][method]["parameters"]
+                .as_array()
+                .unwrap();
+            assert!(parameters.iter().any(|parameter| {
+                parameter["name"] == "Idempotency-Key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+                    && parameter["schema"]["format"] == "uuid"
+            }));
+            assert!(
+                document["paths"]["/v1/me/library/{paper_id}"][method]["responses"]["409"]
+                    .is_object()
+            );
+            assert!(
+                document["paths"]["/v1/me/library/{paper_id}"][method]["responses"]["429"]
+                    ["headers"]["Retry-After"]
+                    .is_object()
+            );
+        }
+        assert!(document["paths"]["/v1/me/library/changes"]["get"]["responses"]["410"].is_object());
+        assert!(
+            document["paths"]["/v1/me/library/{paper_id}"]["delete"]
+                .get("requestBody")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn library_schemas_require_revision_cursor_and_canonical_operation_fields() {
+        let document = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let list_parameters = document["paths"]["/v1/me/library"]["get"]["parameters"]
+            .as_array()
+            .unwrap();
+        assert!(list_parameters.iter().any(|parameter| {
+            parameter["name"] == "state"
+                && parameter["required"] == true
+                && parameter["schema"]["$ref"] == "#/components/schemas/LibraryStateBody"
+        }));
+        assert!(list_parameters.iter().any(|parameter| {
+            parameter["name"] == "cursor" && parameter["schema"]["maxLength"] == 512
+        }));
+        let item = &document["components"]["schemas"]["LibraryItemSchema"];
+        for field in [
+            "paper_id",
+            "state",
+            "saved_at",
+            "updated_at",
+            "removed",
+            "removed_at",
+            "revision",
+            "last_operation_id",
+        ] {
+            assert!(
+                item["required"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|required| required == field),
+                "canonical library item must require {field}"
+            );
+        }
+        assert_eq!(
+            document["components"]["schemas"]["LibraryStateSchema"]["enum"],
+            json!(["to_read"])
+        );
+        for schema in ["LibraryListEnvelopeSchema", "LibraryChangesEnvelopeSchema"] {
+            assert!(
+                document["components"]["schemas"][schema]["required"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|required| required == "sync_revision")
+            );
+        }
+        let change_required =
+            document["components"]["schemas"]["LibraryChangeEntrySchema"]["required"]
+                .as_array()
+                .unwrap();
+        assert!(change_required.iter().any(|required| required == "item"));
+        assert!(change_required.iter().any(|required| required == "paper"));
     }
 
     #[test]

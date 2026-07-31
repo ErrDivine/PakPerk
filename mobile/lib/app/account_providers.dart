@@ -126,11 +126,17 @@ final currentAccountProvider =
           'currentAccountProvider was read with accounts disabled.',
         );
       }
-      return CurrentAccountController(
+      final controller = CurrentAccountController(
         repository: ref.watch(accountRepositoryProvider),
         sessionEpoch: () => ref.read(authSessionProvider).epoch,
         bindAccountId: ref.read(authSessionProvider.notifier).bindAccountId,
       );
+      ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
+        if (previous != null && previous.epoch != next.epoch) {
+          controller.clear();
+        }
+      });
+      return controller;
     });
 
 enum AppPendingActionKind { savePaper, openComposer, reportComment, blockUser }
@@ -162,7 +168,13 @@ typedef PendingAuthenticatedActionExecutor =
     Future<void> Function(AppPendingAuthenticatedAction action);
 
 final pendingAuthenticatedActionExecutorProvider =
-    Provider<PendingAuthenticatedActionExecutor>((ref) => (action) async {});
+    Provider<PendingAuthenticatedActionExecutor>((ref) {
+      return (action) async {
+        throw StateError(
+          'No executor is registered for pending ${action.kind.name}.',
+        );
+      };
+    });
 
 /// Adds account work to the existing startup machine without making OIDC or
 /// `/v1/me` part of the first-readable-frame gate.

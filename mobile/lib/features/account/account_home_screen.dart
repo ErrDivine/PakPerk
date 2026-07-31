@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/account_providers.dart';
+import '../../app/library_providers.dart';
 import '../../core/account/account.dart';
 import '../../core/auth/auth.dart';
 import '../../core/providers.dart';
@@ -136,12 +137,23 @@ class _AuthenticatedAccountLoader extends ConsumerWidget {
       return const _AccountProgressScreen();
     }
 
+    final libraryEnabled = ref.watch(featureFlagsProvider).library;
+    final libraryCount = libraryEnabled
+        ? ref.watch(toReadItemsProvider).value?.length
+        : null;
+    final pendingLibraryCount = libraryEnabled
+        ? ref.watch(libraryPendingCountProvider).value ?? 0
+        : 0;
+
     return AuthenticatedAccountHomeScreen(
       profile: profile,
       updateError: account.phase == CurrentAccountPhase.failed
           ? account.error?.message
           : null,
       updating: account.phase == CurrentAccountPhase.updating,
+      libraryEnabled: libraryEnabled,
+      libraryCount: libraryCount,
+      pendingLibraryCount: pendingLibraryCount,
       onCompleteProfile: onCompleteProfile,
       onEditDisplayName: () => _editDisplayName(context, ref, profile),
       onOpenLibrary: onOpenLibrary,
@@ -174,6 +186,9 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
     required this.onOpenSupport,
     required this.onOpenDeleteAccount,
     required this.onSignOut,
+    this.libraryEnabled = false,
+    this.libraryCount,
+    this.pendingLibraryCount = 0,
     this.updateError,
     super.key,
   });
@@ -181,6 +196,9 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
   final AccountProfile profile;
   final bool updating;
   final String? updateError;
+  final bool libraryEnabled;
+  final int? libraryCount;
+  final int pendingLibraryCount;
   final VoidCallback onCompleteProfile;
   final VoidCallback onEditDisplayName;
   final VoidCallback onOpenLibrary;
@@ -287,12 +305,16 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
               'Your reading',
               style: Theme.of(context).textTheme.titleMedium,
             ),
-            _AccountDestination(
-              icon: Icons.bookmarks_outlined,
-              label: 'To Read',
-              supportingText: 'Sync arrives with the Phase 4 library.',
-              onTap: onOpenLibrary,
-            ),
+            if (libraryEnabled)
+              _AccountDestination(
+                icon: Icons.bookmarks_outlined,
+                label: 'To Read',
+                supportingText: _librarySummary(
+                  libraryCount,
+                  pendingLibraryCount,
+                ),
+                onTap: onOpenLibrary,
+              ),
             _AccountDestination(
               icon: Icons.comment_outlined,
               label: 'My comments',
@@ -566,3 +588,10 @@ String _statusLabel(AccountStatus status) => switch (status) {
   AccountStatus.deletionPending => 'Account deletion pending',
   AccountStatus.deleted => 'Account deleted',
 };
+
+String _librarySummary(int? count, int pending) {
+  final base = count == null
+      ? 'Loading saved papers…'
+      : '$count saved ${count == 1 ? 'paper' : 'papers'}';
+  return pending == 0 ? base : '$base · $pending waiting to sync';
+}

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pakperk/app/feature_flags.dart';
+import 'package:pakperk/app/library_providers.dart';
+import 'package:pakperk/core/library/library_models.dart';
 import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/models/processing.dart';
 import 'package:pakperk/core/models/reader_state.dart';
@@ -115,6 +118,63 @@ void main() {
 
       expect(repository.processingCalls, 1);
       expect(repository.prepareCalls, 1);
+    },
+  );
+
+  testWidgets(
+    'one synchronized save control persists across every paper stage',
+    (tester) async {
+      final repository = FakePaperDataSource(
+        paper: samplePaper,
+        processing: sampleProcessing,
+        introduction: sampleIntroduction,
+        connections: sampleConnections,
+      );
+      const readerKey = 'feed:library-paper';
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            featureFlagsProvider.overrideWithValue(
+              const FeatureFlags(
+                accounts: true,
+                library: true,
+                comments: false,
+                openingMotion: false,
+              ),
+            ),
+            paperSavedStateProvider.overrideWith(
+              (ref, paperId) => Stream.value(
+                const LibrarySavedState(saved: true, syncPending: false),
+              ),
+            ),
+            paperRepositoryProvider.overrideWithValue(repository),
+            localStoreProvider.overrideWithValue(MemoryLocalStore()),
+            initialRestorationProvider.overrideWithValue(
+              const AppRestorationState(),
+            ),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: PaperReader(
+                paper: samplePaper,
+                readerKey: readerKey,
+                isActive: true,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.bySemanticsLabel('Remove from To Read'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('stage-introduction')));
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel('Remove from To Read'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('stage-connections')));
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel('Remove from To Read'), findsOneWidget);
     },
   );
 }

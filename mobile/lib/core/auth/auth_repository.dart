@@ -118,17 +118,23 @@ final class AuthRepository implements AuthTokenSource {
   /// Returns a current bearer, proactively refreshing inside the configured
   /// leeway. Concurrent callers share one refresh exchange.
   @override
-  Future<String?> accessTokenForRequest() async {
+  Future<String?> accessTokenForRequest({int? expectedAuthEpoch}) async {
+    final operationEpoch = expectedAuthEpoch ?? _epoch;
+    _ensureEpoch(operationEpoch);
     final current = _accessCredential;
     if (current != null &&
         current.isUsableAt(_clock().toUtc(), _configuration.refreshLeeway)) {
+      _ensureEpoch(operationEpoch);
       return current.value;
     }
     if (_secureRecord == null) {
       final inspection = await inspectStoredSession();
+      _ensureEpoch(operationEpoch);
       if (inspection.status == AuthStoredSessionStatus.guest) return null;
     }
-    return (await _refreshSingleFlight())?.value;
+    final token = (await _refreshSingleFlight())?.value;
+    _ensureEpoch(operationEpoch);
+    return token;
   }
 
   /// Contract for one 401 challenge retry.
@@ -139,18 +145,25 @@ final class AuthRepository implements AuthTokenSource {
   @override
   Future<String?> refreshAfterUnauthorized({
     required String rejectedAccessToken,
+    int? expectedAuthEpoch,
   }) async {
+    final operationEpoch = expectedAuthEpoch ?? _epoch;
+    _ensureEpoch(operationEpoch);
     final current = _accessCredential;
     if (current != null &&
         current.value != rejectedAccessToken &&
         current.expiresAt.isAfter(_clock().toUtc())) {
+      _ensureEpoch(operationEpoch);
       return current.value;
     }
     if (_secureRecord == null) {
       final inspection = await inspectStoredSession();
+      _ensureEpoch(operationEpoch);
       if (inspection.status == AuthStoredSessionStatus.guest) return null;
     }
-    return (await _refreshSingleFlight())?.value;
+    final token = (await _refreshSingleFlight())?.value;
+    _ensureEpoch(operationEpoch);
+    return token;
   }
 
   /// Persists the non-secret Pakperk account UUID alongside the refresh token.
@@ -426,10 +439,11 @@ final class AuthRepository implements AuthTokenSource {
 
 /// Narrow interface consumed by authenticated HTTP middleware.
 abstract interface class AuthTokenSource {
-  Future<String?> accessTokenForRequest();
+  Future<String?> accessTokenForRequest({int? expectedAuthEpoch});
 
   Future<String?> refreshAfterUnauthorized({
     required String rejectedAccessToken,
+    int? expectedAuthEpoch,
   });
 }
 

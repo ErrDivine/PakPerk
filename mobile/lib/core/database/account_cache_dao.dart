@@ -86,6 +86,7 @@ class AccountCacheDao {
           operation: operation,
           payloadJson: jsonEncode(payload),
           createdAt: createdAt.toUtc(),
+          updatedAt: Value(createdAt.toUtc()),
         ),
       );
 
@@ -109,6 +110,9 @@ class AccountCacheDao {
                   table.accountId.equals(accountId) | table.accountId.isNull(),
             ))
             .go();
+        await (database.delete(
+          database.librarySyncStates,
+        )..where((table) => table.accountId.equals(accountId))).go();
         for (final row in affectedPapers) {
           final paperId = row.read(database.libraryItems.paperId);
           if (paperId != null) await _refreshPaperPin(paperId);
@@ -125,6 +129,7 @@ class AccountCacheDao {
     await database.delete(database.libraryItems).go();
     await database.delete(database.commentDrafts).go();
     await database.delete(database.syncOutbox).go();
+    await database.delete(database.librarySyncStates).go();
     for (final row in affectedPapers) {
       final paperId = row.read(database.libraryItems.paperId);
       if (paperId != null) await _refreshPaperPin(paperId);

@@ -7,12 +7,18 @@ import 'account_repository.dart';
 enum CurrentAccountPhase { idle, loading, ready, updating, failed }
 
 final class CurrentAccountState {
-  const CurrentAccountState({required this.phase, this.profile, this.error});
+  const CurrentAccountState({
+    required this.phase,
+    this.profile,
+    this.verifiedAuthEpoch,
+    this.error,
+  });
 
   const CurrentAccountState.idle() : this(phase: CurrentAccountPhase.idle);
 
   final CurrentAccountPhase phase;
   final AccountProfile? profile;
+  final int? verifiedAuthEpoch;
   final ApiException? error;
 
   bool get isBusy =>
@@ -45,15 +51,17 @@ final class CurrentAccountController
     state = CurrentAccountState(
       phase: CurrentAccountPhase.loading,
       profile: state.profile,
+      verifiedAuthEpoch: state.verifiedAuthEpoch,
     );
     try {
-      final profile = await _repository.getCurrent();
+      final profile = await _repository.getCurrent(expectedAuthEpoch: epoch);
       if (!_isCurrent(generation, epoch)) return null;
       await _bindAccountId(profile.id);
       if (!_isCurrent(generation, epoch)) return null;
       state = CurrentAccountState(
         phase: CurrentAccountPhase.ready,
         profile: profile,
+        verifiedAuthEpoch: epoch,
       );
       return profile;
     } on ApiException catch (error) {
@@ -61,6 +69,7 @@ final class CurrentAccountController
         state = CurrentAccountState(
           phase: CurrentAccountPhase.failed,
           profile: state.profile,
+          verifiedAuthEpoch: state.verifiedAuthEpoch,
           error: error,
         );
       }
@@ -70,6 +79,7 @@ final class CurrentAccountController
         state = CurrentAccountState(
           phase: CurrentAccountPhase.failed,
           profile: state.profile,
+          verifiedAuthEpoch: state.verifiedAuthEpoch,
           error: const ApiException(
             code: 'ACCOUNT_SESSION_UNAVAILABLE',
             message: 'The account session could not be saved securely.',
@@ -89,9 +99,11 @@ final class CurrentAccountController
     state = CurrentAccountState(
       phase: CurrentAccountPhase.updating,
       profile: current,
+      verifiedAuthEpoch: state.verifiedAuthEpoch,
     );
     try {
       final profile = await _repository.update(
+        expectedAuthEpoch: epoch,
         expectedProfileVersion: current.profileVersion,
         patch: patch,
       );
@@ -99,6 +111,7 @@ final class CurrentAccountController
       state = CurrentAccountState(
         phase: CurrentAccountPhase.ready,
         profile: profile,
+        verifiedAuthEpoch: epoch,
       );
       return profile;
     } on ApiException catch (error) {
@@ -106,6 +119,7 @@ final class CurrentAccountController
         state = CurrentAccountState(
           phase: CurrentAccountPhase.failed,
           profile: current,
+          verifiedAuthEpoch: state.verifiedAuthEpoch,
           error: error,
         );
       }
@@ -115,6 +129,7 @@ final class CurrentAccountController
         state = CurrentAccountState(
           phase: CurrentAccountPhase.failed,
           profile: current,
+          verifiedAuthEpoch: state.verifiedAuthEpoch,
           error: const ApiException(
             code: 'ACCOUNT_UPDATE_UNAVAILABLE',
             message: 'The account update could not be completed.',

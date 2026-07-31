@@ -11,6 +11,7 @@ members = [
     "crates/domain",
     "crates/grobid_client",
     "crates/jobs",
+    "crates/library",
     "crates/llm_provider",
     "crates/observability",
     "crates/retrieval",
@@ -36,6 +37,7 @@ db = { path = "crates/db" }
 document_model = { path = "crates/document_model" }
 grobid_client = { path = "crates/grobid_client" }
 jobs = { path = "crates/jobs" }
+library = { path = "crates/library" }
 jsonwebtoken = { version = "=11.0.0", default-features = false, features = ["rust_crypto"] }
 llm_provider = { path = "crates/llm_provider" }
 observability = { path = "crates/observability" }

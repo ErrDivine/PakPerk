@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Pakperk API",
-    "description": "Stable v1 paper-reading API with optional OIDC-backed account profiles. Library and comment routes remain feature-gated until their production phases are complete.",
+    "description": "Stable v1 paper-reading API with optional OIDC-backed account profiles and synchronized To Read libraries. Account, library, and library-write capabilities are independently feature-gated; comment routes remain unavailable until their production phase is complete.",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -440,6 +440,553 @@
                 "description": "Seconds before retry when known"
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/me/library": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "description": "Lists the active To Read set. Registered only when ACCOUNTS_ENABLED and LIBRARY_ENABLED are both true. This metadata-only route never schedules paper preparation.",
+        "operationId": "list_library",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Required exact state; v0.0 accepts only to_read",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/LibraryStateBody"
+            },
+            "example": "to_read"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque revision-fence cursor from next_cursor",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 512
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Bounded page size; defaults to 50",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 100,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest-saved active items fenced to one account revision; complete convergence with a changes pass",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryListEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST, INVALID_LIBRARY_STATE, INVALID_LIBRARY_CURSOR, or INVALID_LIBRARY_LIMIT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED or TOKEN_EXPIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHENTICATION_UNAVAILABLE or LIBRARY_SERVICE_UNAVAILABLE",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds before retry when known"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/me/library/changes": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "description": "Returns active records and removal tombstones in ascending committed revision order for the authenticated account. Other accounts never advance this watermark. Registered only with accounts and library enabled; it never schedules preparation.",
+        "operationId": "library_changes",
+        "parameters": [
+          {
+            "name": "after_revision",
+            "in": "query",
+            "description": "Required last fully applied revision for the authenticated account",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "example": 0
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Bounded page size; defaults to 50",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 500,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Committed incremental change page",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryChangesEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST, INVALID_LIBRARY_REVISION, or INVALID_LIBRARY_LIMIT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED or TOKEN_EXPIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "LIBRARY_SYNC_RESET_REQUIRED; replace the local account library from the full list before resuming changes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHENTICATION_UNAVAILABLE or LIBRARY_SERVICE_UNAVAILABLE",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds before retry when known"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/me/library/{paper_id}": {
+      "put": {
+        "tags": [
+          "library"
+        ],
+        "description": "Saves a paper to To Read. Registered with accounts and library enabled; LIBRARY_WRITES_ENABLED can independently return FEATURE_DISABLED without removing reads.",
+        "operationId": "save_library_item",
+        "parameters": [
+          {
+            "name": "paper_id",
+            "in": "path",
+            "description": "Existing cached paper ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Required client operation UUID; must exactly match body operation_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Strict To Read save intent; unknown fields are rejected",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibrarySaveBody"
+              },
+              "example": {
+                "operation_id": "0198f4da-383f-77f0-9404-e6d6614d26e1",
+                "state": "to_read"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Canonical current library record; exact replays return the same current record",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryMutationEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_IDEMPOTENCY_KEY, IDEMPOTENCY_KEY_MISMATCH, INVALID_LIBRARY_STATE, or INVALID_REQUEST",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED or TOKEN_EXPIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PAPER_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "IDEMPOTENCY_CONFLICT or LIBRARY_OPERATION_CONFLICT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds until the shared write window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "FEATURE_DISABLED, AUTHENTICATION_UNAVAILABLE, or LIBRARY_SERVICE_UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "library"
+        ],
+        "description": "Removes a paper from To Read by writing a synchronization tombstone. The header is the complete mutation intent; request bodies are rejected.",
+        "operationId": "remove_library_item",
+        "parameters": [
+          {
+            "name": "paper_id",
+            "in": "path",
+            "description": "Existing cached paper ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Required client operation UUID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Canonical removal tombstone; exact replays return the current canonical record",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryMutationEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_IDEMPOTENCY_KEY or INVALID_REQUEST",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED or TOKEN_EXPIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PAPER_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "IDEMPOTENCY_CONFLICT or LIBRARY_OPERATION_CONFLICT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds until the shared write window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "FEATURE_DISABLED, AUTHENTICATION_UNAVAILABLE, or LIBRARY_SERVICE_UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -1485,6 +2032,193 @@
           }
         }
       },
+      "LibraryChangeEntrySchema": {
+        "type": "object",
+        "required": [
+          "item",
+          "paper"
+        ],
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/LibraryItemSchema"
+          },
+          "paper": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PaperSummarySchema"
+              }
+            ]
+          }
+        }
+      },
+      "LibraryChangesEnvelopeSchema": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_after_revision",
+          "has_more",
+          "sync_revision"
+        ],
+        "properties": {
+          "has_more": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryChangeEntrySchema"
+            }
+          },
+          "next_after_revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Next fully applied revision within the authenticated account.",
+            "minimum": 0
+          },
+          "sync_revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Committed account-scoped watermark; unrelated accounts never advance\nit.",
+            "minimum": 0
+          }
+        }
+      },
+      "LibraryItemSchema": {
+        "type": "object",
+        "required": [
+          "paper_id",
+          "state",
+          "saved_at",
+          "updated_at",
+          "removed",
+          "removed_at",
+          "revision",
+          "last_operation_id"
+        ],
+        "properties": {
+          "last_operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "paper_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "removed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Monotonic revision within the authenticated account; opaque outside\nthat account.",
+            "minimum": 1
+          },
+          "saved_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "$ref": "#/components/schemas/LibraryStateSchema"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "LibraryListEntrySchema": {
+        "type": "object",
+        "required": [
+          "item",
+          "paper"
+        ],
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/LibraryItemSchema"
+          },
+          "paper": {
+            "$ref": "#/components/schemas/PaperSummarySchema"
+          }
+        }
+      },
+      "LibraryListEnvelopeSchema": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor",
+          "sync_revision"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryListEntrySchema"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sync_revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Committed account-scoped watermark captured by the first list page.",
+            "minimum": 0
+          }
+        }
+      },
+      "LibraryMutationEnvelopeSchema": {
+        "type": "object",
+        "required": [
+          "item"
+        ],
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/LibraryItemSchema"
+          }
+        }
+      },
+      "LibrarySaveBody": {
+        "type": "object",
+        "required": [
+          "operation_id",
+          "state"
+        ],
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "$ref": "#/components/schemas/LibraryStateBody"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LibraryStateBody": {
+        "type": "string",
+        "enum": [
+          "to_read"
+        ]
+      },
+      "LibraryStateSchema": {
+        "type": "string",
+        "enum": [
+          "to_read"
+        ]
+      },
       "OverallProcessingStateSchema": {
         "type": "string",
         "enum": [
@@ -1773,6 +2507,10 @@
     {
       "name": "accounts",
       "description": "OIDC-authenticated account profile"
+    },
+    {
+      "name": "library",
+      "description": "OIDC-authenticated synchronized To Read library"
     }
   ]
 }

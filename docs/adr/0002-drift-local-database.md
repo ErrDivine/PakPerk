@@ -27,16 +27,16 @@ account deletion.
 ## Implemented shape
 
 The production database uses the stable `pakperk_content.sqlite` filename and
-currently has schema version 3. Foreign keys are enabled and the database uses
+currently has schema version 4. Foreign keys are enabled and the database uses
 WAL mode. The schema contains:
 
 - normalized paper, feed-query, and ordered feed-membership tables;
 - generation- and arXiv-version-bound processing, Introduction, Connections,
   and anonymous chat caches;
 - a bounded comment-page cache; and
-- account-ready library, draft, outbox, and cache-metadata tables. Those
-  account-ready tables do not expose account, library, or comment behavior by
-  themselves; their product phases remain disabled.
+- account-scoped library, draft, outbox, sync-state, and cache-metadata tables.
+  Phase 4 activates the library subset only behind its feature gates; comment
+  behavior remains disabled.
 
 Feed rows are keyed by an opaque, versioned identity that includes the exact
 category and limit. The first-page validator is stored with that query, while
@@ -77,8 +77,8 @@ convention.
   management, bounded cache eviction, and migration from legacy preferences.
 - Feed cache entries become query/category/cursor-aware instead of a single
   initial-page JSON value.
-- The schema can persist idempotent save/unsave operations in an outbox while
-  offline; the later library phase owns the synchronization behavior. Public
+- The schema persists idempotent save/unsave operations in an outbox while
+  offline, and Phase 4 owns their guarded synchronization behavior. Public
   comment drafts remain distinct from the outbox and never auto-publish.
 - Existing cached-first UI behavior is preserved while the data model becomes
   queryable and transactional.
@@ -87,8 +87,9 @@ convention.
 
 - SQLite contains no access tokens, refresh tokens, raw authorization material,
   or account credentials.
-- Account-owned tables are structurally separated for later logout/deletion
-  cleanup; public paper metadata can remain available offline.
+- Account-owned tables are structurally separated for logout/account-switch
+  cleanup and later deletion; public paper metadata can remain available
+  offline.
 - Cache size, TTL, LRU eviction, saved-paper pinning, and lifecycle-safe
   physical compaction have focused metrics and tests.
 - Migrations are explicit and tested from a complete version-1 schema fixture.

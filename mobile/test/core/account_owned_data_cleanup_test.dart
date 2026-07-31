@@ -91,6 +91,12 @@ void main() {
         payload: const {'state': 'to_read'},
         createdAt: now,
       );
+      await database
+          .into(database.librarySyncStates)
+          .insert(LibrarySyncStatesCompanion.insert(accountId: 'account-a'));
+      await database
+          .into(database.librarySyncStates)
+          .insert(LibrarySyncStatesCompanion.insert(accountId: 'account-b'));
 
       await accounts.clearAccountData('account-a');
 
@@ -112,6 +118,12 @@ void main() {
         ),
         ['operation-b'],
       );
+      expect(
+        (await database.select(database.librarySyncStates).get()).map(
+          (row) => row.accountId,
+        ),
+        ['account-b'],
+      );
       expect(await feeds.loadPage(queryKey), isNotNull);
       expect(await database.readMetadata('feed:public-marker'), {'kept': true});
       expect(
@@ -125,6 +137,7 @@ void main() {
       expect(await database.select(database.libraryItems).get(), isEmpty);
       expect(await database.select(database.commentDrafts).get(), isEmpty);
       expect(await database.select(database.syncOutbox).get(), isEmpty);
+      expect(await database.select(database.librarySyncStates).get(), isEmpty);
       expect(await feeds.loadPage(queryKey), isNotNull);
       expect(await database.select(database.cachedPapers).get(), hasLength(1));
       expect(

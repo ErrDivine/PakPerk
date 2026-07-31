@@ -13,10 +13,11 @@ use axum::{
         header::{AUTHORIZATION, CONTENT_TYPE, ETAG, IF_MATCH, IF_NONE_MATCH, RETRY_AFTER},
     },
     middleware,
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use db::{Database, PaperRepository};
 use domain::FulltextPolicy;
+use library::{LibraryPolicy, LibraryService};
 use llm_provider::{
     ChatProvider, DeterministicProvider, EmbeddingProvider, OpenAiCompatibleProvider,
 };
@@ -36,8 +37,9 @@ use crate::{
     openapi::openapi_json,
     routes::support::not_found,
     routes::{
-        chat, connections, feed, get_me, health_live, health_ready, introduction, paper_by_arxiv,
-        paper_metadata, patch_me, prepare, private_account_cache_control, processing,
+        chat, connections, feed, get_me, health_live, health_ready, introduction, library_changes,
+        list_library, paper_by_arxiv, paper_metadata, patch_me, prepare,
+        private_account_cache_control, processing, remove_library_item, save_library_item,
     },
 };
 
@@ -58,6 +60,7 @@ pub struct AppState {
     pub(crate) prepare_limit: u32,
     pub(crate) chat_limit: u32,
     pub(crate) accounts: Option<AccountService>,
+    pub(crate) library: Option<LibraryService>,
     pub(crate) auth: AuthRuntime,
     feature_flags: FeatureFlags,
 }
@@ -85,10 +88,12 @@ impl AppState {
         config: &ApiConfig,
         auth: AuthRuntime,
     ) -> anyhow::Result<Self> {
+        config.features.validate()?;
         if config.features.accounts != config.accounts.is_some()
             || config.features.accounts != auth.is_enabled()
+            || config.features.library != config.library.is_some()
         {
-            anyhow::bail!("account feature and authentication runtime are inconsistent");
+            anyhow::bail!("feature configuration and authentication runtime are inconsistent");
         }
         let papers = database.papers();
         let mut arxiv_config = config.arxiv.clone();
@@ -113,6 +118,16 @@ impl AppState {
                 ))
             })
             .transpose()?;
+        let library = config
+            .library
+            .map(|library| {
+                Ok::<_, anyhow::Error>(LibraryService::new(
+                    database.library(),
+                    database.rate_limits(),
+                    LibraryPolicy::new(library.mutation_limit, library.mutation_window)?,
+                ))
+            })
+            .transpose()?;
         Ok(Self {
             database,
             papers,
@@ -125,6 +140,7 @@ impl AppState {
             prepare_limit: config.prepare_requests_per_minute.max(1),
             chat_limit: config.chat_requests_per_minute.max(1),
             accounts,
+            library,
             auth,
             feature_flags: config.features,
         })
@@ -134,6 +150,11 @@ impl AppState {
     /// assembly in later production phases.
     pub const fn feature_flags(&self) -> FeatureFlags {
         self.feature_flags
+    }
+
+    /// Cloneable maintenance handle without exposing persistence internals.
+    pub fn library_service(&self) -> Option<LibraryService> {
+        self.library.clone()
     }
 }
 
@@ -157,14 +178,17 @@ pub fn build_router(state: AppState, config: &ApiConfig) -> Router {
     } else {
         router
     };
-    debug_assert_eq!(
-        production_feature_routes(config.features),
-        config
-            .features
-            .accounts
-            .then_some(vec!["/v1/me"])
-            .unwrap_or_default()
-    );
+    let router = if config.features.accounts && config.features.library {
+        router
+            .route("/v1/me/library", get(list_library))
+            .route("/v1/me/library/changes", get(library_changes))
+            .route(
+                "/v1/me/library/{paper_id}",
+                put(save_library_item).delete(remove_library_item),
+            )
+    } else {
+        router
+    };
     let router = if config.environment.exposes_openapi() {
         router.route("/openapi.json", get(openapi_json))
     } else {
@@ -226,8 +250,20 @@ fn feed_aware_cors(allowed_origins: &[HeaderValue]) -> CorsLayer {
     }
 }
 
+#[cfg(test)]
 fn production_feature_routes(features: FeatureFlags) -> Vec<&'static str> {
-    features.accounts.then_some("/v1/me").into_iter().collect()
+    let mut routes = Vec::new();
+    if features.accounts {
+        routes.push("/v1/me");
+    }
+    if features.accounts && features.library {
+        routes.extend([
+            "/v1/me/library",
+            "/v1/me/library/changes",
+            "/v1/me/library/{paper_id}",
+        ]);
+    }
+    routes
 }
 
 #[cfg(test)]
@@ -252,9 +288,27 @@ mod tests {
         let all_enabled = FeatureFlags {
             accounts: true,
             library: true,
+            library_writes: true,
             comments: true,
         };
-        assert_eq!(production_feature_routes(all_enabled), vec!["/v1/me"]);
+        assert_eq!(
+            production_feature_routes(all_enabled),
+            vec![
+                "/v1/me",
+                "/v1/me/library",
+                "/v1/me/library/changes",
+                "/v1/me/library/{paper_id}",
+            ]
+        );
+        assert_eq!(
+            production_feature_routes(FeatureFlags {
+                accounts: true,
+                library: false,
+                library_writes: false,
+                comments: false,
+            }),
+            vec!["/v1/me"]
+        );
     }
 
     #[tokio::test]
@@ -311,13 +365,17 @@ mod tests {
                     .any(|header| header.trim().eq_ignore_ascii_case(expected))
             );
         }
-        assert!(
-            preflight.headers()[ACCESS_CONTROL_ALLOW_METHODS]
-                .to_str()
-                .unwrap()
-                .split(',')
-                .any(|method| method.trim().eq_ignore_ascii_case("patch"))
-        );
+        let allowed_methods = preflight.headers()[ACCESS_CONTROL_ALLOW_METHODS]
+            .to_str()
+            .unwrap();
+        for expected in ["patch", "put", "delete"] {
+            assert!(
+                allowed_methods
+                    .split(',')
+                    .any(|method| method.trim().eq_ignore_ascii_case(expected)),
+                "CORS must permit {expected}"
+            );
+        }
 
         let response = app
             .oneshot(

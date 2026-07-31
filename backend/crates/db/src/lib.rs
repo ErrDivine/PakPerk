@@ -7,10 +7,12 @@
 mod cursor;
 mod repository;
 
-pub use cursor::{CursorError, FeedCursor};
+pub use cursor::{CursorError, FeedCursor, LibraryCursor};
 pub use repository::{
-    AccountRepository, ChatSession, Database, DbError, FeedQuery, PaperRepository, PrepareResult,
-    ProfilePatch, ProfileUpdateOutcome, RateLimitConfigError, RateLimitDecision,
-    RateLimitRepository, RateLimitRequest, RetrievalCandidate, StoredSection, TitleCandidate,
+    AccountRepository, ChatSession, Database, DbError, FeedQuery, LibraryChangesOutcome,
+    LibraryMutationIntent, LibraryMutationOutcome, LibraryOperationResolution, LibraryReadOutcome,
+    LibraryRepository, PaperRepository, PrepareResult, ProfilePatch, ProfileUpdateOutcome,
+    RateLimitConfigError, RateLimitDecision, RateLimitRepository, RateLimitRequest,
+    RetrievalCandidate, StoredLibraryChangesPage, StoredLibraryPage, StoredSection, TitleCandidate,
     VerificationMetrics,
 };

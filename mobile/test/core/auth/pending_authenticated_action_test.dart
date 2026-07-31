@@ -25,6 +25,23 @@ void main() {
 
     expect(controller.take(), isNull);
   });
+
+  test('failed handoff restores only when no newer action exists', () {
+    final controller = PendingAuthenticatedActionController<_TestAction>();
+    addTearDown(controller.dispose);
+    const original = _TestAction('save');
+    const newer = _TestAction('report');
+
+    controller.replace(original);
+    expect(controller.take(), same(original));
+    controller.restoreIfEmpty(original);
+    expect(controller.state, same(original));
+
+    expect(controller.take(), same(original));
+    controller.replace(newer);
+    controller.restoreIfEmpty(original);
+    expect(controller.state, same(newer));
+  });
 }
 
 final class _TestAction implements PendingAuthenticatedAction {

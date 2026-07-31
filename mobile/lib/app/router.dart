@@ -15,6 +15,7 @@ import '../features/account/auth_flow_screen.dart';
 import '../features/chat/chat_controller.dart';
 import '../features/chat/chat_sheet.dart';
 import '../features/feed/feed_screen.dart';
+import '../features/library/to_read_screen.dart';
 import '../features/paper_reader/paper_metadata_controller.dart';
 import '../features/paper_reader/paper_reader.dart';
 import '../features/paper_reader/reader_navigation_controller.dart';
@@ -447,13 +448,7 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                 routes: [
                   GoRoute(
                     path: 'library',
-                    builder: (_, __) => const PhaseOnePlaceholderScreen(
-                      title: 'To Read',
-                      message:
-                          'Synchronized saves arrive in Phase 4. This '
-                          'screen does not present local-only saves as synced.',
-                      icon: Icons.bookmarks_outlined,
-                    ),
+                    builder: (_, __) => const ToReadScreen(),
                   ),
                   GoRoute(
                     path: 'comments',

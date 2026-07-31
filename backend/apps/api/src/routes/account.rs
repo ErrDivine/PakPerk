@@ -488,9 +488,11 @@ mod tests {
             features: FeatureFlags {
                 accounts: enabled,
                 library: false,
+                library_writes: false,
                 comments: false,
             },
             accounts: account,
+            library: None,
             bind: "127.0.0.1:0".parse().unwrap(),
             database_url: "postgres://test:test@127.0.0.1/test".to_owned(),
             database_pool_size: 1,

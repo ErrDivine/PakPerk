@@ -8,6 +8,7 @@ import '../core/auth/auth.dart';
 import '../features/feed/feed_controller.dart';
 import '../features/paper_reader/reader_navigation_controller.dart';
 import 'account_providers.dart';
+import 'library_providers.dart';
 import 'router.dart';
 import 'startup_controller.dart';
 import 'startup_gate.dart';
@@ -36,6 +37,12 @@ class _PakPerkAppState extends ConsumerState<PakPerkApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        ref.read(featureFlagsProvider).library) {
+      unawaited(
+        ref.read(librarySyncControllerProvider.notifier).onForeground(),
+      );
+    }
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
@@ -53,6 +60,9 @@ class _PakPerkAppState extends ConsumerState<PakPerkApp>
   @override
   Widget build(BuildContext context) {
     _observeAccountSession();
+    if (ref.watch(featureFlagsProvider).library) {
+      ref.watch(libraryRuntimeProvider);
+    }
     final startup = ref.watch(startupControllerProvider);
     final startupController = ref.read(startupControllerProvider.notifier);
     final openingMotion = ref.watch(featureFlagsProvider).openingMotion;
