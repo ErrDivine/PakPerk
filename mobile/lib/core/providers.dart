@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../app/feature_flags.dart';
 import 'api/api_client.dart';
 import 'cache/demo_asset_store.dart';
+import 'cache/feed_cache_persistence.dart';
 import 'cache/local_store.dart';
 import 'content_policy.dart';
 import 'models/reader_state.dart';
@@ -23,17 +24,24 @@ final localStoreProvider = Provider<LocalStore>(
       throw StateError('localStoreProvider must be overridden at startup.'),
 );
 
+/// Null in focused tests or alternate stores that do not provide relational
+/// feed persistence; production startup supplies a Drift-backed store.
+final feedCachePersistenceProvider = Provider<FeedCachePersistence?>((ref) {
+  final store = ref.watch(localStoreProvider);
+  return store is FeedCachePersistence ? store as FeedCachePersistence : null;
+});
+
 final initialAnonymousSessionIdProvider = Provider<String>(
   (ref) => const Uuid().v4(),
 );
 
 final anonymousSessionIdProvider =
     StateNotifierProvider<AnonymousSessionController, String>(
-  (ref) => AnonymousSessionController(
-    store: ref.watch(localStoreProvider),
-    initialSessionId: ref.watch(initialAnonymousSessionIdProvider),
-  ),
-);
+      (ref) => AnonymousSessionController(
+        store: ref.watch(localStoreProvider),
+        initialSessionId: ref.watch(initialAnonymousSessionIdProvider),
+      ),
+    );
 
 final initialRestorationProvider = Provider<AppRestorationState>(
   (ref) => const AppRestorationState(),
@@ -49,16 +57,14 @@ final demoContentStoreProvider = Provider<DemoContentStore>(
   (ref) => BundleDemoContentStore(),
 );
 
-final apiClientProvider = Provider<ApiClient>(
-  (ref) {
-    final client = ApiClient(
-      baseUrl: ref.watch(appBuildConfigProvider).apiBaseUri.toString(),
-      sessionId: ref.watch(anonymousSessionIdProvider),
-    );
-    ref.onDispose(client.dispose);
-    return client;
-  },
-);
+final apiClientProvider = Provider<ApiClient>((ref) {
+  final client = ApiClient(
+    baseUrl: ref.watch(appBuildConfigProvider).apiBaseUri.toString(),
+    sessionId: ref.watch(anonymousSessionIdProvider),
+  );
+  ref.onDispose(client.dispose);
+  return client;
+});
 
 final paperRepositoryProvider = Provider<PaperDataSource>((ref) {
   final repository = PaperRepository(
@@ -95,8 +101,8 @@ class AnonymousSessionController extends StateNotifier<String> {
   AnonymousSessionController({
     required LocalStore store,
     required String initialSessionId,
-  })  : _store = store,
-        super(initialSessionId);
+  }) : _store = store,
+       super(initialSessionId);
 
   final LocalStore _store;
   Future<String>? _rotation;

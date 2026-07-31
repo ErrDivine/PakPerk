@@ -13,10 +13,7 @@ class IntroductionCitationReference {
         title: (json['title'] ?? 'Untitled paper').toString(),
       );
 
-  Map<String, dynamic> toJson() => {
-        'paper_id': paperId,
-        'title': title,
-      };
+  Map<String, dynamic> toJson() => {'paper_id': paperId, 'title': title};
 }
 
 class IntroductionCitation {
@@ -32,9 +29,8 @@ class IntroductionCitation {
   final String marker;
   final List<IntroductionCitationReference> references;
 
-  bool get isNavigable => references.any(
-        (reference) => reference.paperId.trim().isNotEmpty,
-      );
+  bool get isNavigable =>
+      references.any((reference) => reference.paperId.trim().isNotEmpty);
 
   factory IntroductionCitation.fromJson(Map<String, dynamic> json) =>
       IntroductionCitation(
@@ -52,12 +48,11 @@ class IntroductionCitation {
       );
 
   Map<String, dynamic> toJson() => {
-        'start': start,
-        'end': end,
-        'marker': marker,
-        'references':
-            references.map((reference) => reference.toJson()).toList(),
-      };
+    'start': start,
+    'end': end,
+    'marker': marker,
+    'references': references.map((reference) => reference.toJson()).toList(),
+  };
 }
 
 class IntroductionParagraph {
@@ -95,14 +90,14 @@ class IntroductionParagraph {
       );
 
   Map<String, dynamic> toJson() => {
-        'ordinal': ordinal,
-        'text': text,
-        if (heading != null) 'heading': heading,
-        if (citations.isNotEmpty)
-          'citations': citations.map((citation) => citation.toJson()).toList(),
-        if (pageStart != null) 'page_start': pageStart,
-        if (pageEnd != null) 'page_end': pageEnd,
-      };
+    'ordinal': ordinal,
+    'text': text,
+    if (heading != null) 'heading': heading,
+    if (citations.isNotEmpty)
+      'citations': citations.map((citation) => citation.toJson()).toList(),
+    if (pageStart != null) 'page_start': pageStart,
+    if (pageEnd != null) 'page_end': pageEnd,
+  };
 }
 
 class PaperIntroduction {
@@ -139,7 +134,8 @@ class PaperIntroduction {
           )
           .where((paragraph) => paragraph.text.isNotEmpty)
           .toList(growable: false),
-      detectionConfidence: (json['detection_confidence'] as num?)?.toDouble() ??
+      detectionConfidence:
+          (json['detection_confidence'] as num?)?.toDouble() ??
           (detection['confidence'] as num?)?.toDouble() ??
           0,
       originalPdfUrl: (json['original_pdf_url'] ?? '').toString(),
@@ -147,12 +143,11 @@ class PaperIntroduction {
   }
 
   Map<String, dynamic> toJson() => {
-        'paper_id': paperId,
-        'generation': generation,
-        'heading': heading,
-        'paragraphs':
-            paragraphs.map((paragraph) => paragraph.toJson()).toList(),
-        'detection_confidence': detectionConfidence,
-        'original_pdf_url': originalPdfUrl,
-      };
+    'paper_id': paperId,
+    'generation': generation,
+    'heading': heading,
+    'paragraphs': paragraphs.map((paragraph) => paragraph.toJson()).toList(),
+    'detection_confidence': detectionConfidence,
+    'original_pdf_url': originalPdfUrl,
+  };
 }

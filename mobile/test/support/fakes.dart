@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:pakperk/core/cache/local_store.dart';
 import 'package:pakperk/core/api/request_cancellation.dart';
+import 'package:pakperk/core/models/arxiv_identifier.dart';
 import 'package:pakperk/core/models/chat.dart';
 import 'package:pakperk/core/models/connections.dart';
 import 'package:pakperk/core/models/introduction.dart';
@@ -86,10 +87,7 @@ class MemoryLocalStore implements LocalStore {
       readerStates: restoration.readerStates.map(
         (key, reader) => MapEntry(
           key,
-          reader.copyWith(
-            chatSheetOpen: false,
-            clearChatThreadId: true,
-          ),
+          reader.copyWith(chatSheetOpen: false, clearChatThreadId: true),
         ),
       ),
     );
@@ -117,15 +115,12 @@ class MemoryLocalStore implements LocalStore {
 
   @override
   Future<PaperSummary?> findPaperByArxiv(String arxivBaseId) async {
-    final candidates = <PaperSummary>{
-      ...papers.values,
-      ...?feed?.items,
-    }.where(
+    final candidates = <PaperSummary>{...papers.values, ...?feed?.items}.where(
       (paper) => paper.arxivBaseId.toLowerCase() == arxivBaseId.toLowerCase(),
     );
     PaperSummary? latest;
     for (final paper in candidates) {
-      if (latest == null || paper.updatedAt.isAfter(latest.updatedAt)) {
+      if (latest == null || _preferPaper(paper, latest)) {
         latest = paper;
       }
     }
@@ -134,6 +129,14 @@ class MemoryLocalStore implements LocalStore {
 
   @override
   Future<void> savePaper(PaperSummary value) async {
+    final current = papers[value.paperId];
+    if (current != null && _preferPaper(current, value)) return;
+    if (current != null && current.arxivId != value.arxivId) {
+      await clearDerived(value.paperId);
+      chats.removeWhere(
+        (readerKey, _) => readerKey.endsWith(':${current.arxivId}'),
+      );
+    }
     papers[value.paperId] = value;
   }
 
@@ -180,6 +183,19 @@ class MemoryLocalStore implements LocalStore {
   }
 }
 
+bool _preferPaper(PaperSummary candidate, PaperSummary current) {
+  if (candidate.arxivBaseId.toLowerCase() !=
+      current.arxivBaseId.toLowerCase()) {
+    return true;
+  }
+  final candidateVersion = ArxivIdentifier.tryParse(candidate.arxivId)?.version;
+  final currentVersion = ArxivIdentifier.tryParse(current.arxivId)?.version;
+  if ((candidateVersion ?? 0) != (currentVersion ?? 0)) {
+    return (candidateVersion ?? 0) > (currentVersion ?? 0);
+  }
+  return candidate.updatedAt.isAfter(current.updatedAt);
+}
+
 class FakePaperDataSource implements PaperDataSource {
   FakePaperDataSource({
     this.paper,
@@ -188,6 +204,7 @@ class FakePaperDataSource implements PaperDataSource {
     this.prepareResult,
     this.introduction,
     this.connections,
+    this.chatAnswer,
   });
 
   PaperSummary? paper;
@@ -196,6 +213,7 @@ class FakePaperDataSource implements PaperDataSource {
   PaperProcessingState? prepareResult;
   PaperIntroduction? introduction;
   PaperConnections? connections;
+  ChatAnswer? chatAnswer;
   final Map<String, PaperSummary> papersById = {};
   int prepareCalls = 0;
   int processingCalls = 0;
@@ -204,6 +222,7 @@ class FakePaperDataSource implements PaperDataSource {
   int paperCalls = 0;
   int paperByArxivCalls = 0;
   int feedCalls = 0;
+  int chatCalls = 0;
   bool offline = false;
   DataOrigin contentOrigin = DataOrigin.network;
   Completer<RepositoryValue<FeedPage>>? networkFeedCompleter;
@@ -358,20 +377,22 @@ class FakePaperDataSource implements PaperDataSource {
     RequestCancellation? cancellation,
   }) async {
     lastChatCancellation = cancellation;
-    return const ChatAnswer(
-      answerMarkdown: 'It uses self-attention.',
-      insufficientEvidence: false,
-      evidence: [
-        ChatEvidence(
-          sectionKind: 'method',
-          sectionHeading: '3 Method',
-          pageStart: 4,
-          pageEnd: 5,
-          chunkId: 'chunk-1',
-        ),
-      ],
-      suggestedFollowUps: [],
-      threadId: 'thread-1',
-    );
+    chatCalls += 1;
+    return chatAnswer ??
+        const ChatAnswer(
+          answerMarkdown: 'It uses self-attention.',
+          insufficientEvidence: false,
+          evidence: [
+            ChatEvidence(
+              sectionKind: 'method',
+              sectionHeading: '3 Method',
+              pageStart: 4,
+              pageEnd: 5,
+              chunkId: 'chunk-1',
+            ),
+          ],
+          suggestedFollowUps: [],
+          threadId: 'thread-1',
+        );
   }
 }

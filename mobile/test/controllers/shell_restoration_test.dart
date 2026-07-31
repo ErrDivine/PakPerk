@@ -37,21 +37,21 @@ void main() {
 
   test('unknown restored branch values fall back to Read', () {
     expect(
-      AppRestorationState.fromJson(
-        const {'active_branch_index': -1},
-      ).activeBranchIndex,
+      AppRestorationState.fromJson(const {
+        'active_branch_index': -1,
+      }).activeBranchIndex,
       0,
     );
     expect(
-      AppRestorationState.fromJson(
-        const {'active_branch_index': 99},
-      ).activeBranchIndex,
+      AppRestorationState.fromJson(const {
+        'active_branch_index': 99,
+      }).activeBranchIndex,
       0,
     );
     expect(
-      AppRestorationState.fromJson(
-        const {'active_branch_index': 'you'},
-      ).activeBranchIndex,
+      AppRestorationState.fromJson(const {
+        'active_branch_index': 'you',
+      }).activeBranchIndex,
       0,
     );
   });

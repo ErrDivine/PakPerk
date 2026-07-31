@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/app/app.dart';
+import 'package:pakperk/core/cache/feed_cache_persistence.dart';
 import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/models/reader_state.dart';
 import 'package:pakperk/core/providers.dart';
@@ -95,39 +96,84 @@ void main() {
     expect(tester.getSize(reader).width, 840);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('committed vertical page triggers predictive feed prefetch', (
+    tester,
+  ) async {
+    final papers = _papers(13);
+    final repository = _repositoryFor(papers)
+      ..cachedFeed = FeedPage(items: papers, nextCursor: 'cursor-1')
+      ..networkFeed = FeedPage(items: papers, nextCursor: 'cursor-1');
+    final cache = _WidgetFeedCache();
+    await _pumpFeed(tester, repository, cache: cache);
+    expect(repository.feedCalls, 1);
+
+    await tester.fling(
+      find.byKey(ValueKey('feed-paper-${feedReaderKey(papers[0])}')),
+      const Offset(0, -520),
+      1200,
+    );
+    await tester.pumpAndSettle();
+    expect(repository.feedCalls, 1);
+
+    final appended = PaperSummary.fromJson(
+      samplePaper.toJson()
+        ..['paper_id'] = 'prefetched-paper'
+        ..['arxiv_id'] = '2601.99999v1'
+        ..['title'] = 'Prefetched paper',
+    );
+    repository.networkFeed = FeedPage(items: [appended], nextCursor: null);
+    await tester.fling(
+      find.byKey(ValueKey('feed-paper-${feedReaderKey(papers[1])}')),
+      const Offset(0, -520),
+      1200,
+    );
+    await tester.pumpAndSettle();
+
+    expect(repository.feedCalls, 2);
+    expect(repository.prepareCalls, 0);
+    expect(cache.persistedPages.single.items.last.paperId, 'prefetched-paper');
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PakPerkApp)),
+    );
+    expect(container.read(appRestorationControllerProvider).feedIndex, 2);
+  });
 }
 
-List<PaperSummary> _papers() => List.generate(3, (index) {
-      final number = index + 1;
-      final json = samplePaper.toJson()
-        ..['paper_id'] =
-            '17060376-2000-4000-8000-${number.toString().padLeft(12, '0')}'
-        ..['arxiv_id'] = '1706.0376${number}v1'
-        ..['title'] = 'Gesture paper $number'
-        ..['abs_url'] = 'https://arxiv.org/abs/1706.0376${number}v1'
-        ..['pdf_url'] = 'https://arxiv.org/pdf/1706.0376${number}v1';
-      return PaperSummary.fromJson(json);
-    });
+List<PaperSummary> _papers([int count = 3]) => List.generate(count, (index) {
+  final number = index + 1;
+  final json = samplePaper.toJson()
+    ..['paper_id'] =
+        '17060376-2000-4000-8000-${number.toString().padLeft(12, '0')}'
+    ..['arxiv_id'] = '1706.0376${number}v1'
+    ..['title'] = 'Gesture paper $number'
+    ..['abs_url'] = 'https://arxiv.org/abs/1706.0376${number}v1'
+    ..['pdf_url'] = 'https://arxiv.org/pdf/1706.0376${number}v1';
+  return PaperSummary.fromJson(json);
+});
 
 FakePaperDataSource _repositoryFor(List<PaperSummary> papers) =>
     FakePaperDataSource(
-      paper: papers.first,
-      processing: sampleProcessing,
-      introduction: sampleIntroduction,
-      connections: sampleConnections,
-    )
+        paper: papers.first,
+        processing: sampleProcessing,
+        introduction: sampleIntroduction,
+        connections: sampleConnections,
+      )
       ..cachedFeed = FeedPage(items: papers)
       ..networkFeed = FeedPage(items: papers);
 
 Future<void> _pumpFeed(
   WidgetTester tester,
-  FakePaperDataSource repository,
-) async {
+  FakePaperDataSource repository, {
+  FeedCachePersistence? cache,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         paperRepositoryProvider.overrideWithValue(repository),
         localStoreProvider.overrideWithValue(MemoryLocalStore()),
+        if (cache != null)
+          feedCachePersistenceProvider.overrideWithValue(cache),
         initialRestorationProvider.overrideWithValue(
           const AppRestorationState(),
         ),
@@ -136,4 +182,65 @@ Future<void> _pumpFeed(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+class _WidgetFeedCache implements FeedCachePersistence {
+  final Set<String> paperIds = {};
+  final List<FeedPage> persistedPages = [];
+
+  @override
+  Future<Set<String>> cachedPaperIds(Iterable<String> ids) async =>
+      ids.where(paperIds.contains).toSet();
+
+  @override
+  Future<void> ensurePaperMetadata(
+    Iterable<PaperSummary> papers, {
+    DateTime? accessedAt,
+  }) async {
+    paperIds.addAll(papers.map((paper) => paper.paperId));
+  }
+
+  @override
+  Future<void> recordPaperAccess(
+    String paperId, {
+    DateTime? accessedAt,
+  }) async {}
+
+  @override
+  Future<FeedPage?> loadFeedPage(String queryKey) async => null;
+
+  @override
+  Future<void> persistFeedPage({
+    required String queryKey,
+    required FeedPage page,
+    required bool replace,
+    String? category,
+    String? etag,
+    DateTime? refreshedAt,
+  }) async {
+    persistedPages.add(page);
+    paperIds.addAll(page.items.map((paper) => paper.paperId));
+  }
+
+  @override
+  Future<FeedCacheUsage> measureCache() async => FeedCacheUsage(
+    metadataRows: paperIds.length,
+    databaseBytes: paperIds.length * 100,
+  );
+
+  @override
+  Future<CacheEvictionResult> evictCache({
+    required String activeQueryKey,
+    required Set<String> protectedPaperIds,
+    int maxMetadataPapers = 500,
+    int maxDatabaseBytes = 64 * 1024 * 1024,
+    Duration metadataTtl = const Duration(days: 7),
+    DateTime? now,
+  }) async => CacheEvictionResult(
+    expiredCommentPages: 0,
+    oldFeedEntries: 0,
+    unpinnedPapers: 0,
+    derivedRows: 0,
+    usageAfter: await measureCache(),
+  );
 }

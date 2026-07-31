@@ -9,8 +9,8 @@ enum AppEnvironment {
       'staging' || 'stage' => AppEnvironment.staging,
       'production' || 'prod' => AppEnvironment.production,
       _ => throw BuildConfigurationException(
-          'PAKPERK_ENV must be development, staging, or production.',
-        ),
+        'PAKPERK_ENV must be development, staging, or production.',
+      ),
     };
   }
 
@@ -26,10 +26,10 @@ class FeatureFlags {
   });
 
   const FeatureFlags.disabled()
-      : accounts = false,
-        library = false,
-        comments = false,
-        openingMotion = false;
+    : accounts = false,
+      library = false,
+      comments = false,
+      openingMotion = false;
 
   final bool accounts;
   final bool library;
@@ -46,12 +46,7 @@ class FeatureFlags {
   }
 
   @override
-  int get hashCode => Object.hash(
-        accounts,
-        library,
-        comments,
-        openingMotion,
-      );
+  int get hashCode => Object.hash(accounts, library, comments, openingMotion);
 }
 
 class AppBuildConfig {
@@ -87,53 +82,49 @@ class AppBuildConfig {
   /// Secrets are intentionally included only in the rejected-value checks so
   /// an accidental client-side secret fails startup instead of being ignored.
   factory AppBuildConfig.fromCompileTime() => AppBuildConfig.fromValues({
-        _environmentKey: const String.fromEnvironment(
-          _environmentKey,
-          defaultValue: 'development',
-        ),
-        _apiBaseUrlKey: const String.fromEnvironment(
-          _apiBaseUrlKey,
-          defaultValue: 'http://localhost:8080',
-        ),
-        _fulltextPolicyKey: const String.fromEnvironment(
-          _fulltextPolicyKey,
-          defaultValue: 'prototype',
-        ),
-        _accountsEnabledKey: const String.fromEnvironment(
-          _accountsEnabledKey,
-          defaultValue: 'false',
-        ),
-        _libraryEnabledKey: const String.fromEnvironment(
-          _libraryEnabledKey,
-          defaultValue: 'false',
-        ),
-        _commentsEnabledKey: const String.fromEnvironment(
-          _commentsEnabledKey,
-          defaultValue: 'false',
-        ),
-        _openingMotionEnabledKey: const String.fromEnvironment(
-          _openingMotionEnabledKey,
-          defaultValue: 'false',
-        ),
-        _oidcIssuerUrlKey: const String.fromEnvironment(_oidcIssuerUrlKey),
-        _oidcClientIdKey: const String.fromEnvironment(_oidcClientIdKey),
-        _oidcRedirectUriKey: const String.fromEnvironment(_oidcRedirectUriKey),
-        _oidcPostLogoutRedirectUriKey: const String.fromEnvironment(
-          _oidcPostLogoutRedirectUriKey,
-        ),
-        _commentSupportContactUrlKey: const String.fromEnvironment(
-          _commentSupportContactUrlKey,
-        ),
-        'PAKPERK_OIDC_CLIENT_SECRET': const String.fromEnvironment(
-          'PAKPERK_OIDC_CLIENT_SECRET',
-        ),
-        'PAKPERK_API_SECRET': const String.fromEnvironment(
-          'PAKPERK_API_SECRET',
-        ),
-        'PAKPERK_LLM_API_KEY': const String.fromEnvironment(
-          'PAKPERK_LLM_API_KEY',
-        ),
-      });
+    _environmentKey: const String.fromEnvironment(
+      _environmentKey,
+      defaultValue: 'development',
+    ),
+    _apiBaseUrlKey: const String.fromEnvironment(
+      _apiBaseUrlKey,
+      defaultValue: 'http://localhost:8080',
+    ),
+    _fulltextPolicyKey: const String.fromEnvironment(
+      _fulltextPolicyKey,
+      defaultValue: 'prototype',
+    ),
+    _accountsEnabledKey: const String.fromEnvironment(
+      _accountsEnabledKey,
+      defaultValue: 'false',
+    ),
+    _libraryEnabledKey: const String.fromEnvironment(
+      _libraryEnabledKey,
+      defaultValue: 'false',
+    ),
+    _commentsEnabledKey: const String.fromEnvironment(
+      _commentsEnabledKey,
+      defaultValue: 'false',
+    ),
+    _openingMotionEnabledKey: const String.fromEnvironment(
+      _openingMotionEnabledKey,
+      defaultValue: 'false',
+    ),
+    _oidcIssuerUrlKey: const String.fromEnvironment(_oidcIssuerUrlKey),
+    _oidcClientIdKey: const String.fromEnvironment(_oidcClientIdKey),
+    _oidcRedirectUriKey: const String.fromEnvironment(_oidcRedirectUriKey),
+    _oidcPostLogoutRedirectUriKey: const String.fromEnvironment(
+      _oidcPostLogoutRedirectUriKey,
+    ),
+    _commentSupportContactUrlKey: const String.fromEnvironment(
+      _commentSupportContactUrlKey,
+    ),
+    'PAKPERK_OIDC_CLIENT_SECRET': const String.fromEnvironment(
+      'PAKPERK_OIDC_CLIENT_SECRET',
+    ),
+    'PAKPERK_API_SECRET': const String.fromEnvironment('PAKPERK_API_SECRET'),
+    'PAKPERK_LLM_API_KEY': const String.fromEnvironment('PAKPERK_LLM_API_KEY'),
+  });
 
   factory AppBuildConfig.fromValues(Map<String, String> values) {
     _rejectBundledSecrets(values);
@@ -142,11 +133,7 @@ class AppBuildConfig {
       _value(values, _environmentKey, fallback: 'development'),
     );
     final apiBaseUri = _parseUri(
-      _value(
-        values,
-        _apiBaseUrlKey,
-        fallback: 'http://localhost:8080',
-      ),
+      _value(values, _apiBaseUrlKey, fallback: 'http://localhost:8080'),
       key: _apiBaseUrlKey,
       requireHttps: environment.isProductionLike,
       allowCustomScheme: false,
@@ -333,10 +320,7 @@ class AppBuildConfig {
     return uri;
   }
 
-  static void _validateApiUri(
-    Uri uri,
-    AppEnvironment environment,
-  ) {
+  static void _validateApiUri(Uri uri, AppEnvironment environment) {
     if (uri.query.isNotEmpty) {
       throw BuildConfigurationException(
         '$_apiBaseUrlKey must not include a query string.',
@@ -375,7 +359,8 @@ class AppBuildConfig {
     }
     if (uri.query.isNotEmpty) {
       throw BuildConfigurationException(
-          '$key must not include a query string.');
+        '$key must not include a query string.',
+      );
     }
     if (environment.isProductionLike && isUniversalLink) {
       _rejectPlaceholder(uri.host, key);

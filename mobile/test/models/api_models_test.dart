@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/core/models/chat.dart';
+import 'package:pakperk/core/models/connections.dart';
 import 'package:pakperk/core/models/introduction.dart';
 import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/models/processing.dart';
@@ -66,6 +67,7 @@ void main() {
   test('processing decoder accepts nested backend errors', () {
     final state = PaperProcessingState.fromJson({
       'paper_id': 'paper-1',
+      'generation': 2,
       'overall_state': 'failed',
       'stage': 'failed_retryable',
       'capabilities': {
@@ -84,6 +86,8 @@ void main() {
     });
 
     expect(state.lastErrorCode, 'LLM_UNAVAILABLE');
+    expect(state.generation, 2);
+    expect(PaperProcessingState.fromJson(state.toJson()).generation, 2);
     expect(state.lastErrorMessage, 'Provider unavailable');
     expect(state.capabilities.introduction, isTrue);
   });
@@ -115,10 +119,7 @@ void main() {
     });
 
     expect(introduction.detectionConfidence, .94);
-    expect(
-      introduction.paragraphs.single.heading,
-      '1.1 Motivation',
-    );
+    expect(introduction.paragraphs.single.heading, '1.1 Motivation');
     expect(introduction.paragraphs.single.citations.single.marker, '[1]');
     expect(
       introduction.paragraphs.single.citations.single.references.single.paperId,
@@ -139,6 +140,7 @@ void main() {
     });
     final wrapped = ChatAnswer.fromJson({
       'thread_id': 'thread-7',
+      'generation': 3,
       'answer': {
         'answer_markdown': 'Wrapped answer',
         'insufficient_evidence': true,
@@ -158,6 +160,25 @@ void main() {
     expect(bare.answerMarkdown, 'Bare answer');
     expect(wrapped.answerMarkdown, 'Wrapped answer');
     expect(wrapped.threadId, 'thread-7');
+    expect(wrapped.generation, 3);
     expect(wrapped.evidence.single.badgeLabel, '4 Results, p. 8');
+  });
+
+  test('connections and chat snapshots retain their generation', () {
+    final connections = PaperConnections.fromJson({
+      'paper_id': 'paper-1',
+      'generation': 4,
+      'ready': false,
+    });
+    final snapshot = ChatSnapshot.fromJson({
+      'thread_id': 'thread-4',
+      'generation': 4,
+      'messages': const [],
+    });
+
+    expect(connections.generation, 4);
+    expect(PaperConnections.fromJson(connections.toJson()).generation, 4);
+    expect(snapshot.generation, 4);
+    expect(ChatSnapshot.fromJson(snapshot.toJson()).generation, 4);
   });
 }

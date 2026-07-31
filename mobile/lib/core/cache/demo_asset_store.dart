@@ -16,7 +16,7 @@ abstract interface class DemoContentStore {
 
 class BundleDemoContentStore implements DemoContentStore {
   BundleDemoContentStore({AssetBundle? bundle})
-      : _bundle = bundle ?? rootBundle;
+    : _bundle = bundle ?? rootBundle;
 
   final AssetBundle _bundle;
   FeedPage? _feed;

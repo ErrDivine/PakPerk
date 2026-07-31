@@ -68,11 +68,25 @@ disabled; their routes are truthful placeholders rather than partial product
 claims. Implementation and verification evidence is recorded in the
 [Phase 1 report](phase-reports/phase-1.md).
 
+Phase 2 replaces bulk SharedPreferences content with a versioned Drift/SQLite
+database, transactionally imports and removes valid legacy blobs, and adds
+exact multi-page feed persistence, arXiv-version and processing-generation
+coherence, bounded eviction, and lifecycle-safe physical compaction. A
+dedicated feed-only prefetch coordinator implements single-flight cache-ahead,
+query obsolescence, retry/backoff, and content-free metrics. The backend and
+mobile client add opaque ETag/`If-None-Match` revalidation with bodyless `304`
+responses. The implementation is present; final integrated and native gates
+are recorded as passing in the [Phase 2 report](phase-reports/phase-2.md), and
+the phase is complete.
+
 The plan's exit criteria require unchanged demo behavior and API fixtures,
 passing `./scripts/check.sh`, complete OpenAPI coverage for existing routes,
-and no public account controls. Later phases are not considered complete merely
-because their code compiles: the acceptance scenarios and Definition of Done in
-the canonical plan remain the release gate.
+and no public account controls. Phase 2 additionally requires offline migration,
+the measured cache-ahead scenario, single-flight requests, enforced cache
+bounds, a saved-paper pin, and proof that prefetch does not prepare papers.
+Later phases are not considered complete merely because their code compiles:
+the acceptance scenarios and Definition of Done in the canonical plan remain
+the release gate.
 
 ## Decision records
 

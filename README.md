@@ -21,12 +21,13 @@ and its [documentation entrypoint](docs/production-v0.0-plan.md).
 
 ## Production migration status
 
-Phases 0 and 1 are implemented. The backend has safe extension seams, typed
-deployment configuration, and a checked code-first OpenAPI contract. The mobile
-app now has a persistent Read/You shell, exact paper and arXiv links, a guest You
-surface, light/dark design tokens, native launch assets, and a bounded
-cached-first opening transition. Accounts, library, and comments remain off
-until their complete later phases—including safety and policy gates—land.
+Phases 0, 1, and 2 are complete. The backend has safe extension
+seams, typed deployment configuration, a checked code-first OpenAPI contract,
+and conditional feed responses. The mobile app has a persistent Read/You shell,
+exact paper and arXiv links, a guest You surface, light/dark design tokens,
+native launch assets, a bounded cached-first opening transition, and a
+relational cache-ahead feed. Accounts, library, and comments remain off until
+their complete later phases—including safety and policy gates—land.
 
 The demo baseline is frozen at the annotated `production-v0.0-baseline` tag.
 Architecture choices for OIDC, Drift, stateful navigation, comments, and shared
@@ -72,6 +73,26 @@ flutter run --dart-define=PAKPERK_API_BASE_URL=http://localhost:8080
 Use `http://10.0.2.2:8080` from an Android emulator. The app starts with its
 bundled cache when the API cannot be reached, then refreshes in place when
 connectivity returns.
+
+Bulk feed, paper, processing, Introduction, Connections, and anonymous-chat
+content now lives in the versioned Drift database `pakperk_content.sqlite`.
+SharedPreferences retains only small identity/restoration state after a
+transactional one-time import of valid legacy cache blobs. Strict-policy builds
+mask metadata and do not retain derived fallback content.
+
+The feed caches exact category/limit queries and conditionally revalidates their
+first pages with ETags. Committed vertical page changes keep 2 papers behind and
+6 ahead readable, fetch when 10 remain, and target 60 durable papers ahead. The
+default cache bounds are 500 metadata rows, 64 MiB, and a 7-day metadata TTL.
+Prefetch is compile-time limited to feed requests: it never prepares a paper or
+calls processing, Introduction, chat, Connections, arXiv, PDF, or model
+providers. See the [Phase 2 report](docs/phase-reports/phase-2.md) for the
+implementation and current verification record.
+
+Native mobile builds compile the audited official SQLite 3.53.3 amalgamation
+vendored under `mobile/third_party/sqlite` through the pinned `sqlite3` package
+source hook. This keeps Android and iOS builds reproducible without fetching a
+precompiled SQLite binary during the build.
 
 The production shell has exactly two primary destinations: **Read** and
 **You**. Read retains the current vertical paper feed and horizontal reader

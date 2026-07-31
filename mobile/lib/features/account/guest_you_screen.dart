@@ -73,8 +73,10 @@ class GuestYouScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            Text('On this device',
-                style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'On this device',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
             _YouDestination(
               icon: Icons.settings_outlined,

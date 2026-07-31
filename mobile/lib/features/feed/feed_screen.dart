@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -17,12 +19,15 @@ class FeedScreen extends ConsumerStatefulWidget {
 class _FeedScreenState extends ConsumerState<FeedScreen> {
   late final PageController _controller;
   late int _currentIndex;
+  String? _lastCommittedSignature;
 
   @override
   void initState() {
     super.initState();
-    _currentIndex =
-        ref.read(appRestorationControllerProvider).feedIndex.clamp(0, 1000000);
+    _currentIndex = ref
+        .read(appRestorationControllerProvider)
+        .feedIndex
+        .clamp(0, 1000000);
     _controller = PageController(initialPage: _currentIndex);
   }
 
@@ -87,6 +92,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         if (_controller.hasClients) _controller.jumpToPage(_currentIndex);
       });
     }
+    if (readBranchActive && routes.isEmpty) {
+      _scheduleCommittedPage(feed);
+    }
 
     return Scaffold(
       body: PageView.builder(
@@ -98,10 +106,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
           setState(() => _currentIndex = index);
           ref
               .read(appRestorationControllerProvider.notifier)
-              .setFeedIndex(index);
-          if (index >= feed.items.length - 3) {
-            ref.read(feedControllerProvider.notifier).loadMore();
-          }
+              .setFeedPosition(index, feed.items[index]);
+          _commitPage(feed, index);
         },
         itemBuilder: (context, index) {
           final paper = feed.items[index];
@@ -132,4 +138,31 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       curve: Curves.easeOutCubic,
     );
   }
+
+  void _scheduleCommittedPage(FeedState feed) {
+    if (_currentIndex < 0 || _currentIndex >= feed.items.length) return;
+    final index = _currentIndex;
+    final signature = _commitSignature(feed, index);
+    if (_lastCommittedSignature == signature) return;
+    _lastCommittedSignature = signature;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _lastCommittedSignature != signature) return;
+      ref
+          .read(appRestorationControllerProvider.notifier)
+          .setFeedPosition(index, feed.items[index]);
+      ref.read(feedControllerProvider.notifier).onCommittedPage(index);
+    });
+  }
+
+  void _commitPage(FeedState feed, int index) {
+    _lastCommittedSignature = _commitSignature(feed, index);
+    ref.read(feedControllerProvider.notifier).onCommittedPage(index);
+  }
+
+  String _commitSignature(FeedState feed, int index) => jsonEncode([
+    index,
+    feed.category,
+    feed.nextCursor,
+    for (final paper in feed.items) [paper.paperId, paper.arxivId],
+  ]);
 }

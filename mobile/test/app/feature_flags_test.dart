@@ -3,15 +3,17 @@ import 'package:pakperk/app/feature_flags.dart';
 
 void main() {
   group('AppBuildConfig', () {
-    test('development defaults preserve the current disabled feature surface',
-        () {
-      final config = AppBuildConfig.fromValues(const {});
+    test(
+      'development defaults preserve the current disabled feature surface',
+      () {
+        final config = AppBuildConfig.fromValues(const {});
 
-      expect(config.environment, AppEnvironment.development);
-      expect(config.apiBaseUri, Uri.parse('http://localhost:8080'));
-      expect(config.fulltextPolicy, 'prototype');
-      expect(config.features, const FeatureFlags.disabled());
-    });
+        expect(config.environment, AppEnvironment.development);
+        expect(config.apiBaseUri, Uri.parse('http://localhost:8080'));
+        expect(config.fulltextPolicy, 'prototype');
+        expect(config.features, const FeatureFlags.disabled());
+      },
+    );
 
     test('accepts a complete strict production configuration', () {
       final config = AppBuildConfig.fromValues(const {

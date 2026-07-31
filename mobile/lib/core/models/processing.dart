@@ -28,6 +28,7 @@ enum ProcessingStage {
 class PaperProcessingState {
   const PaperProcessingState({
     required this.paperId,
+    this.generation = 1,
     required this.overallState,
     required this.stage,
     required this.capabilities,
@@ -38,6 +39,7 @@ class PaperProcessingState {
   });
 
   final String paperId;
+  final int generation;
   final String overallState;
   final ProcessingStage stage;
   final PaperCapabilities capabilities;
@@ -60,8 +62,12 @@ class PaperProcessingState {
         : const <String, dynamic>{};
     return PaperProcessingState(
       paperId: (json['paper_id'] ?? '').toString(),
-      overallState:
-          (json['overall_state'] ?? json['state'] ?? 'processing').toString(),
+      generation: switch ((json['generation'] as num?)?.toInt()) {
+        final value? when value > 0 => value,
+        _ => 1,
+      },
+      overallState: (json['overall_state'] ?? json['state'] ?? 'processing')
+          .toString(),
       stage: ProcessingStage.fromWire(json['stage']),
       capabilities: PaperCapabilities.fromJson(
         capabilityJson is Map
@@ -71,27 +77,29 @@ class PaperProcessingState {
       retryable: json['retryable'] as bool? ?? false,
       updatedAt:
           DateTime.tryParse(json['updated_at']?.toString() ?? '')?.toUtc() ??
-              DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
       lastErrorCode:
           (json['last_error_code'] ?? json['error_code'] ?? error['code'])
               ?.toString(),
-      lastErrorMessage: (json['last_error_message'] ??
-              json['error_message'] ??
-              error['message'])
-          ?.toString(),
+      lastErrorMessage:
+          (json['last_error_message'] ??
+                  json['error_message'] ??
+                  error['message'])
+              ?.toString(),
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'paper_id': paperId,
-        'overall_state': overallState,
-        'stage': stage.wireValue,
-        'capabilities': capabilities.toJson(),
-        'retryable': retryable,
-        'updated_at': updatedAt.toUtc().toIso8601String(),
-        if (lastErrorCode != null) 'last_error_code': lastErrorCode,
-        if (lastErrorMessage != null) 'last_error_message': lastErrorMessage,
-      };
+    'paper_id': paperId,
+    'generation': generation,
+    'overall_state': overallState,
+    'stage': stage.wireValue,
+    'capabilities': capabilities.toJson(),
+    'retryable': retryable,
+    'updated_at': updatedAt.toUtc().toIso8601String(),
+    if (lastErrorCode != null) 'last_error_code': lastErrorCode,
+    if (lastErrorMessage != null) 'last_error_message': lastErrorMessage,
+  };
 }
 
 String processingStageMessage(ProcessingStage stage, {String? errorMessage}) {

@@ -8,10 +8,7 @@ import 'package:flutter/material.dart';
 /// chrome.
 @immutable
 class PakPerkSkeletonTheme extends ThemeExtension<PakPerkSkeletonTheme> {
-  const PakPerkSkeletonTheme({
-    required this.base,
-    required this.highlight,
-  });
+  const PakPerkSkeletonTheme({required this.base, required this.highlight});
 
   static const light = PakPerkSkeletonTheme(
     base: Color(0xFFE5DFD3),

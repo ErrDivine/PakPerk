@@ -47,8 +47,9 @@ void main() {
       expect(container.read(anonymousSessionIdProvider), oldSession);
       final oldClient = container.read(apiClientProvider);
 
-      final rotated =
-          await container.read(anonymousSessionIdProvider.notifier).rotate();
+      final rotated = await container
+          .read(anonymousSessionIdProvider.notifier)
+          .rotate();
 
       expect(rotated, isNot(oldSession));
       expect(container.read(anonymousSessionIdProvider), rotated);
@@ -71,8 +72,9 @@ void main() {
       );
       expect(store.restoration.readerState(readerKey).chatThreadId, isNull);
 
-      final reset =
-          await container.read(anonymousSessionIdProvider.notifier).reset();
+      final reset = await container
+          .read(anonymousSessionIdProvider.notifier)
+          .reset();
       expect(reset, isNot(rotated));
       expect(store.sessionRotations, 2);
     },

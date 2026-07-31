@@ -60,7 +60,10 @@ mod tests {
         Router,
         body::Body,
         extract::DefaultBodyLimit,
-        http::{Method, Request as HttpRequest, header::CONTENT_TYPE},
+        http::{
+            Method, Request as HttpRequest,
+            header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH},
+        },
         middleware,
         response::Response,
         routing::post,
@@ -369,6 +372,109 @@ mod tests {
         assert_eq!(
             response_json(response).await["paragraphs"][0]["text"],
             "A prototype-derived paragraph that strict mode must not serve."
+        );
+    }
+
+    #[tokio::test]
+    async fn feed_route_revalidates_an_unchanged_first_page_and_detects_updates() {
+        let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
+            eprintln!("TEST_DATABASE_URL is absent; skipped feed ETag API coverage");
+            return;
+        };
+        let database = Database::connect(&database_url, 4).await.unwrap();
+        database.migrate_embedded().await.unwrap();
+        let repository = database.papers();
+        let unique = Uuid::now_v7().simple().to_string();
+        let base_id = format!("test.etag.{unique}");
+        let category = format!("cs.E{}", &unique[..8]);
+        let now = Utc::now();
+        let metadata = |version, title: &str, fetched_at| PaperMetadata {
+            arxiv_id: ArxivIdentifier {
+                base_id: base_id.clone(),
+                version,
+            },
+            title: title.to_owned(),
+            abstract_text: "Public cache validation metadata.".to_owned(),
+            authors: vec![Author {
+                name: "Ada Validator".to_owned(),
+            }],
+            primary_category: category.clone(),
+            categories: vec![category.clone()],
+            published_at: now,
+            updated_at: now,
+            abs_url: Url::parse("https://arxiv.org/abs/2401.99999v1").unwrap(),
+            pdf_url: Url::parse("https://arxiv.org/pdf/2401.99999v1").unwrap(),
+            doi: None,
+            journal_reference: None,
+            comment: None,
+            license_uri: None,
+            metadata_fetched_at: fetched_at,
+        };
+        let paper = repository
+            .upsert_metadata(&metadata(1, "Initial validator title", now))
+            .await
+            .unwrap();
+        let config = test_api_config(&database_url, FulltextPolicy::Prototype);
+        let app = build_router(AppState::new(database, &config).unwrap(), &config);
+        let path = format!("/v1/feed?category={category}&limit=1");
+
+        let response = app
+            .clone()
+            .oneshot(HttpRequest::get(&path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let entity_tag = response.headers()[ETAG].clone();
+        assert_eq!(
+            response.headers()[CACHE_CONTROL],
+            "public, max-age=60, stale-while-revalidate=300"
+        );
+        assert_eq!(
+            response_json(response).await["items"][0]["paper_id"],
+            paper.id.to_string()
+        );
+
+        let response = app
+            .clone()
+            .oneshot(
+                HttpRequest::get(&path)
+                    .header(IF_NONE_MATCH, entity_tag.clone())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(response.headers()[ETAG], entity_tag);
+        assert!(
+            axum::body::to_bytes(response.into_body(), 1024)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+
+        repository
+            .upsert_metadata(&metadata(
+                2,
+                "Updated validator title",
+                now + TimeDelta::seconds(1),
+            ))
+            .await
+            .unwrap();
+        let response = app
+            .oneshot(
+                HttpRequest::get(&path)
+                    .header(IF_NONE_MATCH, entity_tag.clone())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_ne!(response.headers()[ETAG], entity_tag);
+        assert_eq!(
+            response_json(response).await["items"][0]["title"],
+            "Updated validator title"
         );
     }
 

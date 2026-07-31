@@ -25,6 +25,7 @@ pub(crate) struct ChatBody {
 #[derive(Debug, Serialize)]
 pub(crate) struct ChatResponse {
     pub(crate) thread_id: Uuid,
+    pub(crate) generation: domain::ProcessingGeneration,
     #[serde(flatten)]
     pub(crate) answer: domain::ChatAnswer,
 }

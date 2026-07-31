@@ -53,11 +53,11 @@ class StartupState {
   });
 
   factory StartupState.initial(StartupLaunchMode launchMode) => StartupState(
-        phase: StartupPhase.bootstrapping,
-        launchMode: launchMode,
-        attempt: 0,
-        openingCompleted: launchMode == StartupLaunchMode.warm,
-      );
+    phase: StartupPhase.bootstrapping,
+    launchMode: launchMode,
+    attempt: 0,
+    openingCompleted: launchMode == StartupLaunchMode.warm,
+  );
 
   final StartupPhase phase;
   final StartupLaunchMode launchMode;
@@ -92,8 +92,8 @@ class StartupState {
 
 typedef StartupTask = Future<void> Function();
 typedef StartupSessionTask = Future<StartupSessionStatus> Function();
-typedef StartupErrorHandler = void Function(
-    Object error, StackTrace stackTrace);
+typedef StartupErrorHandler =
+    void Function(Object error, StackTrace stackTrace);
 
 abstract interface class StartupBootstrapper {
   /// Opens local storage, migrates it, and loads lightweight cached state.
@@ -127,10 +127,9 @@ class ConcurrentStartupBootstrapper implements StartupBootstrapper {
 
   @override
   Future<void> hydrateLocalState() async {
-    await Future.wait(
-      [for (final hydrate in localHydrators) hydrate()],
-      eagerError: true,
-    );
+    await Future.wait([
+      for (final hydrate in localHydrators) hydrate(),
+    ], eagerError: true);
   }
 
   @override
@@ -143,10 +142,9 @@ class ConcurrentStartupBootstrapper implements StartupBootstrapper {
 
   @override
   Future<void> runPostReadyWork() async {
-    await Future.wait(
-      [for (final task in postReadyTasks) task()],
-      eagerError: false,
-    );
+    await Future.wait([
+      for (final task in postReadyTasks) task(),
+    ], eagerError: false);
   }
 }
 
@@ -177,7 +175,7 @@ abstract interface class StartupNativeSplashHandoff {
 
 class FlutterNativeSplashHandoff implements StartupNativeSplashHandoff {
   FlutterNativeSplashHandoff({WidgetsBinding? binding})
-      : _binding = binding ?? WidgetsBinding.instance;
+    : _binding = binding ?? WidgetsBinding.instance;
 
   final WidgetsBinding _binding;
   bool _releaseScheduled = false;
@@ -211,12 +209,12 @@ class StartupController extends StateNotifier<StartupState> {
     StartupLaunchMode launchMode = StartupLaunchMode.cold,
     Duration bootstrapTimeout = const Duration(seconds: 5),
     StartupErrorHandler? onPostReadyError,
-  })  : assert(bootstrapTimeout > Duration.zero),
-        _bootstrapper = bootstrapper,
-        _splashHandoff = splashHandoff,
-        _bootstrapTimeout = bootstrapTimeout,
-        _onPostReadyError = onPostReadyError,
-        super(StartupState.initial(launchMode));
+  }) : assert(bootstrapTimeout > Duration.zero),
+       _bootstrapper = bootstrapper,
+       _splashHandoff = splashHandoff,
+       _bootstrapTimeout = bootstrapTimeout,
+       _onPostReadyError = onPostReadyError,
+       super(StartupState.initial(launchMode));
 
   final StartupBootstrapper _bootstrapper;
   final StartupNativeSplashHandoff _splashHandoff;
@@ -276,12 +274,10 @@ class StartupController extends StateNotifier<StartupState> {
     );
 
     late final Future<void> operation;
-    operation = _runAttempt(
-      runToken: runToken,
-      repairFirst: repairFirst,
-    ).whenComplete(() {
-      if (identical(_activeRun, operation)) _activeRun = null;
-    });
+    operation = _runAttempt(runToken: runToken, repairFirst: repairFirst)
+        .whenComplete(() {
+          if (identical(_activeRun, operation)) _activeRun = null;
+        });
     _activeRun = operation;
     return operation;
   }
@@ -291,10 +287,7 @@ class StartupController extends StateNotifier<StartupState> {
     required bool repairFirst,
   }) async {
     try {
-      await _advance(
-        runToken: runToken,
-        repairFirst: repairFirst,
-      ).timeout(
+      await _advance(runToken: runToken, repairFirst: repairFirst).timeout(
         _bootstrapTimeout,
         onTimeout: () => throw StartupTimeoutException(_bootstrapTimeout),
       );
@@ -328,10 +321,7 @@ class StartupController extends StateNotifier<StartupState> {
 
     await _bootstrapper.hydrateLocalState();
     if (!_isCurrent(runToken)) return;
-    state = state.copyWith(
-      phase: StartupPhase.localReady,
-      clearFailure: true,
-    );
+    state = state.copyWith(phase: StartupPhase.localReady, clearFailure: true);
     _splashHandoff.releaseToFlutter();
 
     final sessionStatus = await _bootstrapper.checkAuthenticatedSession();
@@ -342,10 +332,7 @@ class StartupController extends StateNotifier<StartupState> {
       clearFailure: true,
     );
 
-    state = state.copyWith(
-      phase: StartupPhase.ready,
-      clearFailure: true,
-    );
+    state = state.copyWith(phase: StartupPhase.ready, clearFailure: true);
   }
 
   Future<void> _runPostReadyWork() async {
@@ -384,12 +371,12 @@ final startupNativeSplashHandoffProvider = Provider<StartupNativeSplashHandoff>(
 
 final startupControllerProvider =
     StateNotifierProvider<StartupController, StartupState>((ref) {
-  final controller = StartupController(
-    bootstrapper: ref.watch(startupBootstrapperProvider),
-    splashHandoff: ref.watch(startupNativeSplashHandoffProvider),
-    launchMode: ref.watch(startupLaunchModeProvider),
-    bootstrapTimeout: ref.watch(startupBootstrapTimeoutProvider),
-  );
-  unawaited(controller.start());
-  return controller;
-});
+      final controller = StartupController(
+        bootstrapper: ref.watch(startupBootstrapperProvider),
+        splashHandoff: ref.watch(startupNativeSplashHandoffProvider),
+        launchMode: ref.watch(startupLaunchModeProvider),
+        bootstrapTimeout: ref.watch(startupBootstrapTimeoutProvider),
+      );
+      unawaited(controller.start());
+      return controller;
+    });

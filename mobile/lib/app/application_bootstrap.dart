@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/cache/demo_asset_store.dart';
+import '../core/cache/drift_local_store.dart';
 import '../core/cache/local_store.dart';
 import '../core/content_policy.dart';
 import '../core/models/paper.dart';
@@ -46,9 +47,7 @@ List<Override> applicationStartupDataOverrides(
     initialAnonymousSessionIdProvider.overrideWith(
       (ref) => requireData().anonymousSessionId,
     ),
-    initialRestorationProvider.overrideWith(
-      (ref) => requireData().restoration,
-    ),
+    initialRestorationProvider.overrideWith((ref) => requireData().restoration),
     preloadedFeedSnapshotProvider.overrideWith(
       (ref) => requireData().preloadedFeed,
     ),
@@ -60,12 +59,20 @@ List<Override> applicationStartupDataOverrides(
 /// publishing stale data after a retry has started.
 class ApplicationStartupBootstrapper implements StartupBootstrapper {
   ApplicationStartupBootstrapper({
-    this.storeFactory = SharedPreferencesLocalStore.create,
-    this.repairLocalData = SharedPreferencesLocalStore.repairPublicCache,
+    Future<LocalStore> Function()? storeFactory,
+    Future<void> Function()? repairLocalData,
     Future<FeedPage> Function()? bundledFeedLoader,
     this.fulltextPolicy = ClientFulltextPolicy.prototype,
-  }) : bundledFeedLoader =
-            bundledFeedLoader ?? BundleDemoContentStore().loadFallbackFeed;
+  }) : storeFactory =
+           storeFactory ??
+           (() => DriftLocalStore.create(fulltextPolicy: fulltextPolicy)),
+       repairLocalData =
+           repairLocalData ??
+           (() => DriftLocalStore.repairPublicCache(
+             fulltextPolicy: fulltextPolicy,
+           )),
+       bundledFeedLoader =
+           bundledFeedLoader ?? BundleDemoContentStore().loadFallbackFeed;
 
   final Future<LocalStore> Function() storeFactory;
   final Future<void> Function() repairLocalData;
@@ -98,6 +105,10 @@ class ApplicationStartupBootstrapper implements StartupBootstrapper {
   }
 
   Future<PreloadedFeedSnapshot> _loadPreloadedFeed(LocalStore store) async {
+    // The importer converts failures into a count-only result. Awaiting it
+    // makes a valid legacy offline feed eligible for the first readable frame
+    // without allowing a malformed payload to fail startup.
+    if (store is DriftLocalStore) await store.startLegacyImportWork();
     final cached = await store.loadFeed();
     final hasDeviceCache = cached != null && cached.items.isNotEmpty;
     final source = hasDeviceCache ? cached : await bundledFeedLoader();

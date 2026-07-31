@@ -207,6 +207,7 @@ pub(crate) async fn chat(
         StatusCode::OK,
         Json(ChatResponse {
             thread_id: chat_session.thread_id,
+            generation: processing.generation,
             answer,
         }),
     ))

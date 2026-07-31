@@ -21,14 +21,15 @@ void main() {
         tester.view.resetDevicePixelRatio();
         await tester.binding.setSurfaceSize(null);
       });
-      final repository = FakePaperDataSource(
-        paper: samplePaper,
-        processing: sampleProcessing,
-        introduction: sampleIntroduction,
-        connections: sampleConnections,
-      )
-        ..cachedFeed = FeedPage(items: [samplePaper])
-        ..networkFeed = FeedPage(items: [samplePaper]);
+      final repository =
+          FakePaperDataSource(
+              paper: samplePaper,
+              processing: sampleProcessing,
+              introduction: sampleIntroduction,
+              connections: sampleConnections,
+            )
+            ..cachedFeed = FeedPage(items: [samplePaper])
+            ..networkFeed = FeedPage(items: [samplePaper]);
       final store = MemoryLocalStore();
 
       await tester.pumpWidget(
@@ -75,15 +76,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 160));
 
       final insetPadding = tester.widget<AnimatedPadding>(
-        find.descendant(
-          of: chatSheet,
-          matching: find.byType(AnimatedPadding),
-        ),
+        find.descendant(of: chatSheet, matching: find.byType(AnimatedPadding)),
       );
       expect(
         insetPadding.padding.resolve(TextDirection.ltr).bottom,
         180,
-        reason: 'the root route leaves the keyboard inset for the sheet to '
+        reason:
+            'the root route leaves the keyboard inset for the sheet to '
             'apply exactly once',
       );
       expect(insetPadding.child, isA<SafeArea>());
@@ -97,7 +96,8 @@ void main() {
       expect(
         tester.getRect(modalComposer).bottom,
         greaterThan(580),
-        reason: 'the composer should sit just above the 180 px keyboard, not '
+        reason:
+            'the composer should sit just above the 180 px keyboard, not '
             'receive that inset twice',
       );
 

@@ -25,32 +25,31 @@ class PaperMetadataState {
     bool? offline,
     String? errorMessage,
     bool clearError = false,
-  }) =>
-      PaperMetadataState(
-        paper: paper ?? this.paper,
-        refreshing: refreshing ?? this.refreshing,
-        offline: offline ?? this.offline,
-        errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
-      );
+  }) => PaperMetadataState(
+    paper: paper ?? this.paper,
+    refreshing: refreshing ?? this.refreshing,
+    offline: offline ?? this.offline,
+    errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
+  );
 }
 
 final paperMetadataControllerProvider = StateNotifierProvider.autoDispose
     .family<PaperMetadataController, PaperMetadataState, PaperVersionKey>((
-  ref,
-  paperKey,
-) {
-  return PaperMetadataController(
-    paperId: paperKey.paperId,
-    repository: ref.watch(paperRepositoryProvider),
-  );
-});
+      ref,
+      paperKey,
+    ) {
+      return PaperMetadataController(
+        paperId: paperKey.paperId,
+        repository: ref.watch(paperRepositoryProvider),
+      );
+    });
 
 class PaperMetadataController extends StateNotifier<PaperMetadataState> {
   PaperMetadataController({
     required this.paperId,
     required PaperDataSource repository,
-  })  : _repository = repository,
-        super(const PaperMetadataState());
+  }) : _repository = repository,
+       super(const PaperMetadataState());
 
   final String paperId;
   final PaperDataSource _repository;

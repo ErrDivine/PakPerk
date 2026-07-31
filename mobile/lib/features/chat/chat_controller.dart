@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/api/api_exception.dart';
 import '../../core/api/request_cancellation.dart';
 import '../../core/cache/local_store.dart';
+import '../../core/cache/versioned_derived_cache.dart';
 import '../../core/models/chat.dart';
 import '../../core/providers.dart';
 import '../../core/repository/paper_repository.dart';
@@ -31,6 +32,7 @@ class ChatState {
   const ChatState({
     this.threadId,
     this.messages = const [],
+    this.generation,
     this.restoring = true,
     this.sending = false,
     this.offline = false,
@@ -39,6 +41,7 @@ class ChatState {
 
   final String? threadId;
   final List<ChatMessage> messages;
+  final int? generation;
   final bool restoring;
   final bool sending;
   final bool offline;
@@ -48,35 +51,38 @@ class ChatState {
     String? threadId,
     bool clearThreadId = false,
     List<ChatMessage>? messages,
+    int? generation,
+    bool clearGeneration = false,
     bool? restoring,
     bool? sending,
     bool? offline,
     String? errorMessage,
     bool clearError = false,
-  }) =>
-      ChatState(
-        threadId: clearThreadId ? null : threadId ?? this.threadId,
-        messages: messages ?? this.messages,
-        restoring: restoring ?? this.restoring,
-        sending: sending ?? this.sending,
-        offline: offline ?? this.offline,
-        errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
-      );
+  }) => ChatState(
+    threadId: clearThreadId ? null : threadId ?? this.threadId,
+    messages: messages ?? this.messages,
+    generation: clearGeneration ? null : generation ?? this.generation,
+    restoring: restoring ?? this.restoring,
+    sending: sending ?? this.sending,
+    offline: offline ?? this.offline,
+    errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
+  );
 }
 
 final chatControllerProvider = StateNotifierProvider.autoDispose
     .family<ChatController, ChatState, ChatControllerArgs>((ref, args) {
-  return ChatController(
-    args: args,
-    repository: ref.watch(paperRepositoryProvider),
-    store: ref.watch(localStoreProvider),
-    readerNavigation: ref.watch(
-      paperReaderNavigationControllerProvider(args.readerKey),
-    ),
-    allowDerivedDeviceFallback:
-        ref.watch(clientFulltextPolicyProvider).allowsDerivedDeviceFallback,
-  );
-});
+      return ChatController(
+        args: args,
+        repository: ref.watch(paperRepositoryProvider),
+        store: ref.watch(localStoreProvider),
+        readerNavigation: ref.watch(
+          paperReaderNavigationControllerProvider(args.readerKey),
+        ),
+        allowDerivedDeviceFallback: ref
+            .watch(clientFulltextPolicyProvider)
+            .allowsDerivedDeviceFallback,
+      );
+    });
 
 class ChatController extends StateNotifier<ChatState> {
   ChatController({
@@ -85,11 +91,11 @@ class ChatController extends StateNotifier<ChatState> {
     required LocalStore store,
     required PaperReaderNavigationController readerNavigation,
     required bool allowDerivedDeviceFallback,
-  })  : _repository = repository,
-        _store = store,
-        _readerNavigation = readerNavigation,
-        _allowDerivedDeviceFallback = allowDerivedDeviceFallback,
-        super(const ChatState()) {
+  }) : _repository = repository,
+       _store = store,
+       _readerNavigation = readerNavigation,
+       _allowDerivedDeviceFallback = allowDerivedDeviceFallback,
+       super(const ChatState()) {
     unawaited(_restore());
   }
 
@@ -98,7 +104,9 @@ class ChatController extends StateNotifier<ChatState> {
   final LocalStore _store;
   final PaperReaderNavigationController _readerNavigation;
   final bool _allowDerivedDeviceFallback;
-  final RequestCancellation _requests = RequestCancellation();
+  RequestCancellation? _requests;
+  int? _expectedGeneration;
+  int _scopeRevision = 0;
 
   Future<void> _restore() async {
     final snapshot = await loadRestorableChatSnapshot(
@@ -106,19 +114,62 @@ class ChatController extends StateNotifier<ChatState> {
       readerKey: args.readerKey,
       allowDerivedDeviceFallback: _allowDerivedDeviceFallback,
     );
+    final processing = await _store.loadProcessing(args.paperId);
     if (!mounted) return;
+    final expectedGeneration = _expectedGeneration;
+    final processingGeneration = switch (processing?.generation) {
+      final generation? when generation > 0 => generation,
+      _ => null,
+    };
+    if (snapshot == null ||
+        snapshot.generation == null ||
+        (expectedGeneration != null
+            ? snapshot.generation != expectedGeneration
+            : processingGeneration != null &&
+                  snapshot.generation != processingGeneration)) {
+      _expectedGeneration ??= processingGeneration;
+      state = state.copyWith(generation: _expectedGeneration, restoring: false);
+      return;
+    }
+    _expectedGeneration ??= snapshot.generation;
     state = state.copyWith(
-      threadId: snapshot?.threadId,
-      messages: snapshot?.messages ?? const [],
+      threadId: snapshot.threadId,
+      messages: snapshot.messages,
+      generation: snapshot.generation,
       restoring: false,
     );
   }
 
+  /// Clears every generation-scoped transcript surface synchronously.
+  void acceptGeneration(int generation) {
+    if (generation <= 0) return;
+    final previousGeneration = _expectedGeneration ?? state.generation;
+    _expectedGeneration = generation;
+    if (previousGeneration == generation) return;
+    _scopeRevision += 1;
+    if (previousGeneration == null) {
+      // Constrain an in-flight restore without manufacturing or overwriting a
+      // transcript merely because processing was observed for the first time.
+      if (!state.restoring) state = state.copyWith(generation: generation);
+      return;
+    }
+    _requests?.cancel('The paper processing generation changed.');
+    state = ChatState(generation: generation, restoring: false);
+    _readerNavigation.setChatThreadId(null);
+    unawaited(_persist());
+  }
+
   Future<void> send(String rawMessage) async {
     final message = rawMessage.trim();
-    if (message.isEmpty || state.sending) return;
-    final safeMessage =
-        message.length > 500 ? message.substring(0, 500) : message;
+    if (message.isEmpty || state.restoring || state.sending) return;
+    final expectedGeneration = _expectedGeneration ?? state.generation;
+    if (expectedGeneration == null || expectedGeneration <= 0) return;
+    final scopeRevision = _scopeRevision;
+    final request = _activeRequests;
+    final threadId = state.threadId;
+    final safeMessage = message.length > 500
+        ? message.substring(0, 500)
+        : message;
     final userMessage = ChatMessage(
       id: const Uuid().v4(),
       role: ChatRole.user,
@@ -131,15 +182,16 @@ class ChatController extends StateNotifier<ChatState> {
       clearError: true,
     );
     await _persist();
+    if (!_isCurrentScope(scopeRevision, expectedGeneration, request)) return;
 
     try {
       final answer = await _repository.sendChat(
         paperId: args.paperId,
         message: safeMessage,
-        threadId: state.threadId,
-        cancellation: _requests,
+        threadId: threadId,
+        cancellation: request,
       );
-      if (!mounted) return;
+      if (!_isCurrentScope(scopeRevision, expectedGeneration, request)) return;
       final assistant = ChatMessage(
         id: const Uuid().v4(),
         role: ChatRole.assistant,
@@ -148,26 +200,38 @@ class ChatController extends StateNotifier<ChatState> {
         evidence: answer.evidence,
         insufficientEvidence: answer.insufficientEvidence,
       );
-      final threadId = answer.threadId ?? state.threadId;
+      if (answer.generation != expectedGeneration) {
+        throw const ApiException(
+          code: 'STALE_PAPER_VERSION',
+          message: 'The paper changed generation while chat was answering.',
+          retryable: true,
+          statusCode: 409,
+        );
+      }
+      final nextThreadId = answer.threadId ?? state.threadId;
       state = state.copyWith(
-        threadId: threadId,
+        threadId: nextThreadId,
+        clearThreadId: nextThreadId == null,
         messages: _lastSixTurns([...state.messages, assistant]),
+        generation: answer.generation,
         sending: false,
         offline: false,
       );
-      _readerNavigation.setChatThreadId(threadId);
+      _readerNavigation.setChatThreadId(nextThreadId);
       await _persist();
     } on ApiException catch (error) {
-      if (error.cancelled) return;
-      if (!mounted) return;
+      if (error.cancelled ||
+          !_isCurrentScope(scopeRevision, expectedGeneration, request)) {
+        return;
+      }
       state = state.copyWith(
         sending: false,
         offline: error.isOffline,
         errorMessage: error.isOffline
             ? 'You’re offline. Reconnect to ask a new question.'
             : error.code.contains('MODEL') || error.code.contains('LLM')
-                ? 'Paper chat is temporarily unavailable. The introduction and connections still work.'
-                : error.message,
+            ? 'Paper chat is temporarily unavailable. The introduction and connections still work.'
+            : error.message,
       );
       await _persist();
     }
@@ -183,17 +247,61 @@ class ChatController extends StateNotifier<ChatState> {
 
   Future<void> _persist() {
     if (!_allowDerivedDeviceFallback) return Future<void>.value();
-    return _store.saveChat(
+    final generation = state.generation;
+    if (generation == null || generation <= 0) return Future<void>.value();
+    final snapshot = ChatSnapshot(
+      threadId: state.threadId,
+      messages: state.messages,
+      generation: generation,
+    );
+    final store = _store;
+    if (store is GenerationScopedChatCache) {
+      return _persistGenerationScopedChat(
+        store as GenerationScopedChatCache,
+        snapshot,
+        generation,
+      );
+    }
+    return store.saveChat(args.readerKey, snapshot);
+  }
+
+  Future<void> _persistGenerationScopedChat(
+    GenerationScopedChatCache store,
+    ChatSnapshot snapshot,
+    int generation,
+  ) async {
+    final paper = await _store.loadPaper(args.paperId);
+    if (paper == null || paper.paperId != args.paperId) return;
+    await store.saveChatForGeneration(
       args.readerKey,
-      ChatSnapshot(threadId: state.threadId, messages: state.messages),
+      snapshot,
+      expectedVersionKey: paper.versionKey,
+      expectedGeneration: generation,
     );
   }
 
   @override
   void dispose() {
-    _requests.cancel('The paper chat was closed.');
+    _requests?.cancel('The paper chat was closed.');
     super.dispose();
   }
+
+  RequestCancellation get _activeRequests {
+    final current = _requests;
+    if (current != null && !current.isCancelled) return current;
+    return _requests = RequestCancellation();
+  }
+
+  bool _isCurrentScope(
+    int revision,
+    int generation,
+    RequestCancellation request,
+  ) =>
+      mounted &&
+      revision == _scopeRevision &&
+      _expectedGeneration == generation &&
+      identical(_requests, request) &&
+      !request.isCancelled;
 }
 
 Future<ChatSnapshot?> loadRestorableChatSnapshot({

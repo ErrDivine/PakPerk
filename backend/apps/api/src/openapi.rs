@@ -265,6 +265,7 @@ pub(crate) enum SectionKindSchema {
 #[derive(ToSchema)]
 pub(crate) struct ChatResponseSchema {
     thread_id: uuid::Uuid,
+    generation: i32,
     answer_markdown: String,
     insufficient_evidence: bool,
     evidence: Vec<ChatEvidenceSchema>,
@@ -325,6 +326,7 @@ pub(crate) enum ReferenceResolutionStatusSchema {
 #[derive(ToSchema)]
 pub(crate) struct ConnectionsResponseSchema {
     paper_id: uuid::Uuid,
+    generation: i32,
     ready: bool,
     key_connections: Vec<KeyConnectionSchema>,
     references: Vec<ConnectionReferenceSchema>,
@@ -375,6 +377,44 @@ mod tests {
         let second = openapi_json_pretty().unwrap();
         assert_eq!(first, second);
         assert!(first.ends_with('\n'));
+    }
+
+    #[test]
+    fn feed_revalidation_headers_and_empty_304_are_documented() {
+        let document = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let operation = &document["paths"]["/v1/feed"]["get"];
+        let parameters = operation["parameters"].as_array().unwrap();
+        assert!(parameters.iter().any(|parameter| {
+            parameter["name"] == "If-None-Match" && parameter["in"] == "header"
+        }));
+
+        for status in ["200", "304"] {
+            let headers = &operation["responses"][status]["headers"];
+            assert!(headers.get("ETag").is_some(), "{status} must document ETag");
+            assert!(
+                headers.get("Cache-Control").is_some(),
+                "{status} must document Cache-Control"
+            );
+        }
+        assert!(operation["responses"]["304"].get("content").is_none());
+    }
+
+    #[test]
+    fn derived_response_generations_are_documented() {
+        let document = serde_json::to_value(ApiDoc::openapi()).unwrap();
+
+        for schema_name in ["ChatResponseSchema", "ConnectionsResponseSchema"] {
+            let schema = &document["components"]["schemas"][schema_name];
+            assert_eq!(schema["properties"]["generation"]["type"], "integer");
+            assert!(
+                schema["required"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|field| field == "generation"),
+                "{schema_name} must require the selected processing generation"
+            );
+        }
     }
 
     #[test]

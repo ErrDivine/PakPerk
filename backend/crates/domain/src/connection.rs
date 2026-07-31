@@ -103,6 +103,7 @@ pub struct KeyConnection {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConnectionsResponse {
     pub paper_id: PaperId,
+    pub generation: ProcessingGeneration,
     pub ready: bool,
     pub key_connections: Vec<KeyConnection>,
     pub references: Vec<ConnectionReference>,

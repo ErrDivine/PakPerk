@@ -42,11 +42,11 @@ class PaperCapabilities {
   }
 
   Map<String, dynamic> toJson() => {
-        'metadata': metadata,
-        'introduction': introduction,
-        'chat': chat,
-        'connections': connections,
-      };
+    'metadata': metadata,
+    'introduction': introduction,
+    'chat': chat,
+    'connections': connections,
+  };
 }
 
 class PaperSummary {
@@ -90,8 +90,9 @@ class PaperSummary {
         json,
         'title',
       ).replaceAll(RegExp(r'\s+'), ' ').trim(),
-      abstractText:
-          (json['abstract'] ?? json['abstract_text'] ?? '').toString().trim(),
+      abstractText: (json['abstract'] ?? json['abstract_text'] ?? '')
+          .toString()
+          .trim(),
       authors: _stringList(json['authors']),
       primaryCategory:
           (json['primary_category'] ?? json['category'] ?? 'unknown')
@@ -112,34 +113,34 @@ class PaperSummary {
   }
 
   Map<String, dynamic> toJson() => {
-        'paper_id': paperId,
-        'arxiv_id': arxivId,
-        'title': title,
-        'abstract': abstractText,
-        'authors': authors,
-        'primary_category': primaryCategory,
-        'categories': categories,
-        'published_at': publishedAt.toUtc().toIso8601String(),
-        'updated_at': updatedAt.toUtc().toIso8601String(),
-        'abs_url': absUrl,
-        'pdf_url': pdfUrl,
-        'capabilities': capabilities.toJson(),
-      };
+    'paper_id': paperId,
+    'arxiv_id': arxivId,
+    'title': title,
+    'abstract': abstractText,
+    'authors': authors,
+    'primary_category': primaryCategory,
+    'categories': categories,
+    'published_at': publishedAt.toUtc().toIso8601String(),
+    'updated_at': updatedAt.toUtc().toIso8601String(),
+    'abs_url': absUrl,
+    'pdf_url': pdfUrl,
+    'capabilities': capabilities.toJson(),
+  };
 
   PaperSummary copyWith({PaperCapabilities? capabilities}) => PaperSummary(
-        paperId: paperId,
-        arxivId: arxivId,
-        title: title,
-        abstractText: abstractText,
-        authors: authors,
-        primaryCategory: primaryCategory,
-        categories: categories,
-        publishedAt: publishedAt,
-        updatedAt: updatedAt,
-        absUrl: absUrl,
-        pdfUrl: pdfUrl,
-        capabilities: capabilities ?? this.capabilities,
-      );
+    paperId: paperId,
+    arxivId: arxivId,
+    title: title,
+    abstractText: abstractText,
+    authors: authors,
+    primaryCategory: primaryCategory,
+    categories: categories,
+    publishedAt: publishedAt,
+    updatedAt: updatedAt,
+    absUrl: absUrl,
+    pdfUrl: pdfUrl,
+    capabilities: capabilities ?? this.capabilities,
+  );
 }
 
 class FeedPage {
@@ -149,19 +150,19 @@ class FeedPage {
   final String? nextCursor;
 
   factory FeedPage.fromJson(Map<String, dynamic> json) => FeedPage(
-        items: (json['items'] as List<dynamic>? ?? const [])
-            .map(
-              (item) =>
-                  PaperSummary.fromJson(Map<String, dynamic>.from(item as Map)),
-            )
-            .toList(growable: false),
-        nextCursor: json['next_cursor']?.toString(),
-      );
+    items: (json['items'] as List<dynamic>? ?? const [])
+        .map(
+          (item) =>
+              PaperSummary.fromJson(Map<String, dynamic>.from(item as Map)),
+        )
+        .toList(growable: false),
+    nextCursor: json['next_cursor']?.toString(),
+  );
 
   Map<String, dynamic> toJson() => {
-        'items': items.map((paper) => paper.toJson()).toList(growable: false),
-        'next_cursor': nextCursor,
-      };
+    'items': items.map((paper) => paper.toJson()).toList(growable: false),
+    'next_cursor': nextCursor,
+  };
 
   String encode() => jsonEncode(toJson());
 }

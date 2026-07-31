@@ -129,11 +129,7 @@ class PakPerkSemanticColors extends ThemeExtension<PakPerkSemanticColors> {
       ink: Color.lerp(ink, other.ink, t)!,
       mutedInk: Color.lerp(mutedInk, other.mutedInk, t)!,
       accent: Color.lerp(accent, other.accent, t)!,
-      accentContainer: Color.lerp(
-        accentContainer,
-        other.accentContainer,
-        t,
-      )!,
+      accentContainer: Color.lerp(accentContainer, other.accentContainer, t)!,
       warning: Color.lerp(warning, other.warning, t)!,
       success: Color.lerp(success, other.success, t)!,
       processing: Color.lerp(processing, other.processing, t)!,

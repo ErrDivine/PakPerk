@@ -10,6 +10,7 @@ import '../../core/models/reader_state.dart';
 import '../../core/providers.dart';
 import '../../core/widgets/paper_stage_indicator.dart';
 import '../../core/widgets/status_widgets.dart';
+import '../chat/chat_controller.dart';
 import '../connections/connections_controller.dart';
 import '../connections/connections_view.dart';
 import '../introduction/introduction_controller.dart';
@@ -129,7 +130,9 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
     final capabilities =
         processing.processing?.capabilities ?? widget.paper.capabilities;
     final repositoryOffline = ref.read(paperRepositoryProvider).isOffline;
-    final offline = ref.watch(networkOfflineProvider).when(
+    final offline = ref
+        .watch(networkOfflineProvider)
+        .when(
           data: (value) => value,
           loading: () => processing.offline || repositoryOffline,
           error: (_, __) => processing.offline || repositoryOffline,
@@ -138,6 +141,34 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
     ref.listen<ProcessingUiState>(
       paperProcessingControllerProvider(widget.paper.versionKey),
       (previous, next) {
+        final previousGeneration = previous?.processing?.generation;
+        final nextGeneration = next.processing?.generation;
+        if (nextGeneration != null && previousGeneration != nextGeneration) {
+          ref
+              .read(
+                introductionControllerProvider(
+                  widget.paper.versionKey,
+                ).notifier,
+              )
+              .acceptGeneration(nextGeneration);
+          ref
+              .read(
+                connectionsControllerProvider(widget.paper.versionKey).notifier,
+              )
+              .acceptGeneration(nextGeneration);
+          final chatProvider = chatControllerProvider(
+            ChatControllerArgs(
+              paperId: widget.paper.paperId,
+              readerKey: widget.readerKey,
+            ),
+          );
+          // Do not instantiate chat merely because processing loaded. If its
+          // composer/route is already alive, constrain or invalidate that
+          // controller before it can display a stale transcript.
+          if (ref.exists(chatProvider)) {
+            ref.read(chatProvider.notifier).acceptGeneration(nextGeneration);
+          }
+        }
         final nextCapabilities = next.processing?.capabilities;
         if (nextCapabilities?.introduction == true) {
           unawaited(
@@ -345,7 +376,8 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
         processing.setVisible(true);
       }
       if (!mounted) return;
-      final capabilities = ref
+      final capabilities =
+          ref
               .read(paperProcessingControllerProvider(widget.paper.versionKey))
               .processing
               ?.capabilities ??
@@ -367,7 +399,8 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
         if (!_stillActiveStage(index)) return;
       }
       processing.setVisible(true);
-      final capabilities = ref
+      final capabilities =
+          ref
               .read(paperProcessingControllerProvider(widget.paper.versionKey))
               .processing
               ?.capabilities ??
@@ -393,10 +426,9 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
   Future<void> _openPaper(String paperId) async {
     _captureOffsets();
     try {
-      final result = await ref.read(paperRepositoryProvider).getPaper(
-            paperId,
-            cancellation: _activeRouteRequests,
-          );
+      final result = await ref
+          .read(paperRepositoryProvider)
+          .getPaper(paperId, cancellation: _activeRouteRequests);
       if (!mounted) return;
       final onOpenLinkedPaper = widget.onOpenLinkedPaper;
       if (onOpenLinkedPaper != null) {

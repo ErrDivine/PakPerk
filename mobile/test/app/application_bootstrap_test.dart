@@ -101,10 +101,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final store = await SharedPreferencesLocalStore.create();
     final sessionId = await store.getOrCreateSessionId();
-    const restoration = AppRestorationState(
-      activeBranchIndex: 1,
-      feedIndex: 2,
-    );
+    const restoration = AppRestorationState(activeBranchIndex: 1, feedIndex: 2);
     await store.saveRestoration(restoration);
     await store.saveFeed(FeedPage(items: [samplePaper]));
     await store.savePaper(samplePaper);
@@ -119,61 +116,65 @@ void main() {
     expect(await repaired.loadPaper(samplePaper.paperId), isNull);
   });
 
-  test('startup preload prefers device cache and applies strict masking',
-      () async {
-    final derivedPaper = PaperSummary.fromJson(
-      samplePaper.toJson()
-        ..['capabilities'] = {
-          'metadata': true,
-          'introduction': true,
-          'chat': true,
-          'connections': true,
+  test(
+    'startup preload prefers device cache and applies strict masking',
+    () async {
+      final derivedPaper = PaperSummary.fromJson(
+        samplePaper.toJson()
+          ..['capabilities'] = {
+            'metadata': true,
+            'introduction': true,
+            'chat': true,
+            'connections': true,
+          },
+      );
+      final store = MemoryLocalStore()
+        ..feed = FeedPage(items: [derivedPaper], nextCursor: 'device-cursor');
+      var bundledLoads = 0;
+      final bootstrapper = ApplicationStartupBootstrapper(
+        storeFactory: () async => store,
+        bundledFeedLoader: () async {
+          bundledLoads += 1;
+          return FeedPage(items: [samplePaper]);
         },
-    );
-    final store = MemoryLocalStore()
-      ..feed = FeedPage(items: [derivedPaper], nextCursor: 'device-cursor');
-    var bundledLoads = 0;
-    final bootstrapper = ApplicationStartupBootstrapper(
-      storeFactory: () async => store,
-      bundledFeedLoader: () async {
-        bundledLoads += 1;
-        return FeedPage(items: [samplePaper]);
-      },
-      fulltextPolicy: ClientFulltextPolicy.strict,
-    );
+        fulltextPolicy: ClientFulltextPolicy.strict,
+      );
 
-    await bootstrapper.hydrateLocalState();
+      await bootstrapper.hydrateLocalState();
 
-    final snapshot = bootstrapper.data!.preloadedFeed;
-    expect(snapshot.origin, DataOrigin.deviceCache);
-    expect(snapshot.page.nextCursor, 'device-cursor');
-    expect(snapshot.page.items.single.paperId, derivedPaper.paperId);
-    expect(snapshot.page.items.single.capabilities.introduction, isFalse);
-    expect(snapshot.page.items.single.capabilities.chat, isFalse);
-    expect(snapshot.page.items.single.capabilities.connections, isFalse);
-    expect(bundledLoads, 0);
-  });
+      final snapshot = bootstrapper.data!.preloadedFeed;
+      expect(snapshot.origin, DataOrigin.deviceCache);
+      expect(snapshot.page.nextCursor, 'device-cursor');
+      expect(snapshot.page.items.single.paperId, derivedPaper.paperId);
+      expect(snapshot.page.items.single.capabilities.introduction, isFalse);
+      expect(snapshot.page.items.single.capabilities.chat, isFalse);
+      expect(snapshot.page.items.single.capabilities.connections, isFalse);
+      expect(bundledLoads, 0);
+    },
+  );
 
-  test('startup preload falls back to bundled feed when cache is empty',
-      () async {
-    final store = MemoryLocalStore()..feed = const FeedPage(items: []);
-    var bundledLoads = 0;
-    final bootstrapper = ApplicationStartupBootstrapper(
-      storeFactory: () async => store,
-      bundledFeedLoader: () async {
-        bundledLoads += 1;
-        return FeedPage(items: [samplePaper], nextCursor: 'bundle-cursor');
-      },
-    );
+  test(
+    'startup preload falls back to bundled feed when cache is empty',
+    () async {
+      final store = MemoryLocalStore()..feed = const FeedPage(items: []);
+      var bundledLoads = 0;
+      final bootstrapper = ApplicationStartupBootstrapper(
+        storeFactory: () async => store,
+        bundledFeedLoader: () async {
+          bundledLoads += 1;
+          return FeedPage(items: [samplePaper], nextCursor: 'bundle-cursor');
+        },
+      );
 
-    await bootstrapper.hydrateLocalState();
+      await bootstrapper.hydrateLocalState();
 
-    final snapshot = bootstrapper.data!.preloadedFeed;
-    expect(snapshot.origin, DataOrigin.bundledDemo);
-    expect(snapshot.page.items.single.paperId, samplePaper.paperId);
-    expect(snapshot.page.nextCursor, 'bundle-cursor');
-    expect(bundledLoads, 1);
-  });
+      final snapshot = bootstrapper.data!.preloadedFeed;
+      expect(snapshot.origin, DataOrigin.bundledDemo);
+      expect(snapshot.page.items.single.paperId, samplePaper.paperId);
+      expect(snapshot.page.nextCursor, 'bundle-cursor');
+      expect(bundledLoads, 1);
+    },
+  );
 
   testWidgets(
     'opening child renders preloaded feed before first-frame revalidation',
@@ -204,9 +205,11 @@ void main() {
       expect(repository.feedCalls, 0);
       expect(find.text(samplePaper.title), findsNothing);
 
-      for (var frame = 0;
-          frame < 6 && find.text(samplePaper.title).evaluate().isEmpty;
-          frame += 1) {
+      for (
+        var frame = 0;
+        frame < 6 && find.text(samplePaper.title).evaluate().isEmpty;
+        frame += 1
+      ) {
         expect(repository.feedCalls, 0);
         await tester.pump();
       }

@@ -20,10 +20,10 @@ enum PaperStage {
   connections;
 
   String get label => switch (this) {
-        PaperStage.abstractView => 'Abstract',
-        PaperStage.introduction => 'Introduction',
-        PaperStage.connections => 'Connections',
-      };
+    PaperStage.abstractView => 'Abstract',
+    PaperStage.introduction => 'Introduction',
+    PaperStage.connections => 'Connections',
+  };
 
   static PaperStage fromIndex(int value) =>
       PaperStage.values[value.clamp(0, PaperStage.values.length - 1)];
@@ -49,10 +49,10 @@ class ReaderNavigationState {
   final bool prepareRequested;
 
   double offsetFor(PaperStage stage) => switch (stage) {
-        PaperStage.abstractView => abstractOffset,
-        PaperStage.introduction => introductionOffset,
-        PaperStage.connections => connectionsOffset,
-      };
+    PaperStage.abstractView => abstractOffset,
+    PaperStage.introduction => introductionOffset,
+    PaperStage.connections => connectionsOffset,
+  };
 
   ReaderNavigationState copyWith({
     int? stageIndex,
@@ -63,42 +63,37 @@ class ReaderNavigationState {
     String? chatThreadId,
     bool clearChatThreadId = false,
     bool? prepareRequested,
-  }) =>
-      ReaderNavigationState(
-        stageIndex: stageIndex ?? this.stageIndex,
-        abstractOffset: abstractOffset ?? this.abstractOffset,
-        introductionOffset: introductionOffset ?? this.introductionOffset,
-        connectionsOffset: connectionsOffset ?? this.connectionsOffset,
-        chatSheetOpen: chatSheetOpen ?? this.chatSheetOpen,
-        chatThreadId:
-            clearChatThreadId ? null : chatThreadId ?? this.chatThreadId,
-        prepareRequested: prepareRequested ?? this.prepareRequested,
-      );
+  }) => ReaderNavigationState(
+    stageIndex: stageIndex ?? this.stageIndex,
+    abstractOffset: abstractOffset ?? this.abstractOffset,
+    introductionOffset: introductionOffset ?? this.introductionOffset,
+    connectionsOffset: connectionsOffset ?? this.connectionsOffset,
+    chatSheetOpen: chatSheetOpen ?? this.chatSheetOpen,
+    chatThreadId: clearChatThreadId ? null : chatThreadId ?? this.chatThreadId,
+    prepareRequested: prepareRequested ?? this.prepareRequested,
+  );
 
   factory ReaderNavigationState.fromJson(
     Map<String, dynamic> json,
-  ) =>
-      ReaderNavigationState(
-        stageIndex: (json['stage_index'] as num?)?.toInt() ?? 0,
-        abstractOffset: (json['abstract_offset'] as num?)?.toDouble() ?? 0,
-        introductionOffset:
-            (json['introduction_offset'] as num?)?.toDouble() ?? 0,
-        connectionsOffset:
-            (json['connections_offset'] as num?)?.toDouble() ?? 0,
-        chatSheetOpen: json['chat_sheet_open'] as bool? ?? false,
-        chatThreadId: json['chat_thread_id']?.toString(),
-        prepareRequested: json['prepare_requested'] as bool? ?? false,
-      );
+  ) => ReaderNavigationState(
+    stageIndex: (json['stage_index'] as num?)?.toInt() ?? 0,
+    abstractOffset: (json['abstract_offset'] as num?)?.toDouble() ?? 0,
+    introductionOffset: (json['introduction_offset'] as num?)?.toDouble() ?? 0,
+    connectionsOffset: (json['connections_offset'] as num?)?.toDouble() ?? 0,
+    chatSheetOpen: json['chat_sheet_open'] as bool? ?? false,
+    chatThreadId: json['chat_thread_id']?.toString(),
+    prepareRequested: json['prepare_requested'] as bool? ?? false,
+  );
 
   Map<String, dynamic> toJson() => {
-        'stage_index': stageIndex,
-        'abstract_offset': abstractOffset,
-        'introduction_offset': introductionOffset,
-        'connections_offset': connectionsOffset,
-        'chat_sheet_open': chatSheetOpen,
-        if (chatThreadId != null) 'chat_thread_id': chatThreadId,
-        'prepare_requested': prepareRequested,
-      };
+    'stage_index': stageIndex,
+    'abstract_offset': abstractOffset,
+    'introduction_offset': introductionOffset,
+    'connections_offset': connectionsOffset,
+    'chat_sheet_open': chatSheetOpen,
+    if (chatThreadId != null) 'chat_thread_id': chatThreadId,
+    'prepare_requested': prepareRequested,
+  };
 }
 
 class PaperRouteEntry {
@@ -118,18 +113,23 @@ class PaperRouteEntry {
       );
 
   Map<String, dynamic> toJson() => {
-        'route_id': routeId,
-        'paper': paper.toJson(),
-      };
+    'route_id': routeId,
+    'paper': paper.toJson(),
+  };
 }
 
 class AppRestorationState {
   const AppRestorationState({
     this.activeBranchIndex = 0,
     this.feedIndex = 0,
+    this.feedPaperId,
+    this.feedArxivId,
     this.routeStack = const [],
     this.readerStates = const {},
-  });
+  }) : assert(
+         (feedPaperId == null) == (feedArxivId == null),
+         'Feed paper identity and version must be persisted together.',
+       );
 
   /// The selected root destination: `0` for Read and `1` for You.
   ///
@@ -139,6 +139,8 @@ class AppRestorationState {
   final int activeBranchIndex;
   AppBranch get activeBranch => AppBranch.fromIndex(activeBranchIndex);
   final int feedIndex;
+  final String? feedPaperId;
+  final String? feedArxivId;
   final List<PaperRouteEntry> routeStack;
   final Map<String, ReaderNavigationState> readerStates;
 
@@ -148,21 +150,38 @@ class AppRestorationState {
   AppRestorationState copyWith({
     int? activeBranchIndex,
     int? feedIndex,
+    String? feedPaperId,
+    String? feedArxivId,
+    bool clearFeedPaperReference = false,
     List<PaperRouteEntry>? routeStack,
     Map<String, ReaderNavigationState>? readerStates,
-  }) =>
-      AppRestorationState(
-        activeBranchIndex: activeBranchIndex ?? this.activeBranchIndex,
-        feedIndex: feedIndex ?? this.feedIndex,
-        routeStack: routeStack ?? this.routeStack,
-        readerStates: readerStates ?? this.readerStates,
-      );
+  }) => AppRestorationState(
+    activeBranchIndex: activeBranchIndex ?? this.activeBranchIndex,
+    feedIndex: feedIndex ?? this.feedIndex,
+    feedPaperId: clearFeedPaperReference
+        ? null
+        : feedPaperId ?? this.feedPaperId,
+    feedArxivId: clearFeedPaperReference
+        ? null
+        : feedArxivId ?? this.feedArxivId,
+    routeStack: routeStack ?? this.routeStack,
+    readerStates: readerStates ?? this.readerStates,
+  );
 
   factory AppRestorationState.fromJson(Map<String, dynamic> json) {
     final rawReaders = json['reader_states'];
+    final rawFeedPaperId = json['feed_paper_id']?.toString().trim();
+    final rawFeedArxivId = json['feed_arxiv_id']?.toString().trim();
+    final hasFeedReference =
+        rawFeedPaperId != null &&
+        rawFeedPaperId.isNotEmpty &&
+        rawFeedArxivId != null &&
+        rawFeedArxivId.isNotEmpty;
     return AppRestorationState(
       activeBranchIndex: _restoredBranchIndex(json['active_branch_index']),
       feedIndex: (json['feed_index'] as num?)?.toInt() ?? 0,
+      feedPaperId: hasFeedReference ? rawFeedPaperId : null,
+      feedArxivId: hasFeedReference ? rawFeedArxivId : null,
       routeStack: (json['route_stack'] as List<dynamic>? ?? const [])
           .map(
             (value) => PaperRouteEntry.fromJson(
@@ -185,14 +204,19 @@ class AppRestorationState {
   }
 
   Map<String, dynamic> toJson() => {
-        'active_branch_index': activeBranchIndex,
-        'feed_index': feedIndex,
-        'route_stack':
-            routeStack.map((entry) => entry.toJson()).toList(growable: false),
-        'reader_states': readerStates.map(
-          (key, value) => MapEntry(key, value.toJson()),
-        ),
-      };
+    'active_branch_index': activeBranchIndex,
+    'feed_index': feedIndex,
+    if (feedPaperId != null && feedArxivId != null) ...{
+      'feed_paper_id': feedPaperId,
+      'feed_arxiv_id': feedArxivId,
+    },
+    'route_stack': routeStack
+        .map((entry) => entry.toJson())
+        .toList(growable: false),
+    'reader_states': readerStates.map(
+      (key, value) => MapEntry(key, value.toJson()),
+    ),
+  };
 }
 
 int _restoredBranchIndex(Object? value) {
@@ -203,7 +227,7 @@ int _restoredBranchIndex(Object? value) {
 /// Pure committed-page gate used by the reader and unit-tested independently.
 class PrepareIntentGate {
   PrepareIntentGate({bool alreadyRequested = false})
-      : _requested = alreadyRequested;
+    : _requested = alreadyRequested;
 
   bool _requested;
   bool get requested => _requested;

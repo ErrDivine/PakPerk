@@ -184,9 +184,10 @@ Future<void> openPaperChat(
   if (!data.matchesPathPaper(data.paperId)) {
     throw ArgumentError.value(data, 'data', 'contains invalid route data');
   }
-  final navigation = ProviderScope.containerOf(context, listen: false).read(
-    paperReaderNavigationControllerProvider(data.readerKey),
-  );
+  final navigation = ProviderScope.containerOf(
+    context,
+    listen: false,
+  ).read(paperReaderNavigationControllerProvider(data.readerKey));
   navigation.setChatSheetOpen(true);
   try {
     if (GoRouter.maybeOf(context) != null) {
@@ -238,7 +239,8 @@ Future<void> openPaperComments(
       heightFactor: .9,
       child: PhaseOnePlaceholderScreen(
         title: 'Paper discussions',
-        message: 'Comments for “${data.paperTitle}” are not enabled in this '
+        message:
+            'Comments for “${data.paperTitle}” are not enabled in this '
             'build. No comment controls are presented as functional.',
         icon: Icons.forum_outlined,
         closeTooltip: 'Close paper discussions',
@@ -261,9 +263,9 @@ void closePakPerkRootRoute(
 
 class PakPerkNavigatorKeys {
   PakPerkNavigatorKeys()
-      : root = GlobalKey<NavigatorState>(debugLabel: 'pakperk-root'),
-        read = GlobalKey<NavigatorState>(debugLabel: 'pakperk-read'),
-        you = GlobalKey<NavigatorState>(debugLabel: 'pakperk-you');
+    : root = GlobalKey<NavigatorState>(debugLabel: 'pakperk-root'),
+      read = GlobalKey<NavigatorState>(debugLabel: 'pakperk-read'),
+      you = GlobalKey<NavigatorState>(debugLabel: 'pakperk-you');
 
   final GlobalKey<NavigatorState> root;
   final GlobalKey<NavigatorState> read;
@@ -293,7 +295,8 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
           state,
           child: PhaseOnePlaceholderScreen(
             title: 'Accounts are not enabled',
-            message: 'Sign in and account creation will be connected in the '
+            message:
+                'Sign in and account creation will be connected in the '
                 'account phase. No credentials are collected by this screen.',
             icon: Icons.lock_outline,
             closeTooltip: 'Close account sign in',
@@ -309,8 +312,8 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
           final extra = state.extra;
           final data =
               extra is PaperChatRouteData && extra.matchesPathPaper(pathPaperId)
-                  ? extra
-                  : null;
+              ? extra
+              : null;
           return _rootPage(
             state,
             child: PaperChatRouteScreen(
@@ -326,7 +329,8 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) {
           final pathPaperId = state.pathParameters['paperId'] ?? '';
           final extra = state.extra;
-          final data = extra is PaperCommentsRouteData &&
+          final data =
+              extra is PaperCommentsRouteData &&
                   extra.matchesPathPaper(pathPaperId)
               ? extra
               : null;
@@ -361,9 +365,8 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
       ),
       StatefulShellRoute.indexedStack(
         restorationScopeId: 'pakperk-shell',
-        builder: (context, state, navigationShell) => PakPerkAppShell(
-          navigationShell: navigationShell,
-        ),
+        builder: (context, state, navigationShell) =>
+            PakPerkAppShell(navigationShell: navigationShell),
         branches: [
           StatefulShellBranch(
             navigatorKey: keys.read,
@@ -383,16 +386,16 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                     pageBuilder: (context, state) {
                       final paperId = state.pathParameters['paperId'] ?? '';
                       final extra = state.extra;
-                      final initialPaper = extra is PaperSummary &&
+                      final initialPaper =
+                          extra is PaperSummary &&
                               extra.paperId.toLowerCase() ==
                                   paperId.toLowerCase()
                           ? extra
                           : null;
                       return MaterialPage<void>(
                         key: state.pageKey,
-                        restorationId: PakPerkRouteIdentifiers.isValidPaperId(
-                          paperId,
-                        )
+                        restorationId:
+                            PakPerkRouteIdentifiers.isValidPaperId(paperId)
                             ? 'paper-$paperId'
                             : 'invalid-paper',
                         child: PaperDeepLinkScreen(
@@ -432,9 +435,8 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                   restorationId: 'you-root-page',
                   child: GuestYouScreen(
                     onSignIn: null,
-                    onOpenSettings: () => context.push(
-                      PakPerkRoutes.youSettings,
-                    ),
+                    onOpenSettings: () =>
+                        context.push(PakPerkRoutes.youSettings),
                     onOpenPrivacy: () => context.push(PakPerkRoutes.privacy),
                     onOpenTerms: () => context.push(PakPerkRoutes.terms),
                     onOpenCommunityGuidelines: () =>
@@ -447,7 +449,8 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                     path: 'library',
                     builder: (_, __) => const PhaseOnePlaceholderScreen(
                       title: 'To Read',
-                      message: 'The synchronized To Read library is not '
+                      message:
+                          'The synchronized To Read library is not '
                           'enabled in this build.',
                       icon: Icons.bookmarks_outlined,
                     ),
@@ -456,7 +459,8 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                     path: 'comments',
                     builder: (_, __) => const PhaseOnePlaceholderScreen(
                       title: 'My comments',
-                      message: 'Accounts and public comments are not enabled '
+                      message:
+                          'Accounts and public comments are not enabled '
                           'in this build.',
                       icon: Icons.comment_outlined,
                     ),
@@ -469,7 +473,8 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                     path: 'account/delete',
                     builder: (_, __) => const PhaseOnePlaceholderScreen(
                       title: 'Delete account',
-                      message: 'There is no account attached to this build, '
+                      message:
+                          'There is no account attached to this build, '
                           'so there is nothing to delete.',
                       icon: Icons.person_off_outlined,
                     ),
@@ -483,7 +488,8 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
     ],
     errorBuilder: (context, state) => PhaseOnePlaceholderScreen(
       title: 'Link not recognized',
-      message: 'Pakperk could not safely open this link. Return to Read and '
+      message:
+          'Pakperk could not safely open this link. Return to Read and '
           'choose a paper from the feed.',
       icon: Icons.link_off,
       onClose: () => context.go(PakPerkRoutes.read),
@@ -494,51 +500,55 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
 });
 
 List<GoRoute> _legalRoutes(GlobalKey<NavigatorState> rootNavigatorKey) => [
-      GoRoute(
-        path: PakPerkRoutes.privacy,
-        parentNavigatorKey: rootNavigatorKey,
-        builder: (context, _) => PhaseOnePlaceholderScreen(
-          title: 'Privacy',
-          message: 'The complete production privacy notice will be published '
-              'before account features are enabled.',
-          icon: Icons.privacy_tip_outlined,
-          onClose: () => closePakPerkRootRoute(context),
-        ),
-      ),
-      GoRoute(
-        path: PakPerkRoutes.terms,
-        parentNavigatorKey: rootNavigatorKey,
-        builder: (context, _) => PhaseOnePlaceholderScreen(
-          title: 'Terms',
-          message: 'Production terms will be published before account '
-              'features are enabled.',
-          icon: Icons.description_outlined,
-          onClose: () => closePakPerkRootRoute(context),
-        ),
-      ),
-      GoRoute(
-        path: PakPerkRoutes.communityGuidelines,
-        parentNavigatorKey: rootNavigatorKey,
-        builder: (context, _) => PhaseOnePlaceholderScreen(
-          title: 'Community guidelines',
-          message: 'Public discussions are not enabled in this build. The '
-              'moderation policy will be published before they are enabled.',
-          icon: Icons.groups_outlined,
-          onClose: () => closePakPerkRootRoute(context),
-        ),
-      ),
-      GoRoute(
-        path: PakPerkRoutes.support,
-        parentNavigatorKey: rootNavigatorKey,
-        builder: (context, _) => PhaseOnePlaceholderScreen(
-          title: 'Support',
-          message: 'A production support contact is not configured in this '
-              'build. No message or personal data has been submitted.',
-          icon: Icons.support_agent_outlined,
-          onClose: () => closePakPerkRootRoute(context),
-        ),
-      ),
-    ];
+  GoRoute(
+    path: PakPerkRoutes.privacy,
+    parentNavigatorKey: rootNavigatorKey,
+    builder: (context, _) => PhaseOnePlaceholderScreen(
+      title: 'Privacy',
+      message:
+          'The complete production privacy notice will be published '
+          'before account features are enabled.',
+      icon: Icons.privacy_tip_outlined,
+      onClose: () => closePakPerkRootRoute(context),
+    ),
+  ),
+  GoRoute(
+    path: PakPerkRoutes.terms,
+    parentNavigatorKey: rootNavigatorKey,
+    builder: (context, _) => PhaseOnePlaceholderScreen(
+      title: 'Terms',
+      message:
+          'Production terms will be published before account '
+          'features are enabled.',
+      icon: Icons.description_outlined,
+      onClose: () => closePakPerkRootRoute(context),
+    ),
+  ),
+  GoRoute(
+    path: PakPerkRoutes.communityGuidelines,
+    parentNavigatorKey: rootNavigatorKey,
+    builder: (context, _) => PhaseOnePlaceholderScreen(
+      title: 'Community guidelines',
+      message:
+          'Public discussions are not enabled in this build. The '
+          'moderation policy will be published before they are enabled.',
+      icon: Icons.groups_outlined,
+      onClose: () => closePakPerkRootRoute(context),
+    ),
+  ),
+  GoRoute(
+    path: PakPerkRoutes.support,
+    parentNavigatorKey: rootNavigatorKey,
+    builder: (context, _) => PhaseOnePlaceholderScreen(
+      title: 'Support',
+      message:
+          'A production support contact is not configured in this '
+          'build. No message or personal data has been submitted.',
+      icon: Icons.support_agent_outlined,
+      onClose: () => closePakPerkRootRoute(context),
+    ),
+  ),
+];
 
 MaterialPage<void> _rootPage(GoRouterState state, {required Widget child}) =>
     MaterialPage<void>(
@@ -580,11 +590,8 @@ class PakPerkAppShell extends ConsumerWidget {
       bottomNavigationBar: NavigationBar(
         key: const ValueKey<String>('primary-navigation'),
         selectedIndex: navigationShell.currentIndex,
-        onDestinationSelected: (index) => _selectDestination(
-          context,
-          ref,
-          index,
-        ),
+        onDestinationSelected: (index) =>
+            _selectDestination(context, ref, index),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.auto_stories_outlined),
@@ -726,7 +733,8 @@ class _ArxivDeepLinkScreenState extends ConsumerState<ArxivDeepLinkScreen> {
     if (identifier == null) {
       return PhaseOnePlaceholderScreen(
         title: 'Invalid arXiv link',
-        message: 'The arXiv identifier is malformed. No network request was '
+        message:
+            'The arXiv identifier is malformed. No network request was '
             'made.',
         icon: Icons.link_off,
         onClose: _close,
@@ -735,10 +743,7 @@ class _ArxivDeepLinkScreenState extends ConsumerState<ArxivDeepLinkScreen> {
     final paper = _paper;
     if (paper != null) {
       return PaperRouteScreen(
-        entry: PaperRouteEntry(
-          routeId: _routeId,
-          paper: paper,
-        ),
+        entry: PaperRouteEntry(routeId: _routeId, paper: paper),
         activeOverride: ref.watch(activeAppBranchProvider) == AppBranch.read,
         onBack: _close,
         onOpenLinkedPaper: _openLinkedPaper,
@@ -783,10 +788,9 @@ class _ArxivDeepLinkScreenState extends ConsumerState<ArxivDeepLinkScreen> {
     _request = request;
     if (mounted) setState(() => _errorMessage = null);
     try {
-      final result = await ref.read(paperRepositoryProvider).getPaperByArxiv(
-            identifier.queryId,
-            cancellation: request,
-          );
+      final result = await ref
+          .read(paperRepositoryProvider)
+          .getPaperByArxiv(identifier.queryId, cancellation: request);
       if (!mounted || request.isCancelled) return;
       setState(() => _paper = result.value);
     } on ApiException catch (error) {
@@ -851,7 +855,8 @@ class _PaperDeepLinkScreenState extends ConsumerState<PaperDeepLinkScreen> {
     if (!PakPerkRouteIdentifiers.isValidPaperId(widget.paperId)) {
       return PhaseOnePlaceholderScreen(
         title: 'Invalid paper link',
-        message: 'The paper identifier is malformed. No network request was '
+        message:
+            'The paper identifier is malformed. No network request was '
             'made.',
         icon: Icons.link_off,
         onClose: _close,
@@ -860,10 +865,7 @@ class _PaperDeepLinkScreenState extends ConsumerState<PaperDeepLinkScreen> {
     final paper = _paper;
     if (paper != null) {
       return PaperRouteScreen(
-        entry: PaperRouteEntry(
-          routeId: _routeId,
-          paper: paper,
-        ),
+        entry: PaperRouteEntry(routeId: _routeId, paper: paper),
         activeOverride: ref.watch(activeAppBranchProvider) == AppBranch.read,
         onBack: _close,
         onOpenLinkedPaper: _openLinkedPaper,
@@ -906,10 +908,9 @@ class _PaperDeepLinkScreenState extends ConsumerState<PaperDeepLinkScreen> {
     _request = request;
     if (mounted) setState(() => _errorMessage = null);
     try {
-      final result = await ref.read(paperRepositoryProvider).getPaper(
-            widget.paperId,
-            cancellation: request,
-          );
+      final result = await ref
+          .read(paperRepositoryProvider)
+          .getPaper(widget.paperId, cancellation: request);
       if (!mounted || request.isCancelled) return;
       setState(() => _paper = result.value);
     } on ApiException catch (error) {
@@ -958,7 +959,8 @@ class PaperChatRouteScreen extends ConsumerWidget {
     if (routeData == null) {
       return PhaseOnePlaceholderScreen(
         title: 'Paper chat link unavailable',
-        message: 'Paper chat needs an active, validated reader session. Open '
+        message:
+            'Paper chat needs an active, validated reader session. Open '
             'the paper first and use its Ask control.',
         icon: Icons.chat_bubble_outline,
         closeTooltip: 'Close paper chat',
@@ -970,10 +972,9 @@ class PaperChatRouteScreen extends ConsumerWidget {
       readerKey: routeData.readerKey,
     );
     final chat = ref.watch(chatControllerProvider(args));
-    final networkOffline = ref.watch(networkOfflineProvider).maybeWhen(
-          data: (value) => value,
-          orElse: () => chat.offline,
-        );
+    final networkOffline = ref
+        .watch(networkOfflineProvider)
+        .maybeWhen(data: (value) => value, orElse: () => chat.offline);
     final sheet = PaperChatSheet(
       state: ChatStateView(
         messages: chat.messages,
@@ -1058,7 +1059,8 @@ class _PaperCommentsRouteScreenState
     if (!_hasValidPaperId) {
       return PhaseOnePlaceholderScreen(
         title: 'Invalid comments link',
-        message: 'The paper identifier is malformed. No paper or comment '
+        message:
+            'The paper identifier is malformed. No paper or comment '
             'request was made.',
         icon: Icons.link_off,
         closeTooltip: 'Close paper discussions',
@@ -1069,7 +1071,8 @@ class _PaperCommentsRouteScreenState
     if (data != null) {
       return PhaseOnePlaceholderScreen(
         title: 'Paper discussions',
-        message: 'Comments for “${data.paperTitle}” are not enabled in this '
+        message:
+            'Comments for “${data.paperTitle}” are not enabled in this '
             'build. Nothing posted here will be presented as functional '
             'until the comments service is available.',
         icon: Icons.forum_outlined,
@@ -1118,10 +1121,9 @@ class _PaperCommentsRouteScreenState
     _request = request;
     if (mounted) setState(() => _errorMessage = null);
     try {
-      final result = await ref.read(paperRepositoryProvider).getPaper(
-            widget.paperId,
-            cancellation: request,
-          );
+      final result = await ref
+          .read(paperRepositoryProvider)
+          .getPaper(widget.paperId, cancellation: request);
       if (!mounted || request.isCancelled) return;
       if (result.value.paperId.toLowerCase() != widget.paperId.toLowerCase()) {
         throw const ApiException(
@@ -1206,7 +1208,8 @@ class _PaperRouteScreenState extends ConsumerState<PaperRouteScreen> {
     final readerKey = routeReaderKey(widget.entry.routeId, paper);
     final routeStack = ref.watch(appRestorationControllerProvider).routeStack;
     final readSelected = ref.watch(activeAppBranchProvider) == AppBranch.read;
-    final active = widget.activeOverride ??
+    final active =
+        widget.activeOverride ??
         (readSelected &&
             routeStack.isNotEmpty &&
             routeStack.last.routeId == widget.entry.routeId);
@@ -1227,7 +1230,8 @@ class _PaperRouteScreenState extends ConsumerState<PaperRouteScreen> {
       appBar: AppBar(
         leading: IconButton(
           tooltip: 'Back to previous paper',
-          onPressed: widget.onBack ??
+          onPressed:
+              widget.onBack ??
               () => ref
                   .read(appRestorationControllerProvider.notifier)
                   .popPaper(routeId: widget.entry.routeId),

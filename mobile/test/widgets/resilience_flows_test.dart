@@ -90,9 +90,14 @@ void main() {
       );
       final restoration = container.read(appRestorationControllerProvider);
       expect(restoration.routeStack.last.paper.arxivId, '1706.03762v8');
-      expect(restoration.readerState(oldReaderKey).stageIndex, 2);
-      expect(restoration.readerState(newReaderKey).stageIndex, 0);
-      expect(restoration.readerState(newReaderKey).chatThreadId, isNull);
+      expect(restoration.readerStates, isNot(contains(oldReaderKey)));
+      expect(restoration.readerState(oldReaderKey).stageIndex, 0);
+      final freshReader = restoration.readerState(newReaderKey);
+      expect(freshReader.stageIndex, 0);
+      expect(freshReader.connectionsOffset, 0);
+      expect(freshReader.prepareRequested, isFalse);
+      expect(freshReader.chatSheetOpen, isFalse);
+      expect(freshReader.chatThreadId, isNull);
       expect(
         find.byKey(ValueKey('paper-reader-$newReaderKey')),
         findsOneWidget,
@@ -166,8 +171,9 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byType(PakPerkApp)),
     );
-    final originBefore =
-        container.read(appRestorationControllerProvider).readerState(readerKey);
+    final originBefore = container
+        .read(appRestorationControllerProvider)
+        .readerState(readerKey);
     expect(originBefore.stageIndex, 2);
     expect(originBefore.connectionsOffset, greaterThan(0));
 
@@ -180,8 +186,9 @@ void main() {
 
     await tester.tap(find.byTooltip('Back to previous paper'));
     await tester.pumpAndSettle();
-    final restored =
-        container.read(appRestorationControllerProvider).readerState(readerKey);
+    final restored = container
+        .read(appRestorationControllerProvider)
+        .readerState(readerKey);
     expect(
       container.read(appRestorationControllerProvider).routeStack,
       isEmpty,
@@ -216,8 +223,9 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byType(PakPerkApp)),
     );
-    final navigation =
-        container.read(appRestorationControllerProvider.notifier);
+    final navigation = container.read(
+      appRestorationControllerProvider.notifier,
+    );
     navigation
       ..pushPaper(samplePaper)
       ..pushPaper(samplePaper)

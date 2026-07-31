@@ -101,16 +101,59 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "description": "Entity tag returned by an earlier response for the same feed query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "Paper summary page",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Public chronological-feed cache policy"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Opaque validator for this feed query and representation"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FeedPageSchema"
                 }
+              }
+            }
+          },
+          "304": {
+            "description": "Feed representation has not changed; response body is empty",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Public chronological-feed cache policy"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Current opaque feed validator"
               }
             }
           },
@@ -619,6 +662,7 @@
         "type": "object",
         "required": [
           "thread_id",
+          "generation",
           "answer_markdown",
           "insufficient_evidence",
           "evidence",
@@ -634,6 +678,10 @@
             "items": {
               "$ref": "#/components/schemas/ChatEvidenceSchema"
             }
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int32"
           },
           "insufficient_evidence": {
             "type": "boolean"
@@ -706,11 +754,16 @@
         "type": "object",
         "required": [
           "paper_id",
+          "generation",
           "ready",
           "key_connections",
           "references"
         ],
         "properties": {
+          "generation": {
+            "type": "integer",
+            "format": "int32"
+          },
           "key_connections": {
             "type": "array",
             "items": {

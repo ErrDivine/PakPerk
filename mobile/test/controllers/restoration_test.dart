@@ -18,6 +18,8 @@ void main() {
     );
     final original = AppRestorationState(
       feedIndex: 4,
+      feedPaperId: samplePaper.paperId,
+      feedArxivId: samplePaper.arxivId,
       routeStack: [PaperRouteEntry(routeId: 'route-1', paper: samplePaper)],
       readerStates: const {'feed:source': reader},
     );
@@ -25,6 +27,8 @@ void main() {
     final restored = AppRestorationState.fromJson(original.toJson());
     final value = restored.readerState('feed:source');
     expect(restored.feedIndex, 4);
+    expect(restored.feedPaperId, samplePaper.paperId);
+    expect(restored.feedArxivId, samplePaper.arxivId);
     expect(restored.routeStack.single.paper.paperId, samplePaper.paperId);
     expect(value.stageIndex, 2);
     expect(value.introductionOffset, 912.25);
@@ -56,6 +60,81 @@ void main() {
     expect(controller.state.readerState('feed:source').chatSheetOpen, isTrue);
     await controller.flush();
     expect(store.restoration.readerState('feed:source').stageIndex, 2);
+    controller.dispose();
+  });
+
+  test('popping a connection removes its route-scoped reader state', () {
+    final store = MemoryLocalStore();
+    final controller = AppRestorationController(
+      store: store,
+      initial: const AppRestorationState(),
+    );
+    final routeId = controller.pushPaper(samplePaper);
+    final routeKey = routeReaderKey(routeId, samplePaper);
+    controller.updateReader(
+      routeKey,
+      (_) => const ReaderNavigationState(stageIndex: 2),
+    );
+
+    expect(controller.state.readerStates, contains(routeKey));
+    expect(controller.popPaper(routeId: routeId), isTrue);
+    expect(controller.state.readerStates, isNot(contains(routeKey)));
+    controller.dispose();
+  });
+
+  test('route version updates discard state at the version boundary', () {
+    final controller = AppRestorationController(
+      store: MemoryLocalStore(),
+      initial: const AppRestorationState(),
+    );
+    final routeId = controller.pushPaper(samplePaper);
+    final oldKey = routeReaderKey(routeId, samplePaper);
+    controller.updateReader(
+      oldKey,
+      (_) =>
+          const ReaderNavigationState(stageIndex: 1, introductionOffset: 215),
+    );
+    final newer = PaperSummary.fromJson(
+      samplePaper.toJson()..['arxiv_id'] = '1706.03762v8',
+    );
+
+    controller.updateRoutePaper(routeId, newer);
+
+    final newKey = routeReaderKey(routeId, newer);
+    expect(controller.state.readerStates, isNot(contains(oldKey)));
+    expect(controller.state.readerStates, isNot(contains(newKey)));
+    expect(controller.state.readerState(newKey).stageIndex, 0);
+    expect(controller.state.readerState(newKey).introductionOffset, 0);
+    controller.dispose();
+  });
+
+  test('restoration history remains bounded and retains the current feed', () {
+    final currentPaper = PaperSummary.fromJson(
+      samplePaper.toJson()
+        ..['paper_id'] = 'current-paper'
+        ..['arxiv_id'] = '1706.03762v9',
+    );
+    final currentKey = feedReaderKey(currentPaper);
+    final initialReaders = <String, ReaderNavigationState>{
+      currentKey: const ReaderNavigationState(stageIndex: 2),
+      for (var index = 0; index < maxRestoredReaderStates + 20; index++)
+        'feed:old-$index:old-v$index': ReaderNavigationState(
+          abstractOffset: index.toDouble(),
+        ),
+    };
+
+    final controller = AppRestorationController(
+      store: MemoryLocalStore(),
+      initial: AppRestorationState(
+        feedPaperId: currentPaper.paperId,
+        feedArxivId: currentPaper.arxivId,
+        readerStates: initialReaders,
+      ),
+    );
+
+    expect(controller.state.readerStates, hasLength(maxRestoredReaderStates));
+    expect(controller.state.readerStates, contains(currentKey));
+    expect(controller.state.readerState(currentKey).stageIndex, 2);
     controller.dispose();
   });
 

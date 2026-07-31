@@ -402,17 +402,17 @@ PaperSummary _atVersion(PaperSummary paper, String arxivId) {
 }
 
 ApiException _policyDenied() => const ApiException(
-      code: 'FULLTEXT_POLICY_DENIED',
-      message: 'Derived content is denied.',
-      statusCode: 403,
-    );
+  code: 'FULLTEXT_POLICY_DENIED',
+  message: 'Derived content is denied.',
+  statusCode: 403,
+);
 
 ApiException _offline() => const ApiException(
-      code: 'NETWORK_UNAVAILABLE',
-      message: 'Offline',
-      retryable: true,
-      isOffline: true,
-    );
+  code: 'NETWORK_UNAVAILABLE',
+  message: 'Offline',
+  retryable: true,
+  isOffline: true,
+);
 
 class _PolicyApiClient extends ApiClient {
   _PolicyApiClient({
@@ -423,9 +423,9 @@ class _PolicyApiClient extends ApiClient {
     this.introduction,
     this.paper,
   }) : super(
-          baseUrl: 'http://localhost:8080',
-          sessionId: '00000000-0000-4000-8000-000000000099',
-        );
+         baseUrl: 'http://localhost:8080',
+         sessionId: '00000000-0000-4000-8000-000000000099',
+       );
 
   final ApiException? feedError;
   final ApiException? processingError;
@@ -448,8 +448,7 @@ class _PolicyApiClient extends ApiClient {
   Future<PaperSummary> getPaper(
     String paperId, {
     RequestCancellation? cancellation,
-  }) async =>
-      paper ?? samplePaper;
+  }) async => paper ?? samplePaper;
 
   @override
   Future<PaperProcessingState> getProcessing(
@@ -490,8 +489,8 @@ class _DemoStore implements DemoContentStore {
   @override
   Future<PaperSummary?> findFallbackPaperByArxiv(String arxivBaseId) async =>
       paper.arxivBaseId.toLowerCase() == arxivBaseId.toLowerCase()
-          ? paper
-          : null;
+      ? paper
+      : null;
 
   @override
   Future<FeedPage> loadFallbackFeed() async => FeedPage(items: [paper]);

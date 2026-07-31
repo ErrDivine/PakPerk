@@ -96,7 +96,8 @@ class ConnectionsView extends StatelessWidget {
                   fallbackMessage: state.notReady
                       ? 'References are still being resolved.'
                       : null,
-                  onRetry: state.offline ||
+                  onRetry:
+                      state.offline ||
                           processing.processing?.stage ==
                               ProcessingStage.failedRetryable
                       ? onRetryPreparation

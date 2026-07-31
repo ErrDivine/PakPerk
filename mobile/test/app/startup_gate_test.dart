@@ -6,8 +6,9 @@ import 'package:pakperk/design_system/motion.dart';
 import 'package:pakperk/design_system/theme.dart';
 
 void main() {
-  testWidgets('cold opening ends on real content within the 700 ms budget',
-      (tester) async {
+  testWidgets('cold opening ends on real content within the 700 ms budget', (
+    tester,
+  ) async {
     var completed = 0;
     await _pumpTransition(
       tester,
@@ -17,7 +18,9 @@ void main() {
     );
 
     expect(
-        find.byKey(const ValueKey('startup-launch-surface')), findsOneWidget);
+      find.byKey(const ValueKey('startup-launch-surface')),
+      findsOneWidget,
+    );
     expect(completed, 0);
     await tester.pump(
       PakPerkMotion.coldOpening + const Duration(milliseconds: 1),
@@ -33,8 +36,9 @@ void main() {
     );
   });
 
-  testWidgets('deep-link opening uses the shortened transition',
-      (tester) async {
+  testWidgets('deep-link opening uses the shortened transition', (
+    tester,
+  ) async {
     var completed = 0;
     await _pumpTransition(
       tester,
@@ -43,20 +47,19 @@ void main() {
       onComplete: () => completed += 1,
     );
 
-    await tester
-        .pump(PakPerkMotion.deepLinkOpening - const Duration(milliseconds: 1));
+    await tester.pump(
+      PakPerkMotion.deepLinkOpening - const Duration(milliseconds: 1),
+    );
     expect(completed, 0);
     await tester.pump(const Duration(milliseconds: 2));
     await tester.pump();
     expect(completed, 1);
-    expect(
-      PakPerkMotion.deepLinkOpening,
-      lessThan(PakPerkMotion.coldOpening),
-    );
+    expect(PakPerkMotion.deepLinkOpening, lessThan(PakPerkMotion.coldOpening));
   });
 
-  testWidgets('reduced motion cross-fades without moving usable content',
-      (tester) async {
+  testWidgets('reduced motion cross-fades without moving usable content', (
+    tester,
+  ) async {
     var completed = 0;
     await _pumpTransition(
       tester,
@@ -80,8 +83,9 @@ void main() {
     expect(find.byKey(const ValueKey('startup-launch-surface')), findsNothing);
   });
 
-  testWidgets('warm ready state shows content and does not replay opening',
-      (tester) async {
+  testWidgets('warm ready state shows content and does not replay opening', (
+    tester,
+  ) async {
     var firstUsableFrames = 0;
     var openingCompletions = 0;
     await tester.pumpWidget(
@@ -115,8 +119,9 @@ void main() {
     expect(openingCompletions, 0);
   });
 
-  testWidgets('startup failure offers retry and credential-preserving repair',
-      (tester) async {
+  testWidgets('startup failure offers retry and credential-preserving repair', (
+    tester,
+  ) async {
     var retries = 0;
     var repairs = 0;
     await tester.pumpWidget(

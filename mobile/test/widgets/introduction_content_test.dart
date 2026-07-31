@@ -114,15 +114,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('stage-introduction')));
     await tester.pumpAndSettle();
 
-    final heading = find.byKey(
-      const ValueKey('introduction-subheading-1'),
-    );
+    final heading = find.byKey(const ValueKey('introduction-subheading-1'));
     expect(heading, findsOneWidget);
     expect(find.text('1.1 Motivation'), findsOneWidget);
-    expect(
-      tester.getSemantics(heading).flagsCollection.isHeader,
-      isTrue,
-    );
+    expect(tester.getSemantics(heading).flagsCollection.isHeader, isTrue);
   });
 
   testWidgets('Introduction refreshes once when references become ready', (
@@ -132,10 +127,7 @@ void main() {
       paperId: samplePaper.paperId,
       overallState: 'processing',
       stage: ProcessingStage.resolvingReferences,
-      capabilities: const PaperCapabilities(
-        introduction: true,
-        chat: true,
-      ),
+      capabilities: const PaperCapabilities(introduction: true, chat: true),
       retryable: false,
       updatedAt: DateTime.utc(2026, 7, 29),
     );

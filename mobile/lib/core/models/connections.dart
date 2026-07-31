@@ -45,35 +45,35 @@ class KeyConnection {
   final double? confidence;
 
   factory KeyConnection.fromJson(Map<String, dynamic> json) => KeyConnection(
-        referenceId: (json['reference_id'] ?? '').toString(),
-        paperId: (json['paper_id'] ?? '').toString(),
-        arxivId: (json['arxiv_id'] ?? '').toString(),
-        title: (json['title'] ?? 'Untitled reference').toString(),
-        authors: (json['authors'] as List<dynamic>? ?? const [])
-            .map(
-              (author) => author is Map
-                  ? (author['name'] ?? '').toString()
-                  : author.toString(),
-            )
-            .where((author) => author.isNotEmpty)
-            .toList(growable: false),
-        year: (json['year'] as num?)?.toInt(),
-        relationType: (json['relation_type'] ?? 'unknown').toString(),
-        summary: (json['summary'] ?? '').toString(),
-        confidence: (json['confidence'] as num?)?.toDouble(),
-      );
+    referenceId: (json['reference_id'] ?? '').toString(),
+    paperId: (json['paper_id'] ?? '').toString(),
+    arxivId: (json['arxiv_id'] ?? '').toString(),
+    title: (json['title'] ?? 'Untitled reference').toString(),
+    authors: (json['authors'] as List<dynamic>? ?? const [])
+        .map(
+          (author) => author is Map
+              ? (author['name'] ?? '').toString()
+              : author.toString(),
+        )
+        .where((author) => author.isNotEmpty)
+        .toList(growable: false),
+    year: (json['year'] as num?)?.toInt(),
+    relationType: (json['relation_type'] ?? 'unknown').toString(),
+    summary: (json['summary'] ?? '').toString(),
+    confidence: (json['confidence'] as num?)?.toDouble(),
+  );
 
   Map<String, dynamic> toJson() => {
-        'reference_id': referenceId,
-        'paper_id': paperId,
-        'arxiv_id': arxivId,
-        'title': title,
-        'authors': authors,
-        'year': year,
-        'relation_type': relationType,
-        'summary': summary,
-        if (confidence != null) 'confidence': confidence,
-      };
+    'reference_id': referenceId,
+    'paper_id': paperId,
+    'arxiv_id': arxivId,
+    'title': title,
+    'authors': authors,
+    'year': year,
+    'relation_type': relationType,
+    'summary': summary,
+    if (confidence != null) 'confidence': confidence,
+  };
 }
 
 class PaperReference {
@@ -99,67 +99,72 @@ class PaperReference {
       resolved && paperId != null && paperId!.trim().isNotEmpty;
 
   factory PaperReference.fromJson(Map<String, dynamic> json) => PaperReference(
-        ordinal: (json['ordinal'] as num?)?.toInt() ?? 0,
-        rawText: (json['raw_text'] ?? json['citation'] ?? '').toString(),
-        resolved: json['resolved'] as bool? ??
-            (json['resolution_status'] == 'resolved'),
-        paperId: json['paper_id']?.toString(),
-        arxivId: json['arxiv_id']?.toString(),
-        title: json['title']?.toString(),
-        resolutionStatus:
-            (json['resolution_status'] ?? 'unresolved').toString(),
-      );
+    ordinal: (json['ordinal'] as num?)?.toInt() ?? 0,
+    rawText: (json['raw_text'] ?? json['citation'] ?? '').toString(),
+    resolved:
+        json['resolved'] as bool? ?? (json['resolution_status'] == 'resolved'),
+    paperId: json['paper_id']?.toString(),
+    arxivId: json['arxiv_id']?.toString(),
+    title: json['title']?.toString(),
+    resolutionStatus: (json['resolution_status'] ?? 'unresolved').toString(),
+  );
 
   Map<String, dynamic> toJson() => {
-        'ordinal': ordinal,
-        'raw_text': rawText,
-        'resolved': resolved,
-        if (paperId != null) 'paper_id': paperId,
-        if (arxivId != null) 'arxiv_id': arxivId,
-        if (title != null) 'title': title,
-        'resolution_status': resolutionStatus,
-      };
+    'ordinal': ordinal,
+    'raw_text': rawText,
+    'resolved': resolved,
+    if (paperId != null) 'paper_id': paperId,
+    if (arxivId != null) 'arxiv_id': arxivId,
+    if (title != null) 'title': title,
+    'resolution_status': resolutionStatus,
+  };
 }
 
 class PaperConnections {
   const PaperConnections({
     required this.paperId,
+    this.generation = 1,
     required this.ready,
     required this.keyConnections,
     required this.references,
   });
 
   final String paperId;
+  final int generation;
   final bool ready;
   final List<KeyConnection> keyConnections;
   final List<PaperReference> references;
 
   factory PaperConnections.fromJson(
     Map<String, dynamic> json,
-  ) =>
-      PaperConnections(
-        paperId: (json['paper_id'] ?? '').toString(),
-        ready: json['ready'] as bool? ?? false,
-        keyConnections: (json['key_connections'] as List<dynamic>? ?? const [])
-            .map(
-              (value) => KeyConnection.fromJson(
-                  Map<String, dynamic>.from(value as Map)),
-            )
-            .toList(growable: false),
-        references: (json['references'] as List<dynamic>? ?? const [])
-            .map(
-              (value) => PaperReference.fromJson(
-                  Map<String, dynamic>.from(value as Map)),
-            )
-            .toList(growable: false),
-      );
+  ) => PaperConnections(
+    paperId: (json['paper_id'] ?? '').toString(),
+    generation: switch ((json['generation'] as num?)?.toInt()) {
+      final value? when value > 0 => value,
+      _ => 1,
+    },
+    ready: json['ready'] as bool? ?? false,
+    keyConnections: (json['key_connections'] as List<dynamic>? ?? const [])
+        .map(
+          (value) =>
+              KeyConnection.fromJson(Map<String, dynamic>.from(value as Map)),
+        )
+        .toList(growable: false),
+    references: (json['references'] as List<dynamic>? ?? const [])
+        .map(
+          (value) =>
+              PaperReference.fromJson(Map<String, dynamic>.from(value as Map)),
+        )
+        .toList(growable: false),
+  );
 
   Map<String, dynamic> toJson() => {
-        'paper_id': paperId,
-        'ready': ready,
-        'key_connections':
-            keyConnections.map((connection) => connection.toJson()).toList(),
-        'references':
-            references.map((reference) => reference.toJson()).toList(),
-      };
+    'paper_id': paperId,
+    'generation': generation,
+    'ready': ready,
+    'key_connections': keyConnections
+        .map((connection) => connection.toJson())
+        .toList(),
+    'references': references.map((reference) => reference.toJson()).toList(),
+  };
 }

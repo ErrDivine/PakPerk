@@ -95,6 +95,7 @@ async fn postgres_backed_router_serves_scoped_chat_and_prepared_capabilities() {
         .unwrap();
     assert_eq!(connections_response.status(), StatusCode::OK);
     let connections: ConnectionsResponse = response_json(connections_response).await;
+    assert_eq!(connections.generation, 1);
     assert!(connections.ready);
     assert!(connections.key_connections.is_empty());
 
@@ -115,6 +116,7 @@ async fn postgres_backed_router_serves_scoped_chat_and_prepared_capabilities() {
     let chat_response = app.oneshot(chat_request).await.unwrap();
     assert_eq!(chat_response.status(), StatusCode::OK);
     let chat: Value = response_json(chat_response).await;
+    assert_eq!(chat["generation"], 1);
     assert_eq!(chat["insufficient_evidence"], false);
     assert!(
         chat["answer_markdown"]

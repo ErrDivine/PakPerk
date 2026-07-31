@@ -66,22 +66,20 @@ class _PaperChatSheetState extends State<PaperChatSheet> {
                 child: widget.state.restoring
                     ? const Center(child: CircularProgressIndicator())
                     : widget.state.messages.isEmpty
-                        ? const _EmptyChat()
-                        : ListView.separated(
-                            reverse: true,
-                            padding: const EdgeInsets.all(16),
-                            itemCount: widget.state.messages.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 12),
-                            itemBuilder: (context, reverseIndex) {
-                              final index = widget.state.messages.length -
-                                  1 -
-                                  reverseIndex;
-                              return _ChatBubble(
-                                message: widget.state.messages[index],
-                              );
-                            },
-                          ),
+                    ? const _EmptyChat()
+                    : ListView.separated(
+                        reverse: true,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: widget.state.messages.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, reverseIndex) {
+                          final index =
+                              widget.state.messages.length - 1 - reverseIndex;
+                          return _ChatBubble(
+                            message: widget.state.messages[index],
+                          );
+                        },
+                      ),
               ),
               if (widget.state.sending)
                 Semantics(
@@ -116,7 +114,10 @@ class _PaperChatSheetState extends State<PaperChatSheet> {
                 ),
               _SheetComposer(
                 controller: _composer,
-                enabled: widget.enabled && !widget.state.sending,
+                enabled:
+                    widget.enabled &&
+                    !widget.state.restoring &&
+                    !widget.state.sending,
                 onSend: _send,
               ),
             ],

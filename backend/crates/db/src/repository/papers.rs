@@ -1495,6 +1495,7 @@ impl PaperRepository {
 
         Ok(Some(ConnectionsResponse {
             paper_id,
+            generation: processing.generation,
             ready: processing.capabilities.connections,
             key_connections: keys,
             references,

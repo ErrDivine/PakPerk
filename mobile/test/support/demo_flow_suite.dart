@@ -193,7 +193,9 @@ void registerDemoFlowTests() {
       await tester.pump(const Duration(milliseconds: 1700));
       await tester.pumpAndSettle();
       expect(
-          find.text(sampleIntroduction.paragraphs.single.text), findsOneWidget);
+        find.text(sampleIntroduction.paragraphs.single.text),
+        findsOneWidget,
+      );
       expect(repository.introductionCalls, greaterThanOrEqualTo(1));
       expect(repository.prepareCalls, 1);
     },
@@ -271,7 +273,9 @@ void registerDemoFlowTests() {
 
     await _swipeReaderLeft(tester, readerKey);
     expect(
-        find.text(sampleIntroduction.paragraphs.single.text), findsOneWidget);
+      find.text(sampleIntroduction.paragraphs.single.text),
+      findsOneWidget,
+    );
     expect(find.text('Paper chat is temporarily unavailable'), findsOneWidget);
 
     await _swipeReaderLeft(tester, readerKey);
@@ -283,15 +287,16 @@ void registerDemoFlowTests() {
   testWidgets('8. offline launch still serves the prepared demo feed', (
     tester,
   ) async {
-    final repository = FakePaperDataSource(
-      paper: samplePaper,
-      processing: sampleProcessing,
-      introduction: sampleIntroduction,
-      connections: sampleConnections,
-    )
-      ..offline = true
-      ..contentOrigin = DataOrigin.bundledDemo
-      ..networkFeedCompleter = Completer<RepositoryValue<FeedPage>>();
+    final repository =
+        FakePaperDataSource(
+            paper: samplePaper,
+            processing: sampleProcessing,
+            introduction: sampleIntroduction,
+            connections: sampleConnections,
+          )
+          ..offline = true
+          ..contentOrigin = DataOrigin.bundledDemo
+          ..networkFeedCompleter = Completer<RepositoryValue<FeedPage>>();
 
     await _pumpApp(tester, repository);
     expect(find.text(samplePaper.title), findsAtLeastNWidgets(1));
@@ -403,34 +408,32 @@ PaperProcessingState _processing(
   bool retryable = false,
   String? errorCode,
   String? errorMessage,
-}) =>
-    PaperProcessingState(
-      paperId: samplePaper.paperId,
-      overallState: overallState,
-      stage: stage,
-      capabilities: capabilities,
-      retryable: retryable,
-      updatedAt: DateTime.utc(2026, 7, 29),
-      lastErrorCode: errorCode,
-      lastErrorMessage: errorMessage,
-    );
+}) => PaperProcessingState(
+  paperId: samplePaper.paperId,
+  overallState: overallState,
+  stage: stage,
+  capabilities: capabilities,
+  retryable: retryable,
+  updatedAt: DateTime.utc(2026, 7, 29),
+  lastErrorCode: errorCode,
+  lastErrorMessage: errorMessage,
+);
 
 PaperSummary _paper({
   required String id,
   required String arxivId,
   required String title,
   required String abstractText,
-}) =>
-    PaperSummary(
-      paperId: id,
-      arxivId: arxivId,
-      title: title,
-      abstractText: abstractText,
-      authors: const ['Test Author'],
-      primaryCategory: 'cs.CL',
-      categories: const ['cs.CL'],
-      publishedAt: DateTime.utc(2018),
-      updatedAt: DateTime.utc(2019),
-      absUrl: 'https://arxiv.org/abs/$arxivId',
-      pdfUrl: 'https://arxiv.org/pdf/$arxivId',
-    );
+}) => PaperSummary(
+  paperId: id,
+  arxivId: arxivId,
+  title: title,
+  abstractText: abstractText,
+  authors: const ['Test Author'],
+  primaryCategory: 'cs.CL',
+  categories: const ['cs.CL'],
+  publishedAt: DateTime.utc(2018),
+  updatedAt: DateTime.utc(2019),
+  absUrl: 'https://arxiv.org/abs/$arxivId',
+  pdfUrl: 'https://arxiv.org/pdf/$arxivId',
+);

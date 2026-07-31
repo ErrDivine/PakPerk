@@ -49,9 +49,9 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
   bool _restoredChatScheduled = false;
 
   ChatControllerArgs get _chatArgs => ChatControllerArgs(
-        paperId: widget.paper.paperId,
-        readerKey: widget.readerKey,
-      );
+    paperId: widget.paper.paperId,
+    readerKey: widget.readerKey,
+  );
 
   @override
   void dispose() {
@@ -69,7 +69,9 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
     );
     final chat = ref.watch(chatControllerProvider(_chatArgs));
     final repositoryOffline = ref.read(paperRepositoryProvider).isOffline;
-    final networkOffline = ref.watch(networkOfflineProvider).when(
+    final networkOffline = ref
+        .watch(networkOfflineProvider)
+        .when(
           data: (value) => value,
           loading: () => widget.processing.offline || repositoryOffline,
           error: (_, __) => widget.processing.offline || repositoryOffline,
@@ -77,7 +79,8 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
     final offline = networkOffline || introduction.offline;
     final chatEnabled = widget.capabilities.chat && !offline;
     final processingState = widget.processing.processing;
-    final chatFailed = processingState != null &&
+    final chatFailed =
+        processingState != null &&
         !widget.capabilities.chat &&
         widget.capabilities.introduction &&
         (processingState.stage == ProcessingStage.failedRetryable ||
@@ -114,22 +117,23 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
                 .load(force: true),
             onOpenPdf: _openPdf,
             onOpenCitation: _openCitation,
-            onStarterQuestion:
-                chatEnabled ? (question) => _ask(question, chatEnabled) : null,
+            onStarterQuestion: chatEnabled
+                ? (question) => _ask(question, chatEnabled)
+                : null,
             onPreviousPaper: widget.onPreviousPaper,
             onNextPaper: widget.onNextPaper,
           ),
         ),
         _PersistentChatComposer(
           controller: _composer,
-          enabled: chatEnabled && !chat.sending,
+          enabled: chatEnabled && !chat.restoring && !chat.sending,
           hintText: offline
               ? 'Offline — reconnect to ask a question'
               : chatFailed
-                  ? 'Paper chat is temporarily unavailable'
-                  : widget.capabilities.chat
-                      ? 'Ask about methods, results, or limitations…'
-                      : 'Indexing later sections…',
+              ? 'Paper chat is temporarily unavailable'
+              : widget.capabilities.chat
+              ? 'Ask about methods, results, or limitations…'
+              : 'Indexing later sections…',
           onSend: () => _sendComposer(chatEnabled),
           onOpen: () => unawaited(_openChat(chatEnabled)),
         ),
@@ -325,7 +329,8 @@ class _IntroductionContent extends StatelessWidget {
               ] else if (state.errorMessage != null) ...[
                 EmptyStateCard(
                   title: 'Introduction unavailable',
-                  message: processing.processing?.stage ==
+                  message:
+                      processing.processing?.stage ==
                           ProcessingStage.failedTerminal
                       ? 'We could not reliably extract this paper’s introduction.'
                       : state.errorMessage!,
@@ -350,13 +355,15 @@ class _IntroductionContent extends StatelessWidget {
                   processing: processing.processing,
                   busy: state.loading || processing.requestInFlight,
                   offline: offline,
-                  fallbackMessage: processing.processing?.stage ==
+                  fallbackMessage:
+                      processing.processing?.stage ==
                           ProcessingStage.failedTerminal
                       ? 'We could not reliably extract this paper’s introduction.'
                       : state.notReady
-                          ? 'The introduction is still being prepared.'
-                          : null,
-                  onRetry: offline ||
+                      ? 'The introduction is still being prepared.'
+                      : null,
+                  onRetry:
+                      offline ||
                           processing.processing?.stage ==
                               ProcessingStage.failedRetryable
                       ? onRetryPreparation
@@ -445,8 +452,9 @@ class IntroductionParagraphText extends StatelessWidget {
         );
       }
       final citationIndex = renderedCitationIndex++;
-      final titles =
-          citation.references.map((reference) => reference.title).join(', ');
+      final titles = citation.references
+          .map((reference) => reference.title)
+          .join(', ');
       spans.add(
         WidgetSpan(
           alignment: PlaceholderAlignment.baseline,
@@ -468,9 +476,7 @@ class IntroductionParagraphText extends StatelessWidget {
     }
     if (cursor < characters.length) {
       spans.add(
-        TextSpan(
-          text: String.fromCharCodes(characters.sublist(cursor)),
-        ),
+        TextSpan(text: String.fromCharCodes(characters.sublist(cursor))),
       );
     }
     return SelectionArea(

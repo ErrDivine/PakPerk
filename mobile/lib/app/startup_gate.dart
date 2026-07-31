@@ -51,10 +51,10 @@ class _StartupGateState extends State<StartupGate> {
   Widget build(BuildContext context) {
     return switch (widget.state.phase) {
       StartupPhase.recoverableFailure => _StartupFailureSurface(
-          failure: widget.state.failure,
-          onRetry: widget.onRetry,
-          onRepairAndRetry: widget.onRepairAndRetry,
-        ),
+        failure: widget.state.failure,
+        onRetry: widget.onRetry,
+        onRepairAndRetry: widget.onRepairAndRetry,
+      ),
       StartupPhase.ready => _buildReady(),
       _ => const _StartupLaunchSurface(),
     };
@@ -62,7 +62,8 @@ class _StartupGateState extends State<StartupGate> {
 
   Widget _buildReady() {
     _scheduleFirstUsableFrame();
-    final shouldAnimate = widget.openingMotionEnabled &&
+    final shouldAnimate =
+        widget.openingMotionEnabled &&
         widget.state.shouldShowOpening &&
         widget.state.launchMode != StartupLaunchMode.warm;
     if (!shouldAnimate) {
@@ -142,8 +143,8 @@ class _StartupOpeningTransitionState extends State<StartupOpeningTransition>
     _controller.duration = _reducedMotion
         ? PakPerkMotion.crossFade
         : widget.launchMode == StartupLaunchMode.deepLink
-            ? PakPerkMotion.deepLinkOpening
-            : PakPerkMotion.coldOpening;
+        ? PakPerkMotion.deepLinkOpening
+        : PakPerkMotion.coldOpening;
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) _complete();
     });
@@ -268,10 +269,7 @@ class _OpeningIntervals {
 }
 
 class _StartupLaunchSurface extends StatelessWidget {
-  const _StartupLaunchSurface({
-    this.markScale = 1,
-    this.wordmarkOpacity = 0,
-  });
+  const _StartupLaunchSurface({this.markScale = 1, this.wordmarkOpacity = 0});
 
   final double markScale;
   final double wordmarkOpacity;
@@ -280,7 +278,8 @@ class _StartupLaunchSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final semantic = Theme.of(context).extension<PakPerkSemanticColors>();
-    final background = semantic?.paper ??
+    final background =
+        semantic?.paper ??
         (dark ? PakPerkColors.darkPaper : PakPerkColors.paper);
     final ink =
         semantic?.ink ?? (dark ? PakPerkColors.darkInk : PakPerkColors.ink);
@@ -316,9 +315,9 @@ class _StartupLaunchSurface extends StatelessWidget {
                   'Pakperk',
                   key: const ValueKey('startup-wordmark'),
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        color: ink,
-                        letterSpacing: -.4,
-                      ),
+                    color: ink,
+                    letterSpacing: -.4,
+                  ),
                 ),
               ),
             ],

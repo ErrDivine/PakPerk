@@ -31,33 +31,32 @@ class ProcessingUiState {
     bool? offline,
     String? errorMessage,
     bool clearError = false,
-  }) =>
-      ProcessingUiState(
-        processing: processing ?? this.processing,
-        requestInFlight: requestInFlight ?? this.requestInFlight,
-        visible: visible ?? this.visible,
-        offline: offline ?? this.offline,
-        errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
-      );
+  }) => ProcessingUiState(
+    processing: processing ?? this.processing,
+    requestInFlight: requestInFlight ?? this.requestInFlight,
+    visible: visible ?? this.visible,
+    offline: offline ?? this.offline,
+    errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
+  );
 }
 
 final paperProcessingControllerProvider = StateNotifierProvider.autoDispose
     .family<PaperProcessingController, ProcessingUiState, PaperVersionKey>((
-  ref,
-  paperKey,
-) {
-  return PaperProcessingController(
-    paperId: paperKey.paperId,
-    repository: ref.watch(paperRepositoryProvider),
-  );
-});
+      ref,
+      paperKey,
+    ) {
+      return PaperProcessingController(
+        paperId: paperKey.paperId,
+        repository: ref.watch(paperRepositoryProvider),
+      );
+    });
 
 class PaperProcessingController extends StateNotifier<ProcessingUiState> {
   PaperProcessingController({
     required this.paperId,
     required PaperDataSource repository,
-  })  : _repository = repository,
-        super(const ProcessingUiState());
+  }) : _repository = repository,
+       super(const ProcessingUiState());
 
   final String paperId;
   final PaperDataSource _repository;

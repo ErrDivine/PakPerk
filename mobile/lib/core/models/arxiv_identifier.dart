@@ -1,8 +1,5 @@
 class ArxivIdentifier {
-  const ArxivIdentifier._({
-    required this.baseId,
-    required this.version,
-  });
+  const ArxivIdentifier._({required this.baseId, required this.version});
 
   static final RegExp _syntax = RegExp(
     r'^(?:(\d{4}\.\d{4,5})|([A-Za-z][A-Za-z0-9.-]*/\d{7}))'
@@ -29,9 +26,6 @@ class ArxivIdentifier {
         (version == null || version == 0 || version > 0xffffffff)) {
       return null;
     }
-    return ArxivIdentifier._(
-      baseId: rawBase,
-      version: version,
-    );
+    return ArxivIdentifier._(baseId: rawBase, version: version);
   }
 }

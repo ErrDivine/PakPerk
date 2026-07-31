@@ -10,5 +10,9 @@ analyzer:
 linter:
   rules:
     avoid_print: true
+    # Public dependency-injection parameter names intentionally initialize
+    # private fields; initializing formals would leak private implementation
+    # names into the cross-library constructor API.
+    prefer_initializing_formals: false
     prefer_single_quotes: true
     use_super_parameters: true

@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../models/chat.dart';
 import '../models/connections.dart';
 import '../models/introduction.dart';
+import '../models/arxiv_identifier.dart';
 import '../models/paper.dart';
 import '../models/processing.dart';
 import '../models/reader_state.dart';
@@ -20,6 +21,10 @@ abstract interface class LocalStore {
   Future<void> saveFeed(FeedPage value);
   Future<PaperSummary?> loadPaper(String paperId);
   Future<PaperSummary?> findPaperByArxiv(String arxivBaseId);
+
+  /// Keeps the newest arXiv version for a stable paper ID. When a newer
+  /// version replaces the current row, implementations must invalidate the
+  /// prior version's derived records before the new metadata is observable.
   Future<void> savePaper(PaperSummary value);
   Future<void> clearDerived(String paperId);
   Future<PaperProcessingState?> loadProcessing(String paperId);
@@ -33,7 +38,7 @@ abstract interface class LocalStore {
 }
 
 class SharedPreferencesLocalStore implements LocalStore {
-  SharedPreferencesLocalStore._(this._preferences);
+  SharedPreferencesLocalStore(this._preferences);
 
   final SharedPreferences _preferences;
   static const _sessionKey = 'pakperk.session.v1';
@@ -41,7 +46,7 @@ class SharedPreferencesLocalStore implements LocalStore {
   static const _feedKey = 'pakperk.feed.v1';
 
   static Future<SharedPreferencesLocalStore> create() async =>
-      SharedPreferencesLocalStore._(await SharedPreferences.getInstance());
+      SharedPreferencesLocalStore(await SharedPreferences.getInstance());
 
   /// Removes rebuildable public reading data while preserving the anonymous
   /// identity and lightweight navigation restoration record.
@@ -57,9 +62,7 @@ class SharedPreferencesLocalStore implements LocalStore {
     ];
     final keys = preferences
         .getKeys()
-        .where(
-          (key) => rebuildablePrefixes.any(key.startsWith),
-        )
+        .where((key) => rebuildablePrefixes.any(key.startsWith))
         .toList(growable: false);
     for (final key in keys) {
       await preferences.remove(key);
@@ -77,17 +80,25 @@ class SharedPreferencesLocalStore implements LocalStore {
 
   @override
   Future<String> rotateAnonymousSession() async {
-    final created = const Uuid().v4();
-    await _preferences.setString(_sessionKey, created);
-
     for (final key in _preferences.getKeys().where(
-          (key) => key.startsWith('pakperk.chat.v1.'),
-        )) {
+      (key) => key.startsWith('pakperk.chat.v1.'),
+    )) {
       await _preferences.remove(key);
     }
 
     final restoration = await loadRestoration();
     await saveRestoration(_withoutAnonymousChat(restoration));
+    return rotateAnonymousSessionIdOnly();
+  }
+
+  /// Replaces only the anonymous identifier.
+  ///
+  /// Drift owns chat and compact-restoration cleanup in production, so it
+  /// performs those privacy-sensitive writes before calling this method.
+  Future<String> rotateAnonymousSessionIdOnly() async {
+    final created = const Uuid().v4();
+    final written = await _preferences.setString(_sessionKey, created);
+    if (!written) throw StateError('Failed to rotate anonymous session.');
     return created;
   }
 
@@ -126,14 +137,14 @@ class SharedPreferencesLocalStore implements LocalStore {
     final target = arxivBaseId.toLowerCase();
     PaperSummary? latest;
     for (final key in _preferences.getKeys().where(
-          (value) => value.startsWith('pakperk.paper.v1.'),
-        )) {
+      (value) => value.startsWith('pakperk.paper.v1.'),
+    )) {
       final json = _readMap(key);
       if (json == null) continue;
       try {
         final paper = PaperSummary.fromJson(json);
         if (paper.arxivBaseId.toLowerCase() != target) continue;
-        if (latest == null || paper.updatedAt.isAfter(latest.updatedAt)) {
+        if (latest == null || _preferPaper(paper, latest)) {
           latest = paper;
         }
       } on Object {
@@ -144,8 +155,17 @@ class SharedPreferencesLocalStore implements LocalStore {
   }
 
   @override
-  Future<void> savePaper(PaperSummary value) =>
-      _writeMap(_key('paper', value.paperId), value.toJson());
+  Future<void> savePaper(PaperSummary value) async {
+    final current = await loadPaper(value.paperId);
+    if (current != null && _preferPaper(current, value)) return;
+    if (current != null && current.arxivId != value.arxivId) {
+      // Clear first: a crash may temporarily lose rebuildable derived data,
+      // but can never expose artifacts from the old version as the new one.
+      await clearDerived(value.paperId);
+      await _clearChatsForArxivVersion(current.arxivId);
+    }
+    await _writeMap(_key('paper', value.paperId), value.toJson());
+  }
 
   @override
   Future<void> clearDerived(String paperId) async {
@@ -194,6 +214,27 @@ class SharedPreferencesLocalStore implements LocalStore {
   Future<void> saveChat(String readerKey, ChatSnapshot value) =>
       _writeMap(_key('chat', readerKey), value.toJson());
 
+  Future<void> _clearChatsForArxivVersion(String arxivId) async {
+    const prefix = 'pakperk.chat.v1.';
+    final keys = _preferences
+        .getKeys()
+        .where((key) => key.startsWith(prefix))
+        .toList(growable: false);
+    for (final key in keys) {
+      try {
+        final encoded = key.substring(prefix.length);
+        final readerKey = utf8.decode(
+          base64Url.decode(base64Url.normalize(encoded)),
+        );
+        if (readerKey.endsWith(':$arxivId')) {
+          await _preferences.remove(key);
+        }
+      } on Object {
+        // Malformed legacy keys are ignored here and removed by cache repair.
+      }
+    }
+  }
+
   String _key(String kind, String id) =>
       'pakperk.$kind.v1.${base64Url.encode(utf8.encode(id))}';
 
@@ -218,10 +259,20 @@ AppRestorationState _withoutAnonymousChat(AppRestorationState value) =>
       readerStates: value.readerStates.map(
         (key, reader) => MapEntry(
           key,
-          reader.copyWith(
-            chatSheetOpen: false,
-            clearChatThreadId: true,
-          ),
+          reader.copyWith(chatSheetOpen: false, clearChatThreadId: true),
         ),
       ),
     );
+
+bool _preferPaper(PaperSummary candidate, PaperSummary current) {
+  if (candidate.arxivBaseId.toLowerCase() !=
+      current.arxivBaseId.toLowerCase()) {
+    return true;
+  }
+  final candidateVersion = ArxivIdentifier.tryParse(candidate.arxivId)?.version;
+  final currentVersion = ArxivIdentifier.tryParse(current.arxivId)?.version;
+  if ((candidateVersion ?? 0) != (currentVersion ?? 0)) {
+    return (candidateVersion ?? 0) > (currentVersion ?? 0);
+  }
+  return candidate.updatedAt.isAfter(current.updatedAt);
+}

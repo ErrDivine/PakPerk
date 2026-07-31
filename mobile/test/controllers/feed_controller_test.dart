@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pakperk/core/cache/feed_cache_persistence.dart';
 import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/repository/paper_repository.dart';
 import 'package:pakperk/features/feed/feed_controller.dart';
+import 'package:pakperk/features/feed/feed_prefetch_coordinator.dart';
 import 'package:pakperk/features/feed/preloaded_feed_snapshot.dart';
 
 import '../support/fakes.dart';
@@ -165,4 +167,150 @@ void main() {
     );
     await Future<void>.delayed(Duration.zero);
   });
+
+  test('a late category response cannot replace the active query', () async {
+    final firstResponse = Completer<RepositoryValue<FeedPage>>();
+    final secondResponse = Completer<RepositoryValue<FeedPage>>();
+    final firstPaper = _feedPaper(21);
+    final secondPaper = _feedPaper(22);
+    final repository = FakePaperDataSource(paper: samplePaper)
+      ..networkFeedCompleter = firstResponse;
+    final controller = FeedController(
+      repository,
+      preloadedSnapshot: PreloadedFeedSnapshot(
+        page: FeedPage(items: [samplePaper]),
+        origin: DataOrigin.deviceCache,
+      ),
+    );
+
+    final firstLoad = controller.loadInitial(category: 'cs.AI');
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+    final firstCancellation = repository.lastFeedCancellation!;
+
+    repository.networkFeedCompleter = secondResponse;
+    final secondLoad = controller.loadInitial(category: 'cs.CL');
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+    expect(firstCancellation.isCancelled, isTrue);
+
+    secondResponse.complete(
+      RepositoryValue(
+        value: FeedPage(items: [secondPaper], nextCursor: 'second-cursor'),
+        origin: DataOrigin.network,
+        offline: false,
+      ),
+    );
+    await secondLoad;
+
+    firstResponse.complete(
+      RepositoryValue(
+        value: FeedPage(items: [firstPaper], nextCursor: 'first-cursor'),
+        origin: DataOrigin.network,
+        offline: false,
+      ),
+    );
+    await firstLoad;
+
+    expect(controller.state.category, 'cs.CL');
+    expect(controller.state.items.single.paperId, secondPaper.paperId);
+    expect(controller.state.nextCursor, 'second-cursor');
+    controller.dispose();
+  });
+
+  test(
+    'committed page applies a coordinator update without deep preparation',
+    () async {
+      final initial = List.generate(11, _feedPaper);
+      final repository = FakePaperDataSource(paper: initial.first)
+        ..networkFeed = FeedPage(items: [_feedPaper(11)], nextCursor: null);
+      final coordinator = FeedPrefetchCoordinator(
+        remote: PaperDataSourceFeedPrefetchRemoteSource(repository),
+        cache: _ControllerFeedCache(),
+      );
+      final controller = FeedController(
+        repository,
+        preloadedSnapshot: PreloadedFeedSnapshot(
+          page: FeedPage(items: initial, nextCursor: 'cursor-1'),
+          origin: DataOrigin.deviceCache,
+        ),
+        prefetchCoordinator: coordinator,
+      );
+
+      await controller.onCommittedPage(0);
+
+      expect(controller.state.items, hasLength(12));
+      expect(controller.state.items.last.paperId, 'prefetch-paper-11');
+      expect(controller.state.nextCursor, isNull);
+      expect(repository.feedCalls, 1);
+      expect(repository.prepareCalls, 0);
+      controller.dispose();
+    },
+  );
+}
+
+PaperSummary _feedPaper(int index) => PaperSummary.fromJson({
+  ...samplePaper.toJson(),
+  'paper_id': 'prefetch-paper-$index',
+  'arxiv_id': '2501.${index.toString().padLeft(5, '0')}v1',
+  'title': 'Paper $index',
+});
+
+class _ControllerFeedCache implements FeedCachePersistence {
+  final Set<String> _ids = {};
+
+  @override
+  Future<Set<String>> cachedPaperIds(Iterable<String> paperIds) async =>
+      paperIds.where(_ids.contains).toSet();
+
+  @override
+  Future<void> ensurePaperMetadata(
+    Iterable<PaperSummary> papers, {
+    DateTime? accessedAt,
+  }) async {
+    _ids.addAll(papers.map((paper) => paper.paperId));
+  }
+
+  @override
+  Future<void> recordPaperAccess(
+    String paperId, {
+    DateTime? accessedAt,
+  }) async {}
+
+  @override
+  Future<FeedPage?> loadFeedPage(String queryKey) async => null;
+
+  @override
+  Future<void> persistFeedPage({
+    required String queryKey,
+    required FeedPage page,
+    required bool replace,
+    String? category,
+    String? etag,
+    DateTime? refreshedAt,
+  }) async {
+    _ids.addAll(page.items.map((paper) => paper.paperId));
+  }
+
+  @override
+  Future<FeedCacheUsage> measureCache() async => FeedCacheUsage(
+    metadataRows: _ids.length,
+    databaseBytes: _ids.length * 100,
+  );
+
+  @override
+  Future<CacheEvictionResult> evictCache({
+    required String activeQueryKey,
+    required Set<String> protectedPaperIds,
+    int maxMetadataPapers = 500,
+    int maxDatabaseBytes = 64 * 1024 * 1024,
+    Duration metadataTtl = const Duration(days: 7),
+    DateTime? now,
+  }) async => CacheEvictionResult(
+    expiredCommentPages: 0,
+    oldFeedEntries: 0,
+    unpinnedPapers: 0,
+    derivedRows: 0,
+    usageAfter: await measureCache(),
+  );
 }

@@ -60,21 +60,17 @@ class BundledDemoNotice extends StatelessWidget {
                   Text(
                     'BUNDLED DEMO · Offline sample content',
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSecondaryContainer,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      color: Theme.of(context).colorScheme.onSecondaryContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     'Packaged with the app for demonstration; '
                     'this is not a live parsed result.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSecondaryContainer,
-                        ),
+                      color: Theme.of(context).colorScheme.onSecondaryContainer,
+                    ),
                   ),
                 ],
               ),
@@ -108,13 +104,14 @@ class ProcessingStatusCard extends StatelessWidget {
     final message = offline && state == null
         ? 'You’re offline. Connect to prepare uncached paper content.'
         : fallbackMessage ??
-            (state == null
-                ? 'Preparing the paper…'
-                : processingStageMessage(
-                    state.stage,
-                    errorMessage: state.lastErrorMessage,
-                  ));
-    final failed = state?.stage == ProcessingStage.failedRetryable ||
+              (state == null
+                  ? 'Preparing the paper…'
+                  : processingStageMessage(
+                      state.stage,
+                      errorMessage: state.lastErrorMessage,
+                    ));
+    final failed =
+        state?.stage == ProcessingStage.failedRetryable ||
         state?.stage == ProcessingStage.failedTerminal;
     final showProgress =
         busy || (state != null && !state.stopsPolling && !offline);

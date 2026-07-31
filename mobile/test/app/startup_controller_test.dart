@@ -5,57 +5,58 @@ import 'package:pakperk/app/startup_controller.dart';
 
 void main() {
   test(
-      'cold startup exposes ordered local/session phases and starts post work once',
-      () async {
-    final localReady = Completer<void>();
-    final sessionChecked = Completer<StartupSessionStatus>();
-    final bootstrapper = _FakeBootstrapper(
-      hydrate: () => localReady.future,
-      checkSession: () => sessionChecked.future,
-    );
-    final splash = _RecordingSplashHandoff();
-    final controller = StartupController(
-      bootstrapper: bootstrapper,
-      splashHandoff: splash,
-      launchMode: StartupLaunchMode.cold,
-    );
-    final phases = <StartupPhase>[];
-    controller.addListener((state) => phases.add(state.phase));
+    'cold startup exposes ordered local/session phases and starts post work once',
+    () async {
+      final localReady = Completer<void>();
+      final sessionChecked = Completer<StartupSessionStatus>();
+      final bootstrapper = _FakeBootstrapper(
+        hydrate: () => localReady.future,
+        checkSession: () => sessionChecked.future,
+      );
+      final splash = _RecordingSplashHandoff();
+      final controller = StartupController(
+        bootstrapper: bootstrapper,
+        splashHandoff: splash,
+        launchMode: StartupLaunchMode.cold,
+      );
+      final phases = <StartupPhase>[];
+      controller.addListener((state) => phases.add(state.phase));
 
-    final startup = controller.start();
-    expect(controller.state.phase, StartupPhase.bootstrapping);
-    expect(controller.state.attempt, 1);
+      final startup = controller.start();
+      expect(controller.state.phase, StartupPhase.bootstrapping);
+      expect(controller.state.attempt, 1);
 
-    localReady.complete();
-    await _flushMicrotasks();
-    expect(controller.state.phase, StartupPhase.localReady);
-    expect(splash.releaseCalls, 1);
+      localReady.complete();
+      await _flushMicrotasks();
+      expect(controller.state.phase, StartupPhase.localReady);
+      expect(splash.releaseCalls, 1);
 
-    sessionChecked.complete(StartupSessionStatus.refreshRequired);
-    await startup;
-    expect(controller.state.phase, StartupPhase.ready);
-    expect(
-      controller.state.sessionStatus,
-      StartupSessionStatus.refreshRequired,
-    );
-    expect(controller.state.shouldShowOpening, isTrue);
-    expect(
-      phases,
-      containsAllInOrder([
-        StartupPhase.localReady,
-        StartupPhase.authenticatedSessionChecked,
-        StartupPhase.ready,
-      ]),
-    );
+      sessionChecked.complete(StartupSessionStatus.refreshRequired);
+      await startup;
+      expect(controller.state.phase, StartupPhase.ready);
+      expect(
+        controller.state.sessionStatus,
+        StartupSessionStatus.refreshRequired,
+      );
+      expect(controller.state.shouldShowOpening, isTrue);
+      expect(
+        phases,
+        containsAllInOrder([
+          StartupPhase.localReady,
+          StartupPhase.authenticatedSessionChecked,
+          StartupPhase.ready,
+        ]),
+      );
 
-    controller.notifyFirstUsableFrame();
-    controller.notifyFirstUsableFrame();
-    await _flushMicrotasks();
-    expect(bootstrapper.postReadyCalls, 1);
-    controller.markOpeningComplete();
-    expect(controller.state.shouldShowOpening, isFalse);
-    controller.dispose();
-  });
+      controller.notifyFirstUsableFrame();
+      controller.notifyFirstUsableFrame();
+      await _flushMicrotasks();
+      expect(bootstrapper.postReadyCalls, 1);
+      controller.markOpeningComplete();
+      expect(controller.state.shouldShowOpening, isFalse);
+      controller.dispose();
+    },
+  );
 
   test('warm startup never requests the full opening transition', () async {
     final controller = StartupController(
@@ -95,33 +96,35 @@ void main() {
     controller.dispose();
   });
 
-  test('migration failure can repair local data without credential deletion',
-      () async {
-    var migrationBroken = true;
-    final bootstrapper = _FakeBootstrapper(
-      hydrate: () {
-        if (migrationBroken) throw StateError('migration failed');
-        return Future.value();
-      },
-      repair: () async {
-        migrationBroken = false;
-      },
-    );
-    final controller = StartupController(
-      bootstrapper: bootstrapper,
-      splashHandoff: _RecordingSplashHandoff(),
-    );
+  test(
+    'migration failure can repair local data without credential deletion',
+    () async {
+      var migrationBroken = true;
+      final bootstrapper = _FakeBootstrapper(
+        hydrate: () {
+          if (migrationBroken) throw StateError('migration failed');
+          return Future.value();
+        },
+        repair: () async {
+          migrationBroken = false;
+        },
+      );
+      final controller = StartupController(
+        bootstrapper: bootstrapper,
+        splashHandoff: _RecordingSplashHandoff(),
+      );
 
-    await controller.start();
-    expect(controller.state.phase, StartupPhase.recoverableFailure);
-    expect(controller.state.failure?.timedOut, isFalse);
+      await controller.start();
+      expect(controller.state.phase, StartupPhase.recoverableFailure);
+      expect(controller.state.failure?.timedOut, isFalse);
 
-    await controller.repairAndRetry();
-    expect(bootstrapper.repairCalls, 1);
-    expect(controller.state.phase, StartupPhase.ready);
-    expect(controller.state.sessionStatus, StartupSessionStatus.anonymous);
-    controller.dispose();
-  });
+      await controller.repairAndRetry();
+      expect(bootstrapper.repairCalls, 1);
+      expect(controller.state.phase, StartupPhase.ready);
+      expect(controller.state.sessionStatus, StartupSessionStatus.anonymous);
+      controller.dispose();
+    },
+  );
 
   test('concurrent local hydrators begin before either completes', () async {
     final first = Completer<void>();
@@ -159,10 +162,10 @@ class _FakeBootstrapper implements StartupBootstrapper {
     Future<StartupSessionStatus> Function()? checkSession,
     Future<void> Function()? repair,
     Future<void> Function()? postReady,
-  })  : _hydrate = hydrate ?? _complete,
-        _checkSession = checkSession ?? _anonymous,
-        _repair = repair ?? _complete,
-        _postReady = postReady ?? _complete;
+  }) : _hydrate = hydrate ?? _complete,
+       _checkSession = checkSession ?? _anonymous,
+       _repair = repair ?? _complete,
+       _postReady = postReady ?? _complete;
 
   final Future<void> Function() _hydrate;
   final Future<StartupSessionStatus> Function() _checkSession;

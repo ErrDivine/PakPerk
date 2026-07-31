@@ -27,9 +27,7 @@ void main() {
       repository: repository,
       restoration: AppRestorationState(
         feedIndex: 1,
-        readerStates: {
-          readerKey: const ReaderNavigationState(),
-        },
+        readerStates: {readerKey: const ReaderNavigationState()},
       ),
     );
 
@@ -49,22 +47,21 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byType(PakPerkApp)),
     );
-    final readState =
-        container.read(appRestorationControllerProvider).readerState(readerKey);
+    final readState = container
+        .read(appRestorationControllerProvider)
+        .readerState(readerKey);
     expect(readState.stageIndex, PaperStage.introduction.index);
     expect(readState.prepareRequested, isTrue);
     expect(repository.prepareCalls, 1);
 
     await _tapDestination(tester, 'You');
     expect(find.byType(PublicSettingsScreen), findsOneWidget);
-    expect(
-      container.read(activeAppBranchProvider),
-      AppBranch.you,
-    );
+    expect(container.read(activeAppBranchProvider), AppBranch.you);
   });
 
-  testWidgets('active Read reselection keeps feed position then pops a paper',
-      (tester) async {
+  testWidgets('active Read reselection keeps feed position then pops a paper', (
+    tester,
+  ) async {
     final papers = _papers();
     await _pumpApp(
       tester,
@@ -76,10 +73,7 @@ void main() {
     );
 
     await _tapDestination(tester, 'Read');
-    expect(
-      container.read(appRestorationControllerProvider).feedIndex,
-      1,
-    );
+    expect(container.read(appRestorationControllerProvider).feedIndex, 1);
     expect(find.text(papers[1].title), findsOneWidget);
 
     container
@@ -93,16 +87,14 @@ void main() {
       container.read(appRestorationControllerProvider).routeStack,
       isEmpty,
     );
-    expect(
-      container.read(appRestorationControllerProvider).feedIndex,
-      1,
-    );
+    expect(container.read(appRestorationControllerProvider).feedIndex, 1);
     expect(find.byTooltip('Back to previous paper'), findsNothing);
     expect(find.text(papers[1].title), findsOneWidget);
   });
 
-  testWidgets('system back removes one restored linked-paper route',
-      (tester) async {
+  testWidgets('system back removes one restored linked-paper route', (
+    tester,
+  ) async {
     await _pumpApp(
       tester,
       repository: _repositoryFor([samplePaper]),
@@ -148,8 +140,9 @@ void main() {
     );
   });
 
-  testWidgets('primary destinations expose selected tab semantics',
-      (tester) async {
+  testWidgets('primary destinations expose selected tab semantics', (
+    tester,
+  ) async {
     final semantics = tester.ensureSemantics();
     await _pumpApp(
       tester,
@@ -178,8 +171,9 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('platform restoration returns to the You nested route',
-      (tester) async {
+  testWidgets('platform restoration returns to the You nested route', (
+    tester,
+  ) async {
     await _pumpApp(
       tester,
       repository: _repositoryFor([samplePaper]),
@@ -204,16 +198,19 @@ void main() {
     );
   });
 
-  testWidgets('validated public paper link opens Read on Abstract',
-      (tester) async {
+  testWidgets('validated public paper link opens Read on Abstract', (
+    tester,
+  ) async {
     await _pumpApp(
       tester,
       repository: _repositoryFor([samplePaper]),
       restoration: AppRestorationState(
         activeBranchIndex: 1,
         readerStates: {
-          routeReaderKey('deep-link-${samplePaper.paperId}', samplePaper):
-              const ReaderNavigationState(
+          routeReaderKey(
+            'deep-link-${samplePaper.paperId}',
+            samplePaper,
+          ): const ReaderNavigationState(
             stageIndex: 2,
             prepareRequested: true,
           ),
@@ -240,8 +237,9 @@ void main() {
     );
   });
 
-  testWidgets('encoded legacy arXiv link resolves in the Read branch',
-      (tester) async {
+  testWidgets('encoded legacy arXiv link resolves in the Read branch', (
+    tester,
+  ) async {
     final legacyPaper = PaperSummary.fromJson(
       samplePaper.toJson()
         ..['arxiv_id'] = 'hep-th/9901001v3'
@@ -289,18 +287,21 @@ void main() {
     );
   });
 
-  testWidgets('UUID direct route pushes a connection above its source',
-      (tester) async {
+  testWidgets('UUID direct route pushes a connection above its source', (
+    tester,
+  ) async {
     await _expectDirectConnectionRoundTrip(tester, useArxivRoute: false);
   });
 
-  testWidgets('arXiv direct route pushes a connection above its source',
-      (tester) async {
+  testWidgets('arXiv direct route pushes a connection above its source', (
+    tester,
+  ) async {
     await _expectDirectConnectionRoundTrip(tester, useArxivRoute: true);
   });
 
-  testWidgets('malformed arXiv route is request-free and fails safely',
-      (tester) async {
+  testWidgets('malformed arXiv route is request-free and fails safely', (
+    tester,
+  ) async {
     final repository = _repositoryFor([samplePaper]);
     await _pumpApp(
       tester,
@@ -318,8 +319,9 @@ void main() {
     expect(repository.paperByArxivCalls, 0);
   });
 
-  testWidgets('absolute link on a hostile host is rejected before matching',
-      (tester) async {
+  testWidgets('absolute link on a hostile host is rejected before matching', (
+    tester,
+  ) async {
     final repository = _repositoryFor([samplePaper]);
     await _pumpApp(
       tester,
@@ -330,7 +332,9 @@ void main() {
       tester.element(find.byType(PakPerkApp)),
     );
 
-    container.read(pakPerkRouterProvider).go(
+    container
+        .read(pakPerkRouterProvider)
+        .go(
           'https://evil.example${PakPerkRoutes.publicPaper(samplePaper.paperId)}',
         );
     await tester.pumpAndSettle();
@@ -343,8 +347,9 @@ void main() {
     expect(repository.paperByArxivCalls, 0);
   });
 
-  testWidgets('leaving an unresolved arXiv route cancels its exact lookup',
-      (tester) async {
+  testWidgets('leaving an unresolved arXiv route cancels its exact lookup', (
+    tester,
+  ) async {
     final repository = _repositoryFor([samplePaper])
       ..paperByArxivCompleter = Completer<RepositoryValue<PaperSummary>>();
     await _pumpApp(
@@ -376,8 +381,9 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('root comments route is truthful and has no composer',
-      (tester) async {
+  testWidgets('root comments route is truthful and has no composer', (
+    tester,
+  ) async {
     await _pumpApp(
       tester,
       repository: _repositoryFor([samplePaper]),
@@ -387,7 +393,9 @@ void main() {
       tester.element(find.byType(PakPerkApp)),
     );
 
-    container.read(pakPerkRouterProvider).push(
+    container
+        .read(pakPerkRouterProvider)
+        .push(
           PakPerkRoutes.paperComments(samplePaper.paperId),
           extra: PaperCommentsRouteData(
             paperId: samplePaper.paperId,
@@ -398,7 +406,9 @@ void main() {
 
     expect(find.text('Paper discussions'), findsAtLeastNWidgets(1));
     expect(
-        find.textContaining('are not enabled in this build'), findsOneWidget);
+      find.textContaining('are not enabled in this build'),
+      findsOneWidget,
+    );
     expect(find.byType(TextField), findsNothing);
     await tester.tap(find.byTooltip('Close paper discussions'));
     await tester.pumpAndSettle();
@@ -408,31 +418,33 @@ void main() {
     );
   });
 
-  testWidgets('public comments link resolves paper metadata before placeholder',
-      (tester) async {
-    final repository = _repositoryFor([samplePaper]);
-    await _pumpApp(
-      tester,
-      repository: repository,
-      restoration: const AppRestorationState(),
-    );
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(PakPerkApp)),
-    );
+  testWidgets(
+    'public comments link resolves paper metadata before placeholder',
+    (tester) async {
+      final repository = _repositoryFor([samplePaper]);
+      await _pumpApp(
+        tester,
+        repository: repository,
+        restoration: const AppRestorationState(),
+      );
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PakPerkApp)),
+      );
 
-    container.read(pakPerkRouterProvider).go(
-          PakPerkRoutes.publicPaperComments(samplePaper.paperId),
-        );
-    await tester.pumpAndSettle();
+      container
+          .read(pakPerkRouterProvider)
+          .go(PakPerkRoutes.publicPaperComments(samplePaper.paperId));
+      await tester.pumpAndSettle();
 
-    expect(repository.paperCalls, 1);
-    expect(
-      find.textContaining('Comments for “${samplePaper.title}”'),
-      findsOneWidget,
-    );
-    expect(find.textContaining('incomplete or invalid'), findsNothing);
-    expect(find.byType(TextField), findsNothing);
-  });
+      expect(repository.paperCalls, 1);
+      expect(
+        find.textContaining('Comments for “${samplePaper.title}”'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('incomplete or invalid'), findsNothing);
+      expect(find.byType(TextField), findsNothing);
+    },
+  );
 
   test('paper route builder rejects malformed and traversal identifiers', () {
     for (final value in [
@@ -522,25 +534,25 @@ void main() {
 }
 
 List<PaperSummary> _papers() => List.generate(3, (index) {
-      final number = index + 1;
-      final suffix = number.toString().padLeft(12, '0');
-      return PaperSummary.fromJson(
-        samplePaper.toJson()
-          ..['paper_id'] = '17060376-2000-4000-8000-$suffix'
-          ..['arxiv_id'] = '1706.0376${number}v1'
-          ..['title'] = 'Shell paper $number'
-          ..['abs_url'] = 'https://arxiv.org/abs/1706.0376${number}v1'
-          ..['pdf_url'] = 'https://arxiv.org/pdf/1706.0376${number}v1',
-      );
-    });
+  final number = index + 1;
+  final suffix = number.toString().padLeft(12, '0');
+  return PaperSummary.fromJson(
+    samplePaper.toJson()
+      ..['paper_id'] = '17060376-2000-4000-8000-$suffix'
+      ..['arxiv_id'] = '1706.0376${number}v1'
+      ..['title'] = 'Shell paper $number'
+      ..['abs_url'] = 'https://arxiv.org/abs/1706.0376${number}v1'
+      ..['pdf_url'] = 'https://arxiv.org/pdf/1706.0376${number}v1',
+  );
+});
 
 FakePaperDataSource _repositoryFor(List<PaperSummary> papers) =>
     FakePaperDataSource(
-      paper: papers.first,
-      processing: sampleProcessing,
-      introduction: sampleIntroduction,
-      connections: sampleConnections,
-    )
+        paper: papers.first,
+        processing: sampleProcessing,
+        introduction: sampleIntroduction,
+        connections: sampleConnections,
+      )
       ..cachedFeed = FeedPage(items: papers)
       ..networkFeed = FeedPage(items: papers);
 
@@ -563,12 +575,8 @@ Future<void> _pumpApp(
 }
 
 Future<void> _tapDestination(WidgetTester tester, String label) async {
-  final navigation = find.byKey(
-    const ValueKey<String>('primary-navigation'),
-  );
-  await tester.tap(
-    find.descendant(of: navigation, matching: find.text(label)),
-  );
+  final navigation = find.byKey(const ValueKey<String>('primary-navigation'));
+  await tester.tap(find.descendant(of: navigation, matching: find.text(label)));
   await tester.pumpAndSettle();
 }
 
@@ -603,32 +611,33 @@ Future<void> _expectDirectConnectionRoundTrip(
       ..['abs_url'] = 'https://arxiv.org/abs/1810.04805v2'
       ..['pdf_url'] = 'https://arxiv.org/pdf/1810.04805v2',
   );
-  final repository = FakePaperDataSource(
-    paper: source,
-    arxivPaper: source,
-    processing: sampleProcessing,
-    connections: PaperConnections(
-      paperId: source.paperId,
-      ready: true,
-      keyConnections: [
-        KeyConnection(
-          referenceId: 'source-reference-1',
-          paperId: target.paperId,
-          arxivId: target.arxivId,
-          title: target.title,
-          authors: target.authors,
-          year: target.publishedAt.year,
-          relationType: 'builds_on',
-          summary: 'A validated connection to the linked target.',
-        ),
-      ],
-      references: const [],
-    ),
-  )
-    ..cachedFeed = FeedPage(items: [source])
-    ..networkFeed = FeedPage(items: [source])
-    ..papersById[source.paperId] = source
-    ..papersById[target.paperId] = target;
+  final repository =
+      FakePaperDataSource(
+          paper: source,
+          arxivPaper: source,
+          processing: sampleProcessing,
+          connections: PaperConnections(
+            paperId: source.paperId,
+            ready: true,
+            keyConnections: [
+              KeyConnection(
+                referenceId: 'source-reference-1',
+                paperId: target.paperId,
+                arxivId: target.arxivId,
+                title: target.title,
+                authors: target.authors,
+                year: target.publishedAt.year,
+                relationType: 'builds_on',
+                summary: 'A validated connection to the linked target.',
+              ),
+            ],
+            references: const [],
+          ),
+        )
+        ..cachedFeed = FeedPage(items: [source])
+        ..networkFeed = FeedPage(items: [source])
+        ..papersById[source.paperId] = source
+        ..papersById[target.paperId] = target;
   await _pumpApp(
     tester,
     repository: repository,
@@ -655,10 +664,7 @@ Future<void> _expectDirectConnectionRoundTrip(
     container.read(pakPerkRouterProvider).state.uri.path,
     PakPerkRoutes.paper(target.paperId),
   );
-  expect(
-    container.read(appRestorationControllerProvider).routeStack,
-    isEmpty,
-  );
+  expect(container.read(appRestorationControllerProvider).routeStack, isEmpty);
 
   await tester.tap(find.byTooltip('Back to previous paper'));
   await tester.pumpAndSettle();

@@ -34,27 +34,30 @@ enum ClientFulltextPolicy {
 
   PaperProcessingState maskCachedProcessing(PaperProcessingState processing) {
     if (allowsDerivedDeviceFallback) return processing;
-    final hadDerivedState = processing.capabilities.introduction ||
+    final hadDerivedState =
+        processing.capabilities.introduction ||
         processing.capabilities.chat ||
         processing.capabilities.connections ||
         switch (processing.stage) {
           ProcessingStage.introductionReady ||
           ProcessingStage.indexingChat ||
           ProcessingStage.resolvingReferences ||
-          ProcessingStage.ready =>
-            true,
+          ProcessingStage.ready => true,
           _ => false,
         };
     return PaperProcessingState(
       paperId: processing.paperId,
+      generation: processing.generation,
       overallState: hadDerivedState ? 'failed' : processing.overallState,
-      stage:
-          hadDerivedState ? ProcessingStage.failedTerminal : processing.stage,
+      stage: hadDerivedState
+          ? ProcessingStage.failedTerminal
+          : processing.stage,
       capabilities: const PaperCapabilities(),
       retryable: hadDerivedState ? false : processing.retryable,
       updatedAt: processing.updatedAt,
-      lastErrorCode:
-          hadDerivedState ? 'FULLTEXT_POLICY_DENIED' : processing.lastErrorCode,
+      lastErrorCode: hadDerivedState
+          ? 'FULLTEXT_POLICY_DENIED'
+          : processing.lastErrorCode,
       lastErrorMessage: hadDerivedState
           ? 'Derived paper content is unavailable offline in strict mode.'
           : processing.lastErrorMessage,
