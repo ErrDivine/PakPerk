@@ -4,7 +4,7 @@ Pakperk is a phone-first arXiv reader built around one interaction: read an
 abstract, swipe left into a parsed Introduction with paper-grounded chat, then
 swipe left again into understandable links to important references.
 
-The demo deliberately stays narrow:
+The currently released demo behavior deliberately stays narrow:
 
 - Flutter client for iOS and Android.
 - Rust/Axum API and Tokio worker.
@@ -13,8 +13,24 @@ The demo deliberately stays narrow:
 - arXiv only, with one global cached/rate-limited backend client.
 - Anonymous device sessions and provider-neutral model configuration.
 
-The complete product requirements remain in
+The preserved demo requirements remain in
 [`pakperk_demo_implementation_plan.md`](pakperk_demo_implementation_plan.md).
+The active production migration is governed by the authoritative
+[`Production v0.0 implementation plan`](pakperk_production_v0_0_implementation_plan.md)
+and its [documentation entrypoint](docs/production-v0.0-plan.md).
+
+## Production migration status
+
+Phase 0 establishes safe extension seams without claiming that account-owned
+features are live. The API is split by route and middleware responsibility, the
+database repository is split by domain responsibility, deployment tiers and
+feature flags are typed and validated, and the existing public paper API has a
+checked code-first OpenAPI contract. Accounts, library, and comments remain off
+until their complete later phases—including safety and policy gates—land.
+
+The demo baseline is frozen at the annotated `production-v0.0-baseline` tag.
+Architecture choices for OIDC, Drift, stateful navigation, comments, and shared
+rate limiting are recorded in [`docs/adr/`](docs/adr/).
 
 ## Run the backend
 
@@ -55,6 +71,14 @@ flutter run --dart-define=PAKPERK_API_BASE_URL=http://localhost:8080
 Use `http://10.0.2.2:8080` from an Android emulator. The app starts with its
 bundled cache when the API cannot be reached, then refreshes in place when
 connectivity returns.
+
+Mobile configuration is validated before general storage is opened. The
+development defaults preserve the current guest reader with all production
+features disabled. Staging/production builds set `PAKPERK_ENV`, an HTTPS
+`PAKPERK_API_BASE_URL`, and explicit feature flags. Production additionally
+requires `PAKPERK_FULLTEXT_POLICY=strict`. Account-enabled builds must provide
+the native OIDC issuer/client/redirect values; client secrets and provider API
+keys are rejected because they must never be compiled into the app.
 
 The reading model is fixed:
 
@@ -173,6 +197,19 @@ GET  /v1/papers/{paper_id}/introduction
 POST /v1/papers/{paper_id}/chat
 GET  /v1/papers/{paper_id}/connections
 ```
+
+Development and staging also expose `GET /openapi.json`. The reviewed artifact
+is checked in at [`docs/openapi-v1.json`](docs/openapi-v1.json). Regenerate and
+verify it with:
+
+```bash
+./scripts/generate_openapi.sh > docs/openapi-v1.json
+./scripts/check_openapi.sh
+```
+
+CI rejects generated drift and compares later artifacts with the base revision
+for removed routes, operations, response codes, fields, component schemas, and
+narrowed enum values.
 
 Feed pagination uses an opaque cursor backed by `(published_at, paper_id)`.
 `prepare` is atomic and idempotent for a paper generation. Capability endpoints

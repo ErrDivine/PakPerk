@@ -8,6 +8,25 @@ resolution, and relationship generation. Both reuse transport-independent
 domain types and repositories, and every arXiv request is serialized through
 the same database-backed rate gate.
 
+## Production v0.0 direction
+
+The production migration is specified in
+[the Production v0.0 plan](production-v0.0-plan.md). The demo architecture
+described here remains the current implemented architecture unless a section
+explicitly says otherwise. The plan extends this modular monolith; it does not
+introduce a separate account, social, queue, or rate-limiting service.
+
+The planned target adds a Flutter Read/You stateful shell, Drift/SQLite for
+relational device cache and a sync outbox, OIDC-authenticated user principals,
+and PostgreSQL-backed shared write rate limits. Keycloak is the reference OIDC
+deployment, but API JWT verification and destructive identity administration
+are separated behind provider-neutral boundaries. Public comments and account
+features are planned production capabilities, not current demo behavior.
+
+The migration must preserve the capability-publication and reader-transition
+invariants documented below: metadata/abstract prefetch is permitted, but PDF
+preparation remains a committed move to Introduction or an explicit retry.
+
 ```mermaid
 flowchart LR
   M["Flutter mobile app"] -->|"cached JSON / HTTPS"| A["Axum API"]

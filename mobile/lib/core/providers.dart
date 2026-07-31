@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
+import '../app/feature_flags.dart';
 import 'api/api_client.dart';
 import 'cache/demo_asset_store.dart';
 import 'cache/local_store.dart';
@@ -9,9 +10,12 @@ import 'content_policy.dart';
 import 'models/reader_state.dart';
 import 'repository/paper_repository.dart';
 
-const apiBaseUrl = String.fromEnvironment(
-  'PAKPERK_API_BASE_URL',
-  defaultValue: 'http://localhost:8080',
+final appBuildConfigProvider = Provider<AppBuildConfig>(
+  (ref) => AppBuildConfig.fromCompileTime(),
+);
+
+final featureFlagsProvider = Provider<FeatureFlags>(
+  (ref) => ref.watch(appBuildConfigProvider).features,
 );
 
 final localStoreProvider = Provider<LocalStore>(
@@ -36,7 +40,9 @@ final initialRestorationProvider = Provider<AppRestorationState>(
 );
 
 final clientFulltextPolicyProvider = Provider<ClientFulltextPolicy>(
-  (ref) => ClientFulltextPolicy.fromWire(configuredFulltextPolicyName),
+  (ref) => ClientFulltextPolicy.fromWire(
+    ref.watch(appBuildConfigProvider).fulltextPolicy,
+  ),
 );
 
 final demoContentStoreProvider = Provider<DemoContentStore>(
@@ -46,7 +52,7 @@ final demoContentStoreProvider = Provider<DemoContentStore>(
 final apiClientProvider = Provider<ApiClient>(
   (ref) {
     final client = ApiClient(
-      baseUrl: apiBaseUrl,
+      baseUrl: ref.watch(appBuildConfigProvider).apiBaseUri.toString(),
       sessionId: ref.watch(anonymousSessionIdProvider),
     );
     ref.onDispose(client.dispose);

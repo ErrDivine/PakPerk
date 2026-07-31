@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+cargo run --quiet \
+  --manifest-path "$project_dir/backend/Cargo.toml" \
+  -p pakperk-api \
+  --example generate_openapi

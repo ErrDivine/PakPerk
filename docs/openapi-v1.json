@@ -1,0 +1,1260 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Pakperk API",
+    "description": "Stable v1 paper-reading API. Account, library, and comment routes are intentionally absent until their production phases are complete.",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health/live": {
+      "get": {
+        "tags": [
+          "routes::health"
+        ],
+        "operationId": "health_live",
+        "responses": {
+          "200": {
+            "description": "Process is live",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponseSchema"
+                },
+                "example": {
+                  "status": "ok"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": [
+          "routes::health"
+        ],
+        "operationId": "health_ready",
+        "responses": {
+          "200": {
+            "description": "Database is ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponseSchema"
+                },
+                "example": {
+                  "status": "ready"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/feed": {
+      "get": {
+        "tags": [
+          "routes::feed"
+        ],
+        "operationId": "feed",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "description": "arXiv category",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque page cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paper summary page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedPageSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/papers/by-arxiv/{arxiv_id}": {
+      "get": {
+        "tags": [
+          "routes::papers"
+        ],
+        "operationId": "paper_by_arxiv",
+        "parameters": [
+          {
+            "name": "arxiv_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paper metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperSummarySchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid arXiv identifier",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Paper not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/papers/{paper_id}": {
+      "get": {
+        "tags": [
+          "routes::papers"
+        ],
+        "operationId": "paper_metadata",
+        "parameters": [
+          {
+            "name": "paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paper metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperSummarySchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Paper not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/papers/{paper_id}/chat": {
+      "post": {
+        "tags": [
+          "routes::chat"
+        ],
+        "operationId": "chat",
+        "parameters": [
+          {
+            "name": "paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Grounded chat answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponseSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid anonymous session or question",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Full-text policy denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Capability not ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/papers/{paper_id}/connections": {
+      "get": {
+        "tags": [
+          "routes::papers"
+        ],
+        "operationId": "connections",
+        "parameters": [
+          {
+            "name": "paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paper connections",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionsResponseSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Full-text policy denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Paper not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Capability not ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/papers/{paper_id}/introduction": {
+      "get": {
+        "tags": [
+          "routes::papers"
+        ],
+        "operationId": "introduction",
+        "parameters": [
+          {
+            "name": "paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paper introduction",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntroductionSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Full-text policy denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Paper not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Capability not ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/papers/{paper_id}/prepare": {
+      "post": {
+        "tags": [
+          "routes::papers"
+        ],
+        "operationId": "prepare",
+        "parameters": [
+          {
+            "name": "paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrepareBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Already ready or terminal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingStateSchema"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Preparation accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingStateSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Paper not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/papers/{paper_id}/processing": {
+      "get": {
+        "tags": [
+          "routes::papers"
+        ],
+        "operationId": "processing",
+        "parameters": [
+          {
+            "name": "paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Processing state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingStateSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Paper not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CapabilitiesSchema": {
+        "type": "object",
+        "required": [
+          "metadata",
+          "introduction",
+          "chat",
+          "connections"
+        ],
+        "properties": {
+          "chat": {
+            "type": "boolean"
+          },
+          "connections": {
+            "type": "boolean"
+          },
+          "introduction": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ChatBody": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "ChatEvidenceSchema": {
+        "type": "object",
+        "required": [
+          "section_kind",
+          "chunk_id"
+        ],
+        "properties": {
+          "chunk_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "page_end": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "page_start": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "section_heading": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "section_kind": {
+            "$ref": "#/components/schemas/SectionKindSchema"
+          }
+        }
+      },
+      "ChatResponseSchema": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "answer_markdown",
+          "insufficient_evidence",
+          "evidence",
+          "suggested_follow_ups",
+          "prompt_version"
+        ],
+        "properties": {
+          "answer_markdown": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatEvidenceSchema"
+            }
+          },
+          "insufficient_evidence": {
+            "type": "boolean"
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prompt_version": {
+            "type": "string"
+          },
+          "provider_request_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "suggested_follow_ups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "thread_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ConnectionReferenceSchema": {
+        "type": "object",
+        "required": [
+          "ordinal",
+          "raw_text",
+          "resolved",
+          "resolution_status"
+        ],
+        "properties": {
+          "ordinal": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "paper_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "raw_text": {
+            "type": "string"
+          },
+          "resolution_status": {
+            "$ref": "#/components/schemas/ReferenceResolutionStatusSchema"
+          },
+          "resolved": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ConnectionsResponseSchema": {
+        "type": "object",
+        "required": [
+          "paper_id",
+          "ready",
+          "key_connections",
+          "references"
+        ],
+        "properties": {
+          "key_connections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KeyConnectionSchema"
+            }
+          },
+          "paper_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectionReferenceSchema"
+            }
+          }
+        }
+      },
+      "ErrorBodySchema": {
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "retryable",
+          "request_id"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Stable machine-readable error code.",
+            "example": "PAPER_NOT_FOUND"
+          },
+          "message": {
+            "type": "string",
+            "example": "The requested paper was not found."
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ErrorEnvelopeSchema": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBodySchema"
+          }
+        }
+      },
+      "FailureCategorySchema": {
+        "type": "string",
+        "enum": [
+          "external_temporary",
+          "external_permanent",
+          "parser_temporary",
+          "parser_document",
+          "model_temporary",
+          "validation",
+          "internal"
+        ]
+      },
+      "FeedPageSchema": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PaperSummarySchema"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "HealthResponseSchema": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "ok"
+          }
+        }
+      },
+      "IntroductionCitationReferenceSchema": {
+        "type": "object",
+        "required": [
+          "paper_id",
+          "title"
+        ],
+        "properties": {
+          "paper_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "IntroductionCitationSchema": {
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "marker",
+          "references"
+        ],
+        "properties": {
+          "end": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "marker": {
+            "type": "string"
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntroductionCitationReferenceSchema"
+            }
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "IntroductionDetectionSchema": {
+        "type": "object",
+        "required": [
+          "confidence",
+          "used_fallback"
+        ],
+        "properties": {
+          "confidence": {
+            "type": "number",
+            "format": "float"
+          },
+          "used_fallback": {
+            "type": "boolean"
+          }
+        }
+      },
+      "IntroductionParagraphSchema": {
+        "type": "object",
+        "required": [
+          "ordinal",
+          "text",
+          "citations"
+        ],
+        "properties": {
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntroductionCitationSchema"
+            }
+          },
+          "heading": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ordinal": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "page_end": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "page_start": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "IntroductionSchema": {
+        "type": "object",
+        "required": [
+          "paper_id",
+          "generation",
+          "paragraphs",
+          "detection",
+          "original_pdf_url"
+        ],
+        "properties": {
+          "detection": {
+            "$ref": "#/components/schemas/IntroductionDetectionSchema"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "heading": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "original_pdf_url": {
+            "type": "string"
+          },
+          "paper_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "paragraphs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IntroductionParagraphSchema"
+            }
+          }
+        }
+      },
+      "KeyConnectionSchema": {
+        "type": "object",
+        "required": [
+          "reference_id",
+          "paper_id",
+          "arxiv_id",
+          "title",
+          "authors",
+          "relation_type",
+          "summary",
+          "confidence"
+        ],
+        "properties": {
+          "arxiv_id": {
+            "type": "string"
+          },
+          "authors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confidence": {
+            "type": "number",
+            "format": "float"
+          },
+          "paper_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reference_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "relation_type": {
+            "$ref": "#/components/schemas/RelationTypeSchema"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "OverallProcessingStateSchema": {
+        "type": "string",
+        "enum": [
+          "not_requested",
+          "processing",
+          "ready",
+          "failed"
+        ]
+      },
+      "PaperSummarySchema": {
+        "type": "object",
+        "required": [
+          "paper_id",
+          "arxiv_id",
+          "title",
+          "abstract",
+          "authors",
+          "primary_category",
+          "categories",
+          "published_at",
+          "updated_at",
+          "abs_url",
+          "pdf_url",
+          "capabilities"
+        ],
+        "properties": {
+          "abs_url": {
+            "type": "string"
+          },
+          "abstract": {
+            "type": "string"
+          },
+          "arxiv_id": {
+            "type": "string",
+            "example": "2401.12345v2"
+          },
+          "authors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/CapabilitiesSchema"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "paper_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "pdf_url": {
+            "type": "string"
+          },
+          "primary_category": {
+            "type": "string"
+          },
+          "published_at": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "PrepareBody": {
+        "type": "object",
+        "properties": {
+          "retry": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ProcessingErrorSchema": {
+        "type": "object",
+        "required": [
+          "category",
+          "code",
+          "message"
+        ],
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/FailureCategorySchema"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ProcessingStageSchema": {
+        "type": "string",
+        "enum": [
+          "not_requested",
+          "queued",
+          "fetching_license",
+          "fetching_pdf",
+          "parsing_pdf",
+          "introduction_ready",
+          "indexing_chat",
+          "resolving_references",
+          "ready",
+          "failed_retryable",
+          "failed_terminal"
+        ]
+      },
+      "ProcessingStateSchema": {
+        "type": "object",
+        "required": [
+          "paper_id",
+          "generation",
+          "overall_state",
+          "stage",
+          "capabilities",
+          "retryable",
+          "updated_at"
+        ],
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/CapabilitiesSchema"
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "embedding_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "last_error": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProcessingErrorSchema"
+              }
+            ]
+          },
+          "overall_state": {
+            "$ref": "#/components/schemas/OverallProcessingStateSchema"
+          },
+          "paper_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parser_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/ProcessingStageSchema"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "ReferenceResolutionStatusSchema": {
+        "type": "string",
+        "enum": [
+          "unresolved",
+          "resolving",
+          "resolved",
+          "ambiguous",
+          "not_arxiv",
+          "failed"
+        ]
+      },
+      "RelationTypeSchema": {
+        "type": "string",
+        "enum": [
+          "builds_on",
+          "uses",
+          "extends",
+          "applies",
+          "compares_with",
+          "contrasts_with",
+          "background",
+          "related_work",
+          "unknown"
+        ]
+      },
+      "SectionKindSchema": {
+        "type": "string",
+        "enum": [
+          "abstract",
+          "introduction",
+          "background",
+          "related_work",
+          "method",
+          "experiment",
+          "result",
+          "discussion",
+          "limitation",
+          "conclusion",
+          "appendix",
+          "acknowledgment",
+          "references",
+          "other"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "health",
+      "description": "Process and dependency health"
+    },
+    {
+      "name": "papers",
+      "description": "Public paper reading and processing"
+    }
+  ]
+}

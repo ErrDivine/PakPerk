@@ -8,6 +8,22 @@ permissions:
   contents: read
 
 jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.91.1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - run: ./scripts/check_openapi.sh
+        env:
+          OPENAPI_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+
   rust:
     runs-on: ubuntu-latest
     services:

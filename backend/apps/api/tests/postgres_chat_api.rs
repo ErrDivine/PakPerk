@@ -16,7 +16,9 @@ use domain::{
     IntroductionDetection, PaperMetadata, ParsedPaper, ParsedParagraph, ParsedSection, SectionKind,
 };
 use llm_provider::{DeterministicProvider, EmbeddingProvider, EmbeddingRequest};
-use pakperk_api::{ApiConfig, ApiModelConfig, AppState, build_router};
+use pakperk_api::{
+    ApiConfig, ApiEnvironment, ApiModelConfig, AppState, FeatureFlags, build_router,
+};
 use serde_json::{Value, json};
 use tower::ServiceExt as _;
 use url::Url;
@@ -163,6 +165,8 @@ fn api_config(database_url: String) -> ApiConfig {
         ..ArxivClientConfig::default()
     };
     ApiConfig {
+        environment: ApiEnvironment::Development,
+        features: FeatureFlags::default(),
         bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
         database_url,
         database_pool_size: 8,

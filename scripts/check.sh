@@ -8,6 +8,7 @@ cargo clippy --manifest-path "$project_dir/backend/Cargo.toml" \
   --workspace --all-targets --all-features -- -D warnings
 cargo test --manifest-path "$project_dir/backend/Cargo.toml" \
   --workspace --all-features
+"$project_dir/scripts/check_openapi.sh"
 
 if command -v flutter >/dev/null 2>&1; then
   (

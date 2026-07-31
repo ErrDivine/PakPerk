@@ -1,0 +1,50 @@
+# ADR 0005: Shared PostgreSQL rate limits
+
+**Status:** Accepted — implementation pending Phase 5
+**Date:** 2026-07-31
+
+## Context
+
+The demo's in-process limiting is not consistent when API replicas scale out.
+Authentication, saves, public comments, reports, profile mutation, deletion,
+and expensive paper operations require enforcement that is shared by every API
+instance. Introducing Redis or another network service for this milestone would
+violate the modular-monolith operational boundary without a demonstrated need.
+
+## Decision
+
+Use PostgreSQL-backed shared rate-limit buckets, implemented as atomic
+`INSERT ... ON CONFLICT ... DO UPDATE` operations for fixed or sliding windows.
+PostgreSQL remains the source of truth alongside the existing leased jobs and
+synchronization records. Apply edge reverse-proxy limits as an additional
+coarse abuse control, not as the sole application limit. Return the stable
+`RATE_LIMITED` error and `Retry-After`.
+
+Initial buckets cover comment creation (user and IP/device), comment edits,
+reports (user and target), profile updates, library mutations, account deletion,
+and eventually current prepare/chat behavior. The limiter never relies only on
+the client-supplied anonymous session ID.
+
+## Consequences
+
+- Rate-limit state is coherent across replicas and can be inspected, expired,
+  tested, and backed up with the product database.
+- New tables/indexes, a cleanup job, transactional integration, and metrics are
+  required; traffic/load tests must validate contention and failure behavior.
+- Limits become configuration with documented defaults and reviewed product
+  policy rather than implicit per-process behavior.
+- Redis, Kafka, NATS, and a separate rate-limit service are out of scope unless
+  a future ADR changes this decision.
+
+## Security and operational implications
+
+- IP/device scope keys are hashed with a rotating server secret when retained;
+  raw identifiers are not logged or unnecessarily persisted.
+- Buckets must have bounded retention and expiration cleanup to avoid unbounded
+  growth. Monitor cleanup failures, denied-action rates, database contention,
+  and bypass attempts.
+- Database outage behavior must fail safely for sensitive writes and remain
+  explicit in service health/runbooks; edge controls provide only supplemental
+  protection.
+- Limits are not authorization. Every protected operation still verifies the
+  authenticated principal and applies ownership/status/terms checks.
