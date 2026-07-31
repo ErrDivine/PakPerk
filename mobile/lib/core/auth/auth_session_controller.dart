@@ -5,7 +5,8 @@ import 'auth_repository.dart';
 
 /// Deletes only account-owned local rows. Implementations must preserve the
 /// public paper/feed cache so signing out never destroys guest reading data.
-typedef AccountOwnedDataClearer = Future<void> Function(String? accountId);
+typedef AccountOwnedDataClearer =
+    Future<void> Function(String? accountId, int invalidatedThroughEpoch);
 
 final class AuthSessionController extends StateNotifier<AuthSessionState>
     implements AuthTokenSource {
@@ -90,7 +91,7 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
       AuthSessionState.authenticating(epoch: previousEpoch),
     );
     try {
-      await _clearAccountOwnedData(previousAccountId);
+      await _clearAccountOwnedData(previousAccountId, previousEpoch);
     } on Object {
       if (_isCurrent(previousEpoch)) {
         state = AuthSessionState.unavailable(
@@ -137,7 +138,7 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
     try {
       if (previousAccountId != null && previousAccountId != accountId) {
         try {
-          await _clearAccountOwnedData(previousAccountId);
+          await _clearAccountOwnedData(previousAccountId, operationEpoch);
         } on Object {
           throw AuthFailure(
             AuthFailureKind.accountDataCleanup,
@@ -183,7 +184,10 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
     Future<void>? accountDataClear;
     AuthFailure? failure;
     try {
-      accountDataClear = _clearAccountOwnedData(previousAccountId);
+      accountDataClear = _clearAccountOwnedData(
+        previousAccountId,
+        signOutEpoch,
+      );
     } on Object {
       failure = AuthFailure(
         AuthFailureKind.accountDataCleanup,
@@ -311,8 +315,10 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
     if (active != null && active.epoch == epoch) return active.future;
 
     late final Future<void> operation;
-    operation = Future<void>.sync(() => _clearAccountOwnedData(accountId))
-        .whenComplete(() {
+    operation =
+        Future<void>.sync(
+          () => _clearAccountOwnedData(accountId, epoch),
+        ).whenComplete(() {
           if (identical(_accountCleanupFlight?.future, operation)) {
             _accountCleanupFlight = null;
           }

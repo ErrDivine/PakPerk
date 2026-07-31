@@ -3,8 +3,8 @@ use axum::{
     Extension, Json,
     extract::{Request, State},
     http::{
-        HeaderMap, HeaderValue, StatusCode,
-        header::{CACHE_CONTROL, ETAG, IF_MATCH},
+        HeaderMap, HeaderValue, Method, StatusCode,
+        header::{AUTHORIZATION, CACHE_CONTROL, ETAG, IF_MATCH, VARY},
     },
     middleware::Next,
     response::{IntoResponse, Response},
@@ -22,13 +22,24 @@ const MAX_IF_MATCH_BYTES: usize = 64;
 
 pub(crate) async fn private_account_cache_control(request: Request, next: Next) -> Response {
     let path = request.uri().path();
-    let is_private_account_route = path == "/v1/me" || path.starts_with("/v1/me/");
+    let method = request.method().clone();
+    let is_paper_comments = path.starts_with("/v1/papers/") && path.ends_with("/comments");
+    let is_private_account_route = path == "/v1/me"
+        || path.starts_with("/v1/me/")
+        || path.starts_with("/v1/comments/")
+        || (is_paper_comments
+            && (method == Method::POST || request.headers().contains_key(AUTHORIZATION)));
     let mut response = next.run(request).await;
     if is_private_account_route {
         response.headers_mut().insert(
             CACHE_CONTROL,
             HeaderValue::from_static(ACCOUNT_CACHE_CONTROL),
         );
+    }
+    if is_paper_comments {
+        response
+            .headers_mut()
+            .append(VARY, HeaderValue::from_static("Authorization"));
     }
     response
 }
@@ -60,6 +71,11 @@ pub(crate) async fn private_account_cache_control(request: Request, next: Next) 
                     "terms_accepted_at": "2026-07-31T12:00:00.000Z",
                     "current_terms_version": "2026-07-31",
                     "terms_current": true,
+                    "community_guidelines_version": "2026-07-31",
+                    "community_guidelines_accepted_at": "2026-07-31T12:00:00.000Z",
+                    "current_community_guidelines_version": "2026-07-31",
+                    "community_guidelines_current": true,
+                    "comment_profile_complete": true,
                     "created_at": "2026-07-31T11:00:00.000Z",
                     "updated_at": "2026-07-31T12:00:00.000Z"
                 }
@@ -95,7 +111,7 @@ pub(crate) async fn get_me(
     request_body(
         content = ProfileUpdateBody,
         description = "Supported profile fields; explicit null clears only display_name",
-        example = json!({"handle": "ada_reader", "display_name": "Ada Reader", "accept_terms_version": "2026-07-31"})
+        example = json!({"handle": "ada_reader", "display_name": "Ada Reader", "accept_terms_version": "2026-07-31", "accept_community_guidelines_version": "2026-07-31"})
     ),
     responses(
         (
@@ -107,7 +123,7 @@ pub(crate) async fn get_me(
                 ("Cache-Control" = String, description = "Always private, no-store")
             )
         ),
-        (status = 400, description = "INVALID_REQUEST, INVALID_PROFILE_VERSION, INVALID_PROFILE_UPDATE, INVALID_HANDLE, INVALID_DISPLAY_NAME, INVALID_TERMS_VERSION, or TERMS_VERSION_MISMATCH", body = crate::openapi::ErrorEnvelopeSchema),
+        (status = 400, description = "INVALID_REQUEST, INVALID_PROFILE_VERSION, INVALID_PROFILE_UPDATE, INVALID_HANDLE, INVALID_DISPLAY_NAME, INVALID_TERMS_VERSION, TERMS_VERSION_MISMATCH, INVALID_COMMUNITY_GUIDELINES_VERSION, or COMMUNITY_GUIDELINES_VERSION_MISMATCH", body = crate::openapi::ErrorEnvelopeSchema),
         (status = 401, description = "UNAUTHENTICATED or TOKEN_EXPIRED", body = crate::openapi::ErrorEnvelopeSchema, headers(("WWW-Authenticate" = String, description = "Bearer challenge"))),
         (status = 403, description = "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING", body = crate::openapi::ErrorEnvelopeSchema),
         (status = 409, description = "HANDLE_ALREADY_SET or HANDLE_UNAVAILABLE", body = crate::openapi::ErrorEnvelopeSchema),
@@ -156,6 +172,19 @@ pub(crate) async fn patch_me(
             ));
         }
     };
+    let accept_community_guidelines_version = match body.accept_community_guidelines_version {
+        ProfilePatchField::Omitted => None,
+        ProfilePatchField::Value(value) => Some(value),
+        ProfilePatchField::Null => {
+            return Err(ApiError::new(
+                request_id,
+                StatusCode::BAD_REQUEST,
+                "INVALID_COMMUNITY_GUIDELINES_VERSION",
+                "The accepted Community Guidelines version cannot be null.",
+                false,
+            ));
+        }
+    };
     let service = account_service(&state, request_id)?;
     let user = service
         .update_profile(
@@ -165,6 +194,7 @@ pub(crate) async fn patch_me(
                 handle,
                 display_name,
                 accept_terms_version,
+                accept_community_guidelines_version,
             },
         )
         .await
@@ -199,6 +229,7 @@ fn account_response(
     let mut response = Json(AccountProfileEnvelope::new(
         user,
         service.policy().current_terms_version(),
+        service.policy().current_community_guidelines_version(),
     ))
     .into_response();
     response.headers_mut().insert(ETAG, entity_tag);
@@ -319,12 +350,67 @@ mod tests {
         assert_eq!(expected_profile_version(&valid, request_id).unwrap(), 42);
     }
 
+    #[tokio::test]
+    async fn personalized_comment_surfaces_are_private_and_public_reads_vary_on_auth() {
+        let app = Router::new()
+            .route(
+                "/v1/papers/{paper_id}/comments",
+                get(|| async { StatusCode::OK }).post(|| async { StatusCode::OK }),
+            )
+            .route(
+                "/v1/comments/{comment_id}",
+                axum::routing::patch(|| async { StatusCode::OK }),
+            )
+            .layer(middleware::from_fn(private_account_cache_control));
+
+        let guest = app
+            .clone()
+            .oneshot(
+                Request::get(format!("/v1/papers/{}/comments", Uuid::now_v7()))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(guest.status(), StatusCode::OK);
+        assert!(!guest.headers().contains_key(CACHE_CONTROL));
+        assert_eq!(guest.headers()[VARY], "Authorization");
+
+        let personalized = app
+            .clone()
+            .oneshot(
+                Request::get(format!("/v1/papers/{}/comments", Uuid::now_v7()))
+                    .header(AUTHORIZATION, "Bearer opaque")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(personalized.headers()[CACHE_CONTROL], ACCOUNT_CACHE_CONTROL);
+
+        for request in [
+            Request::post(format!("/v1/papers/{}/comments", Uuid::now_v7()))
+                .body(Body::empty())
+                .unwrap(),
+            Request::patch(format!("/v1/comments/{}", Uuid::now_v7()))
+                .body(Body::empty())
+                .unwrap(),
+        ] {
+            let response = app.clone().oneshot(request).await.unwrap();
+            assert_eq!(response.headers()[CACHE_CONTROL], ACCOUNT_CACHE_CONTROL);
+        }
+    }
+
     #[test]
     fn patch_json_distinguishes_omitted_null_and_value_and_denies_unknown_fields() {
         let body: ProfileUpdateBody = serde_json::from_str(r#"{"display_name":null}"#).unwrap();
         assert_eq!(body.handle, ProfilePatchField::Omitted);
         assert_eq!(body.display_name, ProfilePatchField::Null);
         assert_eq!(body.accept_terms_version, ProfilePatchField::Omitted);
+        assert_eq!(
+            body.accept_community_guidelines_version,
+            ProfilePatchField::Omitted
+        );
 
         let body: ProfileUpdateBody =
             serde_json::from_str(r#"{"handle":"Ada_Reader","display_name":"Ada"}"#).unwrap();
@@ -340,8 +426,9 @@ mod tests {
     }
 
     #[test]
-    fn response_completeness_requires_handle_and_current_terms() {
+    fn response_exposes_separate_account_and_comment_consent_state() {
         let terms = TermsVersion::parse("2026-07-31").unwrap();
+        let guidelines = domain::CommunityGuidelinesVersion::parse("2026-08-01").unwrap();
         let now = Utc.timestamp_opt(1_800_000_000, 0).unwrap();
         let mut user = User {
             id: AuthenticatedUserId::new(Uuid::now_v7()),
@@ -351,19 +438,30 @@ mod tests {
             profile_version: 1,
             terms_version: None,
             terms_accepted_at: None,
+            community_guidelines_version: None,
+            community_guidelines_accepted_at: None,
             created_at: now,
             updated_at: now,
             last_seen_at: now,
         };
-        let envelope = AccountProfileEnvelope::new(&user, &terms);
+        let envelope = AccountProfileEnvelope::new(&user, &terms, &guidelines);
         assert!(!envelope.account.profile_complete);
         assert!(!envelope.account.terms_current);
+        assert!(!envelope.account.community_guidelines_current);
+        assert!(!envelope.account.comment_profile_complete);
 
         user.terms_version = Some(terms.clone());
         user.terms_accepted_at = Some(now);
-        let envelope = AccountProfileEnvelope::new(&user, &terms);
+        let envelope = AccountProfileEnvelope::new(&user, &terms, &guidelines);
         assert!(envelope.account.profile_complete);
         assert!(envelope.account.terms_current);
+        assert!(!envelope.account.comment_profile_complete);
+
+        user.community_guidelines_version = Some(guidelines.clone());
+        user.community_guidelines_accepted_at = Some(now);
+        let envelope = AccountProfileEnvelope::new(&user, &terms, &guidelines);
+        assert!(envelope.account.community_guidelines_current);
+        assert!(envelope.account.comment_profile_complete);
     }
 
     #[derive(Clone)]
@@ -419,6 +517,10 @@ mod tests {
             if let Some(terms) = &patch.terms_version {
                 user.terms_version = Some(terms.clone());
                 user.terms_accepted_at = Some(update_time);
+            }
+            if let Some(guidelines) = &patch.community_guidelines_version {
+                user.community_guidelines_version = Some(guidelines.clone());
+                user.community_guidelines_accepted_at = Some(update_time);
             }
             user.profile_version += 1;
             user.updated_at = update_time;
@@ -477,6 +579,10 @@ mod tests {
                 vec![auth::OidcAlgorithm::Rs256],
             ),
             current_terms_version: terms,
+            current_community_guidelines_version: domain::CommunityGuidelinesVersion::parse(
+                "2026-08-01",
+            )
+            .unwrap(),
             last_seen_interval: Duration::from_secs(15 * 60),
             profile_update_limit: 5,
             profile_update_window: Duration::from_secs(60 * 60),
@@ -490,9 +596,11 @@ mod tests {
                 library: false,
                 library_writes: false,
                 comments: false,
+                comment_creation: false,
             },
             accounts: account,
             library: None,
+            comments: None,
             bind: "127.0.0.1:0".parse().unwrap(),
             database_url: "postgres://test:test@127.0.0.1/test".to_owned(),
             database_pool_size: 1,
@@ -533,6 +641,8 @@ mod tests {
             profile_version: 1,
             terms_version: None,
             terms_accepted_at: None,
+            community_guidelines_version: None,
+            community_guidelines_accepted_at: None,
             created_at: now,
             updated_at: now,
             last_seen_at: now,
@@ -556,6 +666,7 @@ mod tests {
             Arc::new(AllowingRateLimit),
             AccountPolicy::new(
                 TermsVersion::parse("2026-07-31").unwrap(),
+                domain::CommunityGuidelinesVersion::parse("2026-08-01").unwrap(),
                 Duration::from_secs(15 * 60),
                 5,
                 Duration::from_secs(60 * 60),
@@ -567,6 +678,21 @@ mod tests {
 
     fn account_test_app() -> (Router, Arc<AtomicUsize>) {
         account_test_app_with(Arc::new(AcceptingVerifier), active_user())
+    }
+
+    async fn patch_profile(app: &Router, profile_etag: Option<&str>, body: &str) -> Response {
+        let mut request = Request::builder()
+            .method(Method::PATCH)
+            .uri("/v1/me")
+            .header(AUTHORIZATION, "Bearer private-token")
+            .header(CONTENT_TYPE, "application/json");
+        if let Some(profile_etag) = profile_etag {
+            request = request.header(IF_MATCH, profile_etag);
+        }
+        app.clone()
+            .oneshot(request.body(Body::from(body.to_owned())).unwrap())
+            .await
+            .unwrap()
     }
 
     #[tokio::test]
@@ -601,19 +727,7 @@ mod tests {
         assert!(!body.to_string().contains("private-token"));
         assert!(!body.to_string().contains("private-subject"));
 
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method(Method::PATCH)
-                    .uri("/v1/me")
-                    .header(AUTHORIZATION, "Bearer private-token")
-                    .header(CONTENT_TYPE, "application/json")
-                    .body(Body::from(r#"{"display_name":null}"#))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = patch_profile(&app, None, r#"{"display_name":null}"#).await;
         assert_eq!(response.status(), StatusCode::PRECONDITION_REQUIRED);
         assert_eq!(response.headers()[CACHE_CONTROL], ACCOUNT_CACHE_CONTROL);
         assert_eq!(
@@ -621,49 +735,42 @@ mod tests {
             "PROFILE_VERSION_REQUIRED"
         );
 
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method(Method::PATCH)
-                    .uri("/v1/me")
-                    .header(AUTHORIZATION, "Bearer private-token")
-                    .header(IF_MATCH, "\"profile-1\"")
-                    .header(CONTENT_TYPE, "application/json")
-                    .body(Body::from(
-                        r#"{"handle":"Ada_Reader","accept_terms_version":"2026-07-31"}"#,
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = patch_profile(
+            &app,
+            Some("\"profile-1\""),
+            r#"{"handle":"Ada_Reader","accept_terms_version":"2026-07-31"}"#,
+        )
+        .await;
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()[ETAG], "\"profile-2\"");
         let body = response_json(response).await;
         assert_eq!(body["account"]["handle"], "ada_reader");
         assert_eq!(body["account"]["profile_complete"], true);
         assert_eq!(body["account"]["terms_current"], true);
+        assert_eq!(body["account"]["community_guidelines_current"], false);
+        assert_eq!(body["account"]["comment_profile_complete"], false);
 
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method(Method::PATCH)
-                    .uri("/v1/me")
-                    .header(AUTHORIZATION, "Bearer private-token")
-                    .header(IF_MATCH, "\"profile-1\"")
-                    .header(CONTENT_TYPE, "application/json")
-                    .body(Body::from(r#"{"display_name":"Changed"}"#))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = patch_profile(
+            &app,
+            Some("\"profile-2\""),
+            r#"{"accept_community_guidelines_version":"2026-08-01"}"#,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[ETAG], "\"profile-3\"");
+        let body = response_json(response).await;
+        assert_eq!(body["account"]["community_guidelines_current"], true);
+        assert_eq!(body["account"]["comment_profile_complete"], true);
+
+        let response =
+            patch_profile(&app, Some("\"profile-1\""), r#"{"display_name":"Changed"}"#).await;
         assert_eq!(response.status(), StatusCode::PRECONDITION_FAILED);
-        assert_eq!(response.headers()[ETAG], "\"profile-2\"");
+        assert_eq!(response.headers()[ETAG], "\"profile-3\"");
         assert_eq!(
             response_json(response).await["error"]["code"],
             "PROFILE_VERSION_CONFLICT"
         );
-        assert_eq!(provision_count.load(Ordering::SeqCst), 4);
+        assert_eq!(provision_count.load(Ordering::SeqCst), 5);
     }
 
     #[tokio::test]

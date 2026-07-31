@@ -9,6 +9,7 @@ import '../features/feed/feed_controller.dart';
 import '../features/paper_reader/reader_navigation_controller.dart';
 import 'account_providers.dart';
 import 'library_providers.dart';
+import 'comments_providers.dart';
 import 'router.dart';
 import 'startup_controller.dart';
 import 'startup_gate.dart';
@@ -62,6 +63,9 @@ class _PakPerkAppState extends ConsumerState<PakPerkApp>
     _observeAccountSession();
     if (ref.watch(featureFlagsProvider).library) {
       ref.watch(libraryRuntimeProvider);
+    }
+    if (ref.watch(featureFlagsProvider).comments) {
+      ref.watch(commentsRuntimeProvider);
     }
     final startup = ref.watch(startupControllerProvider);
     final startupController = ref.read(startupControllerProvider.notifier);

@@ -6,7 +6,8 @@ use db::{
     RateLimitDecision, RateLimitRepository, RateLimitRequest,
 };
 use domain::{
-    AccountStatus, AuthenticatedUserId, DisplayName, DisplayNameValidationError, Handle,
+    AccountStatus, AuthenticatedUserId, CommunityGuidelinesVersion,
+    CommunityGuidelinesVersionValidationError, DisplayName, DisplayNameValidationError, Handle,
     HandleValidationError, TermsVersion, TermsVersionValidationError, User,
 };
 use thiserror::Error;
@@ -69,11 +70,13 @@ pub struct ProfileUpdateCommand {
     pub handle: Option<String>,
     pub display_name: PatchValue<String>,
     pub accept_terms_version: Option<String>,
+    pub accept_community_guidelines_version: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct AccountPolicy {
     current_terms_version: TermsVersion,
+    current_community_guidelines_version: CommunityGuidelinesVersion,
     last_seen_interval: Duration,
     profile_update_limit: u32,
     profile_update_window: Duration,
@@ -82,6 +85,7 @@ pub struct AccountPolicy {
 impl AccountPolicy {
     pub fn new(
         current_terms_version: TermsVersion,
+        current_community_guidelines_version: CommunityGuidelinesVersion,
         last_seen_interval: Duration,
         profile_update_limit: u32,
         profile_update_window: Duration,
@@ -96,6 +100,7 @@ impl AccountPolicy {
         )?;
         Ok(Self {
             current_terms_version,
+            current_community_guidelines_version,
             last_seen_interval,
             profile_update_limit,
             profile_update_window,
@@ -105,6 +110,11 @@ impl AccountPolicy {
     #[must_use]
     pub const fn current_terms_version(&self) -> &TermsVersion {
         &self.current_terms_version
+    }
+
+    #[must_use]
+    pub const fn current_community_guidelines_version(&self) -> &CommunityGuidelinesVersion {
+        &self.current_community_guidelines_version
     }
 
     #[must_use]
@@ -145,8 +155,12 @@ pub enum AccountServiceError {
     InvalidDisplayName(#[from] DisplayNameValidationError),
     #[error(transparent)]
     InvalidTermsVersion(#[from] TermsVersionValidationError),
+    #[error(transparent)]
+    InvalidCommunityGuidelinesVersion(#[from] CommunityGuidelinesVersionValidationError),
     #[error("accepted terms version is not current")]
     TermsVersionMismatch,
+    #[error("accepted community-guidelines version is not current")]
+    CommunityGuidelinesVersionMismatch,
     #[error("account was not found")]
     NotFound,
     #[error("account is suspended")]
@@ -349,10 +363,22 @@ impl AccountService {
         {
             return Err(AccountServiceError::TermsVersionMismatch);
         }
+        let community_guidelines_version = command
+            .accept_community_guidelines_version
+            .as_deref()
+            .map(CommunityGuidelinesVersion::parse)
+            .transpose()?;
+        if community_guidelines_version
+            .as_ref()
+            .is_some_and(|version| version != self.policy.current_community_guidelines_version())
+        {
+            return Err(AccountServiceError::CommunityGuidelinesVersionMismatch);
+        }
         let patch = ProfilePatch {
             handle,
             display_name,
             terms_version,
+            community_guidelines_version,
         };
         if patch.is_empty() {
             return Err(AccountServiceError::EmptyProfileUpdate);
@@ -464,6 +490,8 @@ mod tests {
             profile_version: 3,
             terms_version: None,
             terms_accepted_at: None,
+            community_guidelines_version: None,
+            community_guidelines_accepted_at: None,
             created_at: now,
             updated_at: now,
             last_seen_at: now,
@@ -482,6 +510,7 @@ mod tests {
         };
         let policy = AccountPolicy::new(
             TermsVersion::parse("2026-07-31").unwrap(),
+            CommunityGuidelinesVersion::parse("2026-08-01").unwrap(),
             Duration::from_secs(15 * 60),
             3,
             Duration::from_secs(60),
@@ -558,6 +587,49 @@ mod tests {
                 .await,
             Err(AccountServiceError::TermsVersionMismatch)
         ));
+        assert!(matches!(
+            service
+                .update_profile(
+                    active_id,
+                    ProfileUpdateCommand {
+                        expected_profile_version: 3,
+                        accept_community_guidelines_version: Some("2025-legacy".to_owned()),
+                        ..ProfileUpdateCommand::default()
+                    }
+                )
+                .await,
+            Err(AccountServiceError::CommunityGuidelinesVersionMismatch)
+        ));
+    }
+
+    #[tokio::test]
+    async fn current_community_acceptance_reaches_repository_independently() {
+        let user = fixture_user(AccountStatus::Active);
+        let user_id = user.id;
+        let (service, last_patch) = fixture_service(user, true);
+        service
+            .update_profile(
+                user_id,
+                ProfileUpdateCommand {
+                    expected_profile_version: 3,
+                    accept_community_guidelines_version: Some("2026-08-01".to_owned()),
+                    ..ProfileUpdateCommand::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            last_patch
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .community_guidelines_version
+                .as_ref()
+                .unwrap()
+                .as_str(),
+            "2026-08-01"
+        );
     }
 
     #[tokio::test]

@@ -5,20 +5,25 @@ page. Pakperk is not affiliated with or endorsed by arXiv.
 
 ## Production v0.0 policy status
 
-The current demo does not expose public accounts or comments. The Production
-v0.0 plan proposes public paper-level comments only after its safety gates are
-implemented and operationally owned. Those gates include authenticated posting,
-explicit Terms and Community Guidelines acceptance, normalized plain-text
-validation, reporting, user blocking, moderation actions, rate limits, support
-contact information, and an account-deletion path. This is a planned policy
-commitment, not a claim that these controls are live today.
+The production migration now contains a feature-gated public paper-comment
+implementation. It includes authenticated posting, explicit Terms and
+Community Guidelines acceptance, normalized plain-text validation, reporting,
+durable user blocking, audited moderation actions, shared rate limits, and a
+stable support contract. Both comment flags remain off by default, and public
+comment creation is prohibited until Phase 6 supplies the exercised account
+deletion, hosted-policy, retention, monitoring, and store-review gates. This is
+an implemented dark-launch capability, not a claim that public UGC is live.
 
-If comments are enabled in a production release, comments are public
+When comments are enabled in a production release, comments are public
 user-generated content. They are not private notes or scholarly endorsements;
-the product must disclose that fact and provide a route to report abuse. The
-authoritative product, moderation, retention, and deletion requirements are in
+the product discloses that fact and provides report, block, support, and author
+removal routes. `COMMENT_CREATION_ENABLED=false` stops only new posts so that
+reading and safety operations remain available. The authoritative product,
+moderation, retention, and deletion requirements are in
 [the Production v0.0 plan](production-v0.0-plan.md) and
-[ADR 0004](adr/0004-public-comments-and-moderation.md).
+[ADR 0004](adr/0004-public-comments-and-moderation.md); the concrete wire and
+device behavior is in the
+[comments and moderation contract](comments-and-moderation.md).
 
 `FULLTEXT_POLICY` has two modes:
 

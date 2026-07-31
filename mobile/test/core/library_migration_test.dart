@@ -6,7 +6,7 @@ import 'package:sqlite3/sqlite3.dart' as sqlite;
 
 void main() {
   test(
-    'frozen v3 upgrades to durable library v4 without losing rows',
+    'frozen v3 upgrades through comments v5 without losing library rows',
     () async {
       final raw = sqlite.sqlite3.openInMemory();
       raw.execute(_schemaV3);
@@ -57,7 +57,7 @@ void main() {
       final database = PakPerkDatabase(NativeDatabase.opened(raw));
       addTearDown(database.close);
 
-      expect(database.schemaVersion, 4);
+      expect(database.schemaVersion, 5);
       final tables = await database
           .customSelect("SELECT name FROM sqlite_master WHERE type = 'table'")
           .get();
@@ -173,7 +173,7 @@ void main() {
     },
   );
 
-  test('v4 account-owned schema has no credential-shaped columns', () async {
+  test('v5 account-owned schema has no credential-shaped columns', () async {
     final database = PakPerkDatabase(NativeDatabase.memory());
     addTearDown(database.close);
     final tables = await database
@@ -202,6 +202,82 @@ void main() {
       );
     }
   });
+
+  test(
+    'frozen v4 upgrades to v5 and preserves only safely scoped comment data',
+    () async {
+      final raw = sqlite.sqlite3.openInMemory();
+      raw.execute(_schemaV3);
+      raw.execute(_schemaV4Delta);
+      raw.execute(
+        'INSERT INTO cached_papers VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [_paperId, '2607.00001', 1, _paperJson, 1, 2, 3, 4, 0],
+      );
+      raw.execute(
+        'INSERT INTO cached_comment_pages VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [
+          'comments:first',
+          _paperId,
+          null,
+          '{"items":[],"next_cursor":null}',
+          10,
+          11,
+          null,
+        ],
+      );
+      raw.execute('INSERT INTO comment_drafts VALUES (?, ?, ?, ?, ?, ?, ?)', [
+        'scoped-draft',
+        _accountId,
+        _paperId,
+        null,
+        'keep until this account signs out',
+        12,
+        13,
+      ]);
+      raw.execute('INSERT INTO comment_drafts VALUES (?, ?, ?, ?, ?, ?, ?)', [
+        'unbound-draft',
+        null,
+        _paperId,
+        null,
+        'must not attach to a future login',
+        12,
+        13,
+      ]);
+      raw.execute('PRAGMA user_version = 4');
+
+      final database = PakPerkDatabase(NativeDatabase.opened(raw));
+      addTearDown(database.close);
+
+      expect(database.schemaVersion, 5);
+      final cached = await database.select(database.cachedCommentPages).get();
+      expect(cached, hasLength(1));
+      expect(cached.single.viewerAccountId, isNull);
+      expect(cached.single.payloadJson, contains('next_cursor'));
+      final drafts = await database.select(database.commentDrafts).get();
+      expect(drafts, hasLength(1));
+      expect(drafts.single.draftId, 'scoped-draft');
+      expect(drafts.single.clientRequestId, isNull);
+      expect(drafts.single.lastAttemptedBody, isNull);
+      final tables = await database
+          .customSelect("SELECT name FROM sqlite_master WHERE type = 'table'")
+          .get();
+      expect(
+        tables.map((row) => row.read<String>('name')),
+        contains('blocked_users'),
+      );
+      expect(
+        await database.customSelect('PRAGMA foreign_key_check').get(),
+        isEmpty,
+      );
+      expect(
+        (await database.customSelect('PRAGMA integrity_check').getSingle())
+            .data
+            .values
+            .single,
+        'ok',
+      );
+    },
+  );
 }
 
 const _accountId = '018f47a6-4b56-7f4c-8c7a-e2656e820001';
@@ -330,5 +406,25 @@ CREATE TABLE cache_metadata (
   key TEXT NOT NULL PRIMARY KEY,
   value_json TEXT NOT NULL,
   updated_at INTEGER NOT NULL
+);
+''';
+
+const _schemaV4Delta = '''
+ALTER TABLE library_items ADD COLUMN saved_at INTEGER NULL;
+ALTER TABLE library_items ADD COLUMN removed_at INTEGER NULL;
+ALTER TABLE library_items ADD COLUMN revision INTEGER NULL;
+ALTER TABLE library_items ADD COLUMN last_operation_id TEXT NULL;
+ALTER TABLE library_items ADD COLUMN canonical_deleted INTEGER NULL
+  CHECK (canonical_deleted IN (0, 1));
+ALTER TABLE library_items ADD COLUMN canonical_saved_at INTEGER NULL;
+ALTER TABLE library_items ADD COLUMN canonical_removed_at INTEGER NULL;
+ALTER TABLE sync_outbox ADD COLUMN state TEXT NOT NULL DEFAULT 'queued';
+ALTER TABLE sync_outbox ADD COLUMN started_at INTEGER NULL;
+ALTER TABLE sync_outbox ADD COLUMN updated_at INTEGER NULL;
+CREATE TABLE library_sync_states (
+  account_id TEXT NOT NULL PRIMARY KEY,
+  last_revision INTEGER NOT NULL DEFAULT 0,
+  initialized INTEGER NOT NULL DEFAULT 0 CHECK (initialized IN (0, 1)),
+  last_full_sync_at INTEGER NULL
 );
 ''';

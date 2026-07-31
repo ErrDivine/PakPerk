@@ -5,6 +5,7 @@
 
 mod account;
 mod chat;
+mod comment;
 mod connection;
 mod content_policy;
 mod document;
@@ -20,6 +21,14 @@ pub use account::{
 };
 pub use chat::{
     ChatAnswer, ChatEvidence, ChatMessage, ChatRequest, ChatRole, ChatTurn, SuggestedFollowUp,
+};
+pub use comment::{
+    BlockedUser, BlockedUserPage, COMMENT_MAX_BYTES, COMMENT_MAX_SCALARS, COMMENT_MAX_URLS,
+    CommentBody, CommentBodyValidationError, CommentPage, CommentReportReason,
+    CommentReportReasonParseError, CommentReportReceipt, CommentReportStatus,
+    CommentReportStatusParseError, CommentStatus, CommentStatusParseError,
+    CommunityGuidelinesVersion, CommunityGuidelinesVersionValidationError, PaperComment,
+    ReportDetail, ReportDetailValidationError,
 };
 pub use connection::{
     CitationContext, Connection, ConnectionReference, ConnectionsResponse, KeyConnection,

@@ -87,6 +87,54 @@ impl RateLimitRequest {
         Self::new("library_mutation", format!("user:{user_id}"), limit, window)
     }
 
+    pub fn comment_create(
+        user_id: AuthenticatedUserId,
+        limit: u32,
+        window: Duration,
+    ) -> Result<Self, RateLimitConfigError> {
+        Self::new("comment_create", format!("user:{user_id}"), limit, window)
+    }
+
+    pub fn comment_mutation(
+        user_id: AuthenticatedUserId,
+        limit: u32,
+        window: Duration,
+    ) -> Result<Self, RateLimitConfigError> {
+        Self::new("comment_mutation", format!("user:{user_id}"), limit, window)
+    }
+
+    pub fn comment_report(
+        user_id: AuthenticatedUserId,
+        limit: u32,
+        window: Duration,
+    ) -> Result<Self, RateLimitConfigError> {
+        Self::new("comment_report", format!("user:{user_id}"), limit, window)
+    }
+
+    pub fn comment_report_target(
+        comment_id: uuid::Uuid,
+        limit: u32,
+        window: Duration,
+    ) -> Result<Self, RateLimitConfigError> {
+        Self::new(
+            "comment_report_target",
+            format!("comment:{comment_id}"),
+            limit,
+            window,
+        )
+    }
+
+    /// A hashed request-origin scope consumed alongside the account bucket by
+    /// API boundaries which have a trusted peer/device fingerprint. Raw IPs or
+    /// device identifiers must never be passed here.
+    pub fn comment_origin(
+        hashed_origin_scope: impl Into<String>,
+        limit: u32,
+        window: Duration,
+    ) -> Result<Self, RateLimitConfigError> {
+        Self::new("comment_origin", hashed_origin_scope, limit, window)
+    }
+
     #[must_use]
     pub fn bucket(&self) -> &str {
         &self.bucket

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Pakperk API",
-    "description": "Stable v1 paper-reading API with optional OIDC-backed account profiles and synchronized To Read libraries. Account, library, and library-write capabilities are independently feature-gated; comment routes remain unavailable until their production phase is complete.",
+    "description": "Stable v1 paper-reading API with optional OIDC-backed account profiles, synchronized To Read libraries, and moderated flat paper comments. Comment publication has an independent emergency kill switch which preserves reads and safety controls.",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -64,6 +64,411 @@
             }
           }
         }
+      }
+    },
+    "/v1/comments/{comment_id}": {
+      "delete": {
+        "tags": [
+          "comments"
+        ],
+        "description": "Repeat-safe author deletion. Request bodies are rejected; COMMENT_CREATION_ENABLED does not disable deletion.",
+        "operationId": "delete_comment",
+        "parameters": [
+          {
+            "name": "comment_id",
+            "in": "path",
+            "description": "Comment ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Comment is deleted",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED or TOKEN_EXPIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "COMMENT_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds until the shared mutation window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHENTICATION_UNAVAILABLE or COMMENT_SERVICE_UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "comments"
+        ],
+        "description": "Replaces the authenticated author's comment body using optimistic version concurrency. The comment-creation kill switch does not disable author edits.",
+        "operationId": "edit_comment",
+        "parameters": [
+          {
+            "name": "comment_id",
+            "in": "path",
+            "description": "Comment ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditCommentBody"
+              },
+              "example": {
+                "body": "Updated observation.",
+                "expected_version": 2
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Canonical edited comment",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST, INVALID_COMMENT_BODY, or INVALID_COMMENT_VERSION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED or TOKEN_EXPIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "COMMENT_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMMENT_EDIT_CONFLICT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "COMMENT_REJECTED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds until the shared mutation window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHENTICATION_UNAVAILABLE or COMMENT_SERVICE_UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/comments/{comment_id}/reports": {
+      "post": {
+        "tags": [
+          "comments"
+        ],
+        "description": "Creates or returns the authenticated user's canonical report. Report detail never appears in the response or diagnostics.",
+        "operationId": "report_comment",
+        "parameters": [
+          {
+            "name": "comment_id",
+            "in": "path",
+            "description": "Comment ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportCommentBody"
+              },
+              "example": {
+                "detail": "Optional bounded context",
+                "reason": "harassment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Canonical idempotent report receipt",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentReportEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST or INVALID_REPORT_DETAIL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED or TOKEN_EXPIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "COMMENT_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds until the shared account or origin window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHENTICATION_UNAVAILABLE or COMMENT_SERVICE_UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
       }
     },
     "/v1/feed": {
@@ -207,7 +612,12 @@
                 },
                 "example": {
                   "account": {
+                    "comment_profile_complete": true,
+                    "community_guidelines_accepted_at": "2026-07-31T12:00:00.000Z",
+                    "community_guidelines_current": true,
+                    "community_guidelines_version": "2026-07-31",
                     "created_at": "2026-07-31T11:00:00.000Z",
+                    "current_community_guidelines_version": "2026-07-31",
                     "current_terms_version": "2026-07-31",
                     "display_name": "Ada Reader",
                     "handle": "ada_reader",
@@ -303,6 +713,7 @@
                 "$ref": "#/components/schemas/ProfileUpdateBody"
               },
               "example": {
+                "accept_community_guidelines_version": "2026-07-31",
                 "accept_terms_version": "2026-07-31",
                 "display_name": "Ada Reader",
                 "handle": "ada_reader"
@@ -337,7 +748,7 @@
             }
           },
           "400": {
-            "description": "INVALID_REQUEST, INVALID_PROFILE_VERSION, INVALID_PROFILE_UPDATE, INVALID_HANDLE, INVALID_DISPLAY_NAME, INVALID_TERMS_VERSION, or TERMS_VERSION_MISMATCH",
+            "description": "INVALID_REQUEST, INVALID_PROFILE_VERSION, INVALID_PROFILE_UPDATE, INVALID_HANDLE, INVALID_DISPLAY_NAME, INVALID_TERMS_VERSION, TERMS_VERSION_MISMATCH, INVALID_COMMUNITY_GUIDELINES_VERSION, or COMMUNITY_GUIDELINES_VERSION_MISMATCH",
             "content": {
               "application/json": {
                 "schema": {
@@ -440,6 +851,443 @@
                 "description": "Seconds before retry when known"
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/me/blocked-users": {
+      "get": {
+        "tags": [
+          "comments"
+        ],
+        "description": "Newest-first account-owned block list with opaque cursor pagination.",
+        "operationId": "list_blocked_users",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque cursor from next_cursor",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 512
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Bounded page size; defaults to 50",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 200,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Blocked users",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockedUserPageEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST, INVALID_COMMENT_CURSOR, or INVALID_COMMENT_LIMIT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED or TOKEN_EXPIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHENTICATION_UNAVAILABLE or COMMENT_SERVICE_UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/me/blocked-users/{user_id}": {
+      "put": {
+        "tags": [
+          "comments"
+        ],
+        "description": "Idempotently blocks a public comment author. The authenticated comment view filters that author immediately and durably.",
+        "operationId": "block_user",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "description": "Local user ID to block",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Canonical blocked-user projection",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockedUserEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST or CANNOT_BLOCK_SELF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED or TOKEN_EXPIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "USER_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds until the shared mutation window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHENTICATION_UNAVAILABLE or COMMENT_SERVICE_UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "comments"
+        ],
+        "description": "Idempotently removes a user block. Request bodies are rejected.",
+        "operationId": "unblock_user",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "description": "Local user ID to unblock",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "User is not blocked",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST or CANNOT_BLOCK_SELF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED or TOKEN_EXPIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds until the shared mutation window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHENTICATION_UNAVAILABLE or COMMENT_SERVICE_UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/me/comments": {
+      "get": {
+        "tags": [
+          "comments"
+        ],
+        "description": "Newest-first comments owned by the authenticated account, including private pending-review status.",
+        "operationId": "list_my_comments",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque cursor from next_cursor",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 512
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Bounded page size; defaults to 50",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 200,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authenticated user's comments",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentPageEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST, INVALID_COMMENT_CURSOR, or INVALID_COMMENT_LIMIT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED or TOKEN_EXPIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHENTICATION_UNAVAILABLE or COMMENT_SERVICE_UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -1193,6 +2041,288 @@
         ]
       }
     },
+    "/v1/papers/{paper_id}/comments": {
+      "get": {
+        "tags": [
+          "comments"
+        ],
+        "description": "Newest-first published comments. Guests receive the public view; an authenticated view additionally applies durable blocks. Registered only when COMMENTS_ENABLED=true.",
+        "operationId": "list_paper_comments",
+        "parameters": [
+          {
+            "name": "paper_id",
+            "in": "path",
+            "description": "Existing cached paper ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque cursor from next_cursor",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 512
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Bounded page size; defaults to 50",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 200,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Published comments visible to this guest or viewer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentPageEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST, INVALID_COMMENT_CURSOR, or INVALID_COMMENT_LIMIT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A supplied bearer token is invalid or expired",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PAPER_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "COMMENT_SERVICE_UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "oidcBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "comments"
+        ],
+        "description": "Creates one normalized flat comment. COMMENT_CREATION_ENABLED can reject only this operation while preserving reads and all safety controls.",
+        "operationId": "create_comment",
+        "parameters": [
+          {
+            "name": "paper_id",
+            "in": "path",
+            "description": "Existing cached paper ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Strict comment intent; client_request_id is the durable idempotency key",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCommentBody"
+              },
+              "example": {
+                "body": "The ablation changes how I read the main result.",
+                "client_request_id": "0198f4da-383f-77f0-9404-e6d6614d26e1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Exact idempotent replay of the canonical comment",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentEnvelope"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Canonical accepted comment, published or privately pending review",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST, INVALID_CLIENT_REQUEST_ID, or INVALID_COMMENT_BODY",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED or TOKEN_EXPIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_SUSPENDED, ACCOUNT_DELETION_PENDING, or COMMENT_PROFILE_INCOMPLETE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PAPER_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "IDEMPOTENCY_CONFLICT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "COMMENT_REJECTED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds until the shared account or origin window resets"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "FEATURE_DISABLED, AUTHENTICATION_UNAVAILABLE, or COMMENT_SERVICE_UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
+      }
+    },
     "/v1/papers/{paper_id}/connections": {
       "get": {
         "tags": [
@@ -1478,11 +2608,37 @@
           "terms_accepted_at",
           "current_terms_version",
           "terms_current",
+          "community_guidelines_version",
+          "community_guidelines_accepted_at",
+          "current_community_guidelines_version",
+          "community_guidelines_current",
+          "comment_profile_complete",
           "created_at",
           "updated_at"
         ],
         "properties": {
+          "comment_profile_complete": {
+            "type": "boolean"
+          },
+          "community_guidelines_accepted_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "community_guidelines_current": {
+            "type": "boolean"
+          },
+          "community_guidelines_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "created_at": {
+            "type": "string"
+          },
+          "current_community_guidelines_version": {
             "type": "string"
           },
           "current_terms_version": {
@@ -1548,6 +2704,55 @@
           "deletion_pending",
           "deleted"
         ]
+      },
+      "BlockedUserEnvelope": {
+        "type": "object",
+        "required": [
+          "blocked_user"
+        ],
+        "properties": {
+          "blocked_user": {
+            "$ref": "#/components/schemas/BlockedUserResponse"
+          }
+        }
+      },
+      "BlockedUserPageEnvelope": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlockedUserResponse"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 512
+          }
+        }
+      },
+      "BlockedUserResponse": {
+        "type": "object",
+        "required": [
+          "user",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user": {
+            "$ref": "#/components/schemas/CommentAuthorResponse"
+          }
+        }
       },
       "CapabilitiesSchema": {
         "type": "object",
@@ -1683,6 +2888,199 @@
           }
         }
       },
+      "CommentAuthorResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "handle",
+          "display_name",
+          "status"
+        ],
+        "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80,
+            "minLength": 1
+          },
+          "handle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 30,
+            "minLength": 3
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AccountStatusSchema"
+          }
+        }
+      },
+      "CommentEnvelope": {
+        "type": "object",
+        "required": [
+          "comment"
+        ],
+        "properties": {
+          "comment": {
+            "$ref": "#/components/schemas/CommentResponse"
+          }
+        }
+      },
+      "CommentPageEnvelope": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommentResponse"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 512
+          }
+        }
+      },
+      "CommentReportEnvelope": {
+        "type": "object",
+        "required": [
+          "report"
+        ],
+        "properties": {
+          "report": {
+            "$ref": "#/components/schemas/CommentReportResponse"
+          }
+        }
+      },
+      "CommentReportReasonBody": {
+        "type": "string",
+        "enum": [
+          "spam",
+          "harassment",
+          "hate",
+          "threat",
+          "sexual_content",
+          "privacy",
+          "impersonation",
+          "copyright",
+          "other"
+        ]
+      },
+      "CommentReportResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "comment_id",
+          "reason",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "comment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/CommentReportReasonBody"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CommentReportStatusSchema"
+          }
+        }
+      },
+      "CommentReportStatusSchema": {
+        "type": "string",
+        "enum": [
+          "open",
+          "reviewed",
+          "actioned",
+          "dismissed"
+        ]
+      },
+      "CommentResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "paper_id",
+          "author",
+          "body",
+          "status",
+          "version",
+          "created_at",
+          "updated_at",
+          "edited_at"
+        ],
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/CommentAuthorResponse"
+          },
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "edited_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "paper_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CommentStatusSchema"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 1
+          }
+        }
+      },
+      "CommentStatusSchema": {
+        "type": "string",
+        "enum": [
+          "pending_review",
+          "published",
+          "hidden",
+          "deleted"
+        ]
+      },
       "ConnectionReferenceSchema": {
         "type": "object",
         "required": [
@@ -1754,6 +3152,45 @@
             }
           }
         }
+      },
+      "CreateCommentBody": {
+        "type": "object",
+        "required": [
+          "client_request_id",
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1
+          },
+          "client_request_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditCommentBody": {
+        "type": "object",
+        "required": [
+          "body",
+          "expected_version"
+        ],
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1
+          },
+          "expected_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
       },
       "ErrorBodySchema": {
         "type": "object",
@@ -2415,6 +3852,13 @@
         "type": "object",
         "description": "Supported compare-and-swap fields for `PATCH /v1/me`. All properties are\noptional, while an explicit JSON null is meaningful only for\n`display_name`.",
         "properties": {
+          "accept_community_guidelines_version": {
+            "type": "string",
+            "example": "2026-07-31",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
           "accept_terms_version": {
             "type": "string",
             "example": "2026-07-31",
@@ -2466,6 +3910,27 @@
           "unknown"
         ]
       },
+      "ReportCommentBody": {
+        "type": "object",
+        "required": [
+          "reason",
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500,
+            "minLength": 1
+          },
+          "reason": {
+            "$ref": "#/components/schemas/CommentReportReasonBody"
+          }
+        },
+        "additionalProperties": false
+      },
       "SectionKindSchema": {
         "type": "string",
         "enum": [
@@ -2511,6 +3976,10 @@
     {
       "name": "library",
       "description": "OIDC-authenticated synchronized To Read library"
+    },
+    {
+      "name": "comments",
+      "description": "Public flat paper comments and authenticated safety controls"
     }
   ]
 }

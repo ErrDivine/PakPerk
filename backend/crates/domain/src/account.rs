@@ -6,6 +6,8 @@ use thiserror::Error;
 use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
+use crate::CommunityGuidelinesVersion;
+
 const MIN_HANDLE_LENGTH: usize = 3;
 const MAX_HANDLE_LENGTH: usize = 30;
 const MAX_DISPLAY_NAME_LENGTH: usize = 80;
@@ -373,6 +375,8 @@ pub struct User {
     pub profile_version: i64,
     pub terms_version: Option<TermsVersion>,
     pub terms_accepted_at: Option<DateTime<Utc>>,
+    pub community_guidelines_version: Option<CommunityGuidelinesVersion>,
+    pub community_guidelines_accepted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub last_seen_at: DateTime<Utc>,
@@ -385,6 +389,15 @@ impl User {
     }
 
     #[must_use]
+    pub fn has_accepted_community_guidelines(
+        &self,
+        current_version: &CommunityGuidelinesVersion,
+    ) -> bool {
+        self.community_guidelines_accepted_at.is_some()
+            && self.community_guidelines_version.as_ref() == Some(current_version)
+    }
+
+    #[must_use]
     pub const fn has_public_handle(&self) -> bool {
         self.handle.is_some()
     }
@@ -394,6 +407,18 @@ impl User {
         self.status.is_active()
             && self.has_public_handle()
             && self.has_accepted_terms(current_terms_version)
+    }
+
+    /// The stricter public-UGC gate. Reading and library operations deliberately
+    /// continue to use `profile_complete` and do not require community consent.
+    #[must_use]
+    pub fn comment_profile_complete(
+        &self,
+        current_terms_version: &TermsVersion,
+        current_guidelines_version: &CommunityGuidelinesVersion,
+    ) -> bool {
+        self.profile_complete(current_terms_version)
+            && self.has_accepted_community_guidelines(current_guidelines_version)
     }
 
     #[must_use]

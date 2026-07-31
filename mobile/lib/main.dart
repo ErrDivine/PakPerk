@@ -5,6 +5,7 @@ import 'app/application_bootstrap.dart';
 import 'app/account_providers.dart';
 import 'app/feature_flags.dart';
 import 'app/library_providers.dart';
+import 'app/comments_providers.dart';
 import 'app/startup_controller.dart';
 import 'core/content_policy.dart';
 import 'core/providers.dart';
@@ -28,6 +29,7 @@ void main() {
         ...applicationStartupDataOverrides(bootstrapper),
         ...accountApplicationOverrides(bootstrapper),
         ...libraryApplicationOverrides(),
+        ...commentsApplicationOverrides(),
       ],
       child: PakPerkBootstrapApp(bootstrapper: bootstrapper),
     ),

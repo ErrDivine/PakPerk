@@ -103,6 +103,9 @@ class CachedCommentPages extends Table {
   TextColumn get pageKey => text()();
   TextColumn get paperId =>
       text().references(CachedPapers, #paperId, onDelete: KeyAction.cascade)();
+  // Null is the guest/public projection. Authenticated pages are isolated by
+  // Pakperk account ID because server-side block filtering is viewer-specific.
+  TextColumn get viewerAccountId => text().nullable()();
   TextColumn get cursor => text().nullable()();
   TextColumn get payloadJson => text()();
   DateTimeColumn get fetchedAt => dateTime()();
@@ -167,11 +170,29 @@ class CommentDrafts extends Table {
       text().references(CachedPapers, #paperId, onDelete: KeyAction.restrict)();
   TextColumn get parentCommentId => text().nullable()();
   TextColumn get body => text()();
+  // Stable across explicit retries and app restarts. It is never enqueued or
+  // auto-sent; the user must still press Send for every attempt.
+  TextColumn get clientRequestId => text().nullable()();
+  TextColumn get lastAttemptedBody => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 
   @override
   Set<Column<Object>> get primaryKey => {draftId};
+}
+
+@DataClassName('BlockedUserRow')
+class BlockedUsers extends Table {
+  TextColumn get accountId => text()();
+  TextColumn get blockedUserId => text()();
+  TextColumn get handle => text()();
+  TextColumn get displayName => text().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  BoolColumn get serverConfirmed =>
+      boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column<Object>> get primaryKey => {accountId, blockedUserId};
 }
 
 @DataClassName('SyncOutboxRow')
@@ -227,6 +248,7 @@ class CacheMetadata extends Table {
     CachedChats,
     LibraryItems,
     CommentDrafts,
+    BlockedUsers,
     SyncOutbox,
     LibrarySyncStates,
     CacheMetadata,
@@ -259,7 +281,7 @@ class PakPerkDatabase extends _$PakPerkDatabase {
   final Future<String>? _databasePath;
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -388,12 +410,41 @@ class PakPerkDatabase extends _$PakPerkDatabase {
               )
             ''');
       }
+      if (from < 5) {
+        if (!await _columnExists('cached_comment_pages', 'viewer_account_id')) {
+          // Phase 4 never exposed comments, so any pre-v5 payload is only a
+          // dormant public cache entry. Preserve it as a guest projection.
+          await migrator.addColumn(
+            cachedCommentPages,
+            cachedCommentPages.viewerAccountId,
+          );
+        }
+        if (!await _columnExists('comment_drafts', 'client_request_id')) {
+          await migrator.addColumn(
+            commentDrafts,
+            commentDrafts.clientRequestId,
+          );
+        }
+        if (!await _columnExists('comment_drafts', 'last_attempted_body')) {
+          await migrator.addColumn(
+            commentDrafts,
+            commentDrafts.lastAttemptedBody,
+          );
+        }
+        // Drafts created before the comment feature had no verified account
+        // ownership. Fail closed instead of attaching them to the next login.
+        await (delete(
+          commentDrafts,
+        )..where((row) => row.accountId.isNull())).go();
+        await migrator.createTable(blockedUsers);
+      }
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
       await customSelect('PRAGMA journal_mode = WAL').get();
       await _installLibraryIndexes();
       await _installLibraryPinTriggers();
+      await _installCommentIndexes();
     },
   );
 
@@ -520,6 +571,24 @@ class PakPerkDatabase extends _$PakPerkDatabase {
           CREATE INDEX IF NOT EXISTS sync_outbox_library_due
           ON sync_outbox(account_id, state, next_attempt_at, created_at)
           WHERE entity_kind = 'library_item'
+        ''');
+  }
+
+  Future<void> _installCommentIndexes() async {
+    await customStatement('''
+          CREATE UNIQUE INDEX IF NOT EXISTS comment_drafts_one_per_paper
+          ON comment_drafts(account_id, paper_id)
+          WHERE account_id IS NOT NULL
+        ''');
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS cached_comment_pages_viewer_paper
+          ON cached_comment_pages(
+            viewer_account_id, paper_id, fetched_at DESC, page_key
+          )
+        ''');
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS blocked_users_account_created
+          ON blocked_users(account_id, created_at DESC, blocked_user_id)
         ''');
   }
 

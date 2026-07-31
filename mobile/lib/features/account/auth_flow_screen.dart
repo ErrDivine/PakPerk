@@ -44,6 +44,7 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
   final _displayName = TextEditingController();
   bool _running = false;
   bool _termsAccepted = false;
+  bool _guidelinesAccepted = false;
   String? _safeError;
   String? _initializedProfileId;
 
@@ -70,13 +71,18 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
       _handle.text = profile.handle ?? '';
       _displayName.text = profile.displayName ?? '';
       _termsAccepted = profile.termsCurrent;
+      _guidelinesAccepted = profile.communityGuidelinesCurrent;
     }
 
+    final requiresCommunity = _requiresCommunityPolicy(pending?.kind);
+    final bypassesPublicProfile = _bypassesPublicProfile(pending?.kind);
     final needsSetup =
         profile != null &&
         profile.isActive &&
-        (profile.handle == null || !profile.termsCurrent) &&
-        pending?.kind != AppPendingActionKind.savePaper;
+        (profile.handle == null ||
+            !profile.termsCurrent ||
+            (requiresCommunity && !profile.communityGuidelinesCurrent)) &&
+        !bypassesPublicProfile;
     return PopScope(
       canPop: !_running,
       onPopInvokedWithResult: (didPop, _) {
@@ -222,6 +228,39 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
               child: const Text('Read the terms'),
             ),
           ),
+          if (_requiresCommunityPolicy(
+            ref.watch(pendingAuthenticatedActionProvider)?.kind,
+          )) ...[
+            const SizedBox(height: 8),
+            CheckboxListTile(
+              key: const ValueKey('account-community-checkbox'),
+              value: _guidelinesAccepted,
+              onChanged: busy
+                  ? null
+                  : (value) =>
+                        setState(() => _guidelinesAccepted = value ?? false),
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                'I accept Community Guidelines version '
+                '${profile.currentCommunityGuidelinesVersion}.',
+              ),
+              subtitle: const Text(
+                'Comments are public. Harassment, threats, doxxing, spam, '
+                'impersonation, and illegal content are prohibited.',
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: busy
+                    ? null
+                    : () =>
+                          context.push<void>(PakPerkRoutes.communityGuidelines),
+                child: const Text('Read the Community Guidelines'),
+              ),
+            ),
+          ],
           if (_safeError ?? account.error?.message case final message?) ...[
             const SizedBox(height: 8),
             Text(
@@ -294,11 +333,13 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
     // returned an active `/v1/me`; comment/moderation actions still continue
     // through onboarding below.
     final pending = ref.read(pendingAuthenticatedActionProvider);
-    if (pending?.kind == AppPendingActionKind.savePaper) {
+    if (_bypassesPublicProfile(pending?.kind)) {
       await _resumePendingAndClose();
       return;
     }
-    if (profile.handle != null && profile.termsCurrent) {
+    final requiresCommunity = _requiresCommunityPolicy(pending?.kind);
+    if (profile.isProfileComplete &&
+        (!requiresCommunity || profile.communityGuidelinesCurrent)) {
       await _resumePendingAndClose();
       return;
     }
@@ -309,6 +350,16 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     if (!_termsAccepted) {
       setState(() => _safeError = 'Accept the current terms to continue.');
+      return;
+    }
+    final requiresCommunity = _requiresCommunityPolicy(
+      ref.read(pendingAuthenticatedActionProvider)?.kind,
+    );
+    if (requiresCommunity && !_guidelinesAccepted) {
+      setState(
+        () =>
+            _safeError = 'Accept the current Community Guidelines to continue.',
+      );
       return;
     }
     setState(() {
@@ -330,13 +381,18 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
             acceptTermsVersion: profile.termsCurrent
                 ? null
                 : profile.currentTermsVersion,
+            acceptCommunityGuidelinesVersion:
+                !requiresCommunity || profile.communityGuidelinesCurrent
+                ? null
+                : profile.currentCommunityGuidelinesVersion,
           ),
         );
     if (!mounted) return;
     if (updated == null ||
         !updated.isActive ||
         updated.handle == null ||
-        !updated.termsCurrent) {
+        !updated.termsCurrent ||
+        (requiresCommunity && !updated.communityGuidelinesCurrent)) {
       setState(() {
         _running = false;
         _safeError =
@@ -386,6 +442,21 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
     }
   }
 }
+
+bool _requiresCommunityPolicy(AppPendingActionKind? kind) => switch (kind) {
+  AppPendingActionKind.openComposer => true,
+  AppPendingActionKind.savePaper ||
+  AppPendingActionKind.reportComment ||
+  AppPendingActionKind.blockUser ||
+  null => false,
+};
+
+bool _bypassesPublicProfile(AppPendingActionKind? kind) => switch (kind) {
+  AppPendingActionKind.savePaper ||
+  AppPendingActionKind.reportComment ||
+  AppPendingActionKind.blockUser => true,
+  AppPendingActionKind.openComposer || null => false,
+};
 
 String _pendingFailureMessage(AppPendingActionKind kind) => switch (kind) {
   AppPendingActionKind.savePaper =>

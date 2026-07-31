@@ -1,17 +1,22 @@
 # Pakperk architecture
 
-Pakperk is a modular monolith with two Rust processes and one PostgreSQL
-database. The API owns short request/response work, including cached or exact-ID
-metadata reads and paper-grounded chat inference. The worker owns background
-metadata ingestion, PDF acquisition, GROBID parsing, embedding, reference
-resolution, and relationship generation. Both reuse transport-independent
-domain types and repositories, and every arXiv request is serialized through
-the same database-backed rate gate.
+Pakperk is a modular monolith with two long-running Rust processes, one local
+administration binary, and one PostgreSQL database. The API owns short
+request/response work, including cached or exact-ID metadata reads,
+paper-grounded chat inference, account/library synchronization, and public
+comment safety operations. The worker owns background metadata ingestion, PDF
+acquisition, GROBID parsing, embedding, reference resolution, and relationship
+generation. The administration binary exposes explicit, audited moderation
+operations without creating a second product backend. All three reuse
+transport-independent domain types and repositories, and every arXiv request
+is serialized through the same database-backed rate gate.
 
 ## Production v0.0 phase state
 
 The production migration is specified in
-[the Production v0.0 plan](production-v0.0-plan.md). Phases 0–4 are accepted:
+[the Production v0.0 plan](production-v0.0-plan.md). Phases 0–5 are accepted;
+the complete comment/moderation implementation and its live two-user evidence
+are recorded in the [Phase 5 report](phase-reports/phase-5.md):
 the Flutter client now has the Read/You shell and a bounded relational
 Drift/SQLite public-content cache, while the existing Rust modular monolith and
 paper pipeline remain intact. Phase 3 account integration is accepted with its
@@ -26,8 +31,11 @@ reference OIDC deployment, but JWT verification, Pakperk account mapping, and
 destructive identity administration remain separate provider-neutral
 boundaries. PostgreSQL stores local accounts and shared rate-limit buckets; no
 account, social, queue, or rate-limit network service is introduced. To Read
-operations remain in the same backend and PostgreSQL database. Public comments
-and account deletion remain later-phase capabilities.
+operations remain in the same backend and PostgreSQL database. Phase 5 keeps
+comments, reports, blocks, moderation audit, and shared UGC limits in that same
+boundary. Comment publication is independently kill-switchable while reads and
+safety actions remain live. Account deletion remains a Phase 6 capability and
+therefore blocks public comment enablement.
 
 The migration must preserve the capability-publication and reader-transition
 invariants documented below: metadata/abstract prefetch is permitted, but PDF
@@ -40,6 +48,7 @@ flowchart LR
   A -->|"bounded discovery + JWKS"| I
   M --> D[("Drift / SQLite public cache")]
   M --> T[("Drift account library + outbox")]
+  M --> C[("Drift comment pages, drafts, and blocks")]
   M --> S["Platform secure storage"]
   A --> P[("PostgreSQL + pgvector")]
   A -->|"idempotent enqueue"| J[("jobs table")]
@@ -49,6 +58,7 @@ flowchart LR
   W --> G["GROBID 0.9.0"]
   W --> L["Configured model provider"]
   W --> P
+  O["Audited pakperk-admin CLI"] -->|"moderation actions"| P
 ```
 
 ## Identity and account boundary
@@ -74,6 +84,16 @@ account ID for the current authentication epoch. A stored account ID may scope
 offline display while credentials refresh, but it cannot authorize an outbox
 upload or remote response. Identity mismatch clears the old account rows before
 the newly verified account begins synchronization.
+
+The same account-and-auth-epoch barrier protects personalized comment pages,
+drafts, and block projections. Guests read only published comments. Posting
+requires the current Terms and Community Guidelines plus a complete handle;
+the API applies normalization, deterministic rules, shared account/origin
+limits, and the configured provider-neutral moderation adapter. A moderator
+outage or uncertain decision holds content privately instead of failing open.
+Bodies and report details are excluded from ordinary diagnostics and list
+tooling. The exact behavior is documented in the
+[comments and moderation contract](comments-and-moderation.md).
 
 ## Capability publication
 

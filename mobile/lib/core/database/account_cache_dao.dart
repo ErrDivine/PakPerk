@@ -105,6 +105,12 @@ class AccountCacheDao {
                   table.accountId.equals(accountId) | table.accountId.isNull(),
             ))
             .go();
+        await (database.delete(
+          database.cachedCommentPages,
+        )..where((table) => table.viewerAccountId.equals(accountId))).go();
+        await (database.delete(
+          database.blockedUsers,
+        )..where((table) => table.accountId.equals(accountId))).go();
         await (database.delete(database.syncOutbox)..where(
               (table) =>
                   table.accountId.equals(accountId) | table.accountId.isNull(),
@@ -128,6 +134,10 @@ class AccountCacheDao {
     )..addColumns([database.libraryItems.paperId])).get();
     await database.delete(database.libraryItems).go();
     await database.delete(database.commentDrafts).go();
+    await (database.delete(
+      database.cachedCommentPages,
+    )..where((table) => table.viewerAccountId.isNotNull())).go();
+    await database.delete(database.blockedUsers).go();
     await database.delete(database.syncOutbox).go();
     await database.delete(database.librarySyncStates).go();
     for (final row in affectedPapers) {

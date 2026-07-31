@@ -1,15 +1,28 @@
 //! Validated deployment configuration and production feature gates.
 
-use std::{net::SocketAddr, str::FromStr, time::Duration};
+use std::{
+    fmt, fs,
+    io::Read as _,
+    net::{IpAddr, SocketAddr},
+    path::Path,
+    str::FromStr,
+    time::Duration,
+};
 
 use accounts::{AccountPolicy, AccountPolicyError};
 use arxiv_client::ArxivClientConfig;
 use auth::{OidcAlgorithm, OidcVerifierConfig};
 use axum::http::HeaderValue;
-use domain::{FulltextPolicy, TermsVersion};
+use domain::{
+    COMMENT_MAX_BYTES, COMMENT_MAX_SCALARS, COMMENT_MAX_URLS, CommunityGuidelinesVersion,
+    FulltextPolicy, TermsVersion,
+};
 use llm_provider::OpenAiCompatibleConfig;
-use secrecy::SecretString;
+use secrecy::{ExposeSecret as _, SecretString};
+use sha2::{Digest as _, Sha256};
 use url::{Host, Url};
+
+const LOWERCASE_HEX: &[u8; 16] = b"0123456789abcdef";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApiEnvironment {
@@ -51,7 +64,11 @@ pub struct FeatureFlags {
     /// Allows operators to freeze account-owned mutations while preserving
     /// synchronized library reads.
     pub library_writes: bool,
+    /// Registers the public/read and account safety surfaces for comments.
     pub comments: bool,
+    /// Emergency kill switch for only new comment publication. Existing
+    /// comments and every safety/moderation control remain available.
+    pub comment_creation: bool,
 }
 
 impl FeatureFlags {
@@ -64,6 +81,9 @@ impl FeatureFlags {
         }
         if self.comments && !self.accounts {
             anyhow::bail!("COMMENTS_ENABLED requires ACCOUNTS_ENABLED");
+        }
+        if self.comment_creation && !self.comments {
+            anyhow::bail!("COMMENT_CREATION_ENABLED requires COMMENTS_ENABLED");
         }
         Ok(self)
     }
@@ -79,6 +99,9 @@ pub struct ApiConfig {
     pub accounts: Option<AccountFeatureConfig>,
     /// Present exactly when synchronized library routes are enabled.
     pub library: Option<LibraryFeatureConfig>,
+    /// Present exactly when public comments and their safety controls are
+    /// registered.
+    pub comments: Option<CommentFeatureConfig>,
     pub bind: SocketAddr,
     pub database_url: String,
     pub database_pool_size: u32,
@@ -100,6 +123,7 @@ pub struct ApiConfig {
 pub struct AccountFeatureConfig {
     pub oidc: OidcVerifierConfig,
     pub current_terms_version: TermsVersion,
+    pub current_community_guidelines_version: CommunityGuidelinesVersion,
     pub last_seen_interval: Duration,
     pub profile_update_limit: u32,
     pub profile_update_window: Duration,
@@ -111,6 +135,395 @@ pub struct AccountFeatureConfig {
 pub struct LibraryFeatureConfig {
     pub mutation_limit: u32,
     pub mutation_window: Duration,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CommentModerationProvider {
+    Rules,
+}
+
+impl FromStr for CommentModerationProvider {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "rules" => Ok(Self::Rules),
+            _ => anyhow::bail!(
+                "COMMENT_MODERATION_PROVIDER must be `rules`; no other provider is wired"
+            ),
+        }
+    }
+}
+
+/// API-edge settings that must not cross into domain/service diagnostics.
+#[derive(Clone)]
+pub struct CommentFeatureConfig {
+    origin_hasher: CommentOriginHasher,
+    maximum_comment_scalars: usize,
+    maximum_comment_bytes: usize,
+    maximum_comment_urls: usize,
+    moderation_provider: CommentModerationProvider,
+    support_contact_url: Url,
+    maximum_page_size: u32,
+    create_limit: u32,
+    create_window: Duration,
+    mutation_limit: u32,
+    mutation_window: Duration,
+    report_limit: u32,
+    report_window: Duration,
+    origin_limit: u32,
+    origin_window: Duration,
+}
+
+impl fmt::Debug for CommentFeatureConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CommentFeatureConfig")
+            .field("origin_hasher", &"[redacted]")
+            .field("maximum_comment_scalars", &self.maximum_comment_scalars)
+            .field("maximum_comment_bytes", &self.maximum_comment_bytes)
+            .field("maximum_comment_urls", &self.maximum_comment_urls)
+            .field("moderation_provider", &self.moderation_provider)
+            .field("support_contact_url", &self.support_contact_url.as_str())
+            .field("maximum_page_size", &self.maximum_page_size)
+            .field("create_limit", &self.create_limit)
+            .field("create_window", &self.create_window)
+            .field("mutation_limit", &self.mutation_limit)
+            .field("mutation_window", &self.mutation_window)
+            .field("report_limit", &self.report_limit)
+            .field("report_window", &self.report_window)
+            .field("origin_limit", &self.origin_limit)
+            .field("origin_window", &self.origin_window)
+            .finish()
+    }
+}
+
+impl CommentFeatureConfig {
+    fn from_env(environment: ApiEnvironment) -> anyhow::Result<Self> {
+        let path = required_comments_env("COMMENT_ORIGIN_HASH_SECRET_FILE")?;
+        let moderation_provider = std::env::var("COMMENT_MODERATION_PROVIDER").ok();
+        let config = Self {
+            origin_hasher: CommentOriginHasher::from_file(Path::new(&path))?,
+            maximum_comment_scalars: env_parse("COMMENT_MAX_SCALARS", COMMENT_MAX_SCALARS)?,
+            maximum_comment_bytes: env_parse("COMMENT_MAX_BYTES", COMMENT_MAX_BYTES)?,
+            maximum_comment_urls: env_parse("COMMENT_MAX_URLS", COMMENT_MAX_URLS)?,
+            moderation_provider: parse_comment_moderation_provider(moderation_provider.as_deref())?,
+            support_contact_url: parse_comment_support_contact_url(
+                environment,
+                &required_comments_env("COMMENT_SUPPORT_CONTACT_URL")?,
+            )?,
+            maximum_page_size: env_parse("COMMENT_MAXIMUM_PAGE_SIZE", 50_u32)?,
+            create_limit: env_parse("COMMENT_CREATE_LIMIT", 10_u32)?,
+            create_window: Duration::from_secs(env_parse(
+                "COMMENT_CREATE_WINDOW_SECONDS",
+                60 * 60_u64,
+            )?),
+            mutation_limit: env_parse("COMMENT_MUTATION_LIMIT", 60_u32)?,
+            mutation_window: Duration::from_secs(env_parse(
+                "COMMENT_MUTATION_WINDOW_SECONDS",
+                60 * 60_u64,
+            )?),
+            report_limit: env_parse("COMMENT_REPORT_LIMIT", 30_u32)?,
+            report_window: Duration::from_secs(env_parse(
+                "COMMENT_REPORT_WINDOW_SECONDS",
+                60 * 60_u64,
+            )?),
+            origin_limit: env_parse("COMMENT_ORIGIN_LIMIT", 120_u32)?,
+            origin_window: Duration::from_secs(env_parse(
+                "COMMENT_ORIGIN_WINDOW_SECONDS",
+                60 * 60_u64,
+            )?),
+        };
+        config.validate(environment)?;
+        Ok(config)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(secret: &str) -> anyhow::Result<Self> {
+        Ok(Self {
+            origin_hasher: CommentOriginHasher::new(secret)?,
+            maximum_comment_scalars: COMMENT_MAX_SCALARS,
+            maximum_comment_bytes: COMMENT_MAX_BYTES,
+            maximum_comment_urls: COMMENT_MAX_URLS,
+            moderation_provider: CommentModerationProvider::Rules,
+            support_contact_url: Url::parse("https://pakperk.app/support")?,
+            maximum_page_size: 50,
+            create_limit: 10,
+            create_window: Duration::from_secs(60 * 60),
+            mutation_limit: 60,
+            mutation_window: Duration::from_secs(60 * 60),
+            report_limit: 30,
+            report_window: Duration::from_secs(60 * 60),
+            origin_limit: 120,
+            origin_window: Duration::from_secs(60 * 60),
+        })
+    }
+
+    pub(crate) fn origin_scope(&self, address: SocketAddr) -> String {
+        self.origin_hasher.scope_for(address.ip())
+    }
+
+    pub(crate) const fn moderation_provider(&self) -> CommentModerationProvider {
+        self.moderation_provider
+    }
+
+    fn validate(&self, environment: ApiEnvironment) -> anyhow::Result<()> {
+        validate_comment_content_limits(
+            self.maximum_comment_scalars,
+            self.maximum_comment_bytes,
+            self.maximum_comment_urls,
+        )?;
+        validate_comment_support_contact_url(environment, &self.support_contact_url)
+    }
+
+    pub(crate) fn service_config(
+        &self,
+        account: &AccountFeatureConfig,
+        environment: ApiEnvironment,
+    ) -> anyhow::Result<comments::CommentServiceConfig> {
+        self.validate(environment)?;
+        comments::CommentServiceConfig::new(
+            account.current_terms_version.clone(),
+            account.current_community_guidelines_version.clone(),
+        )
+        .with_maximum_page_size(self.maximum_page_size)?
+        .with_create_rate_limit(self.create_limit, self.create_window)?
+        .with_mutation_rate_limit(self.mutation_limit, self.mutation_window)?
+        .with_report_rate_limit(self.report_limit, self.report_window)?
+        .with_origin_rate_limit(self.origin_limit, self.origin_window)
+        .map_err(Into::into)
+    }
+}
+
+fn parse_comment_moderation_provider(
+    value: Option<&str>,
+) -> anyhow::Result<CommentModerationProvider> {
+    value.unwrap_or("rules").parse()
+}
+
+fn validate_comment_content_limits(
+    maximum_scalars: usize,
+    maximum_bytes: usize,
+    maximum_urls: usize,
+) -> anyhow::Result<()> {
+    if maximum_scalars != COMMENT_MAX_SCALARS {
+        anyhow::bail!("COMMENT_MAX_SCALARS must equal the enforced domain limit of 2000");
+    }
+    if maximum_bytes != COMMENT_MAX_BYTES {
+        anyhow::bail!("COMMENT_MAX_BYTES must equal the enforced domain limit of 8000");
+    }
+    if maximum_urls != COMMENT_MAX_URLS {
+        anyhow::bail!("COMMENT_MAX_URLS must equal the enforced domain limit of 3");
+    }
+    Ok(())
+}
+
+fn parse_comment_support_contact_url(
+    environment: ApiEnvironment,
+    value: &str,
+) -> anyhow::Result<Url> {
+    if value.trim() != value || value.len() > 2_048 {
+        anyhow::bail!("COMMENT_SUPPORT_CONTACT_URL must be a bounded absolute URL");
+    }
+    let url = Url::parse(value)
+        .map_err(|error| anyhow::anyhow!("COMMENT_SUPPORT_CONTACT_URL is invalid: {error}"))?;
+    validate_comment_support_contact_url(environment, &url)?;
+    Ok(url)
+}
+
+fn validate_comment_support_contact_url(
+    environment: ApiEnvironment,
+    url: &Url,
+) -> anyhow::Result<()> {
+    let Some(host) = url.host() else {
+        anyhow::bail!("COMMENT_SUPPORT_CONTACT_URL must be an absolute HTTP(S) URL");
+    };
+    if !url.username().is_empty() || url.password().is_some() {
+        anyhow::bail!("COMMENT_SUPPORT_CONTACT_URL must not contain credentials");
+    }
+    let lowercase = url.as_str().to_ascii_lowercase();
+    let placeholder_host = match &host {
+        Host::Domain(host) => {
+            matches!(
+                *host,
+                "example.com" | "example.org" | "example.net" | "invalid"
+            ) || host.ends_with(".example.com")
+                || host.ends_with(".example.org")
+                || host.ends_with(".example.net")
+                || host.ends_with(".invalid")
+        }
+        Host::Ipv4(_) | Host::Ipv6(_) => false,
+    };
+    if placeholder_host
+        || ["change-me", "changeme", "placeholder", "todo"]
+            .iter()
+            .any(|marker| lowercase.contains(marker))
+    {
+        anyhow::bail!("COMMENT_SUPPORT_CONTACT_URL must not be a placeholder");
+    }
+
+    let is_loopback = match &host {
+        Host::Ipv4(address) => address.is_loopback(),
+        Host::Ipv6(address) => address.is_loopback(),
+        Host::Domain(host) => host.eq_ignore_ascii_case("localhost"),
+    };
+    match url.scheme() {
+        "https" if environment.is_deployed() && is_loopback => {
+            anyhow::bail!(
+                "COMMENT_SUPPORT_CONTACT_URL must not use a loopback host outside development"
+            )
+        }
+        "https" => Ok(()),
+        "http" if environment == ApiEnvironment::Development && is_loopback => Ok(()),
+        "http" if environment == ApiEnvironment::Development => {
+            anyhow::bail!("development HTTP COMMENT_SUPPORT_CONTACT_URL must use a loopback host")
+        }
+        "http" => {
+            anyhow::bail!("COMMENT_SUPPORT_CONTACT_URL must use HTTPS outside development")
+        }
+        _ => anyhow::bail!("COMMENT_SUPPORT_CONTACT_URL must be an absolute HTTP(S) URL"),
+    }
+}
+
+#[derive(Clone)]
+struct CommentOriginHasher {
+    secret: SecretString,
+}
+
+impl CommentOriginHasher {
+    fn from_file(path: &Path) -> anyhow::Result<Self> {
+        let path_metadata = fs::symlink_metadata(path).map_err(|error| {
+            anyhow::anyhow!("could not read COMMENT_ORIGIN_HASH_SECRET_FILE metadata: {error}")
+        })?;
+        if path_metadata.file_type().is_symlink() || !path_metadata.is_file() {
+            anyhow::bail!("COMMENT_ORIGIN_HASH_SECRET_FILE must be a regular non-symlink file");
+        }
+        let mut file = fs::File::open(path).map_err(|error| {
+            anyhow::anyhow!("could not open COMMENT_ORIGIN_HASH_SECRET_FILE: {error}")
+        })?;
+        let metadata = file.metadata().map_err(|error| {
+            anyhow::anyhow!(
+                "could not read opened COMMENT_ORIGIN_HASH_SECRET_FILE metadata: {error}"
+            )
+        })?;
+        if !metadata.is_file() {
+            anyhow::bail!("COMMENT_ORIGIN_HASH_SECRET_FILE must be a regular file");
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt as _;
+            if path_metadata.dev() != metadata.dev() || path_metadata.ino() != metadata.ino() {
+                anyhow::bail!("COMMENT_ORIGIN_HASH_SECRET_FILE changed while it was opened");
+            }
+        }
+        let expected_length = metadata.len();
+        if !(32..=4_096).contains(&expected_length) {
+            anyhow::bail!("COMMENT_ORIGIN_HASH_SECRET_FILE must contain 32 to 4096 bytes");
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt as _;
+            if metadata.mode() & 0o077 != 0 {
+                anyhow::bail!(
+                    "COMMENT_ORIGIN_HASH_SECRET_FILE must not be accessible by group or others"
+                );
+            }
+        }
+        let mut bytes = Vec::with_capacity(usize::try_from(expected_length).unwrap_or(4_096));
+        (&mut file)
+            .take(4_097)
+            .read_to_end(&mut bytes)
+            .map_err(|error| {
+                anyhow::anyhow!("could not read COMMENT_ORIGIN_HASH_SECRET_FILE: {error}")
+            })?;
+        let final_metadata = file.metadata().map_err(|error| {
+            anyhow::anyhow!("could not recheck COMMENT_ORIGIN_HASH_SECRET_FILE metadata: {error}")
+        })?;
+        if final_metadata.len() != expected_length
+            || u64::try_from(bytes.len()).ok() != Some(expected_length)
+        {
+            anyhow::bail!("COMMENT_ORIGIN_HASH_SECRET_FILE changed while it was read");
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt as _;
+            if final_metadata.mode() & 0o077 != 0 {
+                anyhow::bail!(
+                    "COMMENT_ORIGIN_HASH_SECRET_FILE must not be accessible by group or others"
+                );
+            }
+        }
+        let value = String::from_utf8(bytes)
+            .map_err(|_| anyhow::anyhow!("COMMENT_ORIGIN_HASH_SECRET_FILE must contain UTF-8"))?;
+        Self::new(value.trim_end_matches(['\r', '\n']))
+    }
+
+    fn new(value: &str) -> anyhow::Result<Self> {
+        let lowercase = value.to_ascii_lowercase();
+        let weak_marker = ["change-me", "changeme", "example", "placeholder"]
+            .iter()
+            .any(|marker| lowercase.contains(marker));
+        let repeated = value
+            .as_bytes()
+            .first()
+            .is_some_and(|first| value.as_bytes().iter().all(|byte| byte == first));
+        if !(32..=4_096).contains(&value.len()) || value.trim() != value || weak_marker || repeated
+        {
+            anyhow::bail!(
+                "COMMENT_ORIGIN_HASH_SECRET_FILE must contain a non-placeholder 32 to 4096 byte secret"
+            );
+        }
+        Ok(Self {
+            secret: SecretString::from(value.to_owned()),
+        })
+    }
+
+    fn scope_for(&self, address: IpAddr) -> String {
+        let (family, octets): (u8, Vec<u8>) = match address {
+            IpAddr::V4(address) => (4, address.octets().to_vec()),
+            IpAddr::V6(address) => address.to_ipv4_mapped().map_or_else(
+                || (6, address.octets().to_vec()),
+                |address| (4, address.octets().to_vec()),
+            ),
+        };
+        let mut message = b"pakperk:comment-origin:v1\0".to_vec();
+        message.push(family);
+        message.extend_from_slice(&octets);
+        let digest = hmac_sha256(self.secret.expose_secret().as_bytes(), &message);
+        let mut scope = String::with_capacity(64);
+        for byte in digest {
+            scope.push(char::from(LOWERCASE_HEX[usize::from(byte >> 4)]));
+            scope.push(char::from(LOWERCASE_HEX[usize::from(byte & 0x0f)]));
+        }
+        scope
+    }
+}
+
+fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
+    const BLOCK_SIZE: usize = 64;
+    let mut normalized = [0_u8; BLOCK_SIZE];
+    if key.len() > BLOCK_SIZE {
+        normalized[..32].copy_from_slice(&Sha256::digest(key));
+    } else {
+        normalized[..key.len()].copy_from_slice(key);
+    }
+    let mut inner_pad = [0x36_u8; BLOCK_SIZE];
+    let mut outer_pad = [0x5c_u8; BLOCK_SIZE];
+    for ((inner, outer), key) in inner_pad
+        .iter_mut()
+        .zip(outer_pad.iter_mut())
+        .zip(normalized)
+    {
+        *inner ^= key;
+        *outer ^= key;
+    }
+    let mut inner = Sha256::new();
+    inner.update(inner_pad);
+    inner.update(message);
+    let mut outer = Sha256::new();
+    outer.update(outer_pad);
+    outer.update(inner.finalize());
+    outer.finalize().into()
 }
 
 impl LibraryFeatureConfig {
@@ -178,6 +591,9 @@ impl AccountFeatureConfig {
         let config = Self {
             oidc,
             current_terms_version: TermsVersion::parse(&required_env("CURRENT_TERMS_VERSION")?)?,
+            current_community_guidelines_version: CommunityGuidelinesVersion::parse(
+                &required_env("CURRENT_COMMUNITY_GUIDELINES_VERSION")?,
+            )?,
             last_seen_interval: Duration::from_secs(env_parse(
                 "ACCOUNT_LAST_SEEN_INTERVAL_SECONDS",
                 15 * 60_u64,
@@ -203,6 +619,7 @@ impl AccountFeatureConfig {
     pub fn account_policy(&self) -> Result<AccountPolicy, AccountPolicyError> {
         AccountPolicy::new(
             self.current_terms_version.clone(),
+            self.current_community_guidelines_version.clone(),
             self.last_seen_interval,
             self.profile_update_limit,
             self.profile_update_window,
@@ -234,6 +651,7 @@ impl ApiConfig {
             library: env_bool("LIBRARY_ENABLED", false)?,
             library_writes: env_bool("LIBRARY_WRITES_ENABLED", false)?,
             comments: env_bool("COMMENTS_ENABLED", false)?,
+            comment_creation: env_bool("COMMENT_CREATION_ENABLED", false)?,
         }
         .validate()?;
         let accounts = features
@@ -243,6 +661,10 @@ impl ApiConfig {
         let library = features
             .library
             .then(LibraryFeatureConfig::from_env)
+            .transpose()?;
+        let comments = features
+            .comments
+            .then(|| CommentFeatureConfig::from_env(environment))
             .transpose()?;
         let bind = std::env::var("API_BIND")
             .unwrap_or_else(|_| "0.0.0.0:8080".to_owned())
@@ -299,6 +721,7 @@ impl ApiConfig {
             features,
             accounts,
             library,
+            comments,
             bind,
             database_url,
             database_pool_size: env_parse("DATABASE_POOL_SIZE", 10_u32)?,
@@ -364,6 +787,21 @@ impl ApiConfig {
                 anyhow::bail!("library configuration requires library to be enabled")
             }
         }
+        match (self.features.comments, self.comments.as_ref()) {
+            (true, Some(comments)) => {
+                let account = self.accounts.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("account configuration is required when comments are enabled")
+                })?;
+                comments.service_config(account, self.environment)?;
+            }
+            (false, None) => {}
+            (true, None) => {
+                anyhow::bail!("comment configuration is required when comments are enabled")
+            }
+            (false, Some(_)) => {
+                anyhow::bail!("comment configuration requires comments to be enabled")
+            }
+        }
         if self.database_pool_size == 0 {
             anyhow::bail!("DATABASE_POOL_SIZE must be greater than zero");
         }
@@ -409,6 +847,13 @@ fn required_env(name: &str) -> anyhow::Result<String> {
         .ok()
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| anyhow::anyhow!("{name} is required when accounts are enabled"))
+}
+
+fn required_comments_env(name: &str) -> anyhow::Result<String> {
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| anyhow::anyhow!("{name} is required when comments are enabled"))
 }
 
 fn validate_oidc_issuer_environment(
@@ -598,7 +1043,8 @@ mod tests {
                 accounts: false,
                 library: true,
                 library_writes: false,
-                comments: false
+                comments: false,
+                comment_creation: false,
             }
             .validate()
             .is_err()
@@ -608,7 +1054,8 @@ mod tests {
                 accounts: false,
                 library: false,
                 library_writes: false,
-                comments: true
+                comments: true,
+                comment_creation: false,
             }
             .validate()
             .is_err()
@@ -618,7 +1065,8 @@ mod tests {
                 accounts: true,
                 library: true,
                 library_writes: true,
-                comments: true
+                comments: true,
+                comment_creation: true,
             }
             .validate()
             .is_ok()
@@ -629,10 +1077,213 @@ mod tests {
                 library: false,
                 library_writes: true,
                 comments: false,
+                comment_creation: false,
             }
             .validate()
             .is_err()
         );
+        assert!(
+            FeatureFlags {
+                accounts: true,
+                library: false,
+                library_writes: false,
+                comments: false,
+                comment_creation: true,
+            }
+            .validate()
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn comment_origin_scope_is_keyed_canonical_and_never_contains_the_address() {
+        let first = CommentFeatureConfig::for_test("a-strong-random-development-secret-0123456789")
+            .unwrap();
+        let second =
+            CommentFeatureConfig::for_test("another-strong-random-development-secret-987654321")
+                .unwrap();
+        let replica =
+            CommentFeatureConfig::for_test("a-strong-random-development-secret-0123456789")
+                .unwrap();
+        let address = "203.0.113.7:12345".parse().unwrap();
+        let same_ip_other_port = "203.0.113.7:54321".parse().unwrap();
+        let mapped = "[::ffff:203.0.113.7]:12345".parse().unwrap();
+        let scope = first.origin_scope(address);
+        assert_eq!(scope.len(), 64);
+        assert!(
+            scope
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        );
+        assert!(!scope.contains("203.0.113.7"));
+        assert_eq!(scope, first.origin_scope(same_ip_other_port));
+        assert_eq!(scope, first.origin_scope(mapped));
+        assert_eq!(scope, replica.origin_scope(address));
+        assert_ne!(scope, second.origin_scope(address));
+        let debug = format!("{first:?}");
+        assert!(!debug.contains("development-secret"));
+        assert!(debug.contains("origin_hasher: \"[redacted]\""));
+        assert!(debug.contains("maximum_comment_scalars: 2000"));
+        assert!(debug.contains("maximum_comment_bytes: 8000"));
+        assert!(debug.contains("maximum_comment_urls: 3"));
+        assert!(debug.contains("moderation_provider: Rules"));
+        assert!(debug.contains("https://pakperk.app/support"));
+
+        assert!(CommentFeatureConfig::for_test("change-me-change-me-change-me-change-me").is_err());
+        assert!(CommentFeatureConfig::for_test(&"x".repeat(64)).is_err());
+    }
+
+    #[test]
+    fn comment_content_limit_configuration_must_match_the_domain_policy() {
+        assert!(
+            validate_comment_content_limits(
+                COMMENT_MAX_SCALARS,
+                COMMENT_MAX_BYTES,
+                COMMENT_MAX_URLS
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_comment_content_limits(
+                COMMENT_MAX_SCALARS - 1,
+                COMMENT_MAX_BYTES,
+                COMMENT_MAX_URLS
+            )
+            .is_err()
+        );
+        assert!(
+            validate_comment_content_limits(
+                COMMENT_MAX_SCALARS,
+                COMMENT_MAX_BYTES + 1,
+                COMMENT_MAX_URLS
+            )
+            .is_err()
+        );
+        assert!(
+            validate_comment_content_limits(
+                COMMENT_MAX_SCALARS,
+                COMMENT_MAX_BYTES,
+                COMMENT_MAX_URLS + 1
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn comment_moderation_provider_rejects_unwired_values() {
+        assert_eq!(
+            parse_comment_moderation_provider(None).unwrap(),
+            CommentModerationProvider::Rules
+        );
+        assert_eq!(
+            parse_comment_moderation_provider(Some("rules")).unwrap(),
+            CommentModerationProvider::Rules
+        );
+        for unsupported in ["", "Rules", "model", "external", "off"] {
+            assert!(
+                parse_comment_moderation_provider(Some(unsupported)).is_err(),
+                "accepted unwired moderation provider {unsupported}"
+            );
+        }
+    }
+
+    #[test]
+    fn comment_support_url_is_absolute_non_placeholder_and_environment_safe() {
+        for environment in [
+            ApiEnvironment::Development,
+            ApiEnvironment::Staging,
+            ApiEnvironment::Production,
+        ] {
+            assert!(
+                parse_comment_support_contact_url(environment, "https://pakperk.app/support")
+                    .is_ok()
+            );
+        }
+        for local in [
+            "http://localhost:8080/support",
+            "http://127.0.0.1:8080/support",
+            "http://[::1]:8080/support",
+        ] {
+            assert!(parse_comment_support_contact_url(ApiEnvironment::Development, local).is_ok());
+            assert!(parse_comment_support_contact_url(ApiEnvironment::Staging, local).is_err());
+        }
+        for invalid in [
+            "/support",
+            "mailto:support@pakperk.app",
+            "http://pakperk.app/support",
+            "https://example.com/support",
+            "https://pakperk.app/placeholder",
+            "https://user:secret@pakperk.app/support",
+            " https://pakperk.app/support",
+        ] {
+            assert!(
+                parse_comment_support_contact_url(ApiEnvironment::Production, invalid).is_err(),
+                "accepted unsafe support URL {invalid}"
+            );
+        }
+        assert!(
+            parse_comment_support_contact_url(
+                ApiEnvironment::Development,
+                "http://dev.pakperk.app/support"
+            )
+            .is_err()
+        );
+        assert!(
+            parse_comment_support_contact_url(
+                ApiEnvironment::Production,
+                "https://127.0.0.1/support"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn keyed_hash_uses_standard_hmac_sha256() {
+        let actual = hmac_sha256(&[0x0b; 20], b"Hi There");
+        assert_eq!(
+            actual,
+            [
+                0xb0, 0x34, 0x4c, 0x61, 0xd8, 0xdb, 0x38, 0x53, 0x5c, 0xa8, 0xaf, 0xce, 0xaf, 0x0b,
+                0xf1, 0x2b, 0x88, 0x1d, 0xc2, 0x00, 0xc9, 0x83, 0x3d, 0xa7, 0x26, 0xe9, 0x37, 0x6c,
+                0x2e, 0x32, 0xcf, 0xf7,
+            ]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn comment_origin_secret_file_is_bounded_owner_only_and_not_a_symlink() {
+        use std::{
+            fs::OpenOptions,
+            io::Write as _,
+            os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _},
+        };
+
+        let path = std::env::temp_dir().join(format!(
+            "pakperk-comment-origin-secret-{}",
+            uuid::Uuid::now_v7()
+        ));
+        let mut file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o600)
+            .open(&path)
+            .unwrap();
+        file.write_all(b"owner-only-random-secret-material-0123456789")
+            .unwrap();
+        drop(file);
+        assert!(CommentOriginHasher::from_file(&path).is_ok());
+
+        let link = path.with_extension("link");
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        assert!(CommentOriginHasher::from_file(&link).is_err());
+        fs::remove_file(link).unwrap();
+
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        assert!(CommentOriginHasher::from_file(&path).is_ok());
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(CommentOriginHasher::from_file(&path).is_err());
+        fs::remove_file(path).unwrap();
     }
 
     #[test]
@@ -770,6 +1421,7 @@ mod tests {
             features: FeatureFlags::default(),
             accounts: None,
             library: None,
+            comments: None,
             bind: "0.0.0.0:8080".parse().unwrap(),
             database_url: "postgresql://api@database/pakperk".to_owned(),
             database_pool_size: 10,

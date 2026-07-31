@@ -333,6 +333,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "comments"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "db",
+ "domain",
+ "moderation",
+ "serde",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "compression-codecs"
 version = "0.4.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1420,6 +1437,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "moderation"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "db",
+ "domain",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1513,6 +1545,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "pakperk-admin"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "db",
+ "domain",
+ "moderation",
+ "observability",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "pakperk-api"
 version = "0.1.0"
 dependencies = [
@@ -1524,11 +1572,13 @@ dependencies = [
  "axum",
  "base64",
  "chrono",
+ "comments",
  "db",
  "domain",
  "jobs",
  "library",
  "llm_provider",
+ "moderation",
  "observability",
  "pgvector",
  "rand 0.9.5",

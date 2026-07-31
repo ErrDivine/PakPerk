@@ -1,0 +1,24 @@
+[package]
+name = "comments"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+db.workspace = true
+domain.workspace = true
+moderation.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+url.workspace = true
+
+[lints]
+workspace = true

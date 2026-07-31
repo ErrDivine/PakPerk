@@ -28,55 +28,53 @@ import '../support/fakes.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test(
-    'schema contains every Phase 2 table and no credential columns',
-    () async {
-      final database = _memoryDatabase();
-      addTearDown(database.close);
+  test('schema contains production tables and no credential columns', () async {
+    final database = _memoryDatabase();
+    addTearDown(database.close);
 
-      final rows = await database
-          .customSelect("SELECT name FROM sqlite_master WHERE type = 'table'")
+    final rows = await database
+        .customSelect("SELECT name FROM sqlite_master WHERE type = 'table'")
+        .get();
+    final names = rows.map((row) => row.read<String>('name')).toSet();
+    expect(
+      names,
+      containsAll(const {
+        'cached_papers',
+        'feed_queries',
+        'feed_entries',
+        'cached_processing',
+        'cached_introductions',
+        'cached_connections',
+        'cached_comment_pages',
+        'cached_chats',
+        'library_items',
+        'comment_drafts',
+        'blocked_users',
+        'sync_outbox',
+        'cache_metadata',
+      }),
+    );
+
+    for (final table in names.where((name) => !name.startsWith('sqlite_'))) {
+      final columns = await database
+          .customSelect('PRAGMA table_info($table)')
           .get();
-      final names = rows.map((row) => row.read<String>('name')).toSet();
+      final names = columns
+          .map((row) => row.read<String>('name').toLowerCase())
+          .toList();
       expect(
-        names,
-        containsAll(const {
-          'cached_papers',
-          'feed_queries',
-          'feed_entries',
-          'cached_processing',
-          'cached_introductions',
-          'cached_connections',
-          'cached_comment_pages',
-          'cached_chats',
-          'library_items',
-          'comment_drafts',
-          'sync_outbox',
-          'cache_metadata',
-        }),
+        names.where(
+          (name) =>
+              name.contains('access_token') ||
+              name.contains('refresh_token') ||
+              name.contains('authorization_code') ||
+              name.contains('client_secret'),
+        ),
+        isEmpty,
+        reason: '$table must never persist authentication credentials',
       );
-
-      for (final table in names.where((name) => !name.startsWith('sqlite_'))) {
-        final columns = await database
-            .customSelect('PRAGMA table_info($table)')
-            .get();
-        final names = columns
-            .map((row) => row.read<String>('name').toLowerCase())
-            .toList();
-        expect(
-          names.where(
-            (name) =>
-                name.contains('access_token') ||
-                name.contains('refresh_token') ||
-                name.contains('authorization_code') ||
-                name.contains('client_secret'),
-          ),
-          isEmpty,
-          reason: '$table must never persist authentication credentials',
-        );
-      }
-    },
-  );
+    }
+  });
 
   test(
     'complete v1 migration preserves durable data and drops unbound derived',
@@ -371,7 +369,11 @@ void main() {
         hasLength(1),
       );
       expect(await database.select(database.libraryItems).get(), hasLength(1));
-      expect(await database.select(database.commentDrafts).get(), hasLength(1));
+      expect(
+        await database.select(database.commentDrafts).get(),
+        isEmpty,
+        reason: 'unbound pre-comments drafts fail closed in v5',
+      );
       expect(await database.select(database.syncOutbox).get(), hasLength(1));
       expect(await database.select(database.cacheMetadata).get(), hasLength(1));
       final chatColumns = await database

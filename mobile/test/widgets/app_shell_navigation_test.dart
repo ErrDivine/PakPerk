@@ -418,33 +418,33 @@ void main() {
     );
   });
 
-  testWidgets(
-    'public comments link resolves paper metadata before placeholder',
-    (tester) async {
-      final repository = _repositoryFor([samplePaper]);
-      await _pumpApp(
-        tester,
-        repository: repository,
-        restoration: const AppRestorationState(),
-      );
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(PakPerkApp)),
-      );
+  testWidgets('disabled public comments link is request-free and truthful', (
+    tester,
+  ) async {
+    final repository = _repositoryFor([samplePaper]);
+    await _pumpApp(
+      tester,
+      repository: repository,
+      restoration: const AppRestorationState(),
+    );
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PakPerkApp)),
+    );
 
-      container
-          .read(pakPerkRouterProvider)
-          .go(PakPerkRoutes.publicPaperComments(samplePaper.paperId));
-      await tester.pumpAndSettle();
+    container
+        .read(pakPerkRouterProvider)
+        .go(PakPerkRoutes.publicPaperComments(samplePaper.paperId));
+    await tester.pumpAndSettle();
 
-      expect(repository.paperCalls, 1);
-      expect(
-        find.textContaining('Comments for “${samplePaper.title}”'),
-        findsOneWidget,
-      );
-      expect(find.textContaining('incomplete or invalid'), findsNothing);
-      expect(find.byType(TextField), findsNothing);
-    },
-  );
+    expect(repository.paperCalls, 0);
+    expect(find.text('Paper discussions'), findsAtLeastNWidgets(1));
+    expect(
+      find.textContaining('are not enabled in this build'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('incomplete or invalid'), findsNothing);
+    expect(find.byType(TextField), findsNothing);
+  });
 
   test('paper route builder rejects malformed and traversal identifiers', () {
     for (final value in [

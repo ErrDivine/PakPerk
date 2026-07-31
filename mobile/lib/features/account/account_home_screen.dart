@@ -138,6 +138,7 @@ class _AuthenticatedAccountLoader extends ConsumerWidget {
     }
 
     final libraryEnabled = ref.watch(featureFlagsProvider).library;
+    final commentsEnabled = ref.watch(featureFlagsProvider).comments;
     final libraryCount = libraryEnabled
         ? ref.watch(toReadItemsProvider).value?.length
         : null;
@@ -152,6 +153,7 @@ class _AuthenticatedAccountLoader extends ConsumerWidget {
           : null,
       updating: account.phase == CurrentAccountPhase.updating,
       libraryEnabled: libraryEnabled,
+      commentsEnabled: commentsEnabled,
       libraryCount: libraryCount,
       pendingLibraryCount: pendingLibraryCount,
       onCompleteProfile: onCompleteProfile,
@@ -187,6 +189,7 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
     required this.onOpenDeleteAccount,
     required this.onSignOut,
     this.libraryEnabled = false,
+    this.commentsEnabled = false,
     this.libraryCount,
     this.pendingLibraryCount = 0,
     this.updateError,
@@ -197,6 +200,7 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
   final bool updating;
   final String? updateError;
   final bool libraryEnabled;
+  final bool commentsEnabled;
   final int? libraryCount;
   final int pendingLibraryCount;
   final VoidCallback onCompleteProfile;
@@ -315,18 +319,21 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
                 ),
                 onTap: onOpenLibrary,
               ),
-            _AccountDestination(
-              icon: Icons.comment_outlined,
-              label: 'My comments',
-              supportingText: 'Paper discussions arrive in Phase 5.',
-              onTap: onOpenComments,
-            ),
-            _AccountDestination(
-              icon: Icons.block_outlined,
-              label: 'Blocked users',
-              supportingText: 'Available when discussions are enabled.',
-              onTap: onOpenBlockedUsers,
-            ),
+            if (commentsEnabled) ...[
+              _AccountDestination(
+                icon: Icons.comment_outlined,
+                label: 'My comments',
+                supportingText:
+                    'Published and privately under-review comments.',
+                onTap: onOpenComments,
+              ),
+              _AccountDestination(
+                icon: Icons.block_outlined,
+                label: 'Blocked users',
+                supportingText: 'Manage authors hidden from discussions.',
+                onTap: onOpenBlockedUsers,
+              ),
+            ],
             const SizedBox(height: 16),
             Text('Account', style: Theme.of(context).textTheme.titleMedium),
             _AccountDestination(
@@ -350,6 +357,10 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
             _AccountDestination(
               icon: Icons.groups_outlined,
               label: 'Community guidelines',
+              supportingText: profile.communityGuidelinesCurrent
+                  ? 'Accepted ${profile.communityGuidelinesVersion}'
+                  : 'Current version: '
+                        '${profile.currentCommunityGuidelinesVersion}',
               onTap: onOpenCommunityGuidelines,
             ),
             _AccountDestination(

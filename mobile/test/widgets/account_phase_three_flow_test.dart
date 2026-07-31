@@ -78,6 +78,12 @@ void main() {
           matching: find.byType(Checkbox),
         ),
       );
+      final communityCheckbox = find.descendant(
+        of: find.byKey(const ValueKey('account-community-checkbox')),
+        matching: find.byType(Checkbox),
+      );
+      await tester.ensureVisible(communityCheckbox);
+      await tester.tap(communityCheckbox);
       tester.testTextInput.hide();
       await tester.pumpAndSettle();
       final completeSetup = find.widgetWithText(
@@ -101,6 +107,7 @@ void main() {
         'handle': 'ada_reader',
         'display_name': 'Ada Reader',
         'accept_terms_version': '2026-07',
+        'accept_community_guidelines_version': '2026-07',
       });
       expect(secureStore.record?.accountId, _accountId);
       expect(controllers.account.state.profile?.isProfileComplete, isTrue);
@@ -263,7 +270,7 @@ void main() {
       oidc: oidc,
       secureStore: secureStore,
       adapter: adapter,
-      clearAccountData: (_) async => accountRows.clear(),
+      clearAccountData: (_, __) async => accountRows.clear(),
     );
     expect(await controllers.auth.signIn(), isTrue);
     final profileLoad = controllers.account.load();
@@ -397,7 +404,7 @@ void main() {
   );
   auth = AuthSessionController(
     repository: repository,
-    clearAccountOwnedData: clearAccountData ?? (_) async {},
+    clearAccountOwnedData: clearAccountData ?? ((_, __) async {}),
   );
   final dio = Dio(BaseOptions(baseUrl: 'https://api.pakperk.app'))
     ..httpClientAdapter = adapter;
@@ -470,18 +477,24 @@ final class _ProfileAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
-Map<String, Object?> _profileJson({required bool complete, int version = 1}) =>
-    {
-      'id': _accountId,
-      'handle': complete ? 'ada_reader' : null,
-      'display_name': complete ? 'Ada Reader' : null,
-      'status': 'active',
-      'profile_version': version,
-      'profile_complete': complete,
-      'terms_version': complete ? '2026-07' : null,
-      'terms_accepted_at': complete ? '2026-07-30T12:00:00Z' : null,
-      'current_terms_version': '2026-07',
-      'terms_current': complete,
-      'created_at': '2026-07-30T10:00:00Z',
-      'updated_at': complete ? '2026-07-30T12:00:00Z' : '2026-07-30T11:00:00Z',
-    };
+Map<String, Object?> _profileJson({
+  required bool complete,
+  int version = 1,
+}) => {
+  'id': _accountId,
+  'handle': complete ? 'ada_reader' : null,
+  'display_name': complete ? 'Ada Reader' : null,
+  'status': 'active',
+  'profile_version': version,
+  'profile_complete': complete,
+  'terms_version': complete ? '2026-07' : null,
+  'terms_accepted_at': complete ? '2026-07-30T12:00:00Z' : null,
+  'current_terms_version': '2026-07',
+  'terms_current': complete,
+  'community_guidelines_version': complete ? '2026-07' : null,
+  'community_guidelines_accepted_at': complete ? '2026-07-30T12:00:00Z' : null,
+  'current_community_guidelines_version': '2026-07',
+  'community_guidelines_current': complete,
+  'created_at': '2026-07-30T10:00:00Z',
+  'updated_at': complete ? '2026-07-30T12:00:00Z' : '2026-07-30T11:00:00Z',
+};

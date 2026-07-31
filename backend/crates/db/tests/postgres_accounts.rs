@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use db::{Database, ProfilePatch, ProfileUpdateOutcome, RateLimitRequest};
-use domain::{AccountStatus, DisplayName, Handle, TermsVersion};
+use domain::{AccountStatus, CommunityGuidelinesVersion, DisplayName, Handle, TermsVersion};
 use uuid::Uuid;
 
 /// Opt-in `PostgreSQL` coverage. CI supplies `TEST_DATABASE_URL`; developer
@@ -58,6 +58,9 @@ async fn postgres_accounts_jit_profile_cas_and_shared_rate_limit() {
                 handle: Some(Handle::parse("Ada_Account").unwrap()),
                 display_name: Some(Some(DisplayName::parse("  Ａda  ").unwrap())),
                 terms_version: Some(TermsVersion::parse("2026-07-31").unwrap()),
+                community_guidelines_version: Some(
+                    CommunityGuidelinesVersion::parse("2026-08-01").unwrap(),
+                ),
             },
         )
         .await
@@ -71,6 +74,11 @@ async fn postgres_accounts_jit_profile_cas_and_shared_rate_limit() {
     assert_eq!(profile.profile_version, user.profile_version + 1);
     assert_eq!(profile.terms_version.unwrap().as_str(), "2026-07-31");
     assert!(profile.terms_accepted_at.is_some());
+    assert_eq!(
+        profile.community_guidelines_version.unwrap().as_str(),
+        "2026-08-01"
+    );
+    assert!(profile.community_guidelines_accepted_at.is_some());
 
     assert!(matches!(
         accounts

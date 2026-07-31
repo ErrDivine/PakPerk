@@ -20,6 +20,16 @@ pub struct LibraryCursor {
     pub sync_revision: i64,
 }
 
+/// Opaque newest-first cursor shared by comment and block lists. Callers bind
+/// the UUID to the relevant table; the serialized payload reveals no SQL
+/// implementation details beyond the stable ordering contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreatedAtCursor {
+    pub created_at: DateTime<Utc>,
+    pub id: Uuid,
+}
+
 #[derive(Debug, Error)]
 pub enum CursorError {
     #[error("cursor is not valid base64")]
@@ -45,6 +55,19 @@ impl LibraryCursor {
     #[must_use]
     pub fn encode(self) -> String {
         let bytes = serde_json::to_vec(&self).expect("LibraryCursor is always serializable");
+        URL_SAFE_NO_PAD.encode(bytes)
+    }
+
+    pub fn decode(value: &str) -> Result<Self, CursorError> {
+        let bytes = URL_SAFE_NO_PAD.decode(value)?;
+        Ok(serde_json::from_slice(&bytes)?)
+    }
+}
+
+impl CreatedAtCursor {
+    #[must_use]
+    pub fn encode(self) -> String {
+        let bytes = serde_json::to_vec(&self).expect("CreatedAtCursor is always serializable");
         URL_SAFE_NO_PAD.encode(bytes)
     }
 
@@ -93,5 +116,14 @@ mod tests {
             br#"{"saved_at":"2026-07-31T12:13:14Z","paper_id":"0198fa17-3499-7a02-8406-846ab42ba686","sync_revision":42,"extra":true}"#,
         );
         assert!(LibraryCursor::decode(&payload).is_err());
+    }
+
+    #[test]
+    fn created_at_cursor_round_trips() {
+        let cursor = CreatedAtCursor {
+            created_at: Utc.with_ymd_and_hms(2026, 8, 1, 12, 13, 14).unwrap(),
+            id: Uuid::parse_str("0198fa17-3499-7a02-8406-846ab42ba686").unwrap(),
+        };
+        assert_eq!(CreatedAtCursor::decode(&cursor.encode()).unwrap(), cursor);
     }
 }

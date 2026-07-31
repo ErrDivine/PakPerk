@@ -34,6 +34,7 @@ use crate::{
 
 pub(crate) mod account;
 pub(crate) mod chat;
+pub(crate) mod comments;
 pub(crate) mod feed;
 pub(crate) mod health;
 pub(crate) mod library;
@@ -49,6 +50,10 @@ use support::{
 
 pub(crate) use account::{get_me, patch_me, private_account_cache_control};
 pub(crate) use chat::chat;
+pub(crate) use comments::{
+    block_user, create_comment, delete_comment, edit_comment, list_blocked_users, list_my_comments,
+    list_paper_comments, report_comment, unblock_user,
+};
 pub(crate) use feed::feed;
 pub(crate) use health::{health_live, health_ready};
 pub(crate) use library::{library_changes, list_library, remove_library_item, save_library_item};
@@ -493,6 +498,7 @@ mod tests {
             features: FeatureFlags::default(),
             accounts: None,
             library: None,
+            comments: None,
             bind: SocketAddr::from(([127, 0, 0, 1], 0)),
             database_url: database_url.to_owned(),
             database_pool_size: 6,

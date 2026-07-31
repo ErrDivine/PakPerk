@@ -17,8 +17,8 @@ mod routes;
 pub use app::{AppState, build_router};
 pub use auth_bootstrap::{initialize_auth_runtime, spawn_auth_recovery};
 pub use config::{
-    AccountFeatureConfig, ApiConfig, ApiEnvironment, ApiModelConfig, FeatureFlags,
-    LibraryFeatureConfig,
+    AccountFeatureConfig, ApiConfig, ApiEnvironment, ApiModelConfig, CommentFeatureConfig,
+    FeatureFlags, LibraryFeatureConfig,
 };
 pub use maintenance::{spawn_account_maintenance, spawn_library_maintenance};
 pub use openapi::ApiDoc;

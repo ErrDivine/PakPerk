@@ -1,6 +1,6 @@
 # ADR 0004: Public comments and moderation
 
-**Status:** Accepted — implementation pending Phase 5
+**Status:** Accepted and implemented in Phase 5; public enablement gated on Phase 6
 **Date:** 2026-07-31
 
 ## Context
@@ -53,3 +53,19 @@ feature flag can disable new comments without disabling reading.
 - Shipping is gated on tested moderation operations, a live support route,
   terms/community pages, rate limits, retention/deletion policy, and a defined
   incident/report-response owner.
+
+## Implementation result
+
+Phase 5 implements the flat comment, report, block, acceptance, shared-limit,
+rules-moderation, adapter, and moderation-audit model inside the existing Rust
+backend and PostgreSQL database. API registration and new publication use
+separate deployment flags. The Flutter client keeps bounded personalized pages,
+account-scoped drafts, and persisted blocks behind an account-and-auth-epoch
+write barrier; drafts never enter an automatic outbox. `pakperk-admin` provides
+explicit inspect/action commands with attributable audit records and
+content-free queue metrics.
+
+The implementation does not weaken this ADR's launch gate. Public creation
+remains off until Phase 6 demonstrates in-app and web account deletion,
+retention/restore handling, hosted support/legal routes, telemetry and alerts,
+and the final store-policy review.

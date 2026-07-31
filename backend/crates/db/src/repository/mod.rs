@@ -28,16 +28,30 @@ use crate::FeedCursor;
 
 mod accounts;
 mod chat;
+mod comments;
 mod library;
+mod moderation;
 mod papers;
 mod rate_limits;
 mod rows;
 
 pub use accounts::{AccountRepository, ProfilePatch, ProfileUpdateOutcome};
+pub use comments::{
+    CommentCreateOutcome, CommentCreatePrecondition, CommentCreateResolution,
+    CommentDeleteResolution, CommentEditResolution, CommentMutationOutcome, CommentReadOutcome,
+    CommentReportOutcome, CommentReportResolution, CommentRepository, StoredReport,
+    UserBlockOutcome, UserBlockResolution, UserUnblockResolution,
+};
 pub use library::{
     LibraryChangesOutcome, LibraryMutationIntent, LibraryMutationOutcome,
     LibraryOperationResolution, LibraryReadOutcome, LibraryRepository, StoredLibraryChangesPage,
     StoredLibraryPage,
+};
+pub use moderation::{
+    AdminCommentAction, AdminCommentOutcome, AdminReportOutcome, AdminReportResolution,
+    AdminUserStatusOutcome, ModerationRepository, StoredAdminActor, StoredInspectionReport,
+    StoredModerationInspection, StoredModerationQueuePage, StoredModerationQueueRecord,
+    StoredReportAgeMetrics, StoredReportQueuePage, StoredReportQueueRecord,
 };
 pub use rate_limits::{
     RateLimitConfigError, RateLimitDecision, RateLimitRepository, RateLimitRequest,
@@ -170,6 +184,16 @@ impl Database {
     #[must_use]
     pub fn library(&self) -> LibraryRepository {
         LibraryRepository::new(self.pool.clone())
+    }
+
+    #[must_use]
+    pub fn comments(&self) -> CommentRepository {
+        CommentRepository::new(self.pool.clone())
+    }
+
+    #[must_use]
+    pub fn moderation(&self) -> ModerationRepository {
+        ModerationRepository::new(self.pool.clone())
     }
 
     #[must_use]

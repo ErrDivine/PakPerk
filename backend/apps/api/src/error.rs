@@ -183,7 +183,11 @@ pub(crate) fn account_service_error(
         | AccountServiceError::InvalidHandle(_)
         | AccountServiceError::InvalidDisplayName(_)
         | AccountServiceError::InvalidTermsVersion(_)
-        | AccountServiceError::TermsVersionMismatch => account_input_error(request_id, error_value),
+        | AccountServiceError::InvalidCommunityGuidelinesVersion(_)
+        | AccountServiceError::TermsVersionMismatch
+        | AccountServiceError::CommunityGuidelinesVersionMismatch => {
+            account_input_error(request_id, error_value)
+        }
     }
 }
 
@@ -213,6 +217,14 @@ fn account_input_error(
         AccountServiceError::TermsVersionMismatch => (
             "TERMS_VERSION_MISMATCH",
             "Only the current terms version can be accepted.",
+        ),
+        AccountServiceError::InvalidCommunityGuidelinesVersion(_) => (
+            "INVALID_COMMUNITY_GUIDELINES_VERSION",
+            "The Community Guidelines version is invalid.",
+        ),
+        AccountServiceError::CommunityGuidelinesVersionMismatch => (
+            "COMMUNITY_GUIDELINES_VERSION_MISMATCH",
+            "Only the current Community Guidelines version can be accepted.",
         ),
         _ => ("INVALID_PROFILE_UPDATE", "The profile update is invalid."),
     };

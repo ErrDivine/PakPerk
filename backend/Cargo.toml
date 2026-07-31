@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "apps/admin",
     "apps/api",
     "apps/worker",
     "crates/accounts",
@@ -12,7 +13,9 @@ members = [
     "crates/grobid_client",
     "crates/jobs",
     "crates/library",
+    "crates/comments",
     "crates/llm_provider",
+    "crates/moderation",
     "crates/observability",
     "crates/retrieval",
 ]
@@ -33,6 +36,7 @@ chrono = { version = "0.4.42", features = ["serde"] }
 domain = { path = "crates/domain" }
 arxiv_client = { path = "crates/arxiv_client" }
 auth = { path = "crates/auth" }
+comments = { path = "crates/comments" }
 db = { path = "crates/db" }
 document_model = { path = "crates/document_model" }
 grobid_client = { path = "crates/grobid_client" }
@@ -40,6 +44,7 @@ jobs = { path = "crates/jobs" }
 library = { path = "crates/library" }
 jsonwebtoken = { version = "=11.0.0", default-features = false, features = ["rust_crypto"] }
 llm_provider = { path = "crates/llm_provider" }
+moderation = { path = "crates/moderation" }
 observability = { path = "crates/observability" }
 retrieval = { path = "crates/retrieval" }
 http = "1.3.1"

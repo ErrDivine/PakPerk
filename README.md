@@ -21,10 +21,14 @@ and its [documentation entrypoint](docs/production-v0.0-plan.md).
 
 ## Production migration status
 
-Phases 0–4 are complete. Phase 3 OIDC account integration is
+Phases 0–5 are complete and accepted. Phase 3 OIDC account integration is
 [accepted](docs/phase-reports/phase-3.md), and Phase 4 To Read synchronization
 is [accepted](docs/phase-reports/phase-4.md) with its exact server/mobile
 contract in [the To Read synchronization document](docs/library-sync.md).
+Phase 5 adds the complete default-off public-comment safety boundary; its
+contract and acceptance evidence are in
+[Comments and moderation](docs/comments-and-moderation.md) and the
+[Phase 5 report](docs/phase-reports/phase-5.md).
 The backend has safe extension seams,
 typed deployment configuration, a checked code-first OpenAPI contract,
 conditional feed responses, and the accepted Phase 3 account/authentication
@@ -32,15 +36,27 @@ foundation.
 The mobile app has a persistent Read/You shell, exact paper and arXiv links,
 light/dark design tokens, native launch assets, a bounded cached-first opening
 transition, a relational cache-ahead feed, and the account session/onboarding
-foundation plus an offline-first synchronized To Read list. Account and library
-controls remain off by default; later comments and deletion work remain
-independently gated.
+foundation plus an offline-first synchronized To Read list, account-scoped
+comment drafts/pages/blocks, and guest/authenticated discussion surfaces.
+Account, library, and comment controls remain off by default. Account deletion,
+hosted policy/support pages, release telemetry, and production operations remain
+the Phase 6 public-launch gate.
 
 The accepted Phase 4 API uses authenticated list/change/save/remove routes with durable
 operation IDs, server revisions, removal tombstones, and an independent
 read-only kill switch. Its exact synchronization and preparation boundaries
 are documented in [the To Read contract](docs/library-sync.md). Both library
 flags remain off by default so deployments can dark-launch the capability.
+
+Phase 5 keeps flat paper comments in the same backend and PostgreSQL database.
+It requires an active account, handle, and current Terms/Community Guidelines
+before posting; applies bounded normalization, deterministic rules,
+provider-neutral moderation, shared account/origin limits, reporting, durable
+blocking, and audited moderator actions; and never places comment/report text in
+ordinary diagnostics. `COMMENTS_ENABLED` registers the surface, while
+`COMMENT_CREATION_ENABLED` can stop only new publication without disabling
+reading, author removal, reporting, blocking, or moderation. Public deployment
+must keep creation off until Phase 6 closes the deletion and operational gates.
 
 The demo baseline is frozen at the annotated `production-v0.0-baseline` tag.
 Architecture choices for OIDC, Drift, stateful navigation, comments, and shared
@@ -112,6 +128,21 @@ profile wire contract, and Android-emulator issuer caveat are documented in
 The realm itself is documented in
 [the development-provider runbook](deploy/keycloak/README.md).
 
+The reproducible Phase 5 acceptance harness starts only the missing local
+Compose services, builds three independently configured APIs plus the audited
+admin binary, creates two disposable Keycloak users, and drives genuine
+Authorization Code + S256 PKCE, comment, report, block, moderation, kill-switch,
+and provider-outage scenarios. It scans captured logs and removes every
+fixture/identity afterward:
+
+```bash
+./scripts/test_live_comments.sh
+```
+
+The driver requires Python `requests` and `beautifulsoup4`; it deliberately
+keeps credentials/tokens in memory and stores temporary state in an owner-only
+directory outside the repository.
+
 ## Run the mobile app
 
 Requirements: a current stable Flutter SDK and an iOS/Android development
@@ -166,6 +197,14 @@ remain in memory, while refresh/session material is stored only in the platform
 secure store. Concurrent refresh is single-flight, a challenged request is
 replayed at most once under an explicit safety policy, and sign-out clears only
 account-owned data; the public Drift cache and reader restoration remain.
+
+With comments compiled in, guests may read published paper discussion and are
+given an explicit sign-in rationale before a posting intent is retained.
+Authenticated drafts are stored per account and paper, never auto-send, and
+clear only after the server accepts a canonical comment. Pending-review content
+is private to its author. Blocking filters immediately on-device and reconciles
+durably across API instances/devices. A comments-enabled build must also supply
+`PAKPERK_COMMENT_SUPPORT_CONTACT_URL`; staging/production require HTTPS.
 
 The reading model is fixed:
 
@@ -294,9 +333,32 @@ PATCH /v1/me
 
 These operations require an OIDC bearer token. Both return a private account
 envelope and strong `"profile-N"` ETag; `PATCH` requires the matching
-`If-Match` value. The routes are absent when accounts are disabled. Library,
-comments, blocks, reports, and `DELETE /v1/me` remain unpublished until their
-own phases satisfy the complete synchronization, safety, and deletion gates.
+`If-Match` value. The routes are absent when accounts are disabled.
+
+With the corresponding default-off Phase 4/5 flags enabled, the API also
+registers:
+
+```text
+GET    /v1/me/library
+GET    /v1/me/library/changes
+PUT    /v1/me/library/{paper_id}
+DELETE /v1/me/library/{paper_id}
+
+GET    /v1/papers/{paper_id}/comments
+POST   /v1/papers/{paper_id}/comments
+PATCH  /v1/comments/{comment_id}
+DELETE /v1/comments/{comment_id}
+POST   /v1/comments/{comment_id}/reports
+GET    /v1/me/comments
+GET    /v1/me/blocked-users
+PUT    /v1/me/blocked-users/{user_id}
+DELETE /v1/me/blocked-users/{user_id}
+```
+
+Library and personalized comment responses are private/no-store. Library
+mutations use an `Idempotency-Key`; comment creation carries its durable client
+request ID in the strict JSON body. `DELETE /v1/me` remains unpublished until
+the Phase 6 provider-deletion and retention lifecycle is complete.
 
 Development and staging also expose `GET /openapi.json`. The reviewed artifact
 is checked in at [`docs/openapi-v1.json`](docs/openapi-v1.json). Regenerate and

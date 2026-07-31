@@ -15,12 +15,14 @@ use axum::{
     middleware,
     routing::{get, post, put},
 };
+use comments::CommentService;
 use db::{Database, PaperRepository};
 use domain::FulltextPolicy;
 use library::{LibraryPolicy, LibraryService};
 use llm_provider::{
     ChatProvider, DeterministicProvider, EmbeddingProvider, OpenAiCompatibleProvider,
 };
+use moderation::{ContentModerator, ModerationPipeline};
 use tower_http::{
     compression::CompressionLayer,
     cors::{AllowOrigin, CorsLayer},
@@ -29,7 +31,9 @@ use tower_http::{
 use tracing::Level;
 
 use crate::{
-    config::{ApiConfig, ApiModelConfig, FeatureFlags},
+    config::{
+        ApiConfig, ApiModelConfig, CommentFeatureConfig, CommentModerationProvider, FeatureFlags,
+    },
     middleware::{
         REQUEST_ID_HEADER, RateLimiter, SESSION_ID_HEADER, TimeoutConfig, request_id_middleware,
         stable_error_middleware, timeout_middleware,
@@ -37,9 +41,11 @@ use crate::{
     openapi::openapi_json,
     routes::support::not_found,
     routes::{
-        chat, connections, feed, get_me, health_live, health_ready, introduction, library_changes,
-        list_library, paper_by_arxiv, paper_metadata, patch_me, prepare,
-        private_account_cache_control, processing, remove_library_item, save_library_item,
+        block_user, chat, connections, create_comment, delete_comment, edit_comment, feed, get_me,
+        health_live, health_ready, introduction, library_changes, list_blocked_users, list_library,
+        list_my_comments, list_paper_comments, paper_by_arxiv, paper_metadata, patch_me, prepare,
+        private_account_cache_control, processing, remove_library_item, report_comment,
+        save_library_item, unblock_user,
     },
 };
 
@@ -61,6 +67,8 @@ pub struct AppState {
     pub(crate) chat_limit: u32,
     pub(crate) accounts: Option<AccountService>,
     pub(crate) library: Option<LibraryService>,
+    pub(crate) comments: Option<CommentService>,
+    pub(crate) comment_config: Option<CommentFeatureConfig>,
     pub(crate) auth: AuthRuntime,
     feature_flags: FeatureFlags,
 }
@@ -92,6 +100,7 @@ impl AppState {
         if config.features.accounts != config.accounts.is_some()
             || config.features.accounts != auth.is_enabled()
             || config.features.library != config.library.is_some()
+            || config.features.comments != config.comments.is_some()
         {
             anyhow::bail!("feature configuration and authentication runtime are inconsistent");
         }
@@ -128,6 +137,22 @@ impl AppState {
                 ))
             })
             .transpose()?;
+        let comments = config
+            .comments
+            .as_ref()
+            .zip(config.accounts.as_ref())
+            .map(|(comment, account)| {
+                let moderator: Arc<dyn ContentModerator> = match comment.moderation_provider() {
+                    CommentModerationProvider::Rules => Arc::new(ModerationPipeline::default()),
+                };
+                Ok::<_, anyhow::Error>(CommentService::new(
+                    database.comments(),
+                    database.rate_limits(),
+                    moderator,
+                    comment.service_config(account, config.environment)?,
+                ))
+            })
+            .transpose()?;
         Ok(Self {
             database,
             papers,
@@ -141,6 +166,8 @@ impl AppState {
             chat_limit: config.chat_requests_per_minute.max(1),
             accounts,
             library,
+            comments,
+            comment_config: config.comments.clone(),
             auth,
             feature_flags: config.features,
         })
@@ -186,6 +213,26 @@ pub fn build_router(state: AppState, config: &ApiConfig) -> Router {
                 "/v1/me/library/{paper_id}",
                 put(save_library_item).delete(remove_library_item),
             )
+    } else {
+        router
+    };
+    let router = if config.features.accounts && config.features.comments {
+        router
+            .route(
+                "/v1/papers/{paper_id}/comments",
+                get(list_paper_comments).post(create_comment),
+            )
+            .route(
+                "/v1/comments/{comment_id}",
+                axum::routing::patch(edit_comment).delete(delete_comment),
+            )
+            .route("/v1/comments/{comment_id}/reports", post(report_comment))
+            .route(
+                "/v1/me/blocked-users/{user_id}",
+                put(block_user).delete(unblock_user),
+            )
+            .route("/v1/me/blocked-users", get(list_blocked_users))
+            .route("/v1/me/comments", get(list_my_comments))
     } else {
         router
     };
@@ -263,6 +310,16 @@ fn production_feature_routes(features: FeatureFlags) -> Vec<&'static str> {
             "/v1/me/library/{paper_id}",
         ]);
     }
+    if features.accounts && features.comments {
+        routes.extend([
+            "/v1/papers/{paper_id}/comments",
+            "/v1/comments/{comment_id}",
+            "/v1/comments/{comment_id}/reports",
+            "/v1/me/blocked-users/{user_id}",
+            "/v1/me/blocked-users",
+            "/v1/me/comments",
+        ]);
+    }
     routes
 }
 
@@ -290,6 +347,7 @@ mod tests {
             library: true,
             library_writes: true,
             comments: true,
+            comment_creation: true,
         };
         assert_eq!(
             production_feature_routes(all_enabled),
@@ -298,6 +356,12 @@ mod tests {
                 "/v1/me/library",
                 "/v1/me/library/changes",
                 "/v1/me/library/{paper_id}",
+                "/v1/papers/{paper_id}/comments",
+                "/v1/comments/{comment_id}",
+                "/v1/comments/{comment_id}/reports",
+                "/v1/me/blocked-users/{user_id}",
+                "/v1/me/blocked-users",
+                "/v1/me/comments",
             ]
         );
         assert_eq!(
@@ -306,8 +370,16 @@ mod tests {
                 library: false,
                 library_writes: false,
                 comments: false,
+                comment_creation: false,
             }),
             vec!["/v1/me"]
+        );
+        let mut comments_read_only = all_enabled;
+        comments_read_only.comment_creation = false;
+        assert_eq!(
+            production_feature_routes(comments_read_only),
+            production_feature_routes(all_enabled),
+            "the creation kill switch must not unregister reads or safety routes"
         );
     }
 

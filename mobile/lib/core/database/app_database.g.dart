@@ -2742,6 +2742,17 @@ class $CachedCommentPagesTable extends CachedCommentPages
       'REFERENCES cached_papers (paper_id) ON DELETE CASCADE',
     ),
   );
+  static const VerificationMeta _viewerAccountIdMeta = const VerificationMeta(
+    'viewerAccountId',
+  );
+  @override
+  late final GeneratedColumn<String> viewerAccountId = GeneratedColumn<String>(
+    'viewer_account_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _cursorMeta = const VerificationMeta('cursor');
   @override
   late final GeneratedColumn<String> cursor = GeneratedColumn<String>(
@@ -2797,6 +2808,7 @@ class $CachedCommentPagesTable extends CachedCommentPages
   List<GeneratedColumn> get $columns => [
     pageKey,
     paperId,
+    viewerAccountId,
     cursor,
     payloadJson,
     fetchedAt,
@@ -2830,6 +2842,15 @@ class $CachedCommentPagesTable extends CachedCommentPages
       );
     } else if (isInserting) {
       context.missing(_paperIdMeta);
+    }
+    if (data.containsKey('viewer_account_id')) {
+      context.handle(
+        _viewerAccountIdMeta,
+        viewerAccountId.isAcceptableOrUnknown(
+          data['viewer_account_id']!,
+          _viewerAccountIdMeta,
+        ),
+      );
     }
     if (data.containsKey('cursor')) {
       context.handle(
@@ -2887,6 +2908,10 @@ class $CachedCommentPagesTable extends CachedCommentPages
         DriftSqlType.string,
         data['${effectivePrefix}paper_id'],
       )!,
+      viewerAccountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}viewer_account_id'],
+      ),
       cursor: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}cursor'],
@@ -2920,6 +2945,7 @@ class CachedCommentPageRow extends DataClass
     implements Insertable<CachedCommentPageRow> {
   final String pageKey;
   final String paperId;
+  final String? viewerAccountId;
   final String? cursor;
   final String payloadJson;
   final DateTime fetchedAt;
@@ -2928,6 +2954,7 @@ class CachedCommentPageRow extends DataClass
   const CachedCommentPageRow({
     required this.pageKey,
     required this.paperId,
+    this.viewerAccountId,
     this.cursor,
     required this.payloadJson,
     required this.fetchedAt,
@@ -2939,6 +2966,9 @@ class CachedCommentPageRow extends DataClass
     final map = <String, Expression>{};
     map['page_key'] = Variable<String>(pageKey);
     map['paper_id'] = Variable<String>(paperId);
+    if (!nullToAbsent || viewerAccountId != null) {
+      map['viewer_account_id'] = Variable<String>(viewerAccountId);
+    }
     if (!nullToAbsent || cursor != null) {
       map['cursor'] = Variable<String>(cursor);
     }
@@ -2955,6 +2985,9 @@ class CachedCommentPageRow extends DataClass
     return CachedCommentPagesCompanion(
       pageKey: Value(pageKey),
       paperId: Value(paperId),
+      viewerAccountId: viewerAccountId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(viewerAccountId),
       cursor: cursor == null && nullToAbsent
           ? const Value.absent()
           : Value(cursor),
@@ -2973,6 +3006,7 @@ class CachedCommentPageRow extends DataClass
     return CachedCommentPageRow(
       pageKey: serializer.fromJson<String>(json['pageKey']),
       paperId: serializer.fromJson<String>(json['paperId']),
+      viewerAccountId: serializer.fromJson<String?>(json['viewerAccountId']),
       cursor: serializer.fromJson<String?>(json['cursor']),
       payloadJson: serializer.fromJson<String>(json['payloadJson']),
       fetchedAt: serializer.fromJson<DateTime>(json['fetchedAt']),
@@ -2986,6 +3020,7 @@ class CachedCommentPageRow extends DataClass
     return <String, dynamic>{
       'pageKey': serializer.toJson<String>(pageKey),
       'paperId': serializer.toJson<String>(paperId),
+      'viewerAccountId': serializer.toJson<String?>(viewerAccountId),
       'cursor': serializer.toJson<String?>(cursor),
       'payloadJson': serializer.toJson<String>(payloadJson),
       'fetchedAt': serializer.toJson<DateTime>(fetchedAt),
@@ -2997,6 +3032,7 @@ class CachedCommentPageRow extends DataClass
   CachedCommentPageRow copyWith({
     String? pageKey,
     String? paperId,
+    Value<String?> viewerAccountId = const Value.absent(),
     Value<String?> cursor = const Value.absent(),
     String? payloadJson,
     DateTime? fetchedAt,
@@ -3005,6 +3041,9 @@ class CachedCommentPageRow extends DataClass
   }) => CachedCommentPageRow(
     pageKey: pageKey ?? this.pageKey,
     paperId: paperId ?? this.paperId,
+    viewerAccountId: viewerAccountId.present
+        ? viewerAccountId.value
+        : this.viewerAccountId,
     cursor: cursor.present ? cursor.value : this.cursor,
     payloadJson: payloadJson ?? this.payloadJson,
     fetchedAt: fetchedAt ?? this.fetchedAt,
@@ -3015,6 +3054,9 @@ class CachedCommentPageRow extends DataClass
     return CachedCommentPageRow(
       pageKey: data.pageKey.present ? data.pageKey.value : this.pageKey,
       paperId: data.paperId.present ? data.paperId.value : this.paperId,
+      viewerAccountId: data.viewerAccountId.present
+          ? data.viewerAccountId.value
+          : this.viewerAccountId,
       cursor: data.cursor.present ? data.cursor.value : this.cursor,
       payloadJson: data.payloadJson.present
           ? data.payloadJson.value
@@ -3030,6 +3072,7 @@ class CachedCommentPageRow extends DataClass
     return (StringBuffer('CachedCommentPageRow(')
           ..write('pageKey: $pageKey, ')
           ..write('paperId: $paperId, ')
+          ..write('viewerAccountId: $viewerAccountId, ')
           ..write('cursor: $cursor, ')
           ..write('payloadJson: $payloadJson, ')
           ..write('fetchedAt: $fetchedAt, ')
@@ -3043,6 +3086,7 @@ class CachedCommentPageRow extends DataClass
   int get hashCode => Object.hash(
     pageKey,
     paperId,
+    viewerAccountId,
     cursor,
     payloadJson,
     fetchedAt,
@@ -3055,6 +3099,7 @@ class CachedCommentPageRow extends DataClass
       (other is CachedCommentPageRow &&
           other.pageKey == this.pageKey &&
           other.paperId == this.paperId &&
+          other.viewerAccountId == this.viewerAccountId &&
           other.cursor == this.cursor &&
           other.payloadJson == this.payloadJson &&
           other.fetchedAt == this.fetchedAt &&
@@ -3066,6 +3111,7 @@ class CachedCommentPagesCompanion
     extends UpdateCompanion<CachedCommentPageRow> {
   final Value<String> pageKey;
   final Value<String> paperId;
+  final Value<String?> viewerAccountId;
   final Value<String?> cursor;
   final Value<String> payloadJson;
   final Value<DateTime> fetchedAt;
@@ -3075,6 +3121,7 @@ class CachedCommentPagesCompanion
   const CachedCommentPagesCompanion({
     this.pageKey = const Value.absent(),
     this.paperId = const Value.absent(),
+    this.viewerAccountId = const Value.absent(),
     this.cursor = const Value.absent(),
     this.payloadJson = const Value.absent(),
     this.fetchedAt = const Value.absent(),
@@ -3085,6 +3132,7 @@ class CachedCommentPagesCompanion
   CachedCommentPagesCompanion.insert({
     required String pageKey,
     required String paperId,
+    this.viewerAccountId = const Value.absent(),
     this.cursor = const Value.absent(),
     required String payloadJson,
     required DateTime fetchedAt,
@@ -3099,6 +3147,7 @@ class CachedCommentPagesCompanion
   static Insertable<CachedCommentPageRow> custom({
     Expression<String>? pageKey,
     Expression<String>? paperId,
+    Expression<String>? viewerAccountId,
     Expression<String>? cursor,
     Expression<String>? payloadJson,
     Expression<DateTime>? fetchedAt,
@@ -3109,6 +3158,7 @@ class CachedCommentPagesCompanion
     return RawValuesInsertable({
       if (pageKey != null) 'page_key': pageKey,
       if (paperId != null) 'paper_id': paperId,
+      if (viewerAccountId != null) 'viewer_account_id': viewerAccountId,
       if (cursor != null) 'cursor': cursor,
       if (payloadJson != null) 'payload_json': payloadJson,
       if (fetchedAt != null) 'fetched_at': fetchedAt,
@@ -3121,6 +3171,7 @@ class CachedCommentPagesCompanion
   CachedCommentPagesCompanion copyWith({
     Value<String>? pageKey,
     Value<String>? paperId,
+    Value<String?>? viewerAccountId,
     Value<String?>? cursor,
     Value<String>? payloadJson,
     Value<DateTime>? fetchedAt,
@@ -3131,6 +3182,7 @@ class CachedCommentPagesCompanion
     return CachedCommentPagesCompanion(
       pageKey: pageKey ?? this.pageKey,
       paperId: paperId ?? this.paperId,
+      viewerAccountId: viewerAccountId ?? this.viewerAccountId,
       cursor: cursor ?? this.cursor,
       payloadJson: payloadJson ?? this.payloadJson,
       fetchedAt: fetchedAt ?? this.fetchedAt,
@@ -3148,6 +3200,9 @@ class CachedCommentPagesCompanion
     }
     if (paperId.present) {
       map['paper_id'] = Variable<String>(paperId.value);
+    }
+    if (viewerAccountId.present) {
+      map['viewer_account_id'] = Variable<String>(viewerAccountId.value);
     }
     if (cursor.present) {
       map['cursor'] = Variable<String>(cursor.value);
@@ -3175,6 +3230,7 @@ class CachedCommentPagesCompanion
     return (StringBuffer('CachedCommentPagesCompanion(')
           ..write('pageKey: $pageKey, ')
           ..write('paperId: $paperId, ')
+          ..write('viewerAccountId: $viewerAccountId, ')
           ..write('cursor: $cursor, ')
           ..write('payloadJson: $payloadJson, ')
           ..write('fetchedAt: $fetchedAt, ')
@@ -4594,6 +4650,29 @@ class $CommentDraftsTable extends CommentDrafts
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _clientRequestIdMeta = const VerificationMeta(
+    'clientRequestId',
+  );
+  @override
+  late final GeneratedColumn<String> clientRequestId = GeneratedColumn<String>(
+    'client_request_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastAttemptedBodyMeta = const VerificationMeta(
+    'lastAttemptedBody',
+  );
+  @override
+  late final GeneratedColumn<String> lastAttemptedBody =
+      GeneratedColumn<String>(
+        'last_attempted_body',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -4623,6 +4702,8 @@ class $CommentDraftsTable extends CommentDrafts
     paperId,
     parentCommentId,
     body,
+    clientRequestId,
+    lastAttemptedBody,
     createdAt,
     updatedAt,
   ];
@@ -4677,6 +4758,24 @@ class $CommentDraftsTable extends CommentDrafts
     } else if (isInserting) {
       context.missing(_bodyMeta);
     }
+    if (data.containsKey('client_request_id')) {
+      context.handle(
+        _clientRequestIdMeta,
+        clientRequestId.isAcceptableOrUnknown(
+          data['client_request_id']!,
+          _clientRequestIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_attempted_body')) {
+      context.handle(
+        _lastAttemptedBodyMeta,
+        lastAttemptedBody.isAcceptableOrUnknown(
+          data['last_attempted_body']!,
+          _lastAttemptedBodyMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -4722,6 +4821,14 @@ class $CommentDraftsTable extends CommentDrafts
         DriftSqlType.string,
         data['${effectivePrefix}body'],
       )!,
+      clientRequestId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}client_request_id'],
+      ),
+      lastAttemptedBody: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_attempted_body'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -4745,6 +4852,8 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
   final String paperId;
   final String? parentCommentId;
   final String body;
+  final String? clientRequestId;
+  final String? lastAttemptedBody;
   final DateTime createdAt;
   final DateTime updatedAt;
   const CommentDraftRow({
@@ -4753,6 +4862,8 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
     required this.paperId,
     this.parentCommentId,
     required this.body,
+    this.clientRequestId,
+    this.lastAttemptedBody,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -4768,6 +4879,12 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
       map['parent_comment_id'] = Variable<String>(parentCommentId);
     }
     map['body'] = Variable<String>(body);
+    if (!nullToAbsent || clientRequestId != null) {
+      map['client_request_id'] = Variable<String>(clientRequestId);
+    }
+    if (!nullToAbsent || lastAttemptedBody != null) {
+      map['last_attempted_body'] = Variable<String>(lastAttemptedBody);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -4784,6 +4901,12 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
           ? const Value.absent()
           : Value(parentCommentId),
       body: Value(body),
+      clientRequestId: clientRequestId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(clientRequestId),
+      lastAttemptedBody: lastAttemptedBody == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastAttemptedBody),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -4800,6 +4923,10 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
       paperId: serializer.fromJson<String>(json['paperId']),
       parentCommentId: serializer.fromJson<String?>(json['parentCommentId']),
       body: serializer.fromJson<String>(json['body']),
+      clientRequestId: serializer.fromJson<String?>(json['clientRequestId']),
+      lastAttemptedBody: serializer.fromJson<String?>(
+        json['lastAttemptedBody'],
+      ),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -4813,6 +4940,8 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
       'paperId': serializer.toJson<String>(paperId),
       'parentCommentId': serializer.toJson<String?>(parentCommentId),
       'body': serializer.toJson<String>(body),
+      'clientRequestId': serializer.toJson<String?>(clientRequestId),
+      'lastAttemptedBody': serializer.toJson<String?>(lastAttemptedBody),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -4824,6 +4953,8 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
     String? paperId,
     Value<String?> parentCommentId = const Value.absent(),
     String? body,
+    Value<String?> clientRequestId = const Value.absent(),
+    Value<String?> lastAttemptedBody = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => CommentDraftRow(
@@ -4834,6 +4965,12 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
         ? parentCommentId.value
         : this.parentCommentId,
     body: body ?? this.body,
+    clientRequestId: clientRequestId.present
+        ? clientRequestId.value
+        : this.clientRequestId,
+    lastAttemptedBody: lastAttemptedBody.present
+        ? lastAttemptedBody.value
+        : this.lastAttemptedBody,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -4846,6 +4983,12 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
           ? data.parentCommentId.value
           : this.parentCommentId,
       body: data.body.present ? data.body.value : this.body,
+      clientRequestId: data.clientRequestId.present
+          ? data.clientRequestId.value
+          : this.clientRequestId,
+      lastAttemptedBody: data.lastAttemptedBody.present
+          ? data.lastAttemptedBody.value
+          : this.lastAttemptedBody,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -4859,6 +5002,8 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
           ..write('paperId: $paperId, ')
           ..write('parentCommentId: $parentCommentId, ')
           ..write('body: $body, ')
+          ..write('clientRequestId: $clientRequestId, ')
+          ..write('lastAttemptedBody: $lastAttemptedBody, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -4872,6 +5017,8 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
     paperId,
     parentCommentId,
     body,
+    clientRequestId,
+    lastAttemptedBody,
     createdAt,
     updatedAt,
   );
@@ -4884,6 +5031,8 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
           other.paperId == this.paperId &&
           other.parentCommentId == this.parentCommentId &&
           other.body == this.body &&
+          other.clientRequestId == this.clientRequestId &&
+          other.lastAttemptedBody == this.lastAttemptedBody &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -4894,6 +5043,8 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
   final Value<String> paperId;
   final Value<String?> parentCommentId;
   final Value<String> body;
+  final Value<String?> clientRequestId;
+  final Value<String?> lastAttemptedBody;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -4903,6 +5054,8 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
     this.paperId = const Value.absent(),
     this.parentCommentId = const Value.absent(),
     this.body = const Value.absent(),
+    this.clientRequestId = const Value.absent(),
+    this.lastAttemptedBody = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -4913,6 +5066,8 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
     required String paperId,
     this.parentCommentId = const Value.absent(),
     required String body,
+    this.clientRequestId = const Value.absent(),
+    this.lastAttemptedBody = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
@@ -4927,6 +5082,8 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
     Expression<String>? paperId,
     Expression<String>? parentCommentId,
     Expression<String>? body,
+    Expression<String>? clientRequestId,
+    Expression<String>? lastAttemptedBody,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -4937,6 +5094,8 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
       if (paperId != null) 'paper_id': paperId,
       if (parentCommentId != null) 'parent_comment_id': parentCommentId,
       if (body != null) 'body': body,
+      if (clientRequestId != null) 'client_request_id': clientRequestId,
+      if (lastAttemptedBody != null) 'last_attempted_body': lastAttemptedBody,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -4949,6 +5108,8 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
     Value<String>? paperId,
     Value<String?>? parentCommentId,
     Value<String>? body,
+    Value<String?>? clientRequestId,
+    Value<String?>? lastAttemptedBody,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -4959,6 +5120,8 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
       paperId: paperId ?? this.paperId,
       parentCommentId: parentCommentId ?? this.parentCommentId,
       body: body ?? this.body,
+      clientRequestId: clientRequestId ?? this.clientRequestId,
+      lastAttemptedBody: lastAttemptedBody ?? this.lastAttemptedBody,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -4983,6 +5146,12 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
     if (body.present) {
       map['body'] = Variable<String>(body.value);
     }
+    if (clientRequestId.present) {
+      map['client_request_id'] = Variable<String>(clientRequestId.value);
+    }
+    if (lastAttemptedBody.present) {
+      map['last_attempted_body'] = Variable<String>(lastAttemptedBody.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -5003,8 +5172,446 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
           ..write('paperId: $paperId, ')
           ..write('parentCommentId: $parentCommentId, ')
           ..write('body: $body, ')
+          ..write('clientRequestId: $clientRequestId, ')
+          ..write('lastAttemptedBody: $lastAttemptedBody, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $BlockedUsersTable extends BlockedUsers
+    with TableInfo<$BlockedUsersTable, BlockedUserRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BlockedUsersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+    'account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _blockedUserIdMeta = const VerificationMeta(
+    'blockedUserId',
+  );
+  @override
+  late final GeneratedColumn<String> blockedUserId = GeneratedColumn<String>(
+    'blocked_user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _handleMeta = const VerificationMeta('handle');
+  @override
+  late final GeneratedColumn<String> handle = GeneratedColumn<String>(
+    'handle',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _displayNameMeta = const VerificationMeta(
+    'displayName',
+  );
+  @override
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _serverConfirmedMeta = const VerificationMeta(
+    'serverConfirmed',
+  );
+  @override
+  late final GeneratedColumn<bool> serverConfirmed = GeneratedColumn<bool>(
+    'server_confirmed',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("server_confirmed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountId,
+    blockedUserId,
+    handle,
+    displayName,
+    createdAt,
+    serverConfirmed,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'blocked_users';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BlockedUserRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('blocked_user_id')) {
+      context.handle(
+        _blockedUserIdMeta,
+        blockedUserId.isAcceptableOrUnknown(
+          data['blocked_user_id']!,
+          _blockedUserIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_blockedUserIdMeta);
+    }
+    if (data.containsKey('handle')) {
+      context.handle(
+        _handleMeta,
+        handle.isAcceptableOrUnknown(data['handle']!, _handleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_handleMeta);
+    }
+    if (data.containsKey('display_name')) {
+      context.handle(
+        _displayNameMeta,
+        displayName.isAcceptableOrUnknown(
+          data['display_name']!,
+          _displayNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('server_confirmed')) {
+      context.handle(
+        _serverConfirmedMeta,
+        serverConfirmed.isAcceptableOrUnknown(
+          data['server_confirmed']!,
+          _serverConfirmedMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountId, blockedUserId};
+  @override
+  BlockedUserRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BlockedUserRow(
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}account_id'],
+      )!,
+      blockedUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}blocked_user_id'],
+      )!,
+      handle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}handle'],
+      )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      serverConfirmed: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}server_confirmed'],
+      )!,
+    );
+  }
+
+  @override
+  $BlockedUsersTable createAlias(String alias) {
+    return $BlockedUsersTable(attachedDatabase, alias);
+  }
+}
+
+class BlockedUserRow extends DataClass implements Insertable<BlockedUserRow> {
+  final String accountId;
+  final String blockedUserId;
+  final String handle;
+  final String? displayName;
+  final DateTime createdAt;
+  final bool serverConfirmed;
+  const BlockedUserRow({
+    required this.accountId,
+    required this.blockedUserId,
+    required this.handle,
+    this.displayName,
+    required this.createdAt,
+    required this.serverConfirmed,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['account_id'] = Variable<String>(accountId);
+    map['blocked_user_id'] = Variable<String>(blockedUserId);
+    map['handle'] = Variable<String>(handle);
+    if (!nullToAbsent || displayName != null) {
+      map['display_name'] = Variable<String>(displayName);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['server_confirmed'] = Variable<bool>(serverConfirmed);
+    return map;
+  }
+
+  BlockedUsersCompanion toCompanion(bool nullToAbsent) {
+    return BlockedUsersCompanion(
+      accountId: Value(accountId),
+      blockedUserId: Value(blockedUserId),
+      handle: Value(handle),
+      displayName: displayName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(displayName),
+      createdAt: Value(createdAt),
+      serverConfirmed: Value(serverConfirmed),
+    );
+  }
+
+  factory BlockedUserRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BlockedUserRow(
+      accountId: serializer.fromJson<String>(json['accountId']),
+      blockedUserId: serializer.fromJson<String>(json['blockedUserId']),
+      handle: serializer.fromJson<String>(json['handle']),
+      displayName: serializer.fromJson<String?>(json['displayName']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      serverConfirmed: serializer.fromJson<bool>(json['serverConfirmed']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountId': serializer.toJson<String>(accountId),
+      'blockedUserId': serializer.toJson<String>(blockedUserId),
+      'handle': serializer.toJson<String>(handle),
+      'displayName': serializer.toJson<String?>(displayName),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'serverConfirmed': serializer.toJson<bool>(serverConfirmed),
+    };
+  }
+
+  BlockedUserRow copyWith({
+    String? accountId,
+    String? blockedUserId,
+    String? handle,
+    Value<String?> displayName = const Value.absent(),
+    DateTime? createdAt,
+    bool? serverConfirmed,
+  }) => BlockedUserRow(
+    accountId: accountId ?? this.accountId,
+    blockedUserId: blockedUserId ?? this.blockedUserId,
+    handle: handle ?? this.handle,
+    displayName: displayName.present ? displayName.value : this.displayName,
+    createdAt: createdAt ?? this.createdAt,
+    serverConfirmed: serverConfirmed ?? this.serverConfirmed,
+  );
+  BlockedUserRow copyWithCompanion(BlockedUsersCompanion data) {
+    return BlockedUserRow(
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      blockedUserId: data.blockedUserId.present
+          ? data.blockedUserId.value
+          : this.blockedUserId,
+      handle: data.handle.present ? data.handle.value : this.handle,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      serverConfirmed: data.serverConfirmed.present
+          ? data.serverConfirmed.value
+          : this.serverConfirmed,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BlockedUserRow(')
+          ..write('accountId: $accountId, ')
+          ..write('blockedUserId: $blockedUserId, ')
+          ..write('handle: $handle, ')
+          ..write('displayName: $displayName, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('serverConfirmed: $serverConfirmed')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    accountId,
+    blockedUserId,
+    handle,
+    displayName,
+    createdAt,
+    serverConfirmed,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BlockedUserRow &&
+          other.accountId == this.accountId &&
+          other.blockedUserId == this.blockedUserId &&
+          other.handle == this.handle &&
+          other.displayName == this.displayName &&
+          other.createdAt == this.createdAt &&
+          other.serverConfirmed == this.serverConfirmed);
+}
+
+class BlockedUsersCompanion extends UpdateCompanion<BlockedUserRow> {
+  final Value<String> accountId;
+  final Value<String> blockedUserId;
+  final Value<String> handle;
+  final Value<String?> displayName;
+  final Value<DateTime> createdAt;
+  final Value<bool> serverConfirmed;
+  final Value<int> rowid;
+  const BlockedUsersCompanion({
+    this.accountId = const Value.absent(),
+    this.blockedUserId = const Value.absent(),
+    this.handle = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.serverConfirmed = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  BlockedUsersCompanion.insert({
+    required String accountId,
+    required String blockedUserId,
+    required String handle,
+    this.displayName = const Value.absent(),
+    required DateTime createdAt,
+    this.serverConfirmed = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : accountId = Value(accountId),
+       blockedUserId = Value(blockedUserId),
+       handle = Value(handle),
+       createdAt = Value(createdAt);
+  static Insertable<BlockedUserRow> custom({
+    Expression<String>? accountId,
+    Expression<String>? blockedUserId,
+    Expression<String>? handle,
+    Expression<String>? displayName,
+    Expression<DateTime>? createdAt,
+    Expression<bool>? serverConfirmed,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (accountId != null) 'account_id': accountId,
+      if (blockedUserId != null) 'blocked_user_id': blockedUserId,
+      if (handle != null) 'handle': handle,
+      if (displayName != null) 'display_name': displayName,
+      if (createdAt != null) 'created_at': createdAt,
+      if (serverConfirmed != null) 'server_confirmed': serverConfirmed,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  BlockedUsersCompanion copyWith({
+    Value<String>? accountId,
+    Value<String>? blockedUserId,
+    Value<String>? handle,
+    Value<String?>? displayName,
+    Value<DateTime>? createdAt,
+    Value<bool>? serverConfirmed,
+    Value<int>? rowid,
+  }) {
+    return BlockedUsersCompanion(
+      accountId: accountId ?? this.accountId,
+      blockedUserId: blockedUserId ?? this.blockedUserId,
+      handle: handle ?? this.handle,
+      displayName: displayName ?? this.displayName,
+      createdAt: createdAt ?? this.createdAt,
+      serverConfirmed: serverConfirmed ?? this.serverConfirmed,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (blockedUserId.present) {
+      map['blocked_user_id'] = Variable<String>(blockedUserId.value);
+    }
+    if (handle.present) {
+      map['handle'] = Variable<String>(handle.value);
+    }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (serverConfirmed.present) {
+      map['server_confirmed'] = Variable<bool>(serverConfirmed.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BlockedUsersCompanion(')
+          ..write('accountId: $accountId, ')
+          ..write('blockedUserId: $blockedUserId, ')
+          ..write('handle: $handle, ')
+          ..write('displayName: $displayName, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('serverConfirmed: $serverConfirmed, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -6425,6 +7032,7 @@ abstract class _$PakPerkDatabase extends GeneratedDatabase {
   late final $CachedChatsTable cachedChats = $CachedChatsTable(this);
   late final $LibraryItemsTable libraryItems = $LibraryItemsTable(this);
   late final $CommentDraftsTable commentDrafts = $CommentDraftsTable(this);
+  late final $BlockedUsersTable blockedUsers = $BlockedUsersTable(this);
   late final $SyncOutboxTable syncOutbox = $SyncOutboxTable(this);
   late final $LibrarySyncStatesTable librarySyncStates =
       $LibrarySyncStatesTable(this);
@@ -6444,6 +7052,7 @@ abstract class _$PakPerkDatabase extends GeneratedDatabase {
     cachedChats,
     libraryItems,
     commentDrafts,
+    blockedUsers,
     syncOutbox,
     librarySyncStates,
     cacheMetadata,
@@ -9311,6 +9920,7 @@ typedef $$CachedCommentPagesTableCreateCompanionBuilder =
     CachedCommentPagesCompanion Function({
       required String pageKey,
       required String paperId,
+      Value<String?> viewerAccountId,
       Value<String?> cursor,
       required String payloadJson,
       required DateTime fetchedAt,
@@ -9322,6 +9932,7 @@ typedef $$CachedCommentPagesTableUpdateCompanionBuilder =
     CachedCommentPagesCompanion Function({
       Value<String> pageKey,
       Value<String> paperId,
+      Value<String?> viewerAccountId,
       Value<String?> cursor,
       Value<String> payloadJson,
       Value<DateTime> fetchedAt,
@@ -9373,6 +9984,11 @@ class $$CachedCommentPagesTableFilterComposer
   });
   ColumnFilters<String> get pageKey => $composableBuilder(
     column: $table.pageKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get viewerAccountId => $composableBuilder(
+    column: $table.viewerAccountId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9439,6 +10055,11 @@ class $$CachedCommentPagesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get viewerAccountId => $composableBuilder(
+    column: $table.viewerAccountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get cursor => $composableBuilder(
     column: $table.cursor,
     builder: (column) => ColumnOrderings(column),
@@ -9499,6 +10120,11 @@ class $$CachedCommentPagesTableAnnotationComposer
   });
   GeneratedColumn<String> get pageKey =>
       $composableBuilder(column: $table.pageKey, builder: (column) => column);
+
+  GeneratedColumn<String> get viewerAccountId => $composableBuilder(
+    column: $table.viewerAccountId,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get cursor =>
       $composableBuilder(column: $table.cursor, builder: (column) => column);
@@ -9576,6 +10202,7 @@ class $$CachedCommentPagesTableTableManager
               ({
                 Value<String> pageKey = const Value.absent(),
                 Value<String> paperId = const Value.absent(),
+                Value<String?> viewerAccountId = const Value.absent(),
                 Value<String?> cursor = const Value.absent(),
                 Value<String> payloadJson = const Value.absent(),
                 Value<DateTime> fetchedAt = const Value.absent(),
@@ -9585,6 +10212,7 @@ class $$CachedCommentPagesTableTableManager
               }) => CachedCommentPagesCompanion(
                 pageKey: pageKey,
                 paperId: paperId,
+                viewerAccountId: viewerAccountId,
                 cursor: cursor,
                 payloadJson: payloadJson,
                 fetchedAt: fetchedAt,
@@ -9596,6 +10224,7 @@ class $$CachedCommentPagesTableTableManager
               ({
                 required String pageKey,
                 required String paperId,
+                Value<String?> viewerAccountId = const Value.absent(),
                 Value<String?> cursor = const Value.absent(),
                 required String payloadJson,
                 required DateTime fetchedAt,
@@ -9605,6 +10234,7 @@ class $$CachedCommentPagesTableTableManager
               }) => CachedCommentPagesCompanion.insert(
                 pageKey: pageKey,
                 paperId: paperId,
+                viewerAccountId: viewerAccountId,
                 cursor: cursor,
                 payloadJson: payloadJson,
                 fetchedAt: fetchedAt,
@@ -10440,6 +11070,8 @@ typedef $$CommentDraftsTableCreateCompanionBuilder =
       required String paperId,
       Value<String?> parentCommentId,
       required String body,
+      Value<String?> clientRequestId,
+      Value<String?> lastAttemptedBody,
       required DateTime createdAt,
       required DateTime updatedAt,
       Value<int> rowid,
@@ -10451,6 +11083,8 @@ typedef $$CommentDraftsTableUpdateCompanionBuilder =
       Value<String> paperId,
       Value<String?> parentCommentId,
       Value<String> body,
+      Value<String?> clientRequestId,
+      Value<String?> lastAttemptedBody,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -10517,6 +11151,16 @@ class $$CommentDraftsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get clientRequestId => $composableBuilder(
+    column: $table.clientRequestId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastAttemptedBody => $composableBuilder(
+    column: $table.lastAttemptedBody,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnFilters(column),
@@ -10580,6 +11224,16 @@ class $$CommentDraftsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get clientRequestId => $composableBuilder(
+    column: $table.clientRequestId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastAttemptedBody => $composableBuilder(
+    column: $table.lastAttemptedBody,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -10636,6 +11290,16 @@ class $$CommentDraftsTableAnnotationComposer
 
   GeneratedColumn<String> get body =>
       $composableBuilder(column: $table.body, builder: (column) => column);
+
+  GeneratedColumn<String> get clientRequestId => $composableBuilder(
+    column: $table.clientRequestId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastAttemptedBody => $composableBuilder(
+    column: $table.lastAttemptedBody,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -10702,6 +11366,8 @@ class $$CommentDraftsTableTableManager
                 Value<String> paperId = const Value.absent(),
                 Value<String?> parentCommentId = const Value.absent(),
                 Value<String> body = const Value.absent(),
+                Value<String?> clientRequestId = const Value.absent(),
+                Value<String?> lastAttemptedBody = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -10711,6 +11377,8 @@ class $$CommentDraftsTableTableManager
                 paperId: paperId,
                 parentCommentId: parentCommentId,
                 body: body,
+                clientRequestId: clientRequestId,
+                lastAttemptedBody: lastAttemptedBody,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -10722,6 +11390,8 @@ class $$CommentDraftsTableTableManager
                 required String paperId,
                 Value<String?> parentCommentId = const Value.absent(),
                 required String body,
+                Value<String?> clientRequestId = const Value.absent(),
+                Value<String?> lastAttemptedBody = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
@@ -10731,6 +11401,8 @@ class $$CommentDraftsTableTableManager
                 paperId: paperId,
                 parentCommentId: parentCommentId,
                 body: body,
+                clientRequestId: clientRequestId,
+                lastAttemptedBody: lastAttemptedBody,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -10801,6 +11473,237 @@ typedef $$CommentDraftsTableProcessedTableManager =
       (CommentDraftRow, $$CommentDraftsTableReferences),
       CommentDraftRow,
       PrefetchHooks Function({bool paperId})
+    >;
+typedef $$BlockedUsersTableCreateCompanionBuilder =
+    BlockedUsersCompanion Function({
+      required String accountId,
+      required String blockedUserId,
+      required String handle,
+      Value<String?> displayName,
+      required DateTime createdAt,
+      Value<bool> serverConfirmed,
+      Value<int> rowid,
+    });
+typedef $$BlockedUsersTableUpdateCompanionBuilder =
+    BlockedUsersCompanion Function({
+      Value<String> accountId,
+      Value<String> blockedUserId,
+      Value<String> handle,
+      Value<String?> displayName,
+      Value<DateTime> createdAt,
+      Value<bool> serverConfirmed,
+      Value<int> rowid,
+    });
+
+class $$BlockedUsersTableFilterComposer
+    extends Composer<_$PakPerkDatabase, $BlockedUsersTable> {
+  $$BlockedUsersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get blockedUserId => $composableBuilder(
+    column: $table.blockedUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get handle => $composableBuilder(
+    column: $table.handle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get serverConfirmed => $composableBuilder(
+    column: $table.serverConfirmed,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BlockedUsersTableOrderingComposer
+    extends Composer<_$PakPerkDatabase, $BlockedUsersTable> {
+  $$BlockedUsersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get blockedUserId => $composableBuilder(
+    column: $table.blockedUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get handle => $composableBuilder(
+    column: $table.handle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get serverConfirmed => $composableBuilder(
+    column: $table.serverConfirmed,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BlockedUsersTableAnnotationComposer
+    extends Composer<_$PakPerkDatabase, $BlockedUsersTable> {
+  $$BlockedUsersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<String> get blockedUserId => $composableBuilder(
+    column: $table.blockedUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get handle =>
+      $composableBuilder(column: $table.handle, builder: (column) => column);
+
+  GeneratedColumn<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get serverConfirmed => $composableBuilder(
+    column: $table.serverConfirmed,
+    builder: (column) => column,
+  );
+}
+
+class $$BlockedUsersTableTableManager
+    extends
+        RootTableManager<
+          _$PakPerkDatabase,
+          $BlockedUsersTable,
+          BlockedUserRow,
+          $$BlockedUsersTableFilterComposer,
+          $$BlockedUsersTableOrderingComposer,
+          $$BlockedUsersTableAnnotationComposer,
+          $$BlockedUsersTableCreateCompanionBuilder,
+          $$BlockedUsersTableUpdateCompanionBuilder,
+          (
+            BlockedUserRow,
+            BaseReferences<
+              _$PakPerkDatabase,
+              $BlockedUsersTable,
+              BlockedUserRow
+            >,
+          ),
+          BlockedUserRow,
+          PrefetchHooks Function()
+        > {
+  $$BlockedUsersTableTableManager(
+    _$PakPerkDatabase db,
+    $BlockedUsersTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BlockedUsersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BlockedUsersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BlockedUsersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> accountId = const Value.absent(),
+                Value<String> blockedUserId = const Value.absent(),
+                Value<String> handle = const Value.absent(),
+                Value<String?> displayName = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<bool> serverConfirmed = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BlockedUsersCompanion(
+                accountId: accountId,
+                blockedUserId: blockedUserId,
+                handle: handle,
+                displayName: displayName,
+                createdAt: createdAt,
+                serverConfirmed: serverConfirmed,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String accountId,
+                required String blockedUserId,
+                required String handle,
+                Value<String?> displayName = const Value.absent(),
+                required DateTime createdAt,
+                Value<bool> serverConfirmed = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BlockedUsersCompanion.insert(
+                accountId: accountId,
+                blockedUserId: blockedUserId,
+                handle: handle,
+                displayName: displayName,
+                createdAt: createdAt,
+                serverConfirmed: serverConfirmed,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BlockedUsersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PakPerkDatabase,
+      $BlockedUsersTable,
+      BlockedUserRow,
+      $$BlockedUsersTableFilterComposer,
+      $$BlockedUsersTableOrderingComposer,
+      $$BlockedUsersTableAnnotationComposer,
+      $$BlockedUsersTableCreateCompanionBuilder,
+      $$BlockedUsersTableUpdateCompanionBuilder,
+      (
+        BlockedUserRow,
+        BaseReferences<_$PakPerkDatabase, $BlockedUsersTable, BlockedUserRow>,
+      ),
+      BlockedUserRow,
+      PrefetchHooks Function()
     >;
 typedef $$SyncOutboxTableCreateCompanionBuilder =
     SyncOutboxCompanion Function({
@@ -11562,6 +12465,8 @@ class $PakPerkDatabaseManager {
       $$LibraryItemsTableTableManager(_db, _db.libraryItems);
   $$CommentDraftsTableTableManager get commentDrafts =>
       $$CommentDraftsTableTableManager(_db, _db.commentDrafts);
+  $$BlockedUsersTableTableManager get blockedUsers =>
+      $$BlockedUsersTableTableManager(_db, _db.blockedUsers);
   $$SyncOutboxTableTableManager get syncOutbox =>
       $$SyncOutboxTableTableManager(_db, _db.syncOutbox);
   $$LibrarySyncStatesTableTableManager get librarySyncStates =>

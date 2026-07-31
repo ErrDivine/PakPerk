@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/account/account.dart';
+import '../core/account/account_data_write_barrier.dart';
 import '../core/api/api_client.dart';
 import '../core/api/auth_interceptor.dart';
 import '../core/auth/auth.dart';
@@ -83,18 +84,25 @@ final authRepositoryProvider = Provider<AuthRepository>(
 
 /// Clears only local rows whose lifecycle belongs to an account. Public paper
 /// metadata, feed windows, and reading restoration are deliberately untouched.
+final accountDataWriteBarrierProvider = Provider<AccountDataWriteBarrier>(
+  (ref) => AccountDataWriteBarrier(),
+);
+
 final accountOwnedDataClearerProvider = Provider<AccountOwnedDataClearer>((
   ref,
 ) {
-  return (accountId) async {
+  return (accountId, invalidatedThroughEpoch) async {
     final store = ref.read(localStoreProvider);
     if (store is! DriftLocalStore) return;
     final accountCache = AccountCacheDao(store.database);
-    if (accountId == null) {
-      await accountCache.clearAllAccountData();
-    } else {
-      await accountCache.clearAccountData(accountId);
-    }
+    await ref
+        .read(accountDataWriteBarrierProvider)
+        .clear(
+          accountId: accountId,
+          invalidatedThroughEpoch: invalidatedThroughEpoch,
+          clearAccount: accountCache.clearAccountData,
+          clearAll: accountCache.clearAllAccountData,
+        );
   };
 });
 

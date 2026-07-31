@@ -14,6 +14,9 @@ import '../features/account/account_home_screen.dart';
 import '../features/account/auth_flow_screen.dart';
 import '../features/chat/chat_controller.dart';
 import '../features/chat/chat_sheet.dart';
+import '../features/comments/blocked_users_screen.dart';
+import '../features/comments/comments_screen.dart';
+import '../features/comments/my_comments_screen.dart';
 import '../features/feed/feed_screen.dart';
 import '../features/library/to_read_screen.dart';
 import '../features/paper_reader/paper_metadata_controller.dart';
@@ -240,13 +243,9 @@ Future<void> openPaperComments(
     isScrollControlled: true,
     builder: (sheetContext) => FractionallySizedBox(
       heightFactor: .9,
-      child: PhaseOnePlaceholderScreen(
-        title: 'Paper discussions',
-        message:
-            'Comments for “${data.paperTitle}” are not enabled in this '
-            'build. No comment controls are presented as functional.',
-        icon: Icons.forum_outlined,
-        closeTooltip: 'Close paper discussions',
+      child: PaperCommentsRouteScreen(
+        paperId: data.paperId,
+        initialData: data,
         onClose: () => Navigator.of(sheetContext).pop(),
       ),
     ),
@@ -452,23 +451,16 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                   ),
                   GoRoute(
                     path: 'comments',
-                    builder: (_, __) => const PhaseOnePlaceholderScreen(
+                    builder: (_, __) => const _CommentsFeatureRoute(
                       title: 'My comments',
-                      message:
-                          'Paper discussions and your comment history '
-                          'arrive in Phase 5. No posting controls are active.',
-                      icon: Icons.comment_outlined,
+                      child: MyCommentsScreen(),
                     ),
                   ),
                   GoRoute(
                     path: 'blocked',
-                    builder: (_, __) => const PhaseOnePlaceholderScreen(
+                    builder: (_, __) => const _CommentsFeatureRoute(
                       title: 'Blocked users',
-                      message:
-                          'User blocking arrives with moderated paper '
-                          'discussions in Phase 5. No local-only block is '
-                          'presented as synchronized.',
-                      icon: Icons.block_outlined,
+                      child: BlockedUsersScreen(),
                     ),
                   ),
                   GoRoute(
@@ -1002,9 +994,7 @@ class PaperChatRouteScreen extends ConsumerWidget {
 }
 
 /// Resolves metadata for externally opened comments links before presenting
-/// the Phase 1 disabled state. This keeps the public route truthful and gives
-/// Phase 5 a stable, paper-scoped replacement point without exposing a fake
-/// composer in the meantime.
+/// the real, paper-scoped discussion surface.
 class PaperCommentsRouteScreen extends ConsumerStatefulWidget {
   const PaperCommentsRouteScreen({
     required this.paperId,
@@ -1032,7 +1022,7 @@ class _PaperCommentsRouteScreenState
   void initState() {
     super.initState();
     _data = _matchingInitialData;
-    if (_data == null && _hasValidPaperId) _load();
+    if (_data == null && _hasValidPaperId && _commentsEnabled) _load();
   }
 
   @override
@@ -1045,7 +1035,7 @@ class _PaperCommentsRouteScreenState
     _request?.cancel('A different comments link was opened.');
     _data = _matchingInitialData;
     _errorMessage = null;
-    if (_data == null && _hasValidPaperId) _load();
+    if (_data == null && _hasValidPaperId && _commentsEnabled) _load();
   }
 
   @override
@@ -1056,6 +1046,8 @@ class _PaperCommentsRouteScreenState
 
   bool get _hasValidPaperId =>
       PakPerkRouteIdentifiers.isValidPaperId(widget.paperId);
+
+  bool get _commentsEnabled => ref.read(featureFlagsProvider).comments;
 
   PaperCommentsRouteData? get _matchingInitialData {
     final data = widget.initialData;
@@ -1075,18 +1067,27 @@ class _PaperCommentsRouteScreenState
         onClose: widget.onClose,
       );
     }
-    final data = _data;
-    if (data != null) {
+    if (!ref.watch(featureFlagsProvider).comments) {
       return PhaseOnePlaceholderScreen(
         title: 'Paper discussions',
-        message:
-            'Comments for “${data.paperTitle}” are not enabled in this '
-            'build. Nothing posted here will be presented as functional '
-            'until the comments service is available.',
+        message: 'Comments are not enabled in this build.',
         icon: Icons.forum_outlined,
         closeTooltip: 'Close paper discussions',
         onClose: widget.onClose,
       );
+    }
+    final data = _data;
+    if (data != null) {
+      return CommentsScreen(
+        paperId: data.paperId,
+        paperTitle: data.paperTitle,
+        onClose: widget.onClose,
+      );
+    }
+    if (_request == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _request == null) _load();
+      });
     }
     return Scaffold(
       appBar: AppBar(
@@ -1160,6 +1161,23 @@ class _PaperCommentsRouteScreenState
         _errorMessage = 'The paper discussions link could not be resolved.';
       });
     }
+  }
+}
+
+final class _CommentsFeatureRoute extends ConsumerWidget {
+  const _CommentsFeatureRoute({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(featureFlagsProvider).comments) return child;
+    return PhaseOnePlaceholderScreen(
+      title: title,
+      message: 'Comments are not enabled in this build.',
+      icon: Icons.forum_outlined,
+    );
   }
 }
 

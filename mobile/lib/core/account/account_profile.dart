@@ -13,6 +13,10 @@ final class AccountProfile {
     this.displayName,
     this.termsVersion,
     this.termsAcceptedAt,
+    this.communityGuidelinesVersion,
+    this.communityGuidelinesAcceptedAt,
+    this.currentCommunityGuidelinesVersion = 'unconfigured',
+    this.communityGuidelinesCurrent = false,
   }) {
     if (!_uuid.hasMatch(id) || profileVersion <= 0) {
       throw const FormatException('Invalid account profile identity.');
@@ -32,8 +36,9 @@ final class AccountProfile {
       _ => throw const FormatException('Invalid account status.'),
     };
     final termsCurrent = json['terms_current'];
-    if (termsCurrent is! bool) {
-      throw const FormatException('Invalid account terms state.');
+    final communityGuidelinesCurrent = json['community_guidelines_current'];
+    if (termsCurrent is! bool || communityGuidelinesCurrent is! bool) {
+      throw const FormatException('Invalid account policy state.');
     }
     final profile = AccountProfile(
       id: _requiredString(json, 'id'),
@@ -45,6 +50,19 @@ final class AccountProfile {
       termsAcceptedAt: _optionalTime(json, 'terms_accepted_at'),
       currentTermsVersion: _requiredTermsVersion(json, 'current_terms_version'),
       termsCurrent: termsCurrent,
+      communityGuidelinesVersion: _optionalTermsVersion(
+        json,
+        'community_guidelines_version',
+      ),
+      communityGuidelinesAcceptedAt: _optionalTime(
+        json,
+        'community_guidelines_accepted_at',
+      ),
+      currentCommunityGuidelinesVersion: _requiredTermsVersion(
+        json,
+        'current_community_guidelines_version',
+      ),
+      communityGuidelinesCurrent: communityGuidelinesCurrent,
       createdAt: _requiredTime(json, 'created_at'),
       updatedAt: _requiredTime(json, 'updated_at'),
     );
@@ -57,8 +75,17 @@ final class AccountProfile {
         hasTermsVersion &&
         hasTermsTime &&
         profile.termsVersion == profile.currentTermsVersion;
+    final hasGuidelinesVersion = profile.communityGuidelinesVersion != null;
+    final hasGuidelinesTime = profile.communityGuidelinesAcceptedAt != null;
+    final calculatedGuidelinesCurrent =
+        hasGuidelinesVersion &&
+        hasGuidelinesTime &&
+        profile.communityGuidelinesVersion ==
+            profile.currentCommunityGuidelinesVersion;
     if (hasTermsVersion != hasTermsTime ||
         profile.termsCurrent != calculatedTermsCurrent ||
+        hasGuidelinesVersion != hasGuidelinesTime ||
+        profile.communityGuidelinesCurrent != calculatedGuidelinesCurrent ||
         profile.updatedAt.isBefore(profile.createdAt)) {
       throw const FormatException('Inconsistent account profile state.');
     }
@@ -74,10 +101,16 @@ final class AccountProfile {
   final DateTime? termsAcceptedAt;
   final String currentTermsVersion;
   final bool termsCurrent;
+  final String? communityGuidelinesVersion;
+  final DateTime? communityGuidelinesAcceptedAt;
+  final String currentCommunityGuidelinesVersion;
+  final bool communityGuidelinesCurrent;
   final DateTime createdAt;
   final DateTime updatedAt;
 
   bool get isProfileComplete => isActive && handle != null && termsCurrent;
+  bool get canParticipateInComments =>
+      isProfileComplete && communityGuidelinesCurrent;
   bool get isActive => status == AccountStatus.active;
 
   @override
@@ -91,19 +124,26 @@ final class AccountProfilePatch {
     this.handle,
     this.displayName = const ProfileField.omitted(),
     this.acceptTermsVersion,
+    this.acceptCommunityGuidelinesVersion,
   });
 
   final String? handle;
   final ProfileField<String> displayName;
   final String? acceptTermsVersion;
+  final String? acceptCommunityGuidelinesVersion;
 
   bool get isEmpty =>
-      handle == null && displayName.isOmitted && acceptTermsVersion == null;
+      handle == null &&
+      displayName.isOmitted &&
+      acceptTermsVersion == null &&
+      acceptCommunityGuidelinesVersion == null;
 
   Map<String, Object?> toJson() => {
     if (handle != null) 'handle': handle,
     if (!displayName.isOmitted) 'display_name': displayName.value,
     if (acceptTermsVersion != null) 'accept_terms_version': acceptTermsVersion,
+    if (acceptCommunityGuidelinesVersion != null)
+      'accept_community_guidelines_version': acceptCommunityGuidelinesVersion,
   };
 }
 
@@ -134,6 +174,10 @@ const _profileKeys = <String>{
   'terms_accepted_at',
   'current_terms_version',
   'terms_current',
+  'community_guidelines_version',
+  'community_guidelines_accepted_at',
+  'current_community_guidelines_version',
+  'community_guidelines_current',
   'created_at',
   'updated_at',
 };

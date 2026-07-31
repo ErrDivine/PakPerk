@@ -1,4 +1,5 @@
 import 'package:drift/native.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/core/cache/feed_cache_persistence.dart';
 import 'package:pakperk/core/database/account_cache_dao.dart';
@@ -30,6 +31,49 @@ void main() {
         refreshedAt: now,
       );
       await database.putMetadata('feed:public-marker', {'kept': true});
+      await database
+          .into(database.cachedCommentPages)
+          .insert(
+            CachedCommentPagesCompanion.insert(
+              pageKey: 'comments:guest',
+              paperId: samplePaper.paperId,
+              payloadJson: '{"items":[],"next_cursor":null}',
+              fetchedAt: now,
+              expiresAt: now.add(const Duration(minutes: 5)),
+            ),
+          );
+      await database
+          .into(database.cachedCommentPages)
+          .insert(
+            CachedCommentPagesCompanion.insert(
+              pageKey: 'comments:account-a',
+              paperId: samplePaper.paperId,
+              viewerAccountId: const Value('account-a'),
+              payloadJson: '{"items":[],"next_cursor":null}',
+              fetchedAt: now,
+              expiresAt: now.add(const Duration(minutes: 5)),
+            ),
+          );
+      await database
+          .into(database.blockedUsers)
+          .insert(
+            BlockedUsersCompanion.insert(
+              accountId: 'account-a',
+              blockedUserId: 'blocked-a',
+              handle: 'blocked_a',
+              createdAt: now,
+            ),
+          );
+      await database
+          .into(database.blockedUsers)
+          .insert(
+            BlockedUsersCompanion.insert(
+              accountId: 'account-b',
+              blockedUserId: 'blocked-b',
+              handle: 'blocked_b',
+              createdAt: now,
+            ),
+          );
       await accounts.upsertLibraryItem(
         accountId: 'account-a',
         paperId: samplePaper.paperId,
@@ -124,6 +168,18 @@ void main() {
         ),
         ['account-b'],
       );
+      expect(
+        (await database.select(database.cachedCommentPages).get()).map(
+          (row) => row.pageKey,
+        ),
+        ['comments:guest'],
+      );
+      expect(
+        (await database.select(database.blockedUsers).get()).map(
+          (row) => row.accountId,
+        ),
+        ['account-b'],
+      );
       expect(await feeds.loadPage(queryKey), isNotNull);
       expect(await database.readMetadata('feed:public-marker'), {'kept': true});
       expect(
@@ -138,6 +194,13 @@ void main() {
       expect(await database.select(database.commentDrafts).get(), isEmpty);
       expect(await database.select(database.syncOutbox).get(), isEmpty);
       expect(await database.select(database.librarySyncStates).get(), isEmpty);
+      expect(await database.select(database.blockedUsers).get(), isEmpty);
+      expect(
+        (await database.select(database.cachedCommentPages).get()).map(
+          (row) => row.pageKey,
+        ),
+        ['comments:guest'],
+      );
       expect(await feeds.loadPage(queryKey), isNotNull);
       expect(await database.select(database.cachedPapers).get(), hasLength(1));
       expect(

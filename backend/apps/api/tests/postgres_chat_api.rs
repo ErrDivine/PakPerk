@@ -171,6 +171,7 @@ fn api_config(database_url: String) -> ApiConfig {
         features: FeatureFlags::default(),
         accounts: None,
         library: None,
+        comments: None,
         bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
         database_url,
         database_pool_size: 8,

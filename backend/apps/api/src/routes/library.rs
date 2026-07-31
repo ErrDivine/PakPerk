@@ -930,6 +930,7 @@ mod tests {
                 library: library_enabled,
                 library_writes: writes_enabled,
                 comments: false,
+                comment_creation: false,
             },
             accounts: Some(AccountFeatureConfig {
                 oidc: auth::OidcVerifierConfig::new(
@@ -938,6 +939,10 @@ mod tests {
                     vec![auth::OidcAlgorithm::Rs256],
                 ),
                 current_terms_version: TermsVersion::parse("2026-07-31").unwrap(),
+                current_community_guidelines_version: domain::CommunityGuidelinesVersion::parse(
+                    "2026-08-01",
+                )
+                .unwrap(),
                 last_seen_interval: Duration::from_secs(15 * 60),
                 profile_update_limit: 5,
                 profile_update_window: Duration::from_secs(60 * 60),
@@ -948,6 +953,7 @@ mod tests {
                 mutation_limit: 120,
                 mutation_window: Duration::from_secs(60 * 60),
             }),
+            comments: None,
             bind: SocketAddr::from(([127, 0, 0, 1], 0)),
             database_url: "postgres://test:test@127.0.0.1/test".to_owned(),
             database_pool_size: 1,

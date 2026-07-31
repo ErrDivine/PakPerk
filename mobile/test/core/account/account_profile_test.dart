@@ -72,6 +72,9 @@ Map<String, dynamic> _profileJson({
   Object? termsVersion,
   Object? termsAcceptedAt,
   Object? termsCurrent = false,
+  Object? communityGuidelinesVersion,
+  Object? communityGuidelinesAcceptedAt,
+  Object? communityGuidelinesCurrent = false,
   Object? profileComplete = false,
 }) => <String, dynamic>{
   'id': '018f47a6-4b56-7f4c-8c7a-e2656e820001',
@@ -84,6 +87,10 @@ Map<String, dynamic> _profileJson({
   'terms_accepted_at': termsAcceptedAt,
   'current_terms_version': '2026-07',
   'terms_current': termsCurrent,
+  'community_guidelines_version': communityGuidelinesVersion,
+  'community_guidelines_accepted_at': communityGuidelinesAcceptedAt,
+  'current_community_guidelines_version': '2026-07',
+  'community_guidelines_current': communityGuidelinesCurrent,
   'created_at': '2026-07-30T10:00:00Z',
   'updated_at': '2026-07-30T11:00:00Z',
 };

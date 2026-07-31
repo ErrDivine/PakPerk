@@ -1,7 +1,10 @@
 use std::{str::FromStr, time::Duration};
 
 use chrono::{DateTime, Utc};
-use domain::{AccountStatus, AuthenticatedUserId, DisplayName, Handle, TermsVersion, User};
+use domain::{
+    AccountStatus, AuthenticatedUserId, CommunityGuidelinesVersion, DisplayName, Handle,
+    TermsVersion, User,
+};
 use sqlx::{FromRow, PgPool};
 
 use super::DbError;
@@ -14,6 +17,8 @@ const USER_COLUMNS: &str = r"
     profile_version,
     terms_version,
     terms_accepted_at,
+    community_guidelines_version,
+    community_guidelines_accepted_at,
     created_at,
     updated_at,
     last_seen_at
@@ -28,6 +33,8 @@ struct UserRow {
     profile_version: i64,
     terms_version: Option<String>,
     terms_accepted_at: Option<DateTime<Utc>>,
+    community_guidelines_version: Option<String>,
+    community_guidelines_accepted_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     last_seen_at: DateTime<Utc>,
@@ -59,6 +66,11 @@ impl TryFrom<UserRow> for User {
             .map_err(|error| DbError::InvalidData(error.to_string()))?;
         let status = AccountStatus::from_str(&row.status)
             .map_err(|error| DbError::InvalidData(error.to_string()))?;
+        let community_guidelines_version = row
+            .community_guidelines_version
+            .map(|value| CommunityGuidelinesVersion::parse(&value))
+            .transpose()
+            .map_err(|error| DbError::InvalidData(error.to_string()))?;
 
         Ok(Self {
             id: AuthenticatedUserId::new(row.id),
@@ -68,6 +80,8 @@ impl TryFrom<UserRow> for User {
             profile_version: row.profile_version,
             terms_version,
             terms_accepted_at: row.terms_accepted_at,
+            community_guidelines_version,
+            community_guidelines_accepted_at: row.community_guidelines_accepted_at,
             created_at: row.created_at,
             updated_at: row.updated_at,
             last_seen_at: row.last_seen_at,
@@ -83,12 +97,18 @@ pub struct ProfilePatch {
     pub display_name: Option<Option<DisplayName>>,
     /// A present version records acceptance at database statement time.
     pub terms_version: Option<TermsVersion>,
+    /// A present version records community-guidelines acceptance at database
+    /// statement time independently from Terms acceptance.
+    pub community_guidelines_version: Option<CommunityGuidelinesVersion>,
 }
 
 impl ProfilePatch {
     #[must_use]
     pub const fn is_empty(&self) -> bool {
-        self.handle.is_none() && self.display_name.is_none() && self.terms_version.is_none()
+        self.handle.is_none()
+            && self.display_name.is_none()
+            && self.terms_version.is_none()
+            && self.community_guidelines_version.is_none()
     }
 }
 
@@ -207,6 +227,7 @@ impl AccountRepository {
             .and_then(|value| value.as_ref())
             .map(DisplayName::as_str);
         let terms_version_is_set = patch.terms_version.is_some();
+        let community_guidelines_version_is_set = patch.community_guidelines_version.is_some();
 
         let result = sqlx::query_as::<_, UserRow>(&format!(
             r"
@@ -224,6 +245,14 @@ impl AccountRepository {
                     WHEN $6::boolean THEN statement_timestamp()
                     ELSE terms_accepted_at
                 END,
+                community_guidelines_version = CASE
+                    WHEN $8::boolean THEN $9::text
+                    ELSE community_guidelines_version
+                END,
+                community_guidelines_accepted_at = CASE
+                    WHEN $8::boolean THEN statement_timestamp()
+                    ELSE community_guidelines_accepted_at
+                END,
                 profile_version = profile_version + 1,
                 updated_at = statement_timestamp()
             WHERE id = $1
@@ -240,6 +269,13 @@ impl AccountRepository {
         .bind(display_name)
         .bind(terms_version_is_set)
         .bind(patch.terms_version.as_ref().map(TermsVersion::as_str))
+        .bind(community_guidelines_version_is_set)
+        .bind(
+            patch
+                .community_guidelines_version
+                .as_ref()
+                .map(CommunityGuidelinesVersion::as_str),
+        )
         .fetch_optional(&self.pool)
         .await;
 

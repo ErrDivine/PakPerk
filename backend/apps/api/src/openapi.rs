@@ -9,8 +9,12 @@ use utoipa::{Modify, OpenApi, ToSchema};
 
 use crate::{
     dto::{
-        AccountProfileEnvelope, AccountProfileResponse, AccountStatusSchema, ChatBody,
-        LibrarySaveBody, PrepareBody, ProfileUpdateBody,
+        AccountProfileEnvelope, AccountProfileResponse, AccountStatusSchema, BlockedUserEnvelope,
+        BlockedUserPageEnvelope, BlockedUserResponse, ChatBody, CommentAuthorResponse,
+        CommentEnvelope, CommentPageEnvelope, CommentReportEnvelope, CommentReportReasonBody,
+        CommentReportResponse, CommentReportStatusSchema, CommentResponse, CommentStatusSchema,
+        CreateCommentBody, EditCommentBody, LibrarySaveBody, PrepareBody, ProfileUpdateBody,
+        ReportCommentBody,
     },
     routes,
 };
@@ -20,7 +24,7 @@ use crate::{
     info(
         title = "Pakperk API",
         version = "1.0.0",
-        description = "Stable v1 paper-reading API with optional OIDC-backed account profiles and synchronized To Read libraries. Account, library, and library-write capabilities are independently feature-gated; comment routes remain unavailable until their production phase is complete."
+        description = "Stable v1 paper-reading API with optional OIDC-backed account profiles, synchronized To Read libraries, and moderated flat paper comments. Comment publication has an independent emergency kill switch which preserves reads and safety controls."
     ),
     paths(
         routes::health::health_live,
@@ -39,6 +43,15 @@ use crate::{
         routes::library::library_changes,
         routes::library::save_library_item,
         routes::library::remove_library_item,
+        routes::comments::list_paper_comments,
+        routes::comments::create_comment,
+        routes::comments::edit_comment,
+        routes::comments::delete_comment,
+        routes::comments::report_comment,
+        routes::comments::block_user,
+        routes::comments::unblock_user,
+        routes::comments::list_blocked_users,
+        routes::comments::list_my_comments,
     ),
     components(schemas(
         PrepareBody,
@@ -78,14 +91,30 @@ use crate::{
         LibraryListEntrySchema,
         LibraryListEnvelopeSchema,
         LibraryChangeEntrySchema,
-        LibraryChangesEnvelopeSchema
+        LibraryChangesEnvelopeSchema,
+        CreateCommentBody,
+        EditCommentBody,
+        ReportCommentBody,
+        CommentReportReasonBody,
+        CommentReportStatusSchema,
+        CommentReportResponse,
+        CommentReportEnvelope,
+        CommentStatusSchema,
+        CommentAuthorResponse,
+        CommentResponse,
+        CommentEnvelope,
+        CommentPageEnvelope,
+        BlockedUserResponse,
+        BlockedUserEnvelope,
+        BlockedUserPageEnvelope
     )),
     modifiers(&OidcSecurity),
     tags(
         (name = "health", description = "Process and dependency health"),
         (name = "papers", description = "Public paper reading and processing"),
         (name = "accounts", description = "OIDC-authenticated account profile"),
-        (name = "library", description = "OIDC-authenticated synchronized To Read library")
+        (name = "library", description = "OIDC-authenticated synchronized To Read library"),
+        (name = "comments", description = "Public flat paper comments and authenticated safety controls")
     )
 )]
 pub struct ApiDoc;
@@ -478,6 +507,12 @@ mod tests {
             "/v1/me/library",
             "/v1/me/library/changes",
             "/v1/me/library/{paper_id}",
+            "/v1/papers/{paper_id}/comments",
+            "/v1/comments/{comment_id}",
+            "/v1/comments/{comment_id}/reports",
+            "/v1/me/blocked-users/{user_id}",
+            "/v1/me/blocked-users",
+            "/v1/me/comments",
         ];
         for path in expected {
             assert!(actual.contains(&path), "OpenAPI is missing {path}");
@@ -532,6 +567,11 @@ mod tests {
             "display_name",
             "terms_version",
             "terms_accepted_at",
+            "community_guidelines_version",
+            "community_guidelines_accepted_at",
+            "current_community_guidelines_version",
+            "community_guidelines_current",
+            "comment_profile_complete",
         ] {
             assert!(required.iter().any(|required| required == field));
         }
@@ -672,6 +712,91 @@ mod tests {
                 .unwrap();
         assert!(change_required.iter().any(|required| required == "item"));
         assert!(change_required.iter().any(|required| required == "paper"));
+    }
+
+    #[test]
+    fn comments_contract_keeps_public_reads_and_safety_controls_independent() {
+        let document = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let public_read = &document["paths"]["/v1/papers/{paper_id}/comments"]["get"];
+        let security = public_read["security"].as_array().unwrap();
+        assert!(security.iter().any(|requirement| requirement == &json!({})));
+        assert!(security.iter().any(|requirement| {
+            requirement
+                .get("oidcBearer")
+                .is_some_and(|scopes| scopes == &json!([]))
+        }));
+
+        for (path, method, success) in [
+            ("/v1/papers/{paper_id}/comments", "post", "201"),
+            ("/v1/comments/{comment_id}", "patch", "200"),
+            ("/v1/comments/{comment_id}", "delete", "204"),
+            ("/v1/comments/{comment_id}/reports", "post", "200"),
+            ("/v1/me/blocked-users/{user_id}", "put", "200"),
+            ("/v1/me/blocked-users/{user_id}", "delete", "204"),
+            ("/v1/me/blocked-users", "get", "200"),
+            ("/v1/me/comments", "get", "200"),
+        ] {
+            let operation = &document["paths"][path][method];
+            assert_eq!(operation["security"][0]["oidcBearer"], json!([]));
+            assert!(
+                operation["responses"][success]["headers"]["Cache-Control"].is_object(),
+                "{method} {path} must document private cache control"
+            );
+        }
+
+        let create = &document["paths"]["/v1/papers/{paper_id}/comments"]["post"];
+        assert!(create["responses"]["503"].is_object());
+        assert!(
+            create["description"]
+                .as_str()
+                .is_some_and(|value| value.contains("COMMENT_CREATION_ENABLED"))
+        );
+        assert!(
+            create["parameters"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|parameter| parameter["name"] != "Idempotency-Key")
+        );
+        assert!(
+            document["paths"]["/v1/comments/{comment_id}"]["delete"]
+                .get("requestBody")
+                .is_none()
+        );
+        assert!(
+            document["paths"]["/v1/me/blocked-users/{user_id}"]["delete"]
+                .get("requestBody")
+                .is_none()
+        );
+        for method in ["patch", "delete"] {
+            let operation = &document["paths"]["/v1/comments/{comment_id}"][method];
+            assert!(operation["responses"]["404"].is_object());
+            assert!(!operation.to_string().contains("COMMENT_AUTHOR_REQUIRED"));
+        }
+
+        let comment = &document["components"]["schemas"]["CommentResponse"]["properties"];
+        for forbidden in [
+            "moderation_reason",
+            "report_count",
+            "reports",
+            "provider_decision",
+        ] {
+            assert!(comment.get(forbidden).is_none());
+        }
+        assert_eq!(
+            document["components"]["schemas"]["CommentReportReasonBody"]["enum"],
+            json!([
+                "spam",
+                "harassment",
+                "hate",
+                "threat",
+                "sexual_content",
+                "privacy",
+                "impersonation",
+                "copyright",
+                "other"
+            ])
+        );
     }
 
     #[test]

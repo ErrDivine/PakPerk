@@ -26,7 +26,7 @@ void main() {
           throw const OidcClientException.cancelled();
     final controller = AuthSessionController(
       repository: repository(oidc: oidc, store: MemorySecureTokenStore()),
-      clearAccountOwnedData: (_) async {},
+      clearAccountOwnedData: (_, __) async {},
     );
     addTearDown(controller.dispose);
 
@@ -46,7 +46,7 @@ void main() {
     String? clearedAccountId;
     final controller = AuthSessionController(
       repository: repository(oidc: oidc, store: store),
-      clearAccountOwnedData: (value) async {
+      clearAccountOwnedData: (value, _) async {
         clearedAccountId = value;
         accountRows.clear();
       },
@@ -77,7 +77,7 @@ void main() {
       String? clearedAccountId;
       final controller = AuthSessionController(
         repository: repository(oidc: oidc, store: store),
-        clearAccountOwnedData: (value) async {
+        clearAccountOwnedData: (value, _) async {
           clearedAccountId = value;
           accountRows.clear();
         },
@@ -109,7 +109,7 @@ void main() {
       final store = MemorySecureTokenStore(initial);
       final controller = AuthSessionController(
         repository: repository(oidc: oidc, store: store),
-        clearAccountOwnedData: (_) async {},
+        clearAccountOwnedData: (_, __) async {},
       );
       addTearDown(controller.dispose);
 
@@ -134,7 +134,7 @@ void main() {
       var accountDataClearCount = 0;
       final controller = AuthSessionController(
         repository: repository(oidc: oidc, store: store),
-        clearAccountOwnedData: (_) async {
+        clearAccountOwnedData: (_, __) async {
           accountDataClearCount += 1;
         },
       );
@@ -165,7 +165,7 @@ void main() {
       final cleared = <String?>[];
       final controller = AuthSessionController(
         repository: repository(oidc: oidc, store: store),
-        clearAccountOwnedData: (accountId) async => cleared.add(accountId),
+        clearAccountOwnedData: (accountId, _) async => cleared.add(accountId),
       );
       addTearDown(controller.dispose);
       await controller.inspectStoredSession();
@@ -189,7 +189,7 @@ void main() {
       late final AuthSessionController controller;
       controller = AuthSessionController(
         repository: repository(oidc: FakeOidcClient(), store: store),
-        clearAccountOwnedData: (accountId) async {
+        clearAccountOwnedData: (accountId, _) async {
           expect(store.record?.accountId, accountA);
           expect(controller.state.accountId, accountA);
           cleared.add(accountId);
@@ -213,7 +213,7 @@ void main() {
     final store = MemorySecureTokenStore(storedRecord(accountId: accountA));
     final controller = AuthSessionController(
       repository: repository(oidc: FakeOidcClient(), store: store),
-      clearAccountOwnedData: (_) async {
+      clearAccountOwnedData: (_, __) async {
         throw StateError('private cleanup detail');
       },
     );
@@ -244,7 +244,7 @@ void main() {
     final oidc = FakeOidcClient();
     final controller = AuthSessionController(
       repository: repository(oidc: oidc, store: MemorySecureTokenStore()),
-      clearAccountOwnedData: (_) async {
+      clearAccountOwnedData: (_, __) async {
         throw StateError('injected cleanup failure');
       },
     );
@@ -269,7 +269,7 @@ void main() {
       String? clearedAccountId;
       final controller = AuthSessionController(
         repository: auth,
-        clearAccountOwnedData: (value) async {
+        clearAccountOwnedData: (value, _) async {
           clearedAccountId = value;
           accountRows.clear();
         },
@@ -302,7 +302,7 @@ void main() {
           store: store,
           providerLogoutTimeout: const Duration(milliseconds: 10),
         ),
-        clearAccountOwnedData: (_) async => accountRows.clear(),
+        clearAccountOwnedData: (_, __) async => accountRows.clear(),
       );
       addTearDown(controller.dispose);
       await controller.inspectStoredSession();
@@ -329,7 +329,7 @@ void main() {
       final accountRows = <String>{'private-comment'};
       final controller = AuthSessionController(
         repository: repository(oidc: oidc, store: store),
-        clearAccountOwnedData: (_) async => accountRows.clear(),
+        clearAccountOwnedData: (_, __) async => accountRows.clear(),
       );
       addTearDown(controller.dispose);
       await controller.inspectStoredSession();
@@ -357,7 +357,7 @@ void main() {
       final store = MemorySecureTokenStore()..writeGate = writeGate;
       final controller = AuthSessionController(
         repository: repository(oidc: oidc, store: store),
-        clearAccountOwnedData: (_) async {},
+        clearAccountOwnedData: (_, __) async {},
       );
       addTearDown(controller.dispose);
 

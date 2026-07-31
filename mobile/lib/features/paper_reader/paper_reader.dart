@@ -11,6 +11,7 @@ import '../../core/providers.dart';
 import '../../core/widgets/paper_stage_indicator.dart';
 import '../../core/widgets/status_widgets.dart';
 import '../chat/chat_controller.dart';
+import '../comments/paper_comments_control.dart';
 import '../connections/connections_controller.dart';
 import '../connections/connections_view.dart';
 import '../introduction/introduction_controller.dart';
@@ -252,6 +253,10 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
             const Divider(height: 1),
             if (ref.watch(featureFlagsProvider).library) ...[
               PaperSaveControl(paper: widget.paper),
+              const Divider(height: 1),
+            ],
+            if (ref.watch(featureFlagsProvider).comments) ...[
+              PaperCommentsControl(paper: widget.paper),
               const Divider(height: 1),
             ],
             Expanded(
