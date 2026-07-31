@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app/application_bootstrap.dart';
+import 'app/account_providers.dart';
 import 'app/feature_flags.dart';
 import 'app/startup_controller.dart';
 import 'core/content_policy.dart';
@@ -22,9 +23,9 @@ void main() {
     ProviderScope(
       overrides: [
         appBuildConfigProvider.overrideWithValue(buildConfig),
-        startupBootstrapperProvider.overrideWithValue(bootstrapper),
         startupLaunchModeProvider.overrideWithValue(launchMode),
         ...applicationStartupDataOverrides(bootstrapper),
+        ...accountApplicationOverrides(bootstrapper),
       ],
       child: PakPerkBootstrapApp(bootstrapper: bootstrapper),
     ),

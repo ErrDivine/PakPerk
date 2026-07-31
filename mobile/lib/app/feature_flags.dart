@@ -59,6 +59,7 @@ class AppBuildConfig {
     required this.oidcClientId,
     required this.oidcRedirectUri,
     required this.oidcPostLogoutRedirectUri,
+    required this.oidcScopes,
     required this.commentSupportContactUri,
   });
 
@@ -74,6 +75,7 @@ class AppBuildConfig {
   static const _oidcRedirectUriKey = 'PAKPERK_OIDC_REDIRECT_URI';
   static const _oidcPostLogoutRedirectUriKey =
       'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI';
+  static const _oidcScopesKey = 'PAKPERK_OIDC_SCOPES';
   static const _commentSupportContactUrlKey =
       'PAKPERK_COMMENT_SUPPORT_CONTACT_URL';
 
@@ -115,6 +117,10 @@ class AppBuildConfig {
     _oidcRedirectUriKey: const String.fromEnvironment(_oidcRedirectUriKey),
     _oidcPostLogoutRedirectUriKey: const String.fromEnvironment(
       _oidcPostLogoutRedirectUriKey,
+    ),
+    _oidcScopesKey: const String.fromEnvironment(
+      _oidcScopesKey,
+      defaultValue: 'openid profile',
     ),
     _commentSupportContactUrlKey: const String.fromEnvironment(
       _commentSupportContactUrlKey,
@@ -193,6 +199,9 @@ class AppBuildConfig {
       requireHttps: false,
       allowCustomScheme: true,
     );
+    final oidcScopes = _parseOidcScopes(
+      _value(values, _oidcScopesKey, fallback: 'openid profile'),
+    );
     if (features.accounts) {
       if (oidcIssuerUri == null ||
           oidcClientId == null ||
@@ -206,15 +215,11 @@ class AppBuildConfig {
       }
       _rejectPlaceholder(oidcIssuerUri.host, _oidcIssuerUrlKey);
       _rejectPlaceholder(oidcClientId, _oidcClientIdKey);
-      _validateNativeRedirectUri(
-        oidcRedirectUri,
-        key: _oidcRedirectUriKey,
-        environment: environment,
-      );
+      _validateOidcIssuerUri(oidcIssuerUri, environment);
+      _validateNativeRedirectUri(oidcRedirectUri, key: _oidcRedirectUriKey);
       _validateNativeRedirectUri(
         oidcPostLogoutRedirectUri,
         key: _oidcPostLogoutRedirectUriKey,
-        environment: environment,
       );
     }
 
@@ -245,6 +250,7 @@ class AppBuildConfig {
       oidcClientId: oidcClientId?.isEmpty == true ? null : oidcClientId,
       oidcRedirectUri: oidcRedirectUri,
       oidcPostLogoutRedirectUri: oidcPostLogoutRedirectUri,
+      oidcScopes: oidcScopes,
       commentSupportContactUri: commentSupportContactUri,
     );
   }
@@ -257,6 +263,7 @@ class AppBuildConfig {
   final String? oidcClientId;
   final Uri? oidcRedirectUri;
   final Uri? oidcPostLogoutRedirectUri;
+  final List<String> oidcScopes;
   final Uri? commentSupportContactUri;
 
   static String _value(
@@ -340,40 +347,67 @@ class AppBuildConfig {
     }
   }
 
-  static void _validateNativeRedirectUri(
-    Uri uri, {
-    required String key,
-    required AppEnvironment environment,
-  }) {
-    final scheme = uri.scheme.toLowerCase();
-    final isPakPerkScheme =
-        scheme == 'pakperk' || scheme.startsWith('pakperk-');
-    final isUniversalLink = scheme == 'https';
-    if (!isPakPerkScheme && !isUniversalLink) {
+  static void _validateOidcIssuerUri(Uri uri, AppEnvironment environment) {
+    if (uri.query.isNotEmpty) {
       throw BuildConfigurationException(
-        '$key must use an app-owned pakperk scheme or HTTPS universal link.',
+        '$_oidcIssuerUrlKey must not include a query string.',
       );
     }
-    if (!uri.hasAuthority || uri.host.isEmpty) {
-      throw BuildConfigurationException('$key must include a callback host.');
+    final host = uri.host.toLowerCase();
+    final loopback =
+        host == 'localhost' || host == '127.0.0.1' || host == '::1';
+    if (environment.isProductionLike && loopback) {
+      throw BuildConfigurationException(
+        '$_oidcIssuerUrlKey cannot use loopback outside development.',
+      );
+    }
+    if (uri.scheme.toLowerCase() == 'https') return;
+    if (environment != AppEnvironment.development ||
+        uri.scheme.toLowerCase() != 'http' ||
+        !loopback) {
+      throw BuildConfigurationException(
+        '$_oidcIssuerUrlKey may use HTTP only on development loopback.',
+      );
+    }
+  }
+
+  static void _validateNativeRedirectUri(Uri uri, {required String key}) {
+    final scheme = uri.scheme.toLowerCase();
+    if (scheme != 'pakperk-auth') {
+      throw BuildConfigurationException(
+        '$key must use the dedicated pakperk-auth callback scheme.',
+      );
+    }
+    if (!uri.hasAuthority || uri.authority != 'oauth' || uri.hasPort) {
+      throw BuildConfigurationException(
+        '$key must use the oauth callback host.',
+      );
     }
     if (uri.query.isNotEmpty) {
       throw BuildConfigurationException(
         '$key must not include a query string.',
       );
     }
-    if (environment.isProductionLike && isUniversalLink) {
-      _rejectPlaceholder(uri.host, key);
-      final host = uri.host.toLowerCase();
-      if (host == 'localhost' ||
-          host.endsWith('.localhost') ||
-          host == '127.0.0.1' ||
-          host == '::1') {
-        throw BuildConfigurationException(
-          '$key cannot use a loopback universal-link host outside development.',
-        );
-      }
+    final expectedPath = key == _oidcRedirectUriKey ? '/callback' : '/logout';
+    if (uri.path != expectedPath) {
+      throw BuildConfigurationException('$key must end in $expectedPath.');
     }
+  }
+
+  static List<String> _parseOidcScopes(String value) {
+    final scopes = value
+        .split(RegExp(r'[\s,]+'))
+        .map((scope) => scope.trim().toLowerCase())
+        .where((scope) => scope.isNotEmpty)
+        .toSet();
+    if (scopes.length != 2 ||
+        !scopes.contains('openid') ||
+        !scopes.contains('profile')) {
+      throw const BuildConfigurationException(
+        'PAKPERK_OIDC_SCOPES must be openid profile.',
+      );
+    }
+    return List.unmodifiable(scopes);
   }
 
   static void _rejectBundledSecrets(Map<String, String> values) {

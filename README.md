@@ -21,13 +21,18 @@ and its [documentation entrypoint](docs/production-v0.0-plan.md).
 
 ## Production migration status
 
-Phases 0, 1, and 2 are complete. The backend has safe extension
-seams, typed deployment configuration, a checked code-first OpenAPI contract,
-and conditional feed responses. The mobile app has a persistent Read/You shell,
-exact paper and arXiv links, a guest You surface, light/dark design tokens,
-native launch assets, a bounded cached-first opening transition, and a
-relational cache-ahead feed. Accounts, library, and comments remain off until
-their complete later phases—including safety and policy gates—land.
+Phases 0–3 are complete. Phase 3 OIDC account integration is
+[accepted](docs/phase-reports/phase-3.md); Phase 4 To Read synchronization is
+the next production-migration boundary.
+The backend has safe extension seams,
+typed deployment configuration, a checked code-first OpenAPI contract,
+conditional feed responses, and the accepted Phase 3 account/authentication
+foundation.
+The mobile app has a persistent Read/You shell, exact paper and arXiv links,
+light/dark design tokens, native launch assets, a bounded cached-first opening
+transition, a relational cache-ahead feed, and the account session/onboarding
+foundation. Account controls remain off by default; library, comments, and
+deletion remain later independently gated phases.
 
 The demo baseline is frozen at the annotated `production-v0.0-baseline` tag.
 Architecture choices for OIDC, Drift, stateful navigation, comments, and shared
@@ -58,6 +63,46 @@ GET http://localhost:8080/health/ready
 `/health/live` only proves that the process is running. `/health/ready` checks
 the dependencies needed to serve cached content. GROBID or a model provider can
 be unavailable while already-prepared papers remain readable.
+
+### Optional local OIDC accounts
+
+Start the application PostgreSQL database, the pinned development Keycloak
+realm with its separate PostgreSQL database, and Mailpit without making them
+prerequisites for paper-only development:
+
+```bash
+docker compose --profile accounts up -d postgres keycloak
+```
+
+The realm issuer is `http://localhost:8081/realms/pakperk`, the public native
+client is `pakperk-mobile-dev`, and verification mail is visible at
+`http://localhost:8025`. Set `ACCOUNTS_ENABLED=true` plus the OIDC/profile
+values in `.env.example` only for an API process that can reach that exact
+issuer. For the reference topology, run the API on the host (and do not also
+start the Compose `api` service):
+
+```bash
+set -a
+source .env
+set +a
+ACCOUNTS_ENABLED=true \
+DATABASE_URL=postgres://pakperk:pakperk@127.0.0.1:5432/pakperk \
+OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
+API_BIND=127.0.0.1:8080 \
+cargo run --manifest-path backend/Cargo.toml -p pakperk-api
+```
+
+The host process is intentional: `localhost` inside the Compose API container
+would refer to that container, not to host-published Keycloak, and substituting
+a container hostname would change the token issuer. Guest routes continue to
+serve if the provider later becomes unavailable; required-auth routes fail
+closed.
+
+The exact callback values, mobile build command, token-storage boundary,
+profile wire contract, and Android-emulator issuer caveat are documented in
+[Account authentication and profile contract](docs/account-authentication.md).
+The realm itself is documented in
+[the development-provider runbook](deploy/keycloak/README.md).
 
 ## Run the mobile app
 
@@ -107,6 +152,12 @@ features disabled. Staging/production builds set `PAKPERK_ENV`, an HTTPS
 requires `PAKPERK_FULLTEXT_POLICY=strict`. Account-enabled builds must provide
 the native OIDC issuer/client/redirect values; client secrets and provider API
 keys are rejected because they must never be compiled into the app.
+
+Phase 3 uses Authorization Code with PKCE in the system browser. Access tokens
+remain in memory, while refresh/session material is stored only in the platform
+secure store. Concurrent refresh is single-flight, a challenged request is
+replayed at most once under an explicit safety policy, and sign-out clears only
+account-owned data; the public Drift cache and reader restoration remain.
 
 The reading model is fixed:
 
@@ -226,6 +277,19 @@ POST /v1/papers/{paper_id}/chat
 GET  /v1/papers/{paper_id}/connections
 ```
 
+With `ACCOUNTS_ENABLED=true`, Phase 3 additionally registers:
+
+```text
+GET   /v1/me
+PATCH /v1/me
+```
+
+These operations require an OIDC bearer token. Both return a private account
+envelope and strong `"profile-N"` ETag; `PATCH` requires the matching
+`If-Match` value. The routes are absent when accounts are disabled. Library,
+comments, blocks, reports, and `DELETE /v1/me` remain unpublished until their
+own phases satisfy the complete synchronization, safety, and deletion gates.
+
 Development and staging also expose `GET /openapi.json`. The reviewed artifact
 is checked in at [`docs/openapi-v1.json`](docs/openapi-v1.json). Regenerate and
 verify it with:
@@ -238,6 +302,11 @@ verify it with:
 CI rejects generated drift and compares later artifacts with the base revision
 for removed routes, operations, response codes, fields, component schemas, and
 narrowed enum values.
+
+Account-aware CORS permits `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and
+`OPTIONS`; allows `Authorization`, `Content-Type`, `X-Session-Id`,
+`X-Request-Id`, `Idempotency-Key`, `If-Match`, and `If-None-Match`; and exposes
+`X-Request-Id`, `ETag`, and `Retry-After` to explicit deployed origins.
 
 Feed pagination uses an opaque cursor backed by `(published_at, paper_id)`.
 `prepare` is atomic and idempotent for a paper generation. Capability endpoints

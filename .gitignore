@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 .DS_Store
+.playwright-cli/
 target/
 backend/target/
 mobile/.dart_tool/
@@ -10,6 +11,7 @@ mobile/.flutter-plugins
 mobile/.flutter-plugins-dependencies
 mobile/ios/Pods/
 mobile/ios/.symlinks/
+mobile/ios/Runner.xcworkspace/xcshareddata/swiftpm/Package.resolved
 mobile/android/.gradle/
 demo/verification_report*.json
 demo/content_evaluation_structure_report*.json

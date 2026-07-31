@@ -9,6 +9,8 @@ mod repository;
 
 pub use cursor::{CursorError, FeedCursor};
 pub use repository::{
-    ChatSession, Database, DbError, FeedQuery, PaperRepository, PrepareResult, RetrievalCandidate,
-    StoredSection, TitleCandidate, VerificationMetrics,
+    AccountRepository, ChatSession, Database, DbError, FeedQuery, PaperRepository, PrepareResult,
+    ProfilePatch, ProfileUpdateOutcome, RateLimitConfigError, RateLimitDecision,
+    RateLimitRepository, RateLimitRequest, RetrievalCandidate, StoredSection, TitleCandidate,
+    VerificationMetrics,
 };

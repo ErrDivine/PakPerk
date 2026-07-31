@@ -6,6 +6,7 @@ import '../models/introduction.dart';
 import '../models/arxiv_identifier.dart';
 import '../models/paper.dart';
 import '../models/processing.dart';
+import 'api_error_mapper.dart';
 import 'api_exception.dart';
 import 'feed_http_result.dart';
 import 'request_cancellation.dart';
@@ -13,6 +14,7 @@ import 'request_cancellation.dart';
 class ApiClient {
   ApiClient({required String baseUrl, required String sessionId, Dio? dio})
     : _sessionId = sessionId,
+      _ownsDio = dio == null,
       _dio =
           dio ??
           Dio(
@@ -21,6 +23,7 @@ class ApiClient {
               connectTimeout: const Duration(seconds: 5),
               receiveTimeout: const Duration(seconds: 20),
               sendTimeout: const Duration(seconds: 10),
+              followRedirects: false,
               headers: const {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
@@ -29,9 +32,12 @@ class ApiClient {
           );
 
   final Dio _dio;
+  final bool _ownsDio;
   final String _sessionId;
 
-  void dispose() => _dio.close(force: true);
+  void dispose() {
+    if (_ownsDio) _dio.close(force: true);
+  }
 
   Future<void> ready({RequestCancellation? cancellation}) async {
     try {
@@ -40,7 +46,7 @@ class ApiClient {
         cancelToken: cancellation?.dioToken,
       );
     } on DioException catch (error) {
-      throw _toApiException(error);
+      throw mapDioException(error);
     }
   }
 
@@ -108,7 +114,7 @@ class ApiClient {
         etag: responseEtag,
       );
     } on DioException catch (error) {
-      throw _toApiException(error);
+      throw mapDioException(error);
     }
   }
 
@@ -127,7 +133,7 @@ class ApiClient {
         paper is Map ? Map<String, dynamic>.from(paper) : json,
       );
     } on DioException catch (error) {
-      throw _toApiException(error);
+      throw mapDioException(error);
     }
   }
 
@@ -154,7 +160,7 @@ class ApiClient {
         paper is Map ? Map<String, dynamic>.from(paper) : json,
       );
     } on DioException catch (error) {
-      throw _toApiException(error);
+      throw mapDioException(error);
     }
   }
 
@@ -174,7 +180,7 @@ class ApiClient {
         _generationScopedJson(response.data),
       );
     } on DioException catch (error) {
-      throw _toApiException(error);
+      throw mapDioException(error);
     }
   }
 
@@ -191,7 +197,7 @@ class ApiClient {
         _generationScopedJson(response.data),
       );
     } on DioException catch (error) {
-      throw _toApiException(error);
+      throw mapDioException(error);
     }
   }
 
@@ -206,7 +212,7 @@ class ApiClient {
       );
       return PaperIntroduction.fromJson(_generationScopedJson(response.data));
     } on DioException catch (error) {
-      throw _toApiException(error);
+      throw mapDioException(error);
     }
   }
 
@@ -221,7 +227,7 @@ class ApiClient {
       );
       return PaperConnections.fromJson(_generationScopedJson(response.data));
     } on DioException catch (error) {
-      throw _toApiException(error);
+      throw mapDioException(error);
     }
   }
 
@@ -243,7 +249,7 @@ class ApiClient {
       );
       return ChatAnswer.fromJson(_generationScopedJson(response.data));
     } on DioException catch (error) {
-      throw _toApiException(error);
+      throw mapDioException(error);
     }
   }
 }
@@ -271,44 +277,4 @@ Map<String, dynamic> _generationScopedJson(Object? data) {
     );
   }
   return json;
-}
-
-ApiException _toApiException(DioException error) {
-  if (error.type == DioExceptionType.cancel || CancelToken.isCancel(error)) {
-    return const ApiException(
-      code: 'REQUEST_CANCELLED',
-      message:
-          'The request was cancelled because its view is no longer active.',
-    );
-  }
-  final statusCode = error.response?.statusCode;
-  final responseData = error.response?.data;
-  final root = responseData is Map
-      ? Map<String, dynamic>.from(responseData)
-      : const <String, dynamic>{};
-  final nested = root['error'];
-  final details = nested is Map ? Map<String, dynamic>.from(nested) : root;
-
-  final isOffline = switch (error.type) {
-    DioExceptionType.connectionError ||
-    DioExceptionType.connectionTimeout ||
-    DioExceptionType.receiveTimeout ||
-    DioExceptionType.sendTimeout => true,
-    _ => false,
-  };
-
-  return ApiException(
-    code:
-        (details['code'] ?? (isOffline ? 'NETWORK_UNAVAILABLE' : 'HTTP_ERROR'))
-            .toString(),
-    message:
-        (details['message'] ??
-                (isOffline
-                    ? 'The Pakperk service is unreachable.'
-                    : 'The request could not be completed.'))
-            .toString(),
-    retryable: details['retryable'] as bool? ?? isOffline,
-    statusCode: statusCode,
-    isOffline: isOffline,
-  );
 }

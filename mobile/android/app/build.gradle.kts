@@ -18,10 +18,14 @@ android {
         applicationId = "app.pakperk.pakperk"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
+        // flutter_secure_storage 10 requires Android 6.0 / API 23.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Dedicated to the OIDC callback. Paper deep links continue to use
+        // `pakperk://paper/...` and cannot consume authorization responses.
+        manifestPlaceholders["appAuthRedirectScheme"] = "pakperk-auth"
     }
 
     buildTypes {

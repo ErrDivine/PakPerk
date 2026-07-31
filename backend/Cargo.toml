@@ -3,7 +3,9 @@ resolver = "2"
 members = [
     "apps/api",
     "apps/worker",
+    "crates/accounts",
     "crates/arxiv_client",
+    "crates/auth",
     "crates/db",
     "crates/document_model",
     "crates/domain",
@@ -21,6 +23,7 @@ license = "MIT"
 rust-version = "1.91"
 
 [workspace.dependencies]
+accounts = { path = "crates/accounts" }
 anyhow = "1.0.100"
 async-trait = "0.1.89"
 axum = { version = "0.8.7", features = ["json", "macros"] }
@@ -28,10 +31,12 @@ base64 = "0.22.1"
 chrono = { version = "0.4.42", features = ["serde"] }
 domain = { path = "crates/domain" }
 arxiv_client = { path = "crates/arxiv_client" }
+auth = { path = "crates/auth" }
 db = { path = "crates/db" }
 document_model = { path = "crates/document_model" }
 grobid_client = { path = "crates/grobid_client" }
 jobs = { path = "crates/jobs" }
+jsonwebtoken = { version = "=11.0.0", default-features = false, features = ["rust_crypto"] }
 llm_provider = { path = "crates/llm_provider" }
 observability = { path = "crates/observability" }
 retrieval = { path = "crates/retrieval" }

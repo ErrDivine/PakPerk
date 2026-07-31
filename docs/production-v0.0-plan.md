@@ -79,8 +79,19 @@ responses. The implementation is present; final integrated and native gates
 are recorded as passing in the [Phase 2 report](phase-reports/phase-2.md), and
 the phase is complete.
 
-The plan's exit criteria require unchanged demo behavior and API fixtures,
-passing `./scripts/check.sh`, complete OpenAPI coverage for existing routes,
+Phase 3 adds optional OIDC accounts while preserving guest reading. Its current
+implementation includes bounded provider-neutral discovery/JWKS verification,
+transactional JIT account mapping, versioned profile updates, the first shared
+PostgreSQL rate-limit bucket, native AppAuth and secure token storage, an
+optional Keycloak development profile, and the account-aware You/onboarding
+flow. `GET` and `PATCH /v1/me` are registered only when accounts are enabled;
+library, comments, and deletion remain absent. The repository-wide gates,
+native builds, live PostgreSQL scenarios, and real Keycloak/Mailpit PKCE flow
+passed, so Phase 3 is **complete**. Evidence is recorded in the
+[Phase 3 report](phase-reports/phase-3.md).
+
+Phase 0's exit criteria require unchanged demo behavior and API fixtures,
+passing `./scripts/check.sh`, complete OpenAPI coverage for its existing routes,
 and no public account controls. Phase 2 additionally requires offline migration,
 the measured cache-ahead scenario, single-flight requests, enforced cache
 bounds, a saved-paper pin, and proof that prefetch does not prepare papers.

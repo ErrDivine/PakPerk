@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Pakperk API",
-    "description": "Stable v1 paper-reading API. Account, library, and comment routes are intentionally absent until their production phases are complete.",
+    "description": "Stable v1 paper-reading API with optional OIDC-backed account profiles. Library and comment routes remain feature-gated until their production phases are complete.",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -167,7 +167,293 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {},
+          {
+            "oidcBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "tags": [
+          "accounts"
+        ],
+        "description": "Registered only when ACCOUNTS_ENABLED=true; the route is absent when the account feature is disabled.",
+        "operationId": "get_me",
+        "responses": {
+          "200": {
+            "description": "Current account profile and terms state",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Strong profile validator in the form quoted profile-N"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountProfileEnvelope"
+                },
+                "example": {
+                  "account": {
+                    "created_at": "2026-07-31T11:00:00.000Z",
+                    "current_terms_version": "2026-07-31",
+                    "display_name": "Ada Reader",
+                    "handle": "ada_reader",
+                    "id": "0198f4d7-a4ce-7b40-8ee8-4f350350810c",
+                    "profile_complete": true,
+                    "profile_version": 2,
+                    "status": "active",
+                    "terms_accepted_at": "2026-07-31T12:00:00.000Z",
+                    "terms_current": true,
+                    "terms_version": "2026-07-31",
+                    "updated_at": "2026-07-31T12:00:00.000Z"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED or TOKEN_EXPIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHENTICATION_UNAVAILABLE or ACCOUNT_SERVICE_UNAVAILABLE",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds before retry when known"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "accounts"
+        ],
+        "description": "Registered only when ACCOUNTS_ENABLED=true; the route is absent when the account feature is disabled. Updates use an exact strong profile ETag for compare-and-swap.",
+        "operationId": "patch_me",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "Required exact strong profile validator returned by GET /v1/me",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "\"profile-2\""
+          }
+        ],
+        "requestBody": {
+          "description": "Supported profile fields; explicit null clears only display_name",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileUpdateBody"
+              },
+              "example": {
+                "accept_terms_version": "2026-07-31",
+                "display_name": "Ada Reader",
+                "handle": "ada_reader"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated account profile",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "New strong profile validator"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountProfileEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST, INVALID_PROFILE_VERSION, INVALID_PROFILE_UPDATE, INVALID_HANDLE, INVALID_DISPLAY_NAME, INVALID_TERMS_VERSION, or TERMS_VERSION_MISMATCH",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED or TOKEN_EXPIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "HANDLE_ALREADY_SET or HANDLE_UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "PROFILE_VERSION_CONFLICT",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Current strong profile validator"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "PROFILE_VERSION_REQUIRED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHENTICATION_UNAVAILABLE or ACCOUNT_SERVICE_UNAVAILABLE",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds before retry when known"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
       }
     },
     "/v1/papers/by-arxiv/{arxiv_id}": {
@@ -217,7 +503,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {},
+          {
+            "oidcBearer": []
+          }
+        ]
       }
     },
     "/v1/papers/{paper_id}": {
@@ -258,7 +550,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {},
+          {
+            "oidcBearer": []
+          }
+        ]
       }
     },
     "/v1/papers/{paper_id}/chat": {
@@ -339,7 +637,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {},
+          {
+            "oidcBearer": []
+          }
+        ]
       }
     },
     "/v1/papers/{paper_id}/connections": {
@@ -400,7 +704,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {},
+          {
+            "oidcBearer": []
+          }
+        ]
       }
     },
     "/v1/papers/{paper_id}/introduction": {
@@ -461,7 +771,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {},
+          {
+            "oidcBearer": []
+          }
+        ]
       }
     },
     "/v1/papers/{paper_id}/prepare": {
@@ -532,7 +848,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {},
+          {
+            "oidcBearer": []
+          }
+        ]
       }
     },
     "/v1/papers/{paper_id}/processing": {
@@ -573,12 +895,113 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {},
+          {
+            "oidcBearer": []
+          }
+        ]
       }
     }
   },
   "components": {
     "schemas": {
+      "AccountProfileEnvelope": {
+        "type": "object",
+        "required": [
+          "account"
+        ],
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/AccountProfileResponse"
+          }
+        }
+      },
+      "AccountProfileResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "handle",
+          "display_name",
+          "status",
+          "profile_version",
+          "profile_complete",
+          "terms_version",
+          "terms_accepted_at",
+          "current_terms_version",
+          "terms_current",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "current_terms_version": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80,
+            "minLength": 1
+          },
+          "handle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 30,
+            "minLength": 3,
+            "pattern": "^[a-z0-9_]+$"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "profile_complete": {
+            "type": "boolean"
+          },
+          "profile_version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "status": {
+            "$ref": "#/components/schemas/AccountStatusSchema"
+          },
+          "terms_accepted_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "terms_current": {
+            "type": "boolean"
+          },
+          "terms_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "AccountStatusSchema": {
+        "type": "string",
+        "enum": [
+          "active",
+          "suspended",
+          "deletion_pending",
+          "deleted"
+        ]
+      },
       "CapabilitiesSchema": {
         "type": "object",
         "required": [
@@ -1254,6 +1677,36 @@
           }
         }
       },
+      "ProfileUpdateBody": {
+        "type": "object",
+        "description": "Supported compare-and-swap fields for `PATCH /v1/me`. All properties are\noptional, while an explicit JSON null is meaningful only for\n`display_name`.",
+        "properties": {
+          "accept_terms_version": {
+            "type": "string",
+            "example": "2026-07-31",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "Ada Reader",
+            "maxLength": 80,
+            "minLength": 1
+          },
+          "handle": {
+            "type": "string",
+            "example": "ada_reader",
+            "maxLength": 30,
+            "minLength": 3,
+            "pattern": "^[A-Za-z0-9_]+$"
+          }
+        },
+        "additionalProperties": false
+      },
       "ReferenceResolutionStatusSchema": {
         "type": "string",
         "enum": [
@@ -1298,6 +1751,14 @@
           "other"
         ]
       }
+    },
+    "securitySchemes": {
+      "oidcBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "OIDC access token validated against the configured issuer, audience, algorithm, and JWKS."
+      }
     }
   },
   "tags": [
@@ -1308,6 +1769,10 @@
     {
       "name": "papers",
       "description": "Public paper reading and processing"
+    },
+    {
+      "name": "accounts",
+      "description": "OIDC-authenticated account profile"
     }
   ]
 }

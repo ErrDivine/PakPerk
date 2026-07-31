@@ -1,6 +1,6 @@
 # ADR 0001: OIDC and Keycloak reference deployment
 
-**Status:** Accepted — implementation pending Phase 3
+**Status:** Accepted — Phase 3 implemented and verified
 **Date:** 2026-07-31
 
 ## Context
@@ -21,12 +21,28 @@ issuer, audience, expiration/not-before, clock skew, and a required subject.
 Keycloak is the local, staging, and default self-hosted production reference
 provider. API authorization remains provider-neutral: verified `(issuer,
 subject)` values are mapped transactionally to a local user, and destructive
-provider actions are behind an `IdentityAdmin` adapter. Keycloak implements that
-adapter; a no-op adapter is limited to explicitly incomplete tests/local flows.
+provider actions are behind an `IdentityAdmin` adapter. Keycloak is the
+reference implementation target for that adapter; a no-op adapter is limited
+to explicitly incomplete tests/local flows.
 
 Only refresh tokens and minimum session metadata are persisted in platform
 secure storage. Access tokens remain in memory where practical. Pakperk does
 not copy email into its database by default.
+
+## Phase 3 implementation status
+
+The provider-neutral verifier, publishable auth-readiness runtime, local
+account mapping, native AppAuth client, platform secure token store, reference
+Keycloak realm, and optional `GET`/`PATCH /v1/me` surface are integrated under
+`ACCOUNTS_ENABLED`. Guest paper routes are independent of OIDC readiness. The
+Phase 3 verification report records successful repository, native, live
+PostgreSQL, and real Keycloak/Mailpit acceptance runs.
+
+The Keycloak identity-admin adapter is deliberately an honest skeleton in this
+phase. It validates only non-secret coordinates and reports that destructive
+operations are unwired. Phase 6 must add provider credentials, bounded calls,
+retries, and the idempotent deletion state machine before account deletion can
+be enabled.
 
 ## Consequences
 

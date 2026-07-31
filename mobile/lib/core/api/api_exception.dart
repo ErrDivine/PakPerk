@@ -5,6 +5,8 @@ class ApiException implements Exception {
     this.retryable = false,
     this.statusCode,
     this.isOffline = false,
+    this.requestId,
+    this.retryAfter,
   });
 
   final String code;
@@ -12,6 +14,8 @@ class ApiException implements Exception {
   final bool retryable;
   final int? statusCode;
   final bool isOffline;
+  final String? requestId;
+  final Duration? retryAfter;
 
   bool get capabilityNotReady =>
       code == 'CAPABILITY_NOT_READY' || statusCode == 409;

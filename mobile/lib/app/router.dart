@@ -10,7 +10,8 @@ import '../core/models/paper.dart';
 import '../core/models/reader_state.dart';
 import '../core/providers.dart';
 import '../core/widgets/responsive_reader_frame.dart';
-import '../features/account/guest_you_screen.dart';
+import '../features/account/account_home_screen.dart';
+import '../features/account/auth_flow_screen.dart';
 import '../features/chat/chat_controller.dart';
 import '../features/chat/chat_sheet.dart';
 import '../features/feed/feed_screen.dart';
@@ -24,6 +25,7 @@ abstract final class PakPerkRoutes {
   static const you = '/you';
   static const youLibrary = '/you/library';
   static const youComments = '/you/comments';
+  static const youBlockedUsers = '/you/blocked';
   static const youSettings = '/you/settings';
   static const youAccountDelete = '/you/account/delete';
   static const auth = '/auth';
@@ -291,18 +293,8 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: PakPerkRoutes.auth,
         parentNavigatorKey: keys.root,
-        pageBuilder: (context, state) => _rootPage(
-          state,
-          child: PhaseOnePlaceholderScreen(
-            title: 'Accounts are not enabled',
-            message:
-                'Sign in and account creation will be connected in the '
-                'account phase. No credentials are collected by this screen.',
-            icon: Icons.lock_outline,
-            closeTooltip: 'Close account sign in',
-            onClose: () => closePakPerkRootRoute(context),
-          ),
-        ),
+        pageBuilder: (context, state) =>
+            _rootPage(state, child: const AccountAuthRouteScreen()),
       ),
       GoRoute(
         path: '/read/paper/:paperId/chat',
@@ -433,8 +425,14 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                 pageBuilder: (context, state) => MaterialPage<void>(
                   key: state.pageKey,
                   restorationId: 'you-root-page',
-                  child: GuestYouScreen(
-                    onSignIn: null,
+                  child: AccountYouScreen(
+                    onSignIn: () => context.push(PakPerkRoutes.auth),
+                    onCompleteProfile: () => context.push(PakPerkRoutes.auth),
+                    onOpenLibrary: () => context.push(PakPerkRoutes.youLibrary),
+                    onOpenComments: () =>
+                        context.push(PakPerkRoutes.youComments),
+                    onOpenBlockedUsers: () =>
+                        context.push(PakPerkRoutes.youBlockedUsers),
                     onOpenSettings: () =>
                         context.push(PakPerkRoutes.youSettings),
                     onOpenPrivacy: () => context.push(PakPerkRoutes.privacy),
@@ -442,6 +440,8 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                     onOpenCommunityGuidelines: () =>
                         context.push(PakPerkRoutes.communityGuidelines),
                     onOpenSupport: () => context.push(PakPerkRoutes.support),
+                    onOpenDeleteAccount: () =>
+                        context.push(PakPerkRoutes.youAccountDelete),
                   ),
                 ),
                 routes: [
@@ -450,8 +450,8 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                     builder: (_, __) => const PhaseOnePlaceholderScreen(
                       title: 'To Read',
                       message:
-                          'The synchronized To Read library is not '
-                          'enabled in this build.',
+                          'Synchronized saves arrive in Phase 4. This '
+                          'screen does not present local-only saves as synced.',
                       icon: Icons.bookmarks_outlined,
                     ),
                   ),
@@ -460,9 +460,20 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                     builder: (_, __) => const PhaseOnePlaceholderScreen(
                       title: 'My comments',
                       message:
-                          'Accounts and public comments are not enabled '
-                          'in this build.',
+                          'Paper discussions and your comment history '
+                          'arrive in Phase 5. No posting controls are active.',
                       icon: Icons.comment_outlined,
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'blocked',
+                    builder: (_, __) => const PhaseOnePlaceholderScreen(
+                      title: 'Blocked users',
+                      message:
+                          'User blocking arrives with moderated paper '
+                          'discussions in Phase 5. No local-only block is '
+                          'presented as synchronized.',
+                      icon: Icons.block_outlined,
                     ),
                   ),
                   GoRoute(
@@ -474,8 +485,9 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                     builder: (_, __) => const PhaseOnePlaceholderScreen(
                       title: 'Delete account',
                       message:
-                          'There is no account attached to this build, '
-                          'so there is nothing to delete.',
+                          'End-to-end account deletion, including identity '
+                          'provider erasure, arrives in Phase 6. This screen '
+                          'does not claim that deletion has occurred.',
                       icon: Icons.person_off_outlined,
                     ),
                   ),
@@ -506,8 +518,8 @@ List<GoRoute> _legalRoutes(GlobalKey<NavigatorState> rootNavigatorKey) => [
     builder: (context, _) => PhaseOnePlaceholderScreen(
       title: 'Privacy',
       message:
-          'The complete production privacy notice will be published '
-          'before account features are enabled.',
+          'Privacy disclosures for this development account build are still '
+          'in progress. Reviewed release text will be published in Phase 6.',
       icon: Icons.privacy_tip_outlined,
       onClose: () => closePakPerkRootRoute(context),
     ),
@@ -518,8 +530,9 @@ List<GoRoute> _legalRoutes(GlobalKey<NavigatorState> rootNavigatorKey) => [
     builder: (context, _) => PhaseOnePlaceholderScreen(
       title: 'Terms',
       message:
-          'Production terms will be published before account '
-          'features are enabled.',
+          'The account flow records the API-provided terms version for '
+          'development testing. This is not reviewed production legal text; '
+          'release publication remains a Phase 6 gate.',
       icon: Icons.description_outlined,
       onClose: () => closePakPerkRootRoute(context),
     ),

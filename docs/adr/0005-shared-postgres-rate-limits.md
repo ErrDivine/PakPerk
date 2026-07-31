@@ -1,6 +1,6 @@
 # ADR 0005: Shared PostgreSQL rate limits
 
-**Status:** Accepted — implementation pending Phase 5
+**Status:** Accepted — Phase 3 foundation implemented; later buckets pending
 **Date:** 2026-07-31
 
 ## Context
@@ -24,6 +24,15 @@ Initial buckets cover comment creation (user and IP/device), comment edits,
 reports (user and target), profile updates, library mutations, account deletion,
 and eventually current prepare/chat behavior. The limiter never relies only on
 the client-supplied anonymous session ID.
+
+## Phase 3 implementation status
+
+Phase 3 adds the shared PostgreSQL bucket table, atomic fixed-window repository,
+bounded cleanup operation, and the first `profile_update` per-user bucket. A
+denied profile update maps to the stable `RATE_LIMITED` error and a
+delta-seconds `Retry-After` value. This is the common foundation, not the end of
+the decision: library, comments, reports, account deletion, and migration of
+the existing prepare/chat limits remain owned by their later phases.
 
 ## Consequences
 

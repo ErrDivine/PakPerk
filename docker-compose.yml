@@ -18,6 +18,58 @@ services:
       retries: 30
     restart: unless-stopped
 
+  keycloak-postgres:
+    profiles: ["accounts"]
+    image: postgres:16.14-bookworm
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KEYCLOAK_DATABASE_PASSWORD:-pakperk-keycloak-dev}
+    volumes:
+      - pakperk-keycloak-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  mailpit:
+    profiles: ["accounts"]
+    image: axllent/mailpit:v1.30.6
+    environment:
+      MP_MAX_MESSAGES: 500
+      MP_MAX_AGE: 7d
+    ports:
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+    restart: unless-stopped
+
+  keycloak:
+    profiles: ["accounts"]
+    image: quay.io/keycloak/keycloak:26.7.0@sha256:0f198be292568439d700cdbfb893e69a6009bb43a94a06a945b1d3d506c76b13
+    command: ["start-dev", "--import-realm", "--health-enabled=true"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DATABASE_PASSWORD:-pakperk-keycloak-dev}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD:-pakperk-admin-dev}
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_PROXY_HEADERS: xforwarded
+    ports:
+      - "127.0.0.1:${KEYCLOAK_PORT:-8081}:8080"
+      - "127.0.0.1:${KEYCLOAK_MANAGEMENT_PORT:-9001}:9000"
+    volumes:
+      - ./deploy/keycloak/pakperk-realm.json:/opt/keycloak/data/import/pakperk-realm.json:ro
+    depends_on:
+      keycloak-postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    restart: unless-stopped
+
   grobid:
     image: grobid/grobid:0.9.0-crf
     init: true
@@ -82,3 +134,4 @@ services:
 
 volumes:
   pakperk-postgres:
+  pakperk-keycloak-postgres:

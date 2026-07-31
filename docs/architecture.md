@@ -1,4 +1,4 @@
-# Pakperk demo architecture
+# Pakperk architecture
 
 Pakperk is a modular monolith with two Rust processes and one PostgreSQL
 database. The API owns short request/response work, including cached or exact-ID
@@ -8,20 +8,23 @@ resolution, and relationship generation. Both reuse transport-independent
 domain types and repositories, and every arXiv request is serialized through
 the same database-backed rate gate.
 
-## Production v0.0 direction
+## Production v0.0 phase state
 
 The production migration is specified in
-[the Production v0.0 plan](production-v0.0-plan.md). The demo architecture
-described here remains the current implemented architecture unless a section
-explicitly says otherwise. The plan extends this modular monolith; it does not
-introduce a separate account, social, queue, or rate-limiting service.
+[the Production v0.0 plan](production-v0.0-plan.md). Phases 0–2 are accepted:
+the Flutter client now has the Read/You shell and a bounded relational
+Drift/SQLite public-content cache, while the existing Rust modular monolith and
+paper pipeline remain intact. Phase 3 account integration is accepted with its
+live-provider, database, native-build, and repository-gate evidence in the
+[verification report](phase-reports/phase-3.md).
 
-The planned target adds a Flutter Read/You stateful shell, Drift/SQLite for
-relational device cache and a sync outbox, OIDC-authenticated user principals,
-and PostgreSQL-backed shared write rate limits. Keycloak is the reference OIDC
-deployment, but API JWT verification and destructive identity administration
-are separated behind provider-neutral boundaries. Public comments and account
-features are planned production capabilities, not current demo behavior.
+Phase 3 keeps identity inside the same product backend. Keycloak is the
+reference OIDC deployment, but JWT verification, Pakperk account mapping, and
+destructive identity administration remain separate provider-neutral
+boundaries. PostgreSQL stores local accounts and shared rate-limit buckets; no
+account, social, queue, or rate-limit network service is introduced. Public
+comments, synchronized library operations, and account deletion remain later
+phase capabilities.
 
 The migration must preserve the capability-publication and reader-transition
 invariants documented below: metadata/abstract prefetch is permitted, but PDF
@@ -29,7 +32,11 @@ preparation remains a committed move to Introduction or an explicit retry.
 
 ```mermaid
 flowchart LR
-  M["Flutter mobile app"] -->|"cached JSON / HTTPS"| A["Axum API"]
+  M["Flutter mobile app"] -->|"public or bearer HTTPS"| A["Axum API"]
+  M -->|"authorization code + PKCE"| I["OIDC provider / Keycloak"]
+  A -->|"bounded discovery + JWKS"| I
+  M --> D[("Drift / SQLite public cache")]
+  M --> S["Platform secure storage"]
   A --> P[("PostgreSQL + pgvector")]
   A -->|"idempotent enqueue"| J[("jobs table")]
   W["Tokio worker"] -->|"SKIP LOCKED lease"| J
@@ -39,6 +46,24 @@ flowchart LR
   W --> L["Configured model provider"]
   W --> P
 ```
+
+## Identity and account boundary
+
+With `ACCOUNTS_ENABLED=false`, account routes are not registered and no OIDC
+network work is needed to serve guest reading. With the feature enabled, an
+exact issuer/audience/algorithm verifier validates a bearer token and maps its
+verified `(issuer, subject)` to one local account transactionally. Routes never
+authorize from a handle, email, provider profile field, or client-supplied user
+ID. An unavailable provider makes required-auth routes fail closed without
+making the public service unready.
+
+The mobile client opens authorization in the system browser, keeps access
+tokens in memory, and persists only refresh/session material in platform secure
+storage. A single-flight refresh can replay a challenged request once under an
+explicit safety policy. Sign-out clears secure and account-owned data while
+preserving the public Drift cache and reader restoration. The exact setup and
+wire contract are documented in
+[Account authentication and profile contract](account-authentication.md).
 
 ## Capability publication
 
@@ -76,6 +101,10 @@ only when its version matches the latest locally known paper.
   stay readable but unlinked.
 - Admin ingestion is a local worker command rather than an unrestricted public
   endpoint.
+- Bearer tokens are attached only to the exact configured Pakperk API origin
+  and are never sent to arXiv or another external URL.
+- OIDC issuer, subject, token, key, and provider payloads are absent from public
+  profile responses and redacted from diagnostics.
 
 ## Offline prepared path
 

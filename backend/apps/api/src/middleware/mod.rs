@@ -1,5 +1,6 @@
 //! Cross-cutting HTTP middleware seams.
 
+mod auth;
 mod rate_limit;
 mod request_id;
 mod timeout;
@@ -12,3 +13,4 @@ pub(crate) use timeout::{TimeoutConfig, stable_error_middleware, timeout_middlew
 
 pub(crate) const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
 pub(crate) const SESSION_ID_HEADER: HeaderName = HeaderName::from_static("x-session-id");
+pub(crate) use auth::{AuthenticatedPrincipal, OptionalPrincipal};

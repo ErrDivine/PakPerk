@@ -3,7 +3,10 @@ use std::net::SocketAddr;
 use anyhow::{Context as _, Result};
 use db::Database;
 use observability::{ObservabilityConfig, init};
-use pakperk_api::{ApiConfig, AppState, build_router};
+use pakperk_api::{
+    ApiConfig, AppState, build_router, initialize_auth_runtime, spawn_account_maintenance,
+    spawn_auth_recovery,
+};
 use tokio::net::TcpListener;
 use tracing::info;
 
@@ -30,7 +33,16 @@ async fn main() -> Result<()> {
             .context("embedding dimension does not match the database")?;
     }
 
-    let state = AppState::new(database, &config).context("could not initialize API state")?;
+    let _account_maintenance =
+        spawn_account_maintenance(database.clone(), config.features.accounts);
+
+    let auth = initialize_auth_runtime(config.accounts.as_ref()).await;
+    let _auth_recovery = config
+        .accounts
+        .as_ref()
+        .and_then(|accounts| spawn_auth_recovery(auth.clone(), accounts));
+    let state = AppState::new_with_auth(database, &config, auth)
+        .context("could not initialize API state")?;
     let app = build_router(state, &config);
     let listener = TcpListener::bind(config.bind)
         .await

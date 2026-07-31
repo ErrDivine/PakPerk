@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/providers.dart';
+import '../core/auth/auth.dart';
 import '../features/feed/feed_controller.dart';
 import '../features/paper_reader/reader_navigation_controller.dart';
+import 'account_providers.dart';
 import 'router.dart';
 import 'startup_controller.dart';
 import 'startup_gate.dart';
@@ -50,6 +52,7 @@ class _PakPerkAppState extends ConsumerState<PakPerkApp>
 
   @override
   Widget build(BuildContext context) {
+    _observeAccountSession();
     final startup = ref.watch(startupControllerProvider);
     final startupController = ref.read(startupControllerProvider.notifier);
     final openingMotion = ref.watch(featureFlagsProvider).openingMotion;
@@ -71,5 +74,17 @@ class _PakPerkAppState extends ConsumerState<PakPerkApp>
         child: child ?? const SizedBox.shrink(),
       ),
     );
+  }
+
+  void _observeAccountSession() {
+    if (!ref.watch(featureFlagsProvider).accounts) return;
+    ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
+      if (next.phase != AuthSessionPhase.guest ||
+          previous?.phase == AuthSessionPhase.guest) {
+        return;
+      }
+      ref.read(currentAccountProvider.notifier).clear();
+      ref.read(pendingAuthenticatedActionProvider.notifier).clear();
+    });
   }
 }

@@ -4,10 +4,14 @@
 
 use axum::Json;
 use serde::Serialize;
-use utoipa::{OpenApi, ToSchema};
+use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
+use utoipa::{Modify, OpenApi, ToSchema};
 
 use crate::{
-    dto::{ChatBody, PrepareBody},
+    dto::{
+        AccountProfileEnvelope, AccountProfileResponse, AccountStatusSchema, ChatBody, PrepareBody,
+        ProfileUpdateBody,
+    },
     routes,
 };
 
@@ -16,7 +20,7 @@ use crate::{
     info(
         title = "Pakperk API",
         version = "1.0.0",
-        description = "Stable v1 paper-reading API. Account, library, and comment routes are intentionally absent until their production phases are complete."
+        description = "Stable v1 paper-reading API with optional OIDC-backed account profiles. Library and comment routes remain feature-gated until their production phases are complete."
     ),
     paths(
         routes::health::health_live,
@@ -29,6 +33,8 @@ use crate::{
         routes::papers::introduction,
         routes::chat::chat,
         routes::papers::connections,
+        routes::account::get_me,
+        routes::account::patch_me,
     ),
     components(schemas(
         PrepareBody,
@@ -56,14 +62,42 @@ use crate::{
         KeyConnectionSchema,
         RelationTypeSchema,
         ConnectionReferenceSchema,
-        ReferenceResolutionStatusSchema
+        ReferenceResolutionStatusSchema,
+        AccountProfileEnvelope,
+        AccountProfileResponse,
+        AccountStatusSchema,
+        ProfileUpdateBody
     )),
+    modifiers(&OidcSecurity),
     tags(
         (name = "health", description = "Process and dependency health"),
-        (name = "papers", description = "Public paper reading and processing")
+        (name = "papers", description = "Public paper reading and processing"),
+        (name = "accounts", description = "OIDC-authenticated account profile")
     )
 )]
 pub struct ApiDoc;
+
+struct OidcSecurity;
+
+impl Modify for OidcSecurity {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let components = openapi
+            .components
+            .get_or_insert_with(utoipa::openapi::Components::new);
+        components.add_security_scheme(
+            "oidcBearer",
+            SecurityScheme::Http(
+                HttpBuilder::new()
+                    .scheme(HttpAuthScheme::Bearer)
+                    .bearer_format("JWT")
+                    .description(Some(
+                        "OIDC access token validated against the configured issuer, audience, algorithm, and JWKS.",
+                    ))
+                    .build(),
+            ),
+        );
+    }
+}
 
 /// Runtime contract endpoint. Application assembly exposes it only in
 /// development and staging.
@@ -334,6 +368,8 @@ pub(crate) struct ConnectionsResponseSchema {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
     use domain::{
         FailureCategory, OverallProcessingState, ProcessingStage, ReferenceResolutionStatus,
@@ -360,6 +396,7 @@ mod tests {
             "/v1/papers/{paper_id}/introduction",
             "/v1/papers/{paper_id}/chat",
             "/v1/papers/{paper_id}/connections",
+            "/v1/me",
         ];
         for path in expected {
             assert!(actual.contains(&path), "OpenAPI is missing {path}");
@@ -369,6 +406,82 @@ mod tests {
             expected.len(),
             "unexpected undocumented route drift"
         );
+    }
+
+    #[test]
+    fn account_contract_requires_oidc_and_documents_concurrency_headers() {
+        let document = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        assert_eq!(
+            document["components"]["securitySchemes"]["oidcBearer"]["scheme"],
+            "bearer"
+        );
+        assert_eq!(
+            document["components"]["securitySchemes"]["oidcBearer"]["bearerFormat"],
+            "JWT"
+        );
+
+        let path = &document["paths"]["/v1/me"];
+        for method in ["get", "patch"] {
+            assert_eq!(path[method]["security"][0]["oidcBearer"], json!([]));
+            assert!(path[method]["responses"]["200"]["headers"]["ETag"].is_object());
+            assert!(path[method]["responses"]["200"]["headers"]["Cache-Control"].is_object());
+            assert!(path[method]["responses"]["401"]["headers"]["WWW-Authenticate"].is_object());
+            assert!(path[method]["responses"]["503"]["headers"]["Retry-After"].is_object());
+        }
+        assert!(
+            path["patch"]["parameters"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|parameter| {
+                    parameter["name"] == "If-Match"
+                        && parameter["in"] == "header"
+                        && parameter["required"] == true
+                })
+        );
+        assert!(path["patch"]["responses"]["412"]["headers"]["ETag"].is_object());
+        assert!(path["patch"]["responses"]["429"]["headers"]["Retry-After"].is_object());
+        assert!(path["patch"]["responses"]["428"].is_object());
+
+        let required = document["components"]["schemas"]["AccountProfileResponse"]["required"]
+            .as_array()
+            .unwrap();
+        for field in [
+            "handle",
+            "display_name",
+            "terms_version",
+            "terms_accepted_at",
+        ] {
+            assert!(required.iter().any(|required| required == field));
+        }
+    }
+
+    #[test]
+    fn paper_operations_allow_guest_or_oidc_while_health_has_no_auth_contract() {
+        let document = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        for (path, method) in [
+            ("/v1/feed", "get"),
+            ("/v1/papers/{paper_id}", "get"),
+            ("/v1/papers/by-arxiv/{arxiv_id}", "get"),
+            ("/v1/papers/{paper_id}/prepare", "post"),
+            ("/v1/papers/{paper_id}/processing", "get"),
+            ("/v1/papers/{paper_id}/introduction", "get"),
+            ("/v1/papers/{paper_id}/chat", "post"),
+            ("/v1/papers/{paper_id}/connections", "get"),
+        ] {
+            let security = document["paths"][path][method]["security"]
+                .as_array()
+                .unwrap();
+            assert!(security.iter().any(|requirement| requirement == &json!({})));
+            assert!(security.iter().any(|requirement| {
+                requirement
+                    .get("oidcBearer")
+                    .is_some_and(|scopes| scopes == &json!([]))
+            }));
+        }
+        for path in ["/health/live", "/health/ready"] {
+            assert!(document["paths"][path]["get"].get("security").is_none());
+        }
     }
 
     #[test]

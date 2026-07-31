@@ -26,9 +26,8 @@ void main() {
         'PAKPERK_OPENING_MOTION_ENABLED': 'true',
         'PAKPERK_OIDC_ISSUER_URL': 'https://identity.pakperk.app/realms/app',
         'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-prod',
-        'PAKPERK_OIDC_REDIRECT_URI': 'pakperk://auth/callback',
-        'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
-            'pakperk://auth/logout-callback',
+        'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth://oauth/callback',
+        'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI': 'pakperk-auth://oauth/logout',
         'PAKPERK_COMMENT_SUPPORT_CONTACT_URL': 'https://pakperk.app/support',
       });
 
@@ -38,6 +37,7 @@ void main() {
       expect(config.features.comments, isTrue);
       expect(config.features.openingMotion, isTrue);
       expect(config.oidcClientId, 'pakperk-mobile-prod');
+      expect(config.oidcScopes, ['openid', 'profile']);
     });
 
     test('production requires HTTPS and strict full-text policy', () {
@@ -97,7 +97,7 @@ void main() {
           'PAKPERK_ACCOUNTS_ENABLED': 'true',
           'PAKPERK_OIDC_ISSUER_URL': 'http://localhost:8081/realms/app',
           'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-dev',
-          'PAKPERK_OIDC_REDIRECT_URI': 'pakperk://auth/callback',
+          'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth://oauth/callback',
         }),
         throwsA(isA<BuildConfigurationException>()),
       );
@@ -108,7 +108,10 @@ void main() {
         'file:///tmp/callback',
         'data:text/plain,callback',
         'other-app://auth/callback',
-        'pakperk://auth/callback?forward=elsewhere',
+        'pakperk://paper/callback',
+        'pakperk-auth://oauth/callback?forward=elsewhere',
+        'pakperk-auth://other/callback',
+        'pakperk-auth://oauth/wrong',
       ]) {
         expect(
           () => AppBuildConfig.fromValues({
@@ -117,7 +120,7 @@ void main() {
             'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-dev',
             'PAKPERK_OIDC_REDIRECT_URI': redirect,
             'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
-                'pakperk://auth/logout-callback',
+                'pakperk-auth://oauth/logout',
           }),
           throwsA(isA<BuildConfigurationException>()),
           reason: redirect,
@@ -125,7 +128,7 @@ void main() {
       }
     });
 
-    test('staging universal-link redirects reject loopback hosts', () {
+    test('native auth redirects use the dedicated registered scheme', () {
       expect(
         () => AppBuildConfig.fromValues(const {
           'PAKPERK_ENV': 'staging',
@@ -134,9 +137,46 @@ void main() {
           'PAKPERK_OIDC_ISSUER_URL':
               'https://identity.staging.pakperk.app/realms/app',
           'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-staging',
-          'PAKPERK_OIDC_REDIRECT_URI': 'https://localhost/auth/callback',
+          'PAKPERK_OIDC_REDIRECT_URI': 'https://identity.pakperk.app/callback',
           'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
-              'pakperk-staging://auth/logout-callback',
+              'pakperk-auth://oauth/logout',
+        }),
+        throwsA(isA<BuildConfigurationException>()),
+      );
+    });
+
+    test('development OIDC HTTP is restricted to loopback', () {
+      for (final issuer in [
+        'http://identity.internal/realms/app',
+        'http://192.168.1.20:8081/realms/app',
+        'http://keycloak:8080/realms/app',
+      ]) {
+        expect(
+          () => AppBuildConfig.fromValues({
+            'PAKPERK_ACCOUNTS_ENABLED': 'true',
+            'PAKPERK_OIDC_ISSUER_URL': issuer,
+            'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-dev',
+            'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth://oauth/callback',
+            'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
+                'pakperk-auth://oauth/logout',
+          }),
+          throwsA(isA<BuildConfigurationException>()),
+          reason: issuer,
+        );
+      }
+    });
+
+    test('production-like OIDC issuers reject loopback even over HTTPS', () {
+      expect(
+        () => AppBuildConfig.fromValues(const {
+          'PAKPERK_ENV': 'staging',
+          'PAKPERK_API_BASE_URL': 'https://api.staging.pakperk.app',
+          'PAKPERK_ACCOUNTS_ENABLED': 'true',
+          'PAKPERK_OIDC_ISSUER_URL': 'https://localhost:8081/realms/pakperk',
+          'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-staging',
+          'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth://oauth/callback',
+          'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
+              'pakperk-auth://oauth/logout',
         }),
         throwsA(isA<BuildConfigurationException>()),
       );
@@ -149,9 +189,9 @@ void main() {
           'PAKPERK_COMMENTS_ENABLED': 'true',
           'PAKPERK_OIDC_ISSUER_URL': 'http://localhost:8081/realms/app',
           'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-dev',
-          'PAKPERK_OIDC_REDIRECT_URI': 'pakperk://auth/callback',
+          'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth://oauth/callback',
           'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
-              'pakperk://auth/logout-callback',
+              'pakperk-auth://oauth/logout',
         }),
         throwsA(isA<BuildConfigurationException>()),
       );
@@ -178,6 +218,16 @@ void main() {
         }),
         throwsA(isA<BuildConfigurationException>()),
       );
+    });
+
+    test('OIDC scopes are exactly openid and profile', () {
+      for (final scopes in ['profile', 'openid', 'openid profile email']) {
+        expect(
+          () => AppBuildConfig.fromValues({'PAKPERK_OIDC_SCOPES': scopes}),
+          throwsA(isA<BuildConfigurationException>()),
+          reason: scopes,
+        );
+      }
     });
   });
 }

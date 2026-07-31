@@ -99,17 +99,37 @@ class AccountCacheDao {
         await (database.delete(
           database.libraryItems,
         )..where((table) => table.accountId.equals(accountId))).go();
-        await (database.delete(
-          database.commentDrafts,
-        )..where((table) => table.accountId.equals(accountId))).go();
-        await (database.delete(
-          database.syncOutbox,
-        )..where((table) => table.accountId.equals(accountId))).go();
+        await (database.delete(database.commentDrafts)..where(
+              (table) =>
+                  table.accountId.equals(accountId) | table.accountId.isNull(),
+            ))
+            .go();
+        await (database.delete(database.syncOutbox)..where(
+              (table) =>
+                  table.accountId.equals(accountId) | table.accountId.isNull(),
+            ))
+            .go();
         for (final row in affectedPapers) {
           final paperId = row.read(database.libraryItems.paperId);
           if (paperId != null) await _refreshPaperPin(paperId);
         }
       });
+
+  /// Fail-closed cleanup for a signed-out credential record that did not yet
+  /// have a Pakperk account UUID bound to it. This still preserves all public
+  /// feed, paper, derived-cache, and restoration data.
+  Future<void> clearAllAccountData() => database.transaction(() async {
+    final affectedPapers = await (database.selectOnly(
+      database.libraryItems,
+    )..addColumns([database.libraryItems.paperId])).get();
+    await database.delete(database.libraryItems).go();
+    await database.delete(database.commentDrafts).go();
+    await database.delete(database.syncOutbox).go();
+    for (final row in affectedPapers) {
+      final paperId = row.read(database.libraryItems.paperId);
+      if (paperId != null) await _refreshPaperPin(paperId);
+    }
+  });
 
   Future<void> _refreshPaperPin(String paperId) async {
     final active =

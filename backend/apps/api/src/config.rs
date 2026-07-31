@@ -2,12 +2,14 @@
 
 use std::{net::SocketAddr, str::FromStr, time::Duration};
 
+use accounts::{AccountPolicy, AccountPolicyError};
 use arxiv_client::ArxivClientConfig;
+use auth::{OidcAlgorithm, OidcVerifierConfig};
 use axum::http::HeaderValue;
-use domain::FulltextPolicy;
+use domain::{FulltextPolicy, TermsVersion};
 use llm_provider::OpenAiCompatibleConfig;
 use secrecy::SecretString;
-use url::Url;
+use url::{Host, Url};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApiEnvironment {
@@ -64,6 +66,10 @@ impl FeatureFlags {
 pub struct ApiConfig {
     pub environment: ApiEnvironment,
     pub features: FeatureFlags,
+    /// Present exactly when the account feature is enabled. Keeping this
+    /// optional means guest-only deployments do not need placeholder identity
+    /// settings and cannot accidentally initialize an OIDC client.
+    pub accounts: Option<AccountFeatureConfig>,
     pub bind: SocketAddr,
     pub database_url: String,
     pub database_pool_size: u32,
@@ -81,6 +87,99 @@ pub struct ApiConfig {
     pub chat_requests_per_minute: u32,
 }
 
+#[derive(Debug, Clone)]
+pub struct AccountFeatureConfig {
+    pub oidc: OidcVerifierConfig,
+    pub current_terms_version: TermsVersion,
+    pub last_seen_interval: Duration,
+    pub profile_update_limit: u32,
+    pub profile_update_window: Duration,
+    pub auth_retry_initial: Duration,
+    pub auth_retry_maximum: Duration,
+}
+
+impl AccountFeatureConfig {
+    fn from_env(environment: ApiEnvironment) -> anyhow::Result<Self> {
+        let issuer_raw = required_env("OIDC_ISSUER_URL")?;
+        let issuer = Url::parse(&issuer_raw)
+            .map_err(|_| anyhow::anyhow!("OIDC_ISSUER_URL must be a valid URL"))?;
+        let audience = required_env("OIDC_AUDIENCE")?;
+        if audience.trim() != audience {
+            anyhow::bail!("OIDC_AUDIENCE must not contain surrounding whitespace");
+        }
+        let mut oidc = OidcVerifierConfig::new(
+            issuer,
+            audience,
+            OidcAlgorithm::parse_csv(
+                &std::env::var("OIDC_ALLOWED_ALGORITHMS").unwrap_or_else(|_| "RS256".to_owned()),
+            )?,
+        );
+        oidc.discovery_timeout = Duration::from_secs(env_parse(
+            "OIDC_DISCOVERY_TIMEOUT_SECONDS",
+            oidc.discovery_timeout.as_secs(),
+        )?);
+        oidc.jwks_cache_ttl = Duration::from_secs(env_parse(
+            "OIDC_JWKS_CACHE_TTL_SECONDS",
+            oidc.jwks_cache_ttl.as_secs(),
+        )?);
+        oidc.jwks_refresh_cooldown = Duration::from_secs(env_parse(
+            "OIDC_JWKS_MIN_REFRESH_SECONDS",
+            oidc.jwks_refresh_cooldown.as_secs(),
+        )?);
+        oidc.clock_skew = Duration::from_secs(env_parse(
+            "OIDC_CLOCK_SKEW_SECONDS",
+            oidc.clock_skew.as_secs(),
+        )?);
+        oidc.allow_insecure_http = validate_oidc_issuer_environment(environment, &oidc.issuer)?;
+
+        let config = Self {
+            oidc,
+            current_terms_version: TermsVersion::parse(&required_env("CURRENT_TERMS_VERSION")?)?,
+            last_seen_interval: Duration::from_secs(env_parse(
+                "ACCOUNT_LAST_SEEN_INTERVAL_SECONDS",
+                15 * 60_u64,
+            )?),
+            profile_update_limit: env_parse("PROFILE_UPDATE_LIMIT", 5_u32)?,
+            profile_update_window: Duration::from_secs(env_parse(
+                "PROFILE_UPDATE_WINDOW_SECONDS",
+                60 * 60_u64,
+            )?),
+            auth_retry_initial: Duration::from_secs(env_parse(
+                "OIDC_RETRY_INITIAL_SECONDS",
+                5_u64,
+            )?),
+            auth_retry_maximum: Duration::from_secs(env_parse(
+                "OIDC_RETRY_MAX_SECONDS",
+                5 * 60_u64,
+            )?),
+        };
+        config.validate()?;
+        Ok(config)
+    }
+
+    pub fn account_policy(&self) -> Result<AccountPolicy, AccountPolicyError> {
+        AccountPolicy::new(
+            self.current_terms_version.clone(),
+            self.last_seen_interval,
+            self.profile_update_limit,
+            self.profile_update_window,
+        )
+    }
+
+    fn validate(&self) -> anyhow::Result<()> {
+        self.oidc.validate()?;
+        self.account_policy()?;
+        if self.auth_retry_initial.is_zero()
+            || self.auth_retry_maximum.is_zero()
+            || self.auth_retry_initial >= self.auth_retry_maximum
+            || self.auth_retry_maximum > Duration::from_secs(60 * 60)
+        {
+            anyhow::bail!("OIDC retry delays must be positive, ordered, and at most one hour");
+        }
+        Ok(())
+    }
+}
+
 impl ApiConfig {
     pub fn from_env() -> anyhow::Result<Self> {
         let environment = std::env::var("APP_ENV")
@@ -92,6 +191,10 @@ impl ApiConfig {
             comments: env_bool("COMMENTS_ENABLED", false)?,
         }
         .validate()?;
+        let accounts = features
+            .accounts
+            .then(|| AccountFeatureConfig::from_env(environment))
+            .transpose()?;
         let bind = std::env::var("API_BIND")
             .unwrap_or_else(|_| "0.0.0.0:8080".to_owned())
             .parse()?;
@@ -145,6 +248,7 @@ impl ApiConfig {
         let config = Self {
             environment,
             features,
+            accounts,
             bind,
             database_url,
             database_pool_size: env_parse("DATABASE_POOL_SIZE", 10_u32)?,
@@ -180,6 +284,23 @@ impl ApiConfig {
     }
 
     fn validate(&self) -> anyhow::Result<()> {
+        match (self.features.accounts, self.accounts.as_ref()) {
+            (true, Some(accounts)) => {
+                accounts.validate()?;
+                let allow_insecure =
+                    validate_oidc_issuer_environment(self.environment, &accounts.oidc.issuer)?;
+                if accounts.oidc.allow_insecure_http != allow_insecure {
+                    anyhow::bail!("OIDC issuer transport override is inconsistent with APP_ENV");
+                }
+            }
+            (false, None) => {}
+            (true, None) => {
+                anyhow::bail!("account configuration is required when accounts are enabled")
+            }
+            (false, Some(_)) => {
+                anyhow::bail!("account configuration requires accounts to be enabled")
+            }
+        }
         if self.database_pool_size == 0 {
             anyhow::bail!("DATABASE_POOL_SIZE must be greater than zero");
         }
@@ -218,6 +339,37 @@ impl ApiConfig {
         }
         Ok(())
     }
+}
+
+fn required_env(name: &str) -> anyhow::Result<String> {
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| anyhow::anyhow!("{name} is required when accounts are enabled"))
+}
+
+fn validate_oidc_issuer_environment(
+    environment: ApiEnvironment,
+    issuer: &Url,
+) -> anyhow::Result<bool> {
+    let is_loopback = issuer.host().is_some_and(|host| match host {
+        Host::Ipv4(address) => address.is_loopback(),
+        Host::Ipv6(address) => address.is_loopback(),
+        Host::Domain(host) => host.eq_ignore_ascii_case("localhost"),
+    });
+    if environment.is_deployed() && is_loopback {
+        anyhow::bail!("OIDC_ISSUER_URL must not use a loopback host outside development");
+    }
+    if issuer.scheme() == "http" {
+        if environment != ApiEnvironment::Development {
+            anyhow::bail!("OIDC_ISSUER_URL must use HTTPS outside development");
+        }
+        if !is_loopback {
+            anyhow::bail!("development HTTP OIDC issuers must use a loopback host");
+        }
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 fn validate_cors_origin(_environment: ApiEnvironment, value: &HeaderValue) -> anyhow::Result<()> {
@@ -460,6 +612,28 @@ mod tests {
     }
 
     #[test]
+    fn oidc_issuer_transport_allows_local_http_only_in_development() {
+        let local = Url::parse("http://localhost:8081/realms/pakperk").unwrap();
+        assert!(validate_oidc_issuer_environment(ApiEnvironment::Development, &local).unwrap());
+        let non_loopback = Url::parse("http://keycloak:8080/realms/pakperk").unwrap();
+        assert!(
+            validate_oidc_issuer_environment(ApiEnvironment::Development, &non_loopback).is_err()
+        );
+        let ipv6_loopback = Url::parse("http://[::1]:8081/realms/pakperk").unwrap();
+        assert!(
+            validate_oidc_issuer_environment(ApiEnvironment::Development, &ipv6_loopback).unwrap()
+        );
+
+        for environment in [ApiEnvironment::Staging, ApiEnvironment::Production] {
+            let secure_loopback = Url::parse("https://127.0.0.1:8443/realms/pakperk").unwrap();
+            assert!(validate_oidc_issuer_environment(environment, &local).is_err());
+            assert!(validate_oidc_issuer_environment(environment, &secure_loopback).is_err());
+            let deployed = Url::parse("https://identity.pakperk.org/realms/pakperk").unwrap();
+            assert!(!validate_oidc_issuer_environment(environment, &deployed).unwrap());
+        }
+    }
+
+    #[test]
     fn production_validation_enforces_safe_runtime_invariants() {
         let mut config = production_config();
         assert!(config.validate().is_ok());
@@ -482,6 +656,7 @@ mod tests {
         ApiConfig {
             environment: ApiEnvironment::Production,
             features: FeatureFlags::default(),
+            accounts: None,
             bind: "0.0.0.0:8080".parse().unwrap(),
             database_url: "postgresql://api@database/pakperk".to_owned(),
             database_pool_size: 10,

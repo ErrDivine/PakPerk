@@ -34,6 +34,7 @@
 				<key>CFBundleURLSchemes</key>
 				<array>
 					<string>pakperk</string>
+					<string>pakperk-auth</string>
 				</array>
 			</dict>
 		</array>

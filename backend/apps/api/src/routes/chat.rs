@@ -7,6 +7,7 @@ use super::{
     paper_not_found, provider_error, rate_limited, reciprocal_rank_score, retrieval_error,
     select_context,
 };
+use crate::middleware::OptionalPrincipal;
 
 struct ChatObservation {
     request_id: RequestId,
@@ -47,10 +48,11 @@ impl Drop for ChatObservation {
 
 #[axum::debug_handler]
 #[allow(clippy::too_many_lines)]
-#[utoipa::path(post, path = "/v1/papers/{paper_id}/chat", request_body = ChatBody, params(("paper_id" = Uuid, Path)), responses((status = 200, description = "Grounded chat answer", body = crate::openapi::ChatResponseSchema), (status = 400, description = "Invalid anonymous session or question", body = crate::openapi::ErrorEnvelopeSchema), (status = 403, description = "Full-text policy denied", body = crate::openapi::ErrorEnvelopeSchema), (status = 409, description = "Capability not ready", body = crate::openapi::ErrorEnvelopeSchema), (status = 429, description = "Rate limited", body = crate::openapi::ErrorEnvelopeSchema)))]
+#[utoipa::path(post, path = "/v1/papers/{paper_id}/chat", security((), ("oidcBearer" = [])), request_body = ChatBody, params(("paper_id" = Uuid, Path)), responses((status = 200, description = "Grounded chat answer", body = crate::openapi::ChatResponseSchema), (status = 400, description = "Invalid anonymous session or question", body = crate::openapi::ErrorEnvelopeSchema), (status = 403, description = "Full-text policy denied", body = crate::openapi::ErrorEnvelopeSchema), (status = 409, description = "Capability not ready", body = crate::openapi::ErrorEnvelopeSchema), (status = 429, description = "Rate limited", body = crate::openapi::ErrorEnvelopeSchema)))]
 pub(crate) async fn chat(
     State(state): State<AppState>,
     Extension(request_id): Extension<RequestId>,
+    _principal: OptionalPrincipal,
     remote: ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(paper_id): Path<Uuid>,

@@ -14,6 +14,7 @@ use super::{
     Json, Query, RequestId, State, StatusCode, apply_summary_policy, cursor_error,
     internal_db_error, valid_category,
 };
+use crate::middleware::OptionalPrincipal;
 
 const FEED_CACHE_CONTROL: &str = "public, max-age=60, stale-while-revalidate=300";
 const FEED_ETAG_VERSION: &[u8] = b"pakperk-feed-etag-v1";
@@ -23,6 +24,7 @@ const MAX_IF_NONE_MATCH_BYTES: usize = 16 * 1024;
 #[utoipa::path(
     get,
     path = "/v1/feed",
+    security((), ("oidcBearer" = [])),
     params(
         ("category" = Option<String>, Query, description = "arXiv category"),
         ("cursor" = Option<String>, Query, description = "Opaque page cursor"),
@@ -53,6 +55,7 @@ const MAX_IF_NONE_MATCH_BYTES: usize = 16 * 1024;
 pub(crate) async fn feed(
     State(state): State<AppState>,
     Extension(request_id): Extension<RequestId>,
+    _principal: OptionalPrincipal,
     headers: HeaderMap,
     Query(params): Query<FeedParams>,
 ) -> Result<Response, ApiError> {

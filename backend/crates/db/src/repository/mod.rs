@@ -26,9 +26,16 @@ use uuid::Uuid;
 
 use crate::FeedCursor;
 
+mod accounts;
 mod chat;
 mod papers;
+mod rate_limits;
 mod rows;
+
+pub use accounts::{AccountRepository, ProfilePatch, ProfileUpdateOutcome};
+pub use rate_limits::{
+    RateLimitConfigError, RateLimitDecision, RateLimitRepository, RateLimitRequest,
+};
 
 use rows::{
     CapabilityToPublish, CapabilityTransition, ChatTurnRow, CitationContextRow,
@@ -147,6 +154,16 @@ impl Database {
     #[must_use]
     pub fn papers(&self) -> PaperRepository {
         PaperRepository::new(self.pool.clone())
+    }
+
+    #[must_use]
+    pub fn accounts(&self) -> AccountRepository {
+        AccountRepository::new(self.pool.clone())
+    }
+
+    #[must_use]
+    pub fn rate_limits(&self) -> RateLimitRepository {
+        RateLimitRepository::new(self.pool.clone())
     }
 }
 

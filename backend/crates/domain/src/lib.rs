@@ -3,6 +3,7 @@
 //! Types in this crate intentionally do not depend on Axum, `SQLx`, or any model
 //! provider. They are safe to use at persistence and API boundaries.
 
+mod account;
 mod chat;
 mod connection;
 mod content_policy;
@@ -11,6 +12,11 @@ mod error;
 mod paper;
 mod processing;
 
+pub use account::{
+    AccountStatus, AccountStatusParseError, AuthenticatedUserId, DisplayName,
+    DisplayNameValidationError, Handle, HandleValidationError, PublicUser, TermsVersion,
+    TermsVersionValidationError, User,
+};
 pub use chat::{
     ChatAnswer, ChatEvidence, ChatMessage, ChatRequest, ChatRole, ChatTurn, SuggestedFollowUp,
 };

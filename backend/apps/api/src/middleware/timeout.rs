@@ -60,33 +60,49 @@ pub(crate) async fn stable_error_middleware(request: Request, next: Next) -> Res
     if !status.is_client_error() && !status.is_server_error() || is_json {
         return response;
     }
-    let (code, message, retryable) = match status {
+    let (public_status, code, message, retryable) = match status {
         StatusCode::METHOD_NOT_ALLOWED => (
+            status,
             "METHOD_NOT_ALLOWED",
             "That HTTP method is not supported for this route.",
             false,
         ),
         StatusCode::PAYLOAD_TOO_LARGE => (
+            status,
             "REQUEST_BODY_TOO_LARGE",
             "The request body exceeds the service limit.",
             false,
         ),
         StatusCode::UNSUPPORTED_MEDIA_TYPE => (
+            status,
             "UNSUPPORTED_MEDIA_TYPE",
             "This endpoint requires an application/json request body.",
             false,
         ),
-        StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY => (
+        StatusCode::BAD_REQUEST => (
+            status,
+            "INVALID_REQUEST",
+            "The request body or path parameters are invalid.",
+            false,
+        ),
+        StatusCode::UNPROCESSABLE_ENTITY => (
+            StatusCode::BAD_REQUEST,
             "INVALID_REQUEST",
             "The request body or path parameters are invalid.",
             false,
         ),
         _ if status.is_server_error() => (
+            status,
             "INTERNAL_ERROR",
             "The service could not complete the request.",
             true,
         ),
-        _ => ("REQUEST_REJECTED", "The request was rejected.", false),
+        _ => (
+            status,
+            "REQUEST_REJECTED",
+            "The request was rejected.",
+            false,
+        ),
     };
-    ApiError::new(request_id, status, code, message, retryable).into_response()
+    ApiError::new(request_id, public_status, code, message, retryable).into_response()
 }

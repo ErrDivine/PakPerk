@@ -32,6 +32,7 @@ use crate::{
     middleware::SESSION_ID_HEADER,
 };
 
+pub(crate) mod account;
 pub(crate) mod chat;
 pub(crate) mod feed;
 pub(crate) mod health;
@@ -45,6 +46,7 @@ use support::{
     retrieval_error, valid_category,
 };
 
+pub(crate) use account::{get_me, patch_me, private_account_cache_control};
 pub(crate) use chat::chat;
 pub(crate) use feed::feed;
 pub(crate) use health::{health_live, health_ready};
@@ -487,6 +489,7 @@ mod tests {
         ApiConfig {
             environment: ApiEnvironment::Development,
             features: FeatureFlags::default(),
+            accounts: None,
             bind: SocketAddr::from(([127, 0, 0, 1], 0)),
             database_url: database_url.to_owned(),
             database_pool_size: 6,
