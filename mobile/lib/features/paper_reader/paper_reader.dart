@@ -23,6 +23,7 @@ class PaperReader extends ConsumerStatefulWidget {
     required this.paper,
     required this.readerKey,
     required this.isActive,
+    this.onOpenLinkedPaper,
     this.onPreviousPaper,
     this.onNextPaper,
     super.key,
@@ -31,6 +32,7 @@ class PaperReader extends ConsumerStatefulWidget {
   final PaperSummary paper;
   final String readerKey;
   final bool isActive;
+  final ValueChanged<PaperSummary>? onOpenLinkedPaper;
   final VoidCallback? onPreviousPaper;
   final VoidCallback? onNextPaper;
 
@@ -126,10 +128,11 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
     );
     final capabilities =
         processing.processing?.capabilities ?? widget.paper.capabilities;
+    final repositoryOffline = ref.read(paperRepositoryProvider).isOffline;
     final offline = ref.watch(networkOfflineProvider).when(
           data: (value) => value,
-          loading: () => processing.offline,
-          error: (_, __) => processing.offline,
+          loading: () => processing.offline || repositoryOffline,
+          error: (_, __) => processing.offline || repositoryOffline,
         );
 
     ref.listen<ProcessingUiState>(
@@ -206,6 +209,7 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
     return ColoredBox(
       color: Theme.of(context).scaffoldBackgroundColor,
       child: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             if (offline) const OfflineBanner(),
@@ -394,9 +398,14 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
             cancellation: _activeRouteRequests,
           );
       if (!mounted) return;
-      ref
-          .read(appRestorationControllerProvider.notifier)
-          .pushPaper(result.value);
+      final onOpenLinkedPaper = widget.onOpenLinkedPaper;
+      if (onOpenLinkedPaper != null) {
+        onOpenLinkedPaper(result.value);
+      } else {
+        ref
+            .read(appRestorationControllerProvider.notifier)
+            .pushPaper(result.value);
+      }
     } on ApiException catch (error) {
       if (error.cancelled) return;
       if (!mounted) return;

@@ -1,8 +1,7 @@
 # PakPerk mobile
 
-Flutter client for the PakPerk demo, with native Android and iOS hosts. The API
-base URL is configured at build
-time:
+Flutter client for Pakperk, with native Android and iOS hosts. The API base URL
+is configured at build time:
 
 ```sh
 flutter run \
@@ -13,6 +12,18 @@ flutter run \
 Android emulators normally need `http://10.0.2.2:8080`. The app persists an
 anonymous session identifier, the cached feed and prepared content, the full
 paper navigation trail, each stage/scroll position, and chat-sheet state.
+
+The app uses a stateful Read/You shell. Read keeps feed, linked-paper, stage,
+and scroll restoration across tab switches; You remains a guest explanation
+until accounts are shipped. Startup opens local preferences and the first
+cached or bundled feed before the production widget tree mounts, releases the
+native splash, and starts exactly one feed revalidation after the first usable
+frame. Network availability is therefore not a launch prerequisite.
+
+The native hosts accept `pakperk://paper/{paper_id}` and registered
+`https://pakperk.app/p/...` or `/arxiv/...` links. Release builds also require
+the external Apple and Android association files described in
+[`../docs/mobile-app-links.md`](../docs/mobile-app-links.md).
 
 Set both the backend `FULLTEXT_POLICY` and the mobile
 `PAKPERK_FULLTEXT_POLICY` to `strict` for a strict deployment. A strict mobile

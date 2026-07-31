@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../models/chat.dart';
 import '../models/connections.dart';
 import '../models/introduction.dart';
+import '../models/arxiv_identifier.dart';
 import '../models/paper.dart';
 import '../models/processing.dart';
 import 'api_exception.dart';
@@ -70,6 +71,33 @@ class ApiClient {
     try {
       final response = await _dio.get<Object?>(
         '/v1/papers/$paperId',
+        cancelToken: cancellation?.dioToken,
+      );
+      final json = _jsonMap(response.data);
+      final paper = json['paper'];
+      return PaperSummary.fromJson(
+        paper is Map ? Map<String, dynamic>.from(paper) : json,
+      );
+    } on DioException catch (error) {
+      throw _toApiException(error);
+    }
+  }
+
+  Future<PaperSummary> getPaperByArxiv(
+    String arxivId, {
+    RequestCancellation? cancellation,
+  }) async {
+    final normalized = ArxivIdentifier.tryParse(arxivId);
+    if (normalized == null) {
+      throw const ApiException(
+        code: 'INVALID_ARXIV_ID',
+        message: 'The arXiv identifier is malformed.',
+        statusCode: 400,
+      );
+    }
+    try {
+      final response = await _dio.get<Object?>(
+        '/v1/papers/by-arxiv/${normalized.encodedRouteSegment}',
         cancelToken: cancellation?.dioToken,
       );
       final json = _jsonMap(response.data);

@@ -21,16 +21,17 @@ and its [documentation entrypoint](docs/production-v0.0-plan.md).
 
 ## Production migration status
 
-Phase 0 establishes safe extension seams without claiming that account-owned
-features are live. The API is split by route and middleware responsibility, the
-database repository is split by domain responsibility, deployment tiers and
-feature flags are typed and validated, and the existing public paper API has a
-checked code-first OpenAPI contract. Accounts, library, and comments remain off
+Phases 0 and 1 are implemented. The backend has safe extension seams, typed
+deployment configuration, and a checked code-first OpenAPI contract. The mobile
+app now has a persistent Read/You shell, exact paper and arXiv links, a guest You
+surface, light/dark design tokens, native launch assets, and a bounded
+cached-first opening transition. Accounts, library, and comments remain off
 until their complete later phases—including safety and policy gates—land.
 
 The demo baseline is frozen at the annotated `production-v0.0-baseline` tag.
 Architecture choices for OIDC, Drift, stateful navigation, comments, and shared
 rate limiting are recorded in [`docs/adr/`](docs/adr/).
+Phase evidence is recorded under [`docs/phase-reports/`](docs/phase-reports/).
 
 ## Run the backend
 
@@ -71,6 +72,12 @@ flutter run --dart-define=PAKPERK_API_BASE_URL=http://localhost:8080
 Use `http://10.0.2.2:8080` from an Android emulator. The app starts with its
 bundled cache when the API cannot be reached, then refreshes in place when
 connectivity returns.
+
+The production shell has exactly two primary destinations: **Read** and
+**You**. Read retains the current vertical paper feed and horizontal reader
+stages. You is an honest guest surface until the account phase is enabled.
+Supported local links and the platform-association work required before release
+are documented in [`docs/mobile-app-links.md`](docs/mobile-app-links.md).
 
 Mobile configuration is validated before general storage is opened. The
 development defaults preserve the current guest reader with all production

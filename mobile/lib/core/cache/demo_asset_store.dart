@@ -9,6 +9,7 @@ import '../models/paper.dart';
 abstract interface class DemoContentStore {
   Future<FeedPage> loadFallbackFeed();
   Future<PaperSummary?> findFallbackPaper(String paperId);
+  Future<PaperSummary?> findFallbackPaperByArxiv(String arxivBaseId);
   Future<PaperIntroduction?> loadIntroduction(String paperId);
   Future<PaperConnections?> loadConnections(String paperId);
 }
@@ -37,6 +38,16 @@ class BundleDemoContentStore implements DemoContentStore {
     final feed = await loadFallbackFeed();
     for (final paper in feed.items) {
       if (paper.paperId == paperId) return paper;
+    }
+    return null;
+  }
+
+  @override
+  Future<PaperSummary?> findFallbackPaperByArxiv(String arxivBaseId) async {
+    final target = arxivBaseId.toLowerCase();
+    final feed = await loadFallbackFeed();
+    for (final paper in feed.items) {
+      if (paper.arxivBaseId.toLowerCase() == target) return paper;
     }
     return null;
   }

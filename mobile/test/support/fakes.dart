@@ -116,6 +116,23 @@ class MemoryLocalStore implements LocalStore {
   Future<PaperSummary?> loadPaper(String paperId) async => papers[paperId];
 
   @override
+  Future<PaperSummary?> findPaperByArxiv(String arxivBaseId) async {
+    final candidates = <PaperSummary>{
+      ...papers.values,
+      ...?feed?.items,
+    }.where(
+      (paper) => paper.arxivBaseId.toLowerCase() == arxivBaseId.toLowerCase(),
+    );
+    PaperSummary? latest;
+    for (final paper in candidates) {
+      if (latest == null || paper.updatedAt.isAfter(latest.updatedAt)) {
+        latest = paper;
+      }
+    }
+    return latest;
+  }
+
+  @override
   Future<void> savePaper(PaperSummary value) async {
     papers[value.paperId] = value;
   }
@@ -166,6 +183,7 @@ class MemoryLocalStore implements LocalStore {
 class FakePaperDataSource implements PaperDataSource {
   FakePaperDataSource({
     this.paper,
+    this.arxivPaper,
     this.processing,
     this.prepareResult,
     this.introduction,
@@ -173,17 +191,23 @@ class FakePaperDataSource implements PaperDataSource {
   });
 
   PaperSummary? paper;
+  PaperSummary? arxivPaper;
   PaperProcessingState? processing;
   PaperProcessingState? prepareResult;
   PaperIntroduction? introduction;
   PaperConnections? connections;
+  final Map<String, PaperSummary> papersById = {};
   int prepareCalls = 0;
   int processingCalls = 0;
   int introductionCalls = 0;
   int connectionCalls = 0;
+  int paperCalls = 0;
+  int paperByArxivCalls = 0;
+  int feedCalls = 0;
   bool offline = false;
   DataOrigin contentOrigin = DataOrigin.network;
   Completer<RepositoryValue<FeedPage>>? networkFeedCompleter;
+  Completer<RepositoryValue<PaperSummary>>? paperByArxivCompleter;
   Completer<void>? cacheFeedCompleter;
   FeedPage? cachedFeed;
   FeedPage? networkFeed;
@@ -191,6 +215,8 @@ class FakePaperDataSource implements PaperDataSource {
   final List<bool> cachedFeedReplaceFlags = [];
   RequestCancellation? lastFeedCancellation;
   RequestCancellation? lastPaperCancellation;
+  RequestCancellation? lastPaperByArxivCancellation;
+  String? lastArxivId;
   RequestCancellation? lastPrepareCancellation;
   RequestCancellation? lastProcessingCancellation;
   RequestCancellation? lastIntroductionCancellation;
@@ -225,6 +251,7 @@ class FakePaperDataSource implements PaperDataSource {
     int limit = 20,
     RequestCancellation? cancellation,
   }) async {
+    feedCalls += 1;
     lastFeedCancellation = cancellation;
     if (networkFeedCompleter != null) {
       return networkFeedCompleter!.future;
@@ -241,9 +268,26 @@ class FakePaperDataSource implements PaperDataSource {
     String paperId, {
     RequestCancellation? cancellation,
   }) async {
+    paperCalls += 1;
     lastPaperCancellation = cancellation;
     return RepositoryValue(
-      value: paper ?? samplePaper,
+      value: papersById[paperId] ?? paper ?? samplePaper,
+      origin: DataOrigin.network,
+      offline: offline,
+    );
+  }
+
+  @override
+  Future<RepositoryValue<PaperSummary>> getPaperByArxiv(
+    String arxivId, {
+    RequestCancellation? cancellation,
+  }) async {
+    paperByArxivCalls += 1;
+    lastArxivId = arxivId;
+    lastPaperByArxivCancellation = cancellation;
+    if (paperByArxivCompleter != null) return paperByArxivCompleter!.future;
+    return RepositoryValue(
+      value: arxivPaper ?? paper ?? samplePaper,
       origin: DataOrigin.network,
       offline: offline,
     );

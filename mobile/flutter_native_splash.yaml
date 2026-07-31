@@ -1,0 +1,15 @@
+flutter_native_splash:
+  color: "#F7F4EC"
+  color_dark: "#17211B"
+  image: assets/brand/pakperk_mark.png
+  image_dark: assets/brand/pakperk_mark_dark.png
+  android: true
+  ios: true
+  web: false
+  fullscreen: false
+
+  android_12:
+    color: "#F7F4EC"
+    color_dark: "#17211B"
+    image: assets/brand/pakperk_mark.png
+    image_dark: assets/brand/pakperk_mark_dark.png

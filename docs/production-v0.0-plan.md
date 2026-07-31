@@ -48,7 +48,7 @@ The canonical plan's execution contract is binding. In particular:
 - do not add a network service without an ADR; PostgreSQL remains the shared
   synchronization, jobs, and rate-limit source of truth for this milestone.
 
-## Phase 0 record
+## Phase records
 
 Phase 0 creates safe extension points without altering the visible demo. Its
 documentation outputs are this plan entrypoint and the ADRs in
@@ -59,6 +59,14 @@ introduced by Phase 0 alone.
 
 Implementation evidence is recorded in the
 [Phase 0 report](phase-reports/phase-0.md).
+
+Phase 1 establishes the two-destination mobile frame, stateful routing,
+validated paper/arXiv links, guest You surface, root contextual routes, design
+tokens, light/dark themes, native launch assets, and a bounded cached-first
+startup state machine. Accounts, library, and comments remain explicitly
+disabled; their routes are truthful placeholders rather than partial product
+claims. Implementation and verification evidence is recorded in the
+[Phase 1 report](phase-reports/phase-1.md).
 
 The plan's exit criteria require unchanged demo behavior and API fixtures,
 passing `./scripts/check.sh`, complete OpenAPI coverage for existing routes,

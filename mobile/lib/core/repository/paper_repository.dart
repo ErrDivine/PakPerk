@@ -9,6 +9,7 @@ import '../content_policy.dart';
 import '../models/chat.dart';
 import '../models/connections.dart';
 import '../models/introduction.dart';
+import '../models/arxiv_identifier.dart';
 import '../models/paper.dart';
 import '../models/processing.dart';
 
@@ -41,6 +42,10 @@ abstract interface class PaperDataSource {
   Future<void> cacheFeed(FeedPage value, {bool replaceFeed = true});
   Future<RepositoryValue<PaperSummary>> getPaper(
     String paperId, {
+    RequestCancellation? cancellation,
+  });
+  Future<RepositoryValue<PaperSummary>> getPaperByArxiv(
+    String arxivId, {
     RequestCancellation? cancellation,
   });
   Future<RepositoryValue<PaperProcessingState>> prepare(
@@ -208,6 +213,66 @@ class PaperRepository implements PaperDataSource {
         );
       }
       final bundled = await _demoContent.findFallbackPaper(paperId);
+      if (bundled != null) {
+        return RepositoryValue(
+          value: fulltextPolicy.maskCachedPaper(bundled),
+          origin: DataOrigin.bundledDemo,
+          offline: _offline,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<RepositoryValue<PaperSummary>> getPaperByArxiv(
+    String arxivId, {
+    RequestCancellation? cancellation,
+  }) async {
+    final normalized = ArxivIdentifier.tryParse(arxivId);
+    if (normalized == null) {
+      throw const ApiException(
+        code: 'INVALID_ARXIV_ID',
+        message: 'The arXiv identifier is malformed.',
+        statusCode: 400,
+      );
+    }
+    try {
+      final value = await _api.getPaperByArxiv(
+        normalized.queryId,
+        cancellation: cancellation,
+      );
+      if (value.arxivBaseId.toLowerCase() != normalized.baseId.toLowerCase()) {
+        throw const ApiException(
+          code: 'INVALID_ARXIV_RESPONSE',
+          message: 'The service returned a different paper for this link.',
+          retryable: true,
+          statusCode: 502,
+        );
+      }
+      await _savePaperAndInvalidateOlderVersion(
+        fulltextPolicy.maskCachedPaper(value),
+      );
+      _markOnline();
+      return RepositoryValue(
+        value: value,
+        origin: DataOrigin.network,
+        offline: false,
+      );
+    } on ApiException catch (error) {
+      if (error.cancelled) rethrow;
+      _markFrom(error);
+      final cached = await _localStore.findPaperByArxiv(normalized.baseId);
+      if (cached != null) {
+        return RepositoryValue(
+          value: fulltextPolicy.maskCachedPaper(cached),
+          origin: DataOrigin.deviceCache,
+          offline: _offline,
+        );
+      }
+      final bundled = await _demoContent.findFallbackPaperByArxiv(
+        normalized.baseId,
+      );
       if (bundled != null) {
         return RepositoryValue(
           value: fulltextPolicy.maskCachedPaper(bundled),

@@ -24,6 +24,10 @@ final appRestorationControllerProvider =
   return controller;
 });
 
+final activeAppBranchProvider = Provider<AppBranch>((ref) {
+  return ref.watch(appRestorationControllerProvider).activeBranch;
+});
+
 class AppRestorationController extends StateNotifier<AppRestorationState> {
   AppRestorationController({
     required LocalStore store,
@@ -34,6 +38,13 @@ class AppRestorationController extends StateNotifier<AppRestorationState> {
 
   final LocalStore _store;
   Timer? _persistTimer;
+
+  void setActiveBranch(int index) {
+    final safeIndex = index == 1 ? 1 : 0;
+    if (safeIndex == state.activeBranchIndex) return;
+    state = state.copyWith(activeBranchIndex: safeIndex);
+    _schedulePersist();
+  }
 
   void setFeedIndex(int index) {
     if (index == state.feedIndex) return;
@@ -81,6 +92,13 @@ class AppRestorationController extends StateNotifier<AppRestorationState> {
     state = state.copyWith(
       routeStack: state.routeStack.sublist(0, state.routeStack.length - 1),
     );
+    _schedulePersist();
+    return true;
+  }
+
+  bool popToFeed() {
+    if (state.routeStack.isEmpty) return false;
+    state = state.copyWith(routeStack: const []);
     _schedulePersist();
     return true;
   }

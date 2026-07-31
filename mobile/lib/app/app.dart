@@ -3,8 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/providers.dart';
+import '../features/feed/feed_controller.dart';
 import '../features/paper_reader/reader_navigation_controller.dart';
 import 'router.dart';
+import 'startup_controller.dart';
+import 'startup_gate.dart';
 import 'theme.dart';
 
 class PakPerkApp extends ConsumerStatefulWidget {
@@ -37,14 +41,35 @@ class _PakPerkAppState extends ConsumerState<PakPerkApp>
     }
   }
 
+  void _notifyFirstUsableFrame() {
+    ref.read(startupControllerProvider.notifier).notifyFirstUsableFrame();
+    unawaited(
+      ref.read(feedControllerProvider.notifier).refreshPreloadedFirstPageOnce(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    final startup = ref.watch(startupControllerProvider);
+    final startupController = ref.read(startupControllerProvider.notifier);
+    final openingMotion = ref.watch(featureFlagsProvider).openingMotion;
+    return MaterialApp.router(
       title: 'Pakperk',
       debugShowCheckedModeBanner: false,
       theme: buildPakPerkTheme(),
+      darkTheme: buildPakPerkDarkTheme(),
+      themeMode: ThemeMode.system,
       restorationScopeId: 'pakperk-app',
-      home: const PakPerkRouter(),
+      routerConfig: ref.watch(pakPerkRouterProvider),
+      builder: (context, child) => StartupGate(
+        state: startup,
+        openingMotionEnabled: openingMotion,
+        onRetry: startupController.retry,
+        onRepairAndRetry: startupController.repairAndRetry,
+        onFirstUsableFrame: _notifyFirstUsableFrame,
+        onOpeningComplete: startupController.markOpeningComplete,
+        child: child ?? const SizedBox.shrink(),
+      ),
     );
   }
 }

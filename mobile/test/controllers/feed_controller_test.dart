@@ -4,10 +4,51 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/repository/paper_repository.dart';
 import 'package:pakperk/features/feed/feed_controller.dart';
+import 'package:pakperk/features/feed/preloaded_feed_snapshot.dart';
 
 import '../support/fakes.dart';
 
 void main() {
+  test(
+    'preloaded feed is synchronous and waits for one explicit revalidation',
+    () async {
+      final pendingNetwork = Completer<RepositoryValue<FeedPage>>();
+      final repository = FakePaperDataSource(paper: samplePaper)
+        ..networkFeedCompleter = pendingNetwork;
+      final controller = FeedController(
+        repository,
+        preloadedSnapshot: PreloadedFeedSnapshot(
+          page: FeedPage(items: [samplePaper], nextCursor: 'cached-cursor'),
+          origin: DataOrigin.deviceCache,
+        ),
+      );
+
+      expect(controller.state.loadingInitial, isFalse);
+      expect(controller.state.items.single.paperId, samplePaper.paperId);
+      expect(controller.state.nextCursor, 'cached-cursor');
+      expect(controller.state.origin, DataOrigin.deviceCache);
+      expect(repository.feedCalls, 0);
+      expect(repository.lastFeedCancellation, isNull);
+
+      final firstRefresh = controller.refreshPreloadedFirstPageOnce();
+      final repeatedRefresh = controller.refreshPreloadedFirstPageOnce();
+      expect(identical(firstRefresh, repeatedRefresh), isTrue);
+      expect(repository.feedCalls, 1);
+      expect(repository.lastFeedCancellation, isNotNull);
+
+      pendingNetwork.complete(
+        RepositoryValue(
+          value: FeedPage(items: [samplePaper]),
+          origin: DataOrigin.network,
+          offline: false,
+        ),
+      );
+      await firstRefresh;
+      expect(repository.feedCalls, 1);
+      controller.dispose();
+    },
+  );
+
   test(
     'cached feed is published before network revalidation completes',
     () async {

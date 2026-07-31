@@ -1,13 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/router.dart';
 import '../../core/models/introduction.dart';
 import '../../core/models/paper.dart';
 import '../../core/models/processing.dart';
 import '../../core/providers.dart';
 import '../../core/widgets/status_widgets.dart';
 import '../chat/chat_controller.dart';
-import '../chat/chat_sheet.dart';
 import '../paper_reader/abstract_view.dart';
 import '../paper_reader/paper_processing_controller.dart';
 import '../paper_reader/reader_navigation_controller.dart';
@@ -43,6 +45,8 @@ class IntroductionView extends ConsumerStatefulWidget {
 
 class _IntroductionViewState extends ConsumerState<IntroductionView> {
   final TextEditingController _composer = TextEditingController();
+  bool _chatRouteOpen = false;
+  bool _restoredChatScheduled = false;
 
   ChatControllerArgs get _chatArgs => ChatControllerArgs(
         paperId: widget.paper.paperId,
@@ -64,10 +68,11 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
       readerNavigationStateProvider(widget.readerKey),
     );
     final chat = ref.watch(chatControllerProvider(_chatArgs));
+    final repositoryOffline = ref.read(paperRepositoryProvider).isOffline;
     final networkOffline = ref.watch(networkOfflineProvider).when(
           data: (value) => value,
-          loading: () => widget.processing.offline,
-          error: (_, __) => widget.processing.offline,
+          loading: () => widget.processing.offline || repositoryOffline,
+          error: (_, __) => widget.processing.offline || repositoryOffline,
         );
     final offline = networkOffline || introduction.offline;
     final chatEnabled = widget.capabilities.chat && !offline;
@@ -80,69 +85,54 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
         ((processingState.lastErrorCode ?? '').contains('LLM') ||
             (processingState.lastErrorCode ?? '').contains('MODEL'));
 
-    return Stack(
+    if (navigation.chatSheetOpen &&
+        !_chatRouteOpen &&
+        !_restoredChatScheduled) {
+      _restoredChatScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_openChat(chatEnabled));
+      });
+    }
+
+    return Column(
       children: [
-        Column(
-          children: [
-            Expanded(
-              child: _IntroductionContent(
-                paper: widget.paper,
-                scrollController: widget.scrollController,
-                state: introduction,
-                processing: widget.processing,
-                capabilities: widget.capabilities,
-                offline: offline,
-                onRetryPreparation: widget.onRetryPreparation,
-                onRetryIntroduction: () => ref
-                    .read(
-                      introductionControllerProvider(
-                        widget.paper.versionKey,
-                      ).notifier,
-                    )
-                    .load(force: true),
-                onOpenPdf: _openPdf,
-                onOpenCitation: _openCitation,
-                onStarterQuestion: chatEnabled ? _ask : null,
-                onPreviousPaper: widget.onPreviousPaper,
-                onNextPaper: widget.onNextPaper,
-              ),
-            ),
-            _PersistentChatComposer(
-              controller: _composer,
-              enabled: chatEnabled && !chat.sending,
-              hintText: offline
-                  ? 'Offline — reconnect to ask a question'
-                  : chatFailed
-                      ? 'Paper chat is temporarily unavailable'
-                      : widget.capabilities.chat
-                          ? 'Ask about methods, results, or limitations…'
-                          : 'Indexing later sections…',
-              onSend: _sendComposer,
-              onOpen: () => _setSheet(true),
-            ),
-          ],
-        ),
-        if (navigation.chatSheetOpen)
-          Positioned.fill(
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: FractionallySizedBox(
-                heightFactor: .78,
-                widthFactor: 1,
-                child: PaperChatSheet(
-                  state: ChatStateView(
-                    messages: chat.messages,
-                    restoring: chat.restoring,
-                    sending: chat.sending,
-                    errorMessage: chat.errorMessage,
-                  ),
-                  enabled: chatEnabled,
-                  onClose: () => _setSheet(false),
-                  onSend: _ask,
-                ),
-              ),
-            ),
+        Expanded(
+          child: _IntroductionContent(
+            paper: widget.paper,
+            scrollController: widget.scrollController,
+            state: introduction,
+            processing: widget.processing,
+            capabilities: widget.capabilities,
+            offline: offline,
+            onRetryPreparation: widget.onRetryPreparation,
+            onRetryIntroduction: () => ref
+                .read(
+                  introductionControllerProvider(
+                    widget.paper.versionKey,
+                  ).notifier,
+                )
+                .load(force: true),
+            onOpenPdf: _openPdf,
+            onOpenCitation: _openCitation,
+            onStarterQuestion:
+                chatEnabled ? (question) => _ask(question, chatEnabled) : null,
+            onPreviousPaper: widget.onPreviousPaper,
+            onNextPaper: widget.onNextPaper,
           ),
+        ),
+        _PersistentChatComposer(
+          controller: _composer,
+          enabled: chatEnabled && !chat.sending,
+          hintText: offline
+              ? 'Offline — reconnect to ask a question'
+              : chatFailed
+                  ? 'Paper chat is temporarily unavailable'
+                  : widget.capabilities.chat
+                      ? 'Ask about methods, results, or limitations…'
+                      : 'Indexing later sections…',
+          onSend: () => _sendComposer(chatEnabled),
+          onOpen: () => unawaited(_openChat(chatEnabled)),
+        ),
       ],
     );
   }
@@ -189,25 +179,39 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
     }
   }
 
-  void _sendComposer() {
+  void _sendComposer(bool chatEnabled) {
     final value = _composer.text.trim();
     if (value.isEmpty) {
-      _setSheet(true);
+      unawaited(_openChat(chatEnabled));
       return;
     }
     _composer.clear();
-    _ask(value);
+    _ask(value, chatEnabled);
   }
 
-  void _setSheet(bool open) {
-    ref
-        .read(paperReaderNavigationControllerProvider(widget.readerKey))
-        .setChatSheetOpen(open);
+  Future<void> _openChat(bool chatEnabled) async {
+    if (_chatRouteOpen || !mounted) return;
+    setState(() => _chatRouteOpen = true);
+    try {
+      await openPaperChat(
+        context,
+        PaperChatRouteData(
+          paperId: widget.paper.paperId,
+          readerKey: widget.readerKey,
+          paperTitle: widget.paper.title,
+          chatEnabled: chatEnabled,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _chatRouteOpen = false);
+    }
   }
 
-  void _ask(String question) {
-    _setSheet(true);
-    ref.read(chatControllerProvider(_chatArgs).notifier).send(question);
+  void _ask(String question, bool chatEnabled) {
+    unawaited(_openChat(chatEnabled));
+    unawaited(
+      ref.read(chatControllerProvider(_chatArgs).notifier).send(question),
+    );
   }
 }
 
@@ -500,6 +504,7 @@ class _PersistentChatComposer extends StatelessWidget {
       elevation: 6,
       child: SafeArea(
         top: false,
+        bottom: false,
         minimum: const EdgeInsets.fromLTRB(12, 8, 12, 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,

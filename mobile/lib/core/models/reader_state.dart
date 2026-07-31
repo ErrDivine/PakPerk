@@ -6,6 +6,14 @@ String feedReaderKey(PaperSummary paper) =>
 String routeReaderKey(String routeId, PaperSummary paper) =>
     'route:$routeId:${paper.arxivId}';
 
+enum AppBranch {
+  read,
+  you;
+
+  static AppBranch fromIndex(int index) =>
+      index == AppBranch.you.index ? AppBranch.you : AppBranch.read;
+}
+
 enum PaperStage {
   abstractView,
   introduction,
@@ -117,11 +125,19 @@ class PaperRouteEntry {
 
 class AppRestorationState {
   const AppRestorationState({
+    this.activeBranchIndex = 0,
     this.feedIndex = 0,
     this.routeStack = const [],
     this.readerStates = const {},
   });
 
+  /// The selected root destination: `0` for Read and `1` for You.
+  ///
+  /// Keeping this alongside the reader state gives the application a small,
+  /// deterministic fallback when platform Navigator restoration is not
+  /// available (for example after a process restart from a launcher icon).
+  final int activeBranchIndex;
+  AppBranch get activeBranch => AppBranch.fromIndex(activeBranchIndex);
   final int feedIndex;
   final List<PaperRouteEntry> routeStack;
   final Map<String, ReaderNavigationState> readerStates;
@@ -130,11 +146,13 @@ class AppRestorationState {
       readerStates[readerKey] ?? const ReaderNavigationState();
 
   AppRestorationState copyWith({
+    int? activeBranchIndex,
     int? feedIndex,
     List<PaperRouteEntry>? routeStack,
     Map<String, ReaderNavigationState>? readerStates,
   }) =>
       AppRestorationState(
+        activeBranchIndex: activeBranchIndex ?? this.activeBranchIndex,
         feedIndex: feedIndex ?? this.feedIndex,
         routeStack: routeStack ?? this.routeStack,
         readerStates: readerStates ?? this.readerStates,
@@ -143,6 +161,7 @@ class AppRestorationState {
   factory AppRestorationState.fromJson(Map<String, dynamic> json) {
     final rawReaders = json['reader_states'];
     return AppRestorationState(
+      activeBranchIndex: _restoredBranchIndex(json['active_branch_index']),
       feedIndex: (json['feed_index'] as num?)?.toInt() ?? 0,
       routeStack: (json['route_stack'] as List<dynamic>? ?? const [])
           .map(
@@ -166,6 +185,7 @@ class AppRestorationState {
   }
 
   Map<String, dynamic> toJson() => {
+        'active_branch_index': activeBranchIndex,
         'feed_index': feedIndex,
         'route_stack':
             routeStack.map((entry) => entry.toJson()).toList(growable: false),
@@ -173,6 +193,11 @@ class AppRestorationState {
           (key, value) => MapEntry(key, value.toJson()),
         ),
       };
+}
+
+int _restoredBranchIndex(Object? value) {
+  final index = value is num ? value.toInt() : 0;
+  return index == 1 ? 1 : 0;
 }
 
 /// Pure committed-page gate used by the reader and unit-tested independently.

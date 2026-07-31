@@ -62,7 +62,7 @@ class _AbstractViewState extends ConsumerState<AbstractView> {
               const SizedBox(height: 26),
               Text('ABSTRACT', style: Theme.of(context).textTheme.labelSmall),
               const SizedBox(height: 10),
-              SelectableText(
+              Text(
                 paper.abstractText,
                 style: Theme.of(context).textTheme.bodyLarge,
               ),

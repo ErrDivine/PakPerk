@@ -19,6 +19,7 @@ abstract interface class LocalStore {
   Future<FeedPage?> loadFeed();
   Future<void> saveFeed(FeedPage value);
   Future<PaperSummary?> loadPaper(String paperId);
+  Future<PaperSummary?> findPaperByArxiv(String arxivBaseId);
   Future<void> savePaper(PaperSummary value);
   Future<void> clearDerived(String paperId);
   Future<PaperProcessingState?> loadProcessing(String paperId);
@@ -41,6 +42,29 @@ class SharedPreferencesLocalStore implements LocalStore {
 
   static Future<SharedPreferencesLocalStore> create() async =>
       SharedPreferencesLocalStore._(await SharedPreferences.getInstance());
+
+  /// Removes rebuildable public reading data while preserving the anonymous
+  /// identity and lightweight navigation restoration record.
+  static Future<void> repairPublicCache() async {
+    final preferences = await SharedPreferences.getInstance();
+    const rebuildablePrefixes = [
+      'pakperk.feed.',
+      'pakperk.paper.',
+      'pakperk.processing.',
+      'pakperk.introduction.',
+      'pakperk.connections.',
+      'pakperk.chat.',
+    ];
+    final keys = preferences
+        .getKeys()
+        .where(
+          (key) => rebuildablePrefixes.any(key.startsWith),
+        )
+        .toList(growable: false);
+    for (final key in keys) {
+      await preferences.remove(key);
+    }
+  }
 
   @override
   Future<String> getOrCreateSessionId() async {
@@ -95,6 +119,28 @@ class SharedPreferencesLocalStore implements LocalStore {
   Future<PaperSummary?> loadPaper(String paperId) async {
     final json = _readMap(_key('paper', paperId));
     return json == null ? null : PaperSummary.fromJson(json);
+  }
+
+  @override
+  Future<PaperSummary?> findPaperByArxiv(String arxivBaseId) async {
+    final target = arxivBaseId.toLowerCase();
+    PaperSummary? latest;
+    for (final key in _preferences.getKeys().where(
+          (value) => value.startsWith('pakperk.paper.v1.'),
+        )) {
+      final json = _readMap(key);
+      if (json == null) continue;
+      try {
+        final paper = PaperSummary.fromJson(json);
+        if (paper.arxivBaseId.toLowerCase() != target) continue;
+        if (latest == null || paper.updatedAt.isAfter(latest.updatedAt)) {
+          latest = paper;
+        }
+      } on Object {
+        // A corrupt cache record cannot make a validated deep link fail.
+      }
+    }
+    return latest;
   }
 
   @override

@@ -488,6 +488,12 @@ class _DemoStore implements DemoContentStore {
       paper.paperId == paperId ? paper : null;
 
   @override
+  Future<PaperSummary?> findFallbackPaperByArxiv(String arxivBaseId) async =>
+      paper.arxivBaseId.toLowerCase() == arxivBaseId.toLowerCase()
+          ? paper
+          : null;
+
+  @override
   Future<FeedPage> loadFallbackFeed() async => FeedPage(items: [paper]);
 
   @override

@@ -7,6 +7,7 @@ import '../../core/api/request_cancellation.dart';
 import '../../core/models/paper.dart';
 import '../../core/repository/paper_repository.dart';
 import '../../core/providers.dart';
+import 'preloaded_feed_snapshot.dart';
 
 class FeedState {
   const FeedState({
@@ -56,21 +57,48 @@ class FeedState {
 
 final feedControllerProvider = StateNotifierProvider<FeedController, FeedState>(
   (ref) {
-    return FeedController(ref.watch(paperRepositoryProvider));
+    return FeedController(
+      ref.watch(paperRepositoryProvider),
+      preloadedSnapshot: ref.watch(preloadedFeedSnapshotProvider),
+    );
   },
 );
 
 class FeedController extends StateNotifier<FeedState> {
-  FeedController(this._repository) : super(const FeedState()) {
+  FeedController(
+    this._repository, {
+    PreloadedFeedSnapshot? preloadedSnapshot,
+  })  : _startedWithPreload = preloadedSnapshot != null,
+        super(
+          preloadedSnapshot == null
+              ? const FeedState()
+              : FeedState(
+                  items: preloadedSnapshot.page.items,
+                  nextCursor: preloadedSnapshot.page.nextCursor,
+                  loadingInitial: false,
+                  offline: preloadedSnapshot.offline,
+                  origin: preloadedSnapshot.origin,
+                ),
+        ) {
     _offlineSubscription = _repository.offlineChanges.listen(
       (offline) => state = state.copyWith(offline: offline),
     );
-    unawaited(loadInitial());
+    if (preloadedSnapshot == null) unawaited(loadInitial());
   }
 
   final PaperDataSource _repository;
+  final bool _startedWithPreload;
   final RequestCancellation _requests = RequestCancellation();
   StreamSubscription<bool>? _offlineSubscription;
+  Future<void>? _preloadedRefresh;
+
+  /// Revalidates a production startup snapshot once, after the first usable
+  /// frame. For direct tests and embeddings without a preload this is a no-op,
+  /// because their constructor retains the original automatic load behavior.
+  Future<void> refreshPreloadedFirstPageOnce() {
+    if (!_startedWithPreload) return Future.value();
+    return _preloadedRefresh ??= _refreshFirstPage(category: state.category);
+  }
 
   Future<void> loadInitial({String? category}) async {
     state = state.copyWith(
@@ -99,6 +127,10 @@ class FeedController extends StateNotifier<FeedState> {
       );
     }
 
+    await _refreshFirstPage(category: category);
+  }
+
+  Future<void> _refreshFirstPage({String? category}) async {
     try {
       final refreshed = await _repository.getFeed(
         category: category,

@@ -36,6 +36,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   Widget build(BuildContext context) {
     final feed = ref.watch(feedControllerProvider);
     final routes = ref.watch(appRestorationControllerProvider).routeStack;
+    final readBranchActive =
+        ref.watch(activeAppBranchProvider) == AppBranch.read;
     if (feed.loadingInitial && feed.items.isEmpty) {
       return Scaffold(
         body: SafeArea(
@@ -110,7 +112,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               key: ValueKey('feed-paper-$readerKey'),
               paper: paper,
               readerKey: readerKey,
-              isActive: index == _currentIndex && routes.isEmpty,
+              isActive:
+                  readBranchActive && index == _currentIndex && routes.isEmpty,
               onPreviousPaper: index > 0 ? () => _goToPaper(index - 1) : null,
               onNextPaper: index + 1 < feed.items.length
                   ? () => _goToPaper(index + 1)
