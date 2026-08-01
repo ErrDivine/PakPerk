@@ -17,9 +17,8 @@ for command in cargo jq python3; do
 done
 
 echo "== Repository contracts =="
-for shell_script in "$project_dir"/scripts/*.sh; do
-  bash -n "$shell_script"
-done
+python3 "$project_dir/scripts/test_validate_shell_syntax.py"
+python3 "$project_dir/scripts/validate_shell_syntax.py"
 "$project_dir/scripts/drill_backup_restore.sh" --self-test
 python3 -B - "$project_dir"/scripts/*.py <<'PY'
 import pathlib
