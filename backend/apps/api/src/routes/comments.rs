@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, time::Instant};
 
 use axum::{
     Extension, Json,
@@ -11,6 +11,7 @@ use comments::{
     CommentServiceError, CreateCommentRequest, EditCommentRequest, ReportCommentRequest,
 };
 use domain::{AccountStatus, AuthenticatedUserId};
+use observability::{OperationClass, OperationOutcome, record_operation};
 use tracing::error;
 use uuid::Uuid;
 
@@ -68,11 +69,9 @@ impl FromRequestParts<AppState> for TrustedCommentOrigin {
             .get::<ConnectInfo<SocketAddr>>()
             .copied()
             .ok_or_else(|| comment_service_unavailable(request_id))?;
-        let config = state
-            .comment_config
-            .as_ref()
-            .ok_or_else(|| comment_service_unavailable(request_id))?;
-        Ok(Self(config.origin_scope(remote.0)))
+        Ok(Self(
+            state.request_limiter.origin_scope(&parts.headers, remote.0),
+        ))
     }
 }
 
@@ -157,6 +156,7 @@ pub(crate) async fn create_comment(
     TrustedCommentOrigin(origin_scope): TrustedCommentOrigin,
     Json(body): Json<CreateCommentBody>,
 ) -> Result<Response, ApiError> {
+    let started = Instant::now();
     let result = comment_service(&state, request_id)?
         .create(
             principal.user_id,
@@ -167,8 +167,18 @@ pub(crate) async fn create_comment(
                 origin_scope,
             },
         )
-        .await
-        .map_err(|error_value| comment_error(request_id, &error_value))?;
+        .await;
+    record_operation(
+        OperationClass::CommentCreate,
+        comment_operation_outcome(&result),
+        started.elapsed(),
+    );
+    record_operation(
+        OperationClass::DatabaseWrite,
+        comment_operation_outcome(&result),
+        started.elapsed(),
+    );
+    let result = result.map_err(|error_value| comment_error(request_id, &error_value))?;
     let status = if result.replayed {
         StatusCode::OK
     } else {
@@ -204,6 +214,7 @@ pub(crate) async fn edit_comment(
     principal: AuthenticatedPrincipal,
     Json(body): Json<EditCommentBody>,
 ) -> Result<Json<CommentEnvelope>, ApiError> {
+    let started = Instant::now();
     let comment = comment_service(&state, request_id)?
         .edit(
             principal.user_id,
@@ -213,8 +224,18 @@ pub(crate) async fn edit_comment(
                 expected_version: body.expected_version,
             },
         )
-        .await
-        .map_err(|error_value| comment_error(request_id, &error_value))?;
+        .await;
+    record_operation(
+        OperationClass::CommentEdit,
+        comment_operation_outcome(&comment),
+        started.elapsed(),
+    );
+    record_operation(
+        OperationClass::DatabaseWrite,
+        comment_operation_outcome(&comment),
+        started.elapsed(),
+    );
+    let comment = comment.map_err(|error_value| comment_error(request_id, &error_value))?;
     Ok(Json(comment.into()))
 }
 
@@ -276,6 +297,7 @@ pub(crate) async fn report_comment(
     TrustedCommentOrigin(origin_scope): TrustedCommentOrigin,
     Json(body): Json<ReportCommentBody>,
 ) -> Result<Json<CommentReportEnvelope>, ApiError> {
+    let started = Instant::now();
     let result = comment_service(&state, request_id)?
         .report(
             principal.user_id,
@@ -286,8 +308,18 @@ pub(crate) async fn report_comment(
                 origin_scope,
             },
         )
-        .await
-        .map_err(|error_value| comment_error(request_id, &error_value))?;
+        .await;
+    record_operation(
+        OperationClass::CommentReport,
+        comment_operation_outcome(&result),
+        started.elapsed(),
+    );
+    record_operation(
+        OperationClass::DatabaseWrite,
+        comment_operation_outcome(&result),
+        started.elapsed(),
+    );
+    let result = result.map_err(|error_value| comment_error(request_id, &error_value))?;
     Ok(Json(result.report.into()))
 }
 
@@ -594,9 +626,20 @@ fn comment_error(request_id: RequestId, error_value: &CommentServiceError) -> Ap
         | CommentServiceError::InvalidOriginScope
         | CommentServiceError::Storage(_)
         | CommentServiceError::InvalidRateLimitPolicy => {
-            error!(request_id = %request_id.0, "comment service operation failed");
+            error!(request_id = %request_id.0, error.kind = "comment_service", "comment service operation failed");
             comment_service_unavailable(request_id)
         }
+    }
+}
+
+fn comment_operation_outcome<T>(result: &Result<T, CommentServiceError>) -> OperationOutcome {
+    match result {
+        Ok(_) => OperationOutcome::Success,
+        Err(CommentServiceError::Storage(_) | CommentServiceError::RateLimited { .. }) => {
+            OperationOutcome::RetryableFailure
+        }
+        Err(CommentServiceError::InvalidRateLimitPolicy) => OperationOutcome::TerminalFailure,
+        Err(_) => OperationOutcome::Rejected,
     }
 }
 
@@ -764,6 +807,7 @@ mod tests {
                 library_writes: false,
                 comments: true,
                 comment_creation: false,
+                account_deletion: false,
             },
             accounts: Some(AccountFeatureConfig {
                 oidc: auth::OidcVerifierConfig::new(
@@ -781,12 +825,15 @@ mod tests {
                 profile_update_window: Duration::from_secs(60 * 60),
                 auth_retry_initial: Duration::from_secs(5),
                 auth_retry_maximum: Duration::from_secs(5 * 60),
+                identity_fingerprints: None,
             }),
             library: None,
-            comments: Some(
-                CommentFeatureConfig::for_test("strong-comment-origin-test-secret-0123456789")
-                    .unwrap(),
-            ),
+            comments: Some(CommentFeatureConfig::for_test().unwrap()),
+            account_deletion: None,
+            request_origin: crate::config::RequestOriginConfig::for_local_development(
+                "strong-comment-origin-test-secret-0123456789",
+            )
+            .unwrap(),
             bind: "127.0.0.1:0".parse().unwrap(),
             database_url: "postgres://test:test@127.0.0.1/test".to_owned(),
             database_pool_size: 1,

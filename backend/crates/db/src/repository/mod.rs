@@ -26,6 +26,7 @@ use uuid::Uuid;
 
 use crate::FeedCursor;
 
+mod account_deletion;
 mod accounts;
 mod chat;
 mod comments;
@@ -35,6 +36,13 @@ mod papers;
 mod rate_limits;
 mod rows;
 
+pub use account_deletion::{
+    AccountDeletionFailure, AccountDeletionRepository, AccountDeletionRequest,
+    AccountDeletionRequestOutcome, ClaimedAccountDeletion, DeletionLedgerRecord,
+    DeletionReapplyAction, DeletionReapplyOutcome, ExternalLedgerPurgeAuthorization,
+    ExternalLedgerPurgeAuthorizationState, StoredAccountDeletionBacklogMetrics,
+    StoredAccountDeletionStatus, StoredDeletionIdentityVerification,
+};
 pub use accounts::{AccountRepository, ProfilePatch, ProfileUpdateOutcome};
 pub use comments::{
     CommentCreateOutcome, CommentCreatePrecondition, CommentCreateResolution,
@@ -87,6 +95,8 @@ pub enum DbError {
     StaleGeneration,
     #[error("requested chat thread is not owned by this session and paper")]
     InvalidChatThread,
+    #[error("verified identity has a durable account-deletion tombstone")]
+    IdentityTombstoned,
 }
 
 #[derive(Clone)]
@@ -179,6 +189,11 @@ impl Database {
     #[must_use]
     pub fn accounts(&self) -> AccountRepository {
         AccountRepository::new(self.pool.clone())
+    }
+
+    #[must_use]
+    pub fn account_deletions(&self) -> AccountDeletionRepository {
+        AccountDeletionRepository::new(self.pool.clone())
     }
 
     #[must_use]

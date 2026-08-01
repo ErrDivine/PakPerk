@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Delete a Pakperk account and associated data."><title>Delete account — Pakperk</title>
+    <link rel="stylesheet" href="/assets/site.css"><script src="/config.js" defer></script><script src="/assets/site.js" defer></script><script src="/assets/account-deletion.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header><a class="brand" href="/">Pakperk</a><nav aria-label="Policy navigation"><ul><li><a href="/privacy/">Privacy</a></li><li><a href="/support/">Support</a></li></ul></nav></header>
+    <main id="main"><article class="document">
+      <p class="eyebrow">Account lifecycle</p><h1>Delete your account</h1>
+      <p class="lede">This route uses a fresh sign-in to request removal. It does not ask for or retain your password, refresh token, or access token.</p>
+      <div class="danger-zone">
+        <h2>What deletion does</h2>
+        <ul>
+          <li>disables Pakperk account access immediately;</li>
+          <li>revokes identity-provider sessions and deletes the provider identity;</li>
+          <li>removes your profile, To Read list, blocks, comments, reports, and pending account-owned operations;</li>
+          <li>clears account-owned data from the app after it receives acceptance; and</li>
+          <li>retains anonymized security records for 90 days and signed deletion authority, including encrypted provider recovery coordinates, for at least 400 days so backups cannot restore the account.</li>
+        </ul>
+        <p>After the 35-day backup window has expired and restore safety is verified, an operator-controlled final purge removes the deletion authority and encrypted coordinates. Account deletion cannot be undone. Paper metadata that is public and not account-owned may remain.</p>
+      </div>
+      <label class="check-row"><input id="confirm-deletion" type="checkbox"><span>I understand that account and public-comment deletion is permanent.</span></label>
+      <button class="danger" id="start-deletion" type="button" disabled>Sign in and request deletion</button>
+      <p id="deletion-status" class="status" role="status" aria-live="polite" hidden></p>
+      <h2>Having trouble?</h2>
+      <p><a data-support-link>Contact support</a> from the address associated with your identity provider. Never send a password or token. Deletion remains available when comments or other account features are disabled.</p>
+      <noscript><p class="notice">JavaScript is required for secure browser PKCE sign-in. You can still request deletion from the Pakperk app or contact support.</p></noscript>
+    </article></main>
+    <footer><ul><li><a href="/">All policies</a></li><li><a href="/privacy/">Privacy</a></li><li><a data-support-link>Contact support</a></li></ul></footer>
+  </body>
+</html>

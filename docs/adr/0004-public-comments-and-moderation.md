@@ -1,6 +1,6 @@
 # ADR 0004: Public comments and moderation
 
-**Status:** Accepted and implemented in Phase 5; public enablement gated on Phase 6
+**Status:** Accepted and implemented; public enablement remains environment-gated
 **Date:** 2026-07-31
 
 ## Context
@@ -65,7 +65,9 @@ write barrier; drafts never enter an automatic outbox. `pakperk-admin` provides
 explicit inspect/action commands with attributable audit records and
 content-free queue metrics.
 
-The implementation does not weaken this ADR's launch gate. Public creation
-remains off until Phase 6 demonstrates in-app and web account deletion,
-retention/restore handling, hosted support/legal routes, telemetry and alerts,
-and the final store-policy review.
+The repository now implements the in-app/web account deletion, retention and
+restore-replay mechanisms, hosted support/legal routes, telemetry pipeline, and
+alert/runbook contracts required by this ADR. The launch gate is not weakened:
+public creation remains off until those mechanisms are exercised against the
+target environment and the final legal, moderation, privacy, and store-policy
+reviews approve their evidence.

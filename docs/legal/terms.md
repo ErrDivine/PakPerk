@@ -1,8 +1,8 @@
 # Pakperk Terms of Use
 
 **Version:** `2026-07-31`
-**Publication status:** release-candidate text; public deployment and legal
-review remain Phase 6 gates.
+**Publication status:** release-candidate text; public deployment and qualified
+legal review remain external release gates.
 
 By creating an account or posting a comment, you agree to these Terms and the
 [Community Guidelines](community-guidelines.md). You must be legally able to

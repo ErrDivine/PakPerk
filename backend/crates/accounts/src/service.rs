@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{fmt, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use db::{
@@ -8,17 +8,29 @@ use db::{
 use domain::{
     AccountStatus, AuthenticatedUserId, CommunityGuidelinesVersion,
     CommunityGuidelinesVersionValidationError, DisplayName, DisplayNameValidationError, Handle,
-    HandleValidationError, TermsVersion, TermsVersionValidationError, User,
+    HandleValidationError, IdentityFingerprint, TermsVersion, TermsVersionValidationError, User,
 };
 use thiserror::Error;
 
 const MAX_ISSUER_LENGTH: usize = 2_048;
 const MAX_SUBJECT_LENGTH: usize = 512;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use crate::{FingerprintKeyringError, IdentityFingerprintKeyring};
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct VerifiedIdentity {
     issuer: String,
     subject: String,
+}
+
+impl fmt::Debug for VerifiedIdentity {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("VerifiedIdentity")
+            .field("issuer", &"[redacted]")
+            .field("subject", &"[redacted]")
+            .finish()
+    }
 }
 
 impl VerifiedIdentity {
@@ -181,6 +193,8 @@ pub enum AccountServiceError {
     Storage(#[from] DbError),
     #[error("account service rate-limit policy is invalid")]
     InvalidRateLimitPolicy,
+    #[error("identity fingerprint configuration is invalid")]
+    InvalidFingerprint(#[from] FingerprintKeyringError),
 }
 
 #[async_trait]
@@ -191,6 +205,17 @@ pub trait AccountStore: Send + Sync {
         subject: &str,
         last_seen_interval: Duration,
     ) -> Result<User, DbError>;
+
+    async fn provision_oidc_identity_guarded(
+        &self,
+        issuer: &str,
+        subject: &str,
+        last_seen_interval: Duration,
+        _fingerprints: &[IdentityFingerprint],
+    ) -> Result<User, DbError> {
+        self.provision_oidc_identity(issuer, subject, last_seen_interval)
+            .await
+    }
 
     async fn get(&self, user_id: AuthenticatedUserId) -> Result<Option<User>, DbError>;
 
@@ -211,6 +236,23 @@ impl AccountStore for AccountRepository {
         last_seen_interval: Duration,
     ) -> Result<User, DbError> {
         AccountRepository::provision_oidc_identity(self, issuer, subject, last_seen_interval).await
+    }
+
+    async fn provision_oidc_identity_guarded(
+        &self,
+        issuer: &str,
+        subject: &str,
+        last_seen_interval: Duration,
+        fingerprints: &[IdentityFingerprint],
+    ) -> Result<User, DbError> {
+        AccountRepository::provision_oidc_identity_guarded(
+            self,
+            issuer,
+            subject,
+            last_seen_interval,
+            fingerprints,
+        )
+        .await
     }
 
     async fn get(&self, user_id: AuthenticatedUserId) -> Result<Option<User>, DbError> {
@@ -244,6 +286,7 @@ pub struct AccountService {
     accounts: Arc<dyn AccountStore>,
     rate_limits: Arc<dyn RateLimitStore>,
     policy: AccountPolicy,
+    identity_fingerprints: Option<IdentityFingerprintKeyring>,
 }
 
 impl AccountService {
@@ -266,7 +309,16 @@ impl AccountService {
             accounts,
             rate_limits,
             policy,
+            identity_fingerprints: None,
         }
+    }
+
+    /// Enables restore-safe JIT provisioning. Deployed account APIs must set
+    /// this even when the DELETE route is temporarily feature-disabled.
+    #[must_use]
+    pub fn with_identity_fingerprints(mut self, keyring: IdentityFingerprintKeyring) -> Self {
+        self.identity_fingerprints = Some(keyring);
+        self
     }
 
     #[must_use]
@@ -281,6 +333,19 @@ impl AccountService {
         &self,
         identity: &VerifiedIdentity,
     ) -> Result<User, AccountServiceError> {
+        if let Some(keyring) = &self.identity_fingerprints {
+            let fingerprints = keyring.fingerprints(identity.issuer(), identity.subject())?;
+            return self
+                .accounts
+                .provision_oidc_identity_guarded(
+                    identity.issuer(),
+                    identity.subject(),
+                    self.policy.last_seen_interval(),
+                    &fingerprints,
+                )
+                .await
+                .map_err(map_provision_error);
+        }
         self.accounts
             .provision_oidc_identity(
                 identity.issuer(),
@@ -288,7 +353,7 @@ impl AccountService {
                 self.policy.last_seen_interval(),
             )
             .await
-            .map_err(AccountServiceError::from)
+            .map_err(map_provision_error)
     }
 
     pub async fn get_profile(
@@ -393,6 +458,13 @@ fn require_active(user: User) -> Result<User, AccountServiceError> {
         AccountStatus::Suspended => Err(AccountServiceError::Suspended),
         AccountStatus::DeletionPending => Err(AccountServiceError::DeletionPending),
         AccountStatus::Deleted => Err(AccountServiceError::Deleted),
+    }
+}
+
+fn map_provision_error(error: DbError) -> AccountServiceError {
+    match error {
+        DbError::IdentityTombstoned => AccountServiceError::Deleted,
+        other => AccountServiceError::Storage(other),
     }
 }
 
@@ -680,6 +752,9 @@ mod tests {
     fn verified_identity_is_exact_and_bounded() {
         let identity = VerifiedIdentity::new("https://issuer.example", "subject-1").unwrap();
         assert_eq!(identity.issuer(), "https://issuer.example");
+        let rendered = format!("{identity:?}");
+        assert!(!rendered.contains("issuer.example"));
+        assert!(!rendered.contains("subject-1"));
         assert!(VerifiedIdentity::new(" https://issuer.example", "subject-1").is_err());
         assert!(VerifiedIdentity::new("https://issuer.example", "line\nbreak").is_err());
     }

@@ -4,6 +4,9 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/providers.dart';
+import '../core/telemetry/telemetry.dart';
+
 enum StartupPhase {
   bootstrapping,
   localReady,
@@ -209,22 +212,35 @@ class StartupController extends StateNotifier<StartupState> {
     StartupLaunchMode launchMode = StartupLaunchMode.cold,
     Duration bootstrapTimeout = const Duration(seconds: 5),
     StartupErrorHandler? onPostReadyError,
+    TelemetrySink telemetry = const NoopTelemetrySink(),
+    String environment = 'development',
   }) : assert(bootstrapTimeout > Duration.zero),
        _bootstrapper = bootstrapper,
        _splashHandoff = splashHandoff,
        _bootstrapTimeout = bootstrapTimeout,
        _onPostReadyError = onPostReadyError,
-       super(StartupState.initial(launchMode));
+       _telemetry = telemetry,
+       _environment = environment,
+       super(StartupState.initial(launchMode)) {
+    if (launchMode == StartupLaunchMode.cold) {
+      emitTelemetry(_telemetry, PakPerkTelemetryEvent.appColdStart, {
+        'environment': _environment,
+      });
+    }
+  }
 
   final StartupBootstrapper _bootstrapper;
   final StartupNativeSplashHandoff _splashHandoff;
   final Duration _bootstrapTimeout;
   final StartupErrorHandler? _onPostReadyError;
+  final TelemetrySink _telemetry;
+  final String _environment;
 
   Future<void>? _activeRun;
   int _runToken = 0;
   bool _postReadyStarted = false;
   bool _disposed = false;
+  DateTime? _attemptStartedAt;
 
   Future<void> start() {
     if (state.isReady) return Future.value();
@@ -264,6 +280,7 @@ class StartupController extends StateNotifier<StartupState> {
 
     final attempt = state.attempt + 1;
     final runToken = ++_runToken;
+    _attemptStartedAt = DateTime.now().toUtc();
     _postReadyStarted = false;
     state = StartupState(
       phase: StartupPhase.bootstrapping,
@@ -305,6 +322,26 @@ class StartupController extends StateNotifier<StartupState> {
           timedOut: error is StartupTimeoutException,
         ),
       );
+      emitTelemetry(_telemetry, PakPerkTelemetryEvent.startupFailure, {
+        'environment': _environment,
+        'launch_mode': state.launchMode.name,
+        'failure_code': error is StartupTimeoutException
+            ? 'startup_timeout'
+            : 'startup_local_failure',
+        'timed_out': error is StartupTimeoutException,
+      });
+      unawaited(
+        _telemetry
+            .error(
+              error,
+              stackTrace,
+              context: const {
+                'component': 'startup',
+                'operation': 'local_bootstrap',
+              },
+            )
+            .catchError((Object _) {}),
+      );
       // A recovery UI must replace a preserved native launch surface too.
       _splashHandoff.releaseToFlutter();
     }
@@ -333,6 +370,13 @@ class StartupController extends StateNotifier<StartupState> {
     );
 
     state = state.copyWith(phase: StartupPhase.ready, clearFailure: true);
+    final started = _attemptStartedAt;
+    emitTelemetry(_telemetry, PakPerkTelemetryEvent.startupReady, {
+      'environment': _environment,
+      'launch_mode': state.launchMode.name,
+      if (started != null)
+        'elapsed_ms': DateTime.now().toUtc().difference(started).inMilliseconds,
+    });
   }
 
   Future<void> _runPostReadyWork() async {
@@ -376,6 +420,8 @@ final startupControllerProvider =
         splashHandoff: ref.watch(startupNativeSplashHandoffProvider),
         launchMode: ref.watch(startupLaunchModeProvider),
         bootstrapTimeout: ref.watch(startupBootstrapTimeoutProvider),
+        telemetry: ref.watch(telemetrySinkProvider),
+        environment: ref.watch(appBuildConfigProvider).environment.name,
       );
       unawaited(controller.start());
       return controller;

@@ -6,6 +6,7 @@ enum AuthFailureKind {
   invalidResponse,
   secureStorage,
   accountDataCleanup,
+  accountDeletionCleanup,
   superseded,
 }
 
@@ -22,6 +23,7 @@ enum AuthFailureCode {
   secureStorageWrite('secure_storage_write'),
   secureStorageClear('secure_storage_clear'),
   accountDataCleanup('account_data_cleanup'),
+  accountDeletionCleanup('account_deletion_cleanup'),
   operationSuperseded('auth_operation_superseded');
 
   const AuthFailureCode(this.value);
@@ -129,6 +131,7 @@ enum AuthSessionPhase {
   authenticated,
   offlineAuthUnknown,
   signingOut,
+  deletionPending,
   unavailable,
 }
 
@@ -192,6 +195,15 @@ final class AuthSessionState {
         accountId: accountId,
       );
 
+  const AuthSessionState.deletionPending({
+    required int epoch,
+    AuthFailure? failure,
+  }) : this._(
+         phase: AuthSessionPhase.deletionPending,
+         epoch: epoch,
+         failure: failure,
+       );
+
   const AuthSessionState.unavailable({
     required int epoch,
     String? accountId,
@@ -220,4 +232,27 @@ final class AuthSessionState {
       'AuthSessionState(phase: $phase, epoch: $epoch, accountId: '
       '${accountId == null ? '<absent>' : '<present>'}, '
       'failure: ${failure?.safeCode})';
+}
+
+/// A one-use bearer from a forced recent-auth ceremony.
+///
+/// It is never persisted or installed as the normal session credential and
+/// redacts both bearer and account identity from diagnostics.
+final class RecentAuthCredential {
+  const RecentAuthCredential({
+    required this.bearer,
+    required this.expiresAt,
+    required this.accountId,
+    required this.sessionEpoch,
+  });
+
+  final String bearer;
+  final DateTime expiresAt;
+  final String? accountId;
+  final int sessionEpoch;
+
+  @override
+  String toString() =>
+      'RecentAuthCredential(bearer: <redacted>, accountId: <redacted>, '
+      'expiresAt: $expiresAt, sessionEpoch: $sessionEpoch)';
 }

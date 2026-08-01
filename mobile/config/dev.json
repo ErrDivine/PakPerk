@@ -1,0 +1,19 @@
+{
+  "PAKPERK_ENV": "development",
+  "PAKPERK_API_BASE_URL": "http://localhost:8080",
+  "PAKPERK_FULLTEXT_POLICY": "prototype",
+  "PAKPERK_ACCOUNTS_ENABLED": "true",
+  "PAKPERK_LIBRARY_ENABLED": "true",
+  "PAKPERK_COMMENTS_ENABLED": "true",
+  "PAKPERK_OPENING_MOTION_ENABLED": "true",
+  "PAKPERK_OIDC_ISSUER_URL": "http://localhost:8081/realms/pakperk",
+  "PAKPERK_OIDC_CLIENT_ID": "pakperk-mobile-dev",
+  "PAKPERK_OIDC_REDIRECT_URI": "pakperk-auth-dev://oauth/callback",
+  "PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI": "pakperk-auth-dev://oauth/logout",
+  "PAKPERK_OIDC_SCOPES": "openid profile",
+  "PAKPERK_PUBLIC_SITE_ORIGIN": "http://localhost:3000",
+  "PAKPERK_SUPPORT_URL": "http://localhost:3000/support",
+  "PAKPERK_ACCOUNT_DELETION_URL": "http://localhost:3000/account-deletion",
+  "PAKPERK_APP_LINK_ORIGIN": "http://localhost:3000",
+  "PAKPERK_TELEMETRY_ENDPOINT": "http://localhost:4318/v1/logs"
+}

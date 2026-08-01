@@ -1,0 +1,6 @@
+# Copy to android/key.properties (gitignored) or use the corresponding
+# PAKPERK_ANDROID_* protected CI variables. Never commit real values.
+storeFile=/absolute/path/to/pakperk-release.jks
+storePassword=replace-in-protected-storage
+keyAlias=pakperk-release
+keyPassword=replace-in-protected-storage

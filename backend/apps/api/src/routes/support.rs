@@ -1,8 +1,9 @@
 use super::{
-    ApiError, AppState, ArxivError, Capabilities, ConnectInfo, CursorError, DbError, Duration,
-    Extension, FailureCategory, FulltextPolicy, HeaderMap, OverallProcessingState, Paper,
-    PaperSummary, ProcessingError, ProcessingStage, ProcessingState, ProviderError, RequestId,
-    SESSION_ID_HEADER, SocketAddr, StatusCode, Url, Uuid, error,
+    ApiError, AppState, ArxivError, Capabilities, CursorError, DbError, Duration, Extension,
+    FailureCategory, FulltextPolicy, HeaderMap, OverallProcessingState, Paper, PaperSummary,
+    ProcessingError, ProcessingStage, ProcessingState, ProviderError, PublicRequestAction,
+    PublicRequestRateLimitError, RequestId, SESSION_ID_HEADER, SocketAddr, StatusCode, Url, Uuid,
+    error,
 };
 
 pub(super) const NEGATIVE_EXACT_ARXIV_CACHE_TTL: Duration = Duration::from_secs(15 * 60);
@@ -115,7 +116,7 @@ pub(super) fn invalid_arxiv_id(request_id: RequestId) -> ApiError {
     )
 }
 
-pub(super) fn rate_limited(request_id: RequestId) -> ApiError {
+fn rate_limited(request_id: RequestId, retry_after_seconds: u64) -> ApiError {
     ApiError::new(
         request_id,
         StatusCode::TOO_MANY_REQUESTS,
@@ -123,6 +124,44 @@ pub(super) fn rate_limited(request_id: RequestId) -> ApiError {
         "Too many requests. Please wait before retrying.",
         true,
     )
+    .with_retry_after(retry_after_seconds)
+}
+
+pub(super) async fn enforce_public_request_limit(
+    state: &AppState,
+    action: PublicRequestAction,
+    request_id: RequestId,
+    headers: &HeaderMap,
+    peer: SocketAddr,
+    session_id: Option<Uuid>,
+) -> Result<(), ApiError> {
+    match state
+        .request_limiter
+        .check(action, headers, peer, session_id)
+        .await
+    {
+        Ok(()) => Ok(()),
+        Err(PublicRequestRateLimitError::RateLimited {
+            retry_after_seconds,
+        }) => Err(rate_limited(request_id, retry_after_seconds)),
+        Err(PublicRequestRateLimitError::Storage(error_value)) => {
+            Err(internal_db_error(request_id, &error_value))
+        }
+        Err(PublicRequestRateLimitError::InvalidConfiguration) => {
+            error!(
+                request_id = %request_id.0,
+                error.kind = "rate_limit_configuration",
+                "public request rate-limit policy is invalid"
+            );
+            Err(ApiError::new(
+                request_id,
+                StatusCode::SERVICE_UNAVAILABLE,
+                "RATE_LIMIT_UNAVAILABLE",
+                "Request admission is temporarily unavailable.",
+                true,
+            ))
+        }
+    }
 }
 
 pub(super) fn cursor_error(request_id: RequestId, _error: &CursorError) -> ApiError {
@@ -138,7 +177,7 @@ pub(super) fn cursor_error(request_id: RequestId, _error: &CursorError) -> ApiEr
 pub(super) fn internal_db_error(request_id: RequestId, error_value: &DbError) -> ApiError {
     error!(
         request_id = %request_id.0,
-        error = %error_value,
+        error.kind = db_error_kind(error_value),
         "database operation failed"
     );
     ApiError::new(
@@ -163,7 +202,7 @@ pub(super) async fn observe_arxiv_result<T>(
             {
                 error!(
                     request_id = %request_id.0,
-                    error = %database_error,
+                    error.kind = db_error_kind(&database_error),
                     cooldown_seconds = cooldown.as_secs(),
                     "could not publish shared arXiv cooldown"
                 );
@@ -182,7 +221,7 @@ pub(super) fn negative_exact_cache_ttl(configured: Duration) -> Duration {
 pub(super) fn arxiv_error(request_id: RequestId, error_value: &ArxivError) -> ApiError {
     error!(
         request_id = %request_id.0,
-        error = %error_value,
+        error.kind = arxiv_error_kind(error_value),
         "arXiv request failed"
     );
     let (status, code, retryable) = match error_value {
@@ -201,7 +240,7 @@ pub(super) fn arxiv_error(request_id: RequestId, error_value: &ArxivError) -> Ap
 pub(super) fn provider_error(request_id: RequestId, error_value: &ProviderError) -> ApiError {
     error!(
         request_id = %request_id.0,
-        error = %error_value,
+        error.kind = provider_error_kind(error_value),
         "model provider request failed"
     );
     let (status, code, retryable) = match error_value {
@@ -228,7 +267,7 @@ pub(super) fn retrieval_error(
 ) -> ApiError {
     error!(
         request_id = %request_id.0,
-        error = %error_value,
+        error.kind = retrieval_error_kind(error_value),
         "paper retrieval failed"
     );
     ApiError::new(
@@ -238,6 +277,59 @@ pub(super) fn retrieval_error(
         "The indexed paper context could not be retrieved safely.",
         true,
     )
+}
+
+fn db_error_kind(error: &DbError) -> &'static str {
+    match error {
+        DbError::Sql(_) => "sql",
+        DbError::Migration(_) => "migration",
+        DbError::InvalidUrl(_) => "invalid_url",
+        DbError::InvalidData(_) => "invalid_data",
+        DbError::StaleGeneration => "stale_generation",
+        DbError::InvalidChatThread => "invalid_chat_thread",
+        DbError::IdentityTombstoned => "identity_tombstoned",
+    }
+}
+
+fn arxiv_error_kind(error: &ArxivError) -> &'static str {
+    match error {
+        ArxivError::InvalidIdentifier(_) => "invalid_identifier",
+        ArxivError::InvalidCategory(_) => "invalid_category",
+        ArxivError::InvalidConfiguration(_) => "invalid_configuration",
+        ArxivError::Url(_) => "url",
+        ArxivError::Transport(_) => "transport",
+        ArxivError::HttpStatus { .. } => "http_status",
+        ArxivError::Xml(_) => "xml",
+        ArxivError::MissingField(_) => "missing_field",
+        ArxivError::InvalidTimestamp(_) => "invalid_timestamp",
+        ArxivError::UnsafeUrl => "unsafe_url",
+        ArxivError::PdfTooLarge { .. } => "pdf_too_large",
+        ArxivError::AtomTooLarge { .. } => "atom_too_large",
+        ArxivError::TemporaryFile(_) => "temporary_file",
+    }
+}
+
+fn provider_error_kind(error: &ProviderError) -> &'static str {
+    match error {
+        ProviderError::InvalidConfiguration(_) => "invalid_configuration",
+        ProviderError::InvalidRequest(_) => "invalid_request",
+        ProviderError::Transport(_) => "transport",
+        ProviderError::OperationTimeout => "timeout",
+        ProviderError::HttpStatus { .. } => "http_status",
+        ProviderError::ResponseTooLarge { .. } => "response_too_large",
+        ProviderError::InvalidResponse(_) => "invalid_response",
+        ProviderError::StructuredOutput(_) => "structured_output",
+    }
+}
+
+fn retrieval_error_kind(error: &retrieval::RetrievalError) -> &'static str {
+    match error {
+        retrieval::RetrievalError::InvalidConfiguration(_) => "invalid_configuration",
+        retrieval::RetrievalError::ScopeViolation { .. } => "scope_violation",
+        retrieval::RetrievalError::EmbeddingDimension { .. } => "embedding_dimension",
+        retrieval::RetrievalError::NonFiniteEmbedding => "non_finite_embedding",
+        retrieval::RetrievalError::ZeroEmbedding => "zero_embedding",
+    }
 }
 
 pub(super) fn reciprocal_rank_score(rank: usize) -> f32 {
@@ -287,22 +379,34 @@ pub(super) fn valid_category(category: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || character == '-')
 }
 
-pub(super) fn client_keys(
-    headers: &HeaderMap,
-    remote: Option<&ConnectInfo<SocketAddr>>,
-) -> Vec<String> {
-    let mut keys = vec![remote.map_or_else(
-        || "ip:unknown".to_owned(),
-        |remote| format!("ip:{}", remote.0.ip()),
-    )];
-    if let Some(session) = headers
+pub(super) fn optional_session_id(headers: &HeaderMap) -> Option<Uuid> {
+    headers
         .get(&SESSION_ID_HEADER)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| Uuid::parse_str(value).ok())
-    {
-        keys.push(format!("session:{session}"));
+}
+
+#[cfg(test)]
+mod telemetry_tests {
+    use super::*;
+
+    #[test]
+    fn telemetry_kinds_do_not_echo_sensitive_error_payloads() {
+        let sentinel = "Bearer token=secret content=private user@pakperk.test";
+        let kinds = [
+            arxiv_error_kind(&ArxivError::InvalidIdentifier(sentinel.to_owned())),
+            provider_error_kind(&ProviderError::InvalidRequest(sentinel.to_owned())),
+            retrieval_error_kind(&retrieval::RetrievalError::InvalidConfiguration(
+                sentinel.to_owned(),
+            )),
+            db_error_kind(&DbError::InvalidData(sentinel.to_owned())),
+        ];
+        for kind in kinds {
+            assert!(!kind.contains("secret"));
+            assert!(!kind.contains('@'));
+            assert!(kind.bytes().all(|byte| {
+                byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'
+            }));
+        }
     }
-    // Forwarded headers are deliberately ignored. Trusting them without an
-    // explicit trusted-proxy boundary would let clients rotate their rate key.
-    keys
 }

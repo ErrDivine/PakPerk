@@ -83,7 +83,7 @@ final feedPrefetchConfigProvider = Provider<FeedPrefetchConfig>(
 );
 
 final feedPrefetchTelemetryProvider = Provider<FeedPrefetchTelemetry>(
-  (ref) => const DeveloperFeedPrefetchTelemetry(),
+  (ref) => PakPerkFeedPrefetchTelemetry(sink: ref.watch(telemetrySinkProvider)),
 );
 
 class FeedController extends StateNotifier<FeedState> {

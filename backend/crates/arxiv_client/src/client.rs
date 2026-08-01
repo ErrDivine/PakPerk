@@ -48,7 +48,7 @@ impl Default for ArxivClientConfig {
             api_url: Url::parse("https://export.arxiv.org/api/query")
                 .expect("default API URL is valid"),
             pdf_base_url: Url::parse("https://arxiv.org/pdf/").expect("default PDF URL is valid"),
-            user_agent: "PakperkDemo/0.1".into(),
+            user_agent: "Pakperk/0.2.0".into(),
             contact_email: String::new(),
             minimum_interval: Duration::from_secs(3),
             request_timeout: Duration::from_secs(30),
@@ -286,7 +286,12 @@ impl ArxivClient {
         loop {
             let request_started = Instant::now();
             let request = || async {
-                let response = self.http.get(url.clone()).send().await?;
+                let response = self
+                    .http
+                    .get(url.clone())
+                    .headers(observability::current_trace_headers())
+                    .send()
+                    .await?;
                 let status = response.status();
                 if status.is_success() {
                     return read_bounded(response, maximum_bytes, payload_kind)

@@ -30,6 +30,7 @@ use crate::{
     dto::{ChatBody, ChatResponse, FeedParams, PrepareBody},
     error::{ApiError, RequestId},
     middleware::SESSION_ID_HEADER,
+    request_rate_limit::{PublicRequestAction, PublicRequestRateLimitError},
 };
 
 pub(crate) mod account;
@@ -42,13 +43,15 @@ pub(crate) mod papers;
 pub(crate) mod support;
 
 use support::{
-    apply_processing_policy, apply_summary_policy, capability_not_ready, client_keys, cursor_error,
-    enforce_derived_policy, internal_db_error, invalid_arxiv_id, negative_exact_cache_ttl,
-    observe_arxiv_result, paper_not_found, provider_error, rate_limited, reciprocal_rank_score,
-    retrieval_error, valid_category,
+    apply_processing_policy, apply_summary_policy, capability_not_ready, cursor_error,
+    enforce_derived_policy, enforce_public_request_limit, internal_db_error, invalid_arxiv_id,
+    negative_exact_cache_ttl, observe_arxiv_result, optional_session_id, paper_not_found,
+    provider_error, reciprocal_rank_score, retrieval_error, valid_category,
 };
 
-pub(crate) use account::{get_me, patch_me, private_account_cache_control};
+pub(crate) use account::{
+    delete_me, get_me, patch_me, private_account_cache_control, verify_deletion_identity,
+};
 pub(crate) use chat::chat;
 pub(crate) use comments::{
     block_user, create_comment, delete_comment, edit_comment, list_blocked_users, list_my_comments,
@@ -92,9 +95,7 @@ mod tests {
             ApiConfig, ApiEnvironment, ApiModelConfig, FeatureFlags,
             enforce_cross_process_arxiv_gate,
         },
-        middleware::{
-            REQUEST_ID_HEADER, RateLimiter, request_id_middleware, stable_error_middleware,
-        },
+        middleware::{REQUEST_ID_HEADER, request_id_middleware, stable_error_middleware},
     };
 
     #[test]
@@ -499,6 +500,11 @@ mod tests {
             accounts: None,
             library: None,
             comments: None,
+            account_deletion: None,
+            request_origin: crate::config::RequestOriginConfig::for_local_development(
+                "route-test-request-origin-secret-0123456789",
+            )
+            .unwrap(),
             bind: SocketAddr::from(([127, 0, 0, 1], 0)),
             database_url: database_url.to_owned(),
             database_pool_size: 6,
@@ -524,83 +530,6 @@ mod tests {
             .await
             .unwrap();
         serde_json::from_slice(&bytes).unwrap()
-    }
-
-    #[tokio::test]
-    async fn fixed_window_limiter_rejects_excess() {
-        let limiter = RateLimiter::default();
-        assert!(
-            limiter
-                .check("chat", "session".to_owned(), 2, Duration::from_secs(60))
-                .await
-                .is_ok()
-        );
-        assert!(
-            limiter
-                .check("chat", "session".to_owned(), 2, Duration::from_secs(60))
-                .await
-                .is_ok()
-        );
-        assert!(
-            limiter
-                .check("chat", "session".to_owned(), 2, Duration::from_secs(60))
-                .await
-                .is_err()
-        );
-    }
-
-    #[tokio::test]
-    async fn rotating_session_ids_cannot_bypass_ip_bucket() {
-        let limiter = RateLimiter::default();
-        let remote = ConnectInfo(SocketAddr::from(([203, 0, 113, 10], 1234)));
-        let mut first = HeaderMap::new();
-        first.insert(
-            SESSION_ID_HEADER,
-            Uuid::new_v4().to_string().parse().unwrap(),
-        );
-        let mut second = HeaderMap::new();
-        second.insert(
-            SESSION_ID_HEADER,
-            Uuid::new_v4().to_string().parse().unwrap(),
-        );
-        assert!(
-            limiter
-                .check_all(
-                    "prepare",
-                    client_keys(&first, Some(&remote)),
-                    1,
-                    Duration::from_secs(60),
-                )
-                .await
-                .is_ok()
-        );
-        assert!(
-            limiter
-                .check_all(
-                    "prepare",
-                    client_keys(&second, Some(&remote)),
-                    1,
-                    Duration::from_secs(60),
-                )
-                .await
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn untrusted_forwarded_headers_never_change_rate_limit_identity() {
-        let remote = ConnectInfo(SocketAddr::from(([198, 51, 100, 8], 4321)));
-        let mut first = HeaderMap::new();
-        first.insert("x-forwarded-for", "203.0.113.1".parse().unwrap());
-        first.insert("forwarded", "for=203.0.113.2".parse().unwrap());
-        let mut second = HeaderMap::new();
-        second.insert("x-forwarded-for", "192.0.2.55".parse().unwrap());
-        second.insert("forwarded", "for=192.0.2.56".parse().unwrap());
-        assert_eq!(
-            client_keys(&first, Some(&remote)),
-            client_keys(&second, Some(&remote))
-        );
-        assert_eq!(client_keys(&first, Some(&remote)), ["ip:198.51.100.8"]);
     }
 
     #[test]

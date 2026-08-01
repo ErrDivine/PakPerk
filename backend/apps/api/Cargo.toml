@@ -1,11 +1,13 @@
 [package]
 name = "pakperk-api"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+account_deletion.workspace = true
 accounts.workspace = true
 anyhow.workspace = true
 arxiv_client.workspace = true

@@ -7,6 +7,7 @@ import '../database/library_dao.dart';
 import '../library/library_models.dart';
 import '../library/library_repository.dart';
 import 'outbox_controller.dart';
+import '../telemetry/telemetry.dart';
 
 abstract interface class LibrarySyncWakeup {
   void cancel();
@@ -21,16 +22,19 @@ final class LibrarySyncController extends StateNotifier<LibrarySyncStatus> {
     required LibraryOutboxController outbox,
     LibrarySyncWakeupFactory? wakeupFactory,
     DateTime Function()? clock,
+    TelemetrySink telemetry = const NoopTelemetrySink(),
   }) : _repository = repository,
        _outbox = outbox,
        _wakeupFactory = wakeupFactory ?? _timerWakeup,
        _clock = clock ?? DateTime.now,
+       _telemetry = telemetry,
        super(const LibrarySyncStatus.idle());
 
   final LibraryRepository _repository;
   final LibraryOutboxController _outbox;
   final LibrarySyncWakeupFactory _wakeupFactory;
   final DateTime Function() _clock;
+  final TelemetrySink _telemetry;
   LibrarySyncWakeup? _wakeup;
   _ActiveLibraryScope? _active;
   Future<void> _tail = Future<void>.value();
@@ -135,6 +139,19 @@ final class LibrarySyncController extends StateNotifier<LibrarySyncStatus> {
         pendingCount: pendingCount,
         issue: drained.issue,
       );
+      if (drained.issue == null &&
+          initialPendingCount > 0 &&
+          pendingCount == 0) {
+        emitTelemetry(_telemetry, PakPerkTelemetryEvent.saveSynced, const {
+          'intent': 'mutation',
+        });
+      } else if (drained.issue != null) {
+        emitTelemetry(_telemetry, PakPerkTelemetryEvent.saveFailed, {
+          'intent': 'mutation',
+          'failure_code': drained.issue!.code.toLowerCase(),
+          'retryable': pendingCount > 0,
+        });
+      }
       _schedule(scope, drained.nextAttemptAt);
     } on LibraryScopeChanged {
       // The auth/account epoch changed while local work was being committed.
@@ -148,6 +165,11 @@ final class LibrarySyncController extends StateNotifier<LibrarySyncStatus> {
         pendingCount: pendingCount,
         issue: LibrarySyncIssue.fromCode(error.code),
       );
+      emitTelemetry(_telemetry, PakPerkTelemetryEvent.saveFailed, {
+        'intent': 'mutation',
+        'failure_code': 'remote_sync',
+        'retryable': error.retryable,
+      });
       _schedule(scope, await _repository.nextAttemptAt(scope.accountId));
     } on Object {
       if (!_isRunnable(scope)) return;

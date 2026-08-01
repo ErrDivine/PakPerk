@@ -13,6 +13,10 @@ use jsonwebtoken::{
     errors::ErrorKind,
     jwk::{AlgorithmParameters, EllipticCurve, Jwk, JwkSet, KeyOperations, PublicKeyUse},
 };
+use observability::{
+    OperationClass, OperationOutcome, TokenVerificationOutcome, record_operation,
+    record_token_verification,
+};
 use serde::Deserialize;
 use tokio::sync::{Mutex, RwLock};
 
@@ -222,7 +226,26 @@ impl fmt::Debug for OidcJwtVerifier {
 #[async_trait]
 impl TokenVerifier for OidcJwtVerifier {
     async fn verify(&self, bearer_token: &str) -> Result<VerifiedOidcClaims, VerifyError> {
-        self.verify_inner(bearer_token).await
+        let started = Instant::now();
+        let result = self.verify_inner(bearer_token).await;
+        record_token_verification(token_outcome(&result), started.elapsed());
+        result
+    }
+}
+
+fn token_outcome(result: &Result<VerifiedOidcClaims, VerifyError>) -> TokenVerificationOutcome {
+    match result {
+        Ok(_) => TokenVerificationOutcome::Success,
+        Err(VerifyError::Expired) => TokenVerificationOutcome::Expired,
+        Err(
+            VerifyError::TokenTooLarge | VerifyError::MalformedToken | VerifyError::MissingKeyId,
+        ) => TokenVerificationOutcome::Malformed,
+        Err(VerifyError::DisallowedAlgorithm) => TokenVerificationOutcome::DisallowedAlgorithm,
+        Err(VerifyError::UnknownSigningKey) => TokenVerificationOutcome::SigningKeyUnavailable,
+        Err(VerifyError::InvalidSignature) => TokenVerificationOutcome::InvalidSignature,
+        Err(VerifyError::NotYetValid) => TokenVerificationOutcome::InvalidTime,
+        Err(VerifyError::InvalidClaims) => TokenVerificationOutcome::InvalidClaims,
+        Err(VerifyError::MetadataUnavailable) => TokenVerificationOutcome::MetadataUnavailable,
     }
 }
 
@@ -247,14 +270,25 @@ async fn fetch_jwks(
     metadata: &OidcProviderMetadata,
     fetcher: Arc<dyn OidcDocumentFetcher>,
 ) -> Result<JwkSet, OidcStartupError> {
-    let bytes = fetcher
-        .fetch(metadata.jwks_uri(), config.max_jwks_bytes)
-        .await
-        .map_err(|_| OidcStartupError::ProviderUnavailable)?;
-    if bytes.len() > config.max_jwks_bytes {
-        return Err(OidcStartupError::InvalidSigningKeys);
+    let started = Instant::now();
+    let result = async {
+        let bytes = fetcher
+            .fetch(metadata.jwks_uri(), config.max_jwks_bytes)
+            .await
+            .map_err(|_| OidcStartupError::ProviderUnavailable)?;
+        if bytes.len() > config.max_jwks_bytes {
+            return Err(OidcStartupError::InvalidSigningKeys);
+        }
+        serde_json::from_slice(&bytes).map_err(|_| OidcStartupError::InvalidSigningKeys)
     }
-    serde_json::from_slice(&bytes).map_err(|_| OidcStartupError::InvalidSigningKeys)
+    .await;
+    let outcome = match &result {
+        Ok(_) => OperationOutcome::Success,
+        Err(OidcStartupError::ProviderUnavailable) => OperationOutcome::RetryableFailure,
+        Err(_) => OperationOutcome::Rejected,
+    };
+    record_operation(OperationClass::OidcJwksRefresh, outcome, started.elapsed());
+    result
 }
 
 fn build_key_map(

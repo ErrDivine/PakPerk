@@ -1,5 +1,10 @@
 name: pakperk
 
+x-backend-build: &backend-build
+  context: .
+  dockerfile: backend/Dockerfile
+  target: runtime
+
 services:
   postgres:
     image: pgvector/pgvector:0.8.2-pg16-bookworm
@@ -84,11 +89,35 @@ services:
           memory: 4G
     restart: unless-stopped
 
+  api-origin-secret-init:
+    image: pakperk-backend:dev
+    build: *backend-build
+    user: "0:0"
+    command:
+      - /bin/sh
+      - -ceu
+      - |
+        test -f /source/API_ORIGIN_HASH_SECRET
+        test ! -L /source/API_ORIGIN_HASH_SECRET
+        chown 0:0 /work
+        chmod 0700 /work
+        rm -f /work/API_ORIGIN_HASH_SECRET
+        install -m 0400 /source/API_ORIGIN_HASH_SECRET /work/API_ORIGIN_HASH_SECRET
+        chown 10001:10001 /work/API_ORIGIN_HASH_SECRET
+        chown 10001:10001 /work
+    volumes:
+      - ./.local/pakperk-secrets:/source:ro
+      - pakperk-api-secrets:/work
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_READ_SEARCH]
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
   api:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-      target: runtime
+    image: pakperk-backend:dev
+    build: *backend-build
     command: ["/usr/local/bin/pakperk-api"]
     env_file: .env
     environment:
@@ -96,11 +125,16 @@ services:
       GROBID_URL: http://grobid:8070
       DEMO_SEED_MANIFEST: /app/demo/seed_manifest.json
       DEMO_FALLBACK_FEED: /app/demo/fallback_feed.json
+      API_ORIGIN_HASH_SECRET_FILE: /var/run/pakperk-secrets/API_ORIGIN_HASH_SECRET
+    volumes:
+      - pakperk-api-secrets:/var/run/pakperk-secrets:ro
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
+      api-origin-secret-init:
+        condition: service_completed_successfully
     read_only: true
     tmpfs:
       - /tmp:size=128m,mode=1777
@@ -109,10 +143,8 @@ services:
     restart: unless-stopped
 
   worker:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-      target: runtime
+    image: pakperk-backend:dev
+    build: *backend-build
     command: ["/usr/local/bin/pakperk-worker", "run"]
     env_file: .env
     environment:
@@ -135,3 +167,4 @@ services:
 volumes:
   pakperk-postgres:
   pakperk-keycloak-postgres:
+  pakperk-api-secrets:

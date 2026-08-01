@@ -1,8 +1,8 @@
 # Pakperk Production v0.0 implementation plan
 
-**Status:** authoritative implementation plan
+**Status:** authoritative implementation plan and repository status entrypoint
 **Milestone:** Production v0.0
-**Last synchronized:** 2026-07-31
+**Last synchronized:** 2026-08-01
 
 This document is the documentation entrypoint for the Production v0.0 plan.
 The complete normative plan is maintained at the repository root in
@@ -101,12 +101,42 @@ reads or affecting public paper access. The detailed contract is in
 OIDC/PostgreSQL, two-client, no-preparation, write-kill, and native-build
 evidence is recorded in the [Phase 4 report](phase-reports/phase-4.md).
 
+Phase 5 is **complete** as a repository capability. It implements flat public
+paper comments, current policy acceptance, deterministic and provider-neutral
+moderation, shared user/request-origin limits, report/block/author actions,
+audited moderator tooling, account-scoped mobile pages/drafts/blocks, and the
+independent comment-creation kill switch. Live two-user PostgreSQL/Keycloak and
+provider-outage evidence is recorded in the
+[Phase 5 report](phase-reports/phase-5.md). The feature remains default-off;
+public enablement also requires the target environment's moderation, deletion,
+legal, monitoring, and store-policy evidence.
+
+Phase 6's **repository implementation is present as a dark-launched release
+candidate**. It includes the recent-auth mobile/API/web deletion flow, bounded
+Keycloak administration, leased deletion worker, independent signed restore
+ledger and replay, retention cleanup/purge controls, a production Helm topology,
+OTLP and a validating mobile telemetry gateway, security/SBOM workflows,
+signed mobile candidate automation, policy/support hosting, and release,
+incident, moderation, deletion, observability, and backup/restore runbooks.
+Repository and mobile evidence is recorded in the
+[Phase 6 report](phase-reports/phase-6.md) and
+[mobile Phase 6 report](phase-reports/phase-6-mobile.md).
+
+Phase 6 is not accepted as a public/store release from source evidence alone.
+An actual isolated backup/PITR restore and deletion replay, migration/rollback
+exercise, deployed staging/production telemetry and alert checks, physical
+device and performance/crash windows, protected signing, TestFlight/closed Play
+upload, reviewer account/notes, legal/content review, disclosures, and store
+approval remain external release gates and must stay marked unpassed until their
+owners attach evidence.
+
 Phase 0's exit criteria require unchanged demo behavior and API fixtures,
 passing `./scripts/check.sh`, complete OpenAPI coverage for its existing routes,
 and no public account controls. Phase 2 additionally requires offline migration,
 the measured cache-ahead scenario, single-flight requests, enforced cache
 bounds, a saved-paper pin, and proof that prefetch does not prepare papers.
-Later phases are not considered complete merely because their code compiles:
+Repository phases and public release gates are not considered complete merely
+because their code compiles:
 the acceptance scenarios and Definition of Done in the canonical plan remain
 the release gate.
 
@@ -120,3 +150,4 @@ is added:
 3. [ADR 0003 — Stateful shell routing](adr/0003-stateful-shell-routing.md)
 4. [ADR 0004 — Public comments and moderation](adr/0004-public-comments-and-moderation.md)
 5. [ADR 0005 — Shared PostgreSQL rate limits](adr/0005-shared-postgres-rate-limits.md)
+6. [ADR 0006 — Mobile telemetry gateway](adr/0006-mobile-telemetry-gateway.md)

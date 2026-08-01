@@ -1,0 +1,108 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "pakperk.fullname" . }}-site
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # OAuth authorization codes can occur in the deletion callback query.
+    # Disable controller-level request logging; the site pod logs query-free
+    # $uri values under its own reviewed Nginx format.
+    nginx.ingress.kubernetes.io/enable-access-log: "false"
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  tls:
+    - secretName: {{ .Values.ingress.tlsSecretName }}
+      hosts:
+        - {{ .Values.ingress.siteHost }}
+  rules:
+    - host: {{ .Values.ingress.siteHost }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "pakperk.fullname" . }}-site
+                port: { name: http }
+{{- end }}
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "pakperk.fullname" . }}-api
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+  annotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: {{ .Values.api.maxRequestBytes | quote }}
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: {{ add (int .Values.api.chatTimeoutSeconds) 5 | quote }}
+    nginx.ingress.kubernetes.io/proxy-read-timeout: {{ add (int .Values.api.chatTimeoutSeconds) 5 | quote }}
+    nginx.ingress.kubernetes.io/proxy-send-timeout: {{ add (int .Values.api.chatTimeoutSeconds) 5 | quote }}
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  tls:
+    - secretName: {{ .Values.ingress.tlsSecretName }}
+      hosts: [{{ .Values.ingress.apiHost }}]
+  rules:
+    - host: {{ .Values.ingress.apiHost }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "pakperk.fullname" . }}-api
+                port: { name: http }
+{{- end }}
+{{- if and .Values.ingress.enabled .Values.telemetryGateway.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "pakperk.fullname" . }}-telemetry
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: telemetry-gateway
+  annotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "16k"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "on"
+    nginx.ingress.kubernetes.io/limit-rps: "5"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  tls:
+    - secretName: {{ .Values.ingress.tlsSecretName }}
+      hosts: [{{ .Values.ingress.telemetryHost }}]
+  rules:
+    - host: {{ .Values.ingress.telemetryHost }}
+      http:
+        paths:
+          - path: /v1/logs
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "pakperk.fullname" . }}-telemetry-gateway
+                port: { name: http }
+{{- end }}

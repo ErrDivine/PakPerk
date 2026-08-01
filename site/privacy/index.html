@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Pakperk privacy notice.">
+    <title>Privacy notice — Pakperk</title>
+    <link rel="stylesheet" href="/assets/site.css">
+    <script src="/config.js" defer></script>
+    <script src="/assets/site.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header><a class="brand" href="/">Pakperk</a><nav aria-label="Policy navigation"><ul><li><a href="/terms/">Terms</a></li><li><a href="/support/">Support</a></li><li><a href="/account-deletion/">Delete account</a></li></ul></nav></header>
+    <main id="main"><article class="document">
+      <p class="eyebrow">Privacy · Version <span data-document-version>configuration unavailable</span></p>
+      <h1>Privacy notice</h1>
+      <p class="lede">Guest reading does not require an account. Pakperk stores only the data needed for the features a reader chooses.</p>
+      <h2>Data used by the service</h2>
+      <ul>
+        <li><strong>Accounts:</strong> the identity provider retains verified email for optional registration, login, and recovery; Pakperk stores identity-provider issuer and subject, a local user ID, public handle or display name, status, policy acceptance, and operational timestamps in its application database.</li>
+        <li><strong>To Read:</strong> account-to-paper relationships, revisions, removal tombstones, and retry-safe operation records.</li>
+        <li><strong>Comments:</strong> public normalized text, author, paper, status, versions, and timestamps.</li>
+        <li><strong>Safety:</strong> reports, blocks, shared rate-limit records, moderation decisions, deletion state, and a redacted audit trail.</li>
+        <li><strong>Operations:</strong> request IDs and content-free reliability and security telemetry.</li>
+      </ul>
+      <h2>Data Pakperk deliberately avoids</h2>
+      <p>The Pakperk application profile database does not copy the identity-provider email. Pakperk does not collect address-book contacts, precise location, advertising ID, an avatar, or a personalized ranking profile. Access and refresh tokens are excluded from general preferences, SQLite, and Pakperk-managed telemetry.</p>
+      <p>Comment bodies, report details, paper full text, model prompts, model responses, chat messages, public handles, and identity subjects are excluded from telemetry.</p>
+      <p>Pakperk sends its telemetry provider only a sanitized error category, never a raw exception or stack. Uncaught fatal errors are not swallowed and may create an OS-managed Apple or Google crash diagnostic under platform settings and policy; that path is separate from Pakperk's custom telemetry.</p>
+      <p>For shared abuse limits on comments and expensive public paper actions such as preparation and chat, the application accepts a forwarded request-origin chain only from configured ingress proxies, evaluates it right-to-left, and otherwise falls back to the direct peer. It immediately keys the selected address without logging or persisting the raw value, then keeps only that pseudonym through the configured rate-limit window, at most 30 days. Production edge security/access logs may separately retain a source network address for up to 30 days. These identifiers are not used for advertising or tracking and are separate from identifier-free mobile telemetry.</p>
+      <h2>Visibility and processors</h2>
+      <p>Comments are public. Blocks are private to the blocking account. Reports and moderation records are restricted to authorized operators. Configured providers process data only for identity, database hosting, service delivery, security, or content-free telemetry.</p>
+      <h2>Retention and deletion</h2>
+      <ul>
+        <li>Keyed request-origin abuse-limit scopes expire with their configured window, at most <strong>30 days</strong>, and are removed by bounded maintenance.</li>
+        <li>Recoverable database, identity, and PITR backups expire within <strong>35 days</strong>.</li>
+        <li>Anonymized security and moderation audit records expire after <strong>90 days</strong>.</li>
+        <li>Content-free operational telemetry and platform/application logs expire after <strong>30 days</strong>.</li>
+        <li>A separately backed-up signed deletion-authority record is kept for at least <strong>400 days</strong>, and longer only until evidence proves no recoverable backup can recreate the account.</li>
+      </ul>
+      <p>Deleting an account disables access immediately, revokes provider sessions, deletes the provider identity and its verified email, and removes account-owned Pakperk data and public comments. The deletion authority contains a keyed identity fingerprint and encrypted provider recovery coordinates—not profile or comment content—so the worker can purge a skewed provider/database restore.</p>
+      <p>After every recoverable backup has aged out and deletion reapplication is verified, an operator-controlled final purge removes that authority and its encrypted coordinates. A restored backup is never returned to service until the current external authority is reapplied and deletion verification passes.</p>
+      <h2>Your request</h2>
+      <p>Pakperk is the service controller unless this deployment's monitored <a data-support-link>support contact</a> identifies another operating entity. Use <a href="/account-deletion/">account deletion</a> for removal or that contact for access, correction, privacy, or legal questions. Include an operation ID where possible; never send a password or token.</p>
+    </article></main>
+    <footer><ul><li><a href="/">All policies</a></li><li><a href="/community-guidelines/">Community guidelines</a></li><li><a data-support-link>Contact support</a></li></ul></footer>
+  </body>
+</html>

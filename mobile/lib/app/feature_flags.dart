@@ -61,6 +61,11 @@ class AppBuildConfig {
     required this.oidcPostLogoutRedirectUri,
     required this.oidcScopes,
     required this.commentSupportContactUri,
+    required this.publicSiteOriginUri,
+    required this.supportUri,
+    required this.accountDeletionUri,
+    required this.appLinkOriginUri,
+    required this.telemetryEndpointUri,
   });
 
   static const _environmentKey = 'PAKPERK_ENV';
@@ -78,6 +83,11 @@ class AppBuildConfig {
   static const _oidcScopesKey = 'PAKPERK_OIDC_SCOPES';
   static const _commentSupportContactUrlKey =
       'PAKPERK_COMMENT_SUPPORT_CONTACT_URL';
+  static const _publicSiteOriginKey = 'PAKPERK_PUBLIC_SITE_ORIGIN';
+  static const _supportUrlKey = 'PAKPERK_SUPPORT_URL';
+  static const _accountDeletionUrlKey = 'PAKPERK_ACCOUNT_DELETION_URL';
+  static const _appLinkOriginKey = 'PAKPERK_APP_LINK_ORIGIN';
+  static const _telemetryEndpointKey = 'PAKPERK_TELEMETRY_ENDPOINT';
 
   /// Reads only compile-time values supplied with `--dart-define`.
   ///
@@ -125,6 +135,13 @@ class AppBuildConfig {
     _commentSupportContactUrlKey: const String.fromEnvironment(
       _commentSupportContactUrlKey,
     ),
+    _publicSiteOriginKey: const String.fromEnvironment(_publicSiteOriginKey),
+    _supportUrlKey: const String.fromEnvironment(_supportUrlKey),
+    _accountDeletionUrlKey: const String.fromEnvironment(
+      _accountDeletionUrlKey,
+    ),
+    _appLinkOriginKey: const String.fromEnvironment(_appLinkOriginKey),
+    _telemetryEndpointKey: const String.fromEnvironment(_telemetryEndpointKey),
     'PAKPERK_OIDC_CLIENT_SECRET': const String.fromEnvironment(
       'PAKPERK_OIDC_CLIENT_SECRET',
     ),
@@ -216,29 +233,112 @@ class AppBuildConfig {
       _rejectPlaceholder(oidcIssuerUri.host, _oidcIssuerUrlKey);
       _rejectPlaceholder(oidcClientId, _oidcClientIdKey);
       _validateOidcIssuerUri(oidcIssuerUri, environment);
-      _validateNativeRedirectUri(oidcRedirectUri, key: _oidcRedirectUriKey);
+      _validateNativeRedirectUri(
+        oidcRedirectUri,
+        key: _oidcRedirectUriKey,
+        environment: environment,
+      );
       _validateNativeRedirectUri(
         oidcPostLogoutRedirectUri,
         key: _oidcPostLogoutRedirectUriKey,
+        environment: environment,
       );
     }
 
-    final commentSupportContactUri = _optionalUri(
-      values[_commentSupportContactUrlKey],
-      key: _commentSupportContactUrlKey,
+    final publicSiteOriginValue = environment == AppEnvironment.development
+        ? _value(
+            values,
+            _publicSiteOriginKey,
+            fallback: 'http://localhost:3000',
+          )
+        : _requiredValue(values, _publicSiteOriginKey);
+    final publicSiteOriginUri = _parseUri(
+      publicSiteOriginValue,
+      key: _publicSiteOriginKey,
       requireHttps: environment.isProductionLike,
       allowCustomScheme: false,
     );
-    if (features.comments) {
-      if (commentSupportContactUri == null) {
-        throw BuildConfigurationException(
-          'Comments require $_commentSupportContactUrlKey.',
-        );
+    _validateOrigin(
+      publicSiteOriginUri,
+      _publicSiteOriginKey,
+      environment: environment,
+    );
+    if (environment.isProductionLike) {
+      _rejectPlaceholder(publicSiteOriginUri.host, _publicSiteOriginKey);
+    }
+    final supportUri = _parseUri(
+      _value(
+        values,
+        _supportUrlKey,
+        fallback:
+            values[_commentSupportContactUrlKey]?.trim().isNotEmpty == true
+            ? values[_commentSupportContactUrlKey]!.trim()
+            : publicSiteOriginUri.resolve('/support').toString(),
+      ),
+      key: _supportUrlKey,
+      requireHttps: environment.isProductionLike,
+      allowCustomScheme: false,
+    );
+    if (features.comments &&
+        values[_supportUrlKey]?.trim().isNotEmpty != true &&
+        values[_commentSupportContactUrlKey]?.trim().isNotEmpty != true) {
+      throw BuildConfigurationException('Comments require $_supportUrlKey.');
+    }
+    final accountDeletionUri = _parseUri(
+      _value(
+        values,
+        _accountDeletionUrlKey,
+        fallback: publicSiteOriginUri.resolve('/account-deletion').toString(),
+      ),
+      key: _accountDeletionUrlKey,
+      requireHttps: environment.isProductionLike,
+      allowCustomScheme: false,
+    );
+    final appLinkOriginUri = _parseUri(
+      _value(
+        values,
+        _appLinkOriginKey,
+        fallback: publicSiteOriginUri.toString(),
+      ),
+      key: _appLinkOriginKey,
+      requireHttps: environment.isProductionLike,
+      allowCustomScheme: false,
+    );
+    _validateOrigin(
+      appLinkOriginUri,
+      _appLinkOriginKey,
+      environment: environment,
+    );
+    final telemetryEndpointValue = environment.isProductionLike
+        ? _requiredValue(values, _telemetryEndpointKey)
+        : values[_telemetryEndpointKey];
+    final telemetryEndpointUri = _optionalUri(
+      telemetryEndpointValue,
+      key: _telemetryEndpointKey,
+      requireHttps: environment.isProductionLike,
+      allowCustomScheme: false,
+    );
+    for (final entry in {
+      _supportUrlKey: supportUri,
+      _accountDeletionUrlKey: accountDeletionUri,
+    }.entries) {
+      _validatePublicPageUri(entry.value, entry.key, environment: environment);
+      if (environment.isProductionLike || features.comments) {
+        _rejectPlaceholder(entry.value.host, entry.key);
       }
-      _rejectPlaceholder(
-        commentSupportContactUri.host,
-        _commentSupportContactUrlKey,
+    }
+    if (environment.isProductionLike) {
+      _rejectPlaceholder(appLinkOriginUri.host, _appLinkOriginKey);
+    }
+    if (telemetryEndpointUri != null) {
+      _validateTelemetryEndpointUri(
+        telemetryEndpointUri,
+        _telemetryEndpointKey,
+        environment: environment,
       );
+      if (environment.isProductionLike) {
+        _rejectPlaceholder(telemetryEndpointUri.host, _telemetryEndpointKey);
+      }
     }
 
     return AppBuildConfig._(
@@ -251,7 +351,12 @@ class AppBuildConfig {
       oidcRedirectUri: oidcRedirectUri,
       oidcPostLogoutRedirectUri: oidcPostLogoutRedirectUri,
       oidcScopes: oidcScopes,
-      commentSupportContactUri: commentSupportContactUri,
+      commentSupportContactUri: supportUri,
+      publicSiteOriginUri: publicSiteOriginUri,
+      supportUri: supportUri,
+      accountDeletionUri: accountDeletionUri,
+      appLinkOriginUri: appLinkOriginUri,
+      telemetryEndpointUri: telemetryEndpointUri,
     );
   }
 
@@ -265,6 +370,33 @@ class AppBuildConfig {
   final Uri? oidcPostLogoutRedirectUri;
   final List<String> oidcScopes;
   final Uri? commentSupportContactUri;
+  final Uri publicSiteOriginUri;
+  final Uri supportUri;
+  final Uri accountDeletionUri;
+  final Uri appLinkOriginUri;
+  final Uri? telemetryEndpointUri;
+
+  Uri legalUri(String path) => publicSiteOriginUri.resolve(path);
+
+  /// Fails closed when Flutter's native build flavor and the Dart environment
+  /// file do not describe the same deployable application.
+  ///
+  /// Native bundle IDs, callback registrations, and transport policy come from
+  /// `--flavor`, while API/OIDC endpoints and feature flags come from Dart
+  /// defines. Accepting a missing or mismatched flavor would allow a correctly
+  /// signed production identity to run the wrong environment configuration.
+  void requireMatchingNativeFlavor(String? nativeFlavor) {
+    final expected = switch (environment) {
+      AppEnvironment.development => 'dev',
+      AppEnvironment.staging => 'staging',
+      AppEnvironment.production => 'prod',
+    };
+    if (nativeFlavor != expected) {
+      throw BuildConfigurationException(
+        'Native flavor must be $expected for the configured environment.',
+      );
+    }
+  }
 
   static String _value(
     Map<String, String> values,
@@ -273,6 +405,14 @@ class AppBuildConfig {
   }) {
     final value = values[key]?.trim();
     return value == null || value.isEmpty ? fallback : value;
+  }
+
+  static String _requiredValue(Map<String, String> values, String key) {
+    final value = values[key]?.trim();
+    if (value == null || value.isEmpty) {
+      throw BuildConfigurationException('$key is required for this build.');
+    }
+    return value;
   }
 
   static bool _parseBool(Map<String, String> values, String key) {
@@ -371,11 +511,20 @@ class AppBuildConfig {
     }
   }
 
-  static void _validateNativeRedirectUri(Uri uri, {required String key}) {
+  static void _validateNativeRedirectUri(
+    Uri uri, {
+    required String key,
+    required AppEnvironment environment,
+  }) {
     final scheme = uri.scheme.toLowerCase();
-    if (scheme != 'pakperk-auth') {
+    final allowedSchemes = switch (environment) {
+      AppEnvironment.development => const {'pakperk-auth-dev'},
+      AppEnvironment.staging => const {'pakperk-auth-staging'},
+      AppEnvironment.production => const {'pakperk-auth'},
+    };
+    if (!allowedSchemes.contains(scheme)) {
       throw BuildConfigurationException(
-        '$key must use the dedicated pakperk-auth callback scheme.',
+        '$key must use this flavor\'s dedicated auth callback scheme.',
       );
     }
     if (!uri.hasAuthority || uri.authority != 'oauth' || uri.hasPort) {
@@ -391,6 +540,70 @@ class AppBuildConfig {
     final expectedPath = key == _oidcRedirectUriKey ? '/callback' : '/logout';
     if (uri.path != expectedPath) {
       throw BuildConfigurationException('$key must end in $expectedPath.');
+    }
+  }
+
+  static void _validateOrigin(
+    Uri uri,
+    String key, {
+    required AppEnvironment environment,
+  }) {
+    if (uri.path.isNotEmpty && uri.path != '/' ||
+        uri.query.isNotEmpty ||
+        uri.fragment.isNotEmpty) {
+      throw BuildConfigurationException(
+        '$key must be an origin without a path.',
+      );
+    }
+    _validatePublicScheme(uri, key, environment);
+  }
+
+  static void _validatePublicPageUri(
+    Uri uri,
+    String key, {
+    required AppEnvironment environment,
+  }) {
+    _validatePublicScheme(uri, key, environment);
+    if (uri.query.isNotEmpty || uri.path.isEmpty) {
+      throw BuildConfigurationException(
+        '$key must be an absolute page URL without a query.',
+      );
+    }
+  }
+
+  static void _validateTelemetryEndpointUri(
+    Uri uri,
+    String key, {
+    required AppEnvironment environment,
+  }) {
+    _validatePublicScheme(uri, key, environment);
+    if (uri.path != '/v1/logs' ||
+        uri.query.isNotEmpty ||
+        uri.fragment.isNotEmpty) {
+      throw BuildConfigurationException(
+        '$key must use the exact OTLP/HTTP logs path /v1/logs.',
+      );
+    }
+  }
+
+  static void _validatePublicScheme(
+    Uri uri,
+    String key,
+    AppEnvironment environment,
+  ) {
+    if (uri.scheme.toLowerCase() == 'https') return;
+    final host = uri.host.toLowerCase();
+    final loopback =
+        host == 'localhost' ||
+        host.endsWith('.localhost') ||
+        host == '127.0.0.1' ||
+        host == '::1';
+    if (environment != AppEnvironment.development ||
+        uri.scheme.toLowerCase() != 'http' ||
+        !loopback) {
+      throw BuildConfigurationException(
+        '$key may use HTTP only on development loopback.',
+      );
     }
   }
 

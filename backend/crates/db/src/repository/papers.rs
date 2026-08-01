@@ -16,7 +16,13 @@ use super::{
 };
 
 impl PaperRepository {
-    #[instrument(skip(self), fields(category = query.category.as_deref()))]
+    #[instrument(
+        skip(self, query),
+        fields(
+            category_filtered = query.category.is_some(),
+            cursor_present = query.cursor.is_some()
+        )
+    )]
     pub async fn feed(&self, query: &FeedQuery) -> Result<FeedPage, DbError> {
         let limit = query.limit.clamp(1, 100);
         let mut builder = QueryBuilder::<Postgres>::new(

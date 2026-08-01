@@ -223,6 +223,9 @@ final class _EpochTokenSource implements AuthTokenSource {
   }
 
   @override
+  bool isCurrentEpoch(int expectedAuthEpoch) => expectedAuthEpoch == epoch;
+
+  @override
   Future<String?> accessTokenForRequest({int? expectedAuthEpoch}) async {
     accessStarted?.complete();
     _requireEpoch(expectedAuthEpoch);

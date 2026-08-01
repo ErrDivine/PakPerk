@@ -9,10 +9,10 @@ use std::{
     time::Duration,
 };
 
-use accounts::{AccountPolicy, AccountPolicyError};
+use accounts::{AccountPolicy, AccountPolicyError, IdentityFingerprintKeyring};
 use arxiv_client::ArxivClientConfig;
 use auth::{OidcAlgorithm, OidcVerifierConfig};
-use axum::http::HeaderValue;
+use axum::http::{HeaderMap, HeaderValue};
 use domain::{
     COMMENT_MAX_BYTES, COMMENT_MAX_SCALARS, COMMENT_MAX_URLS, CommunityGuidelinesVersion,
     FulltextPolicy, TermsVersion,
@@ -21,6 +21,8 @@ use llm_provider::OpenAiCompatibleConfig;
 use secrecy::{ExposeSecret as _, SecretString};
 use sha2::{Digest as _, Sha256};
 use url::{Host, Url};
+
+use crate::deletion_config::{AccountDeletionFeatureConfig, load_identity_fingerprint_keyring};
 
 const LOWERCASE_HEX: &[u8; 16] = b"0123456789abcdef";
 
@@ -69,6 +71,9 @@ pub struct FeatureFlags {
     /// Emergency kill switch for only new comment publication. Existing
     /// comments and every safety/moderation control remain available.
     pub comment_creation: bool,
+    /// Registers the recent-auth DELETE surface and its durable local request
+    /// path. The provider credentials remain worker-only.
+    pub account_deletion: bool,
 }
 
 impl FeatureFlags {
@@ -84,6 +89,9 @@ impl FeatureFlags {
         }
         if self.comment_creation && !self.comments {
             anyhow::bail!("COMMENT_CREATION_ENABLED requires COMMENTS_ENABLED");
+        }
+        if self.account_deletion && !self.accounts {
+            anyhow::bail!("ACCOUNT_DELETION_ENABLED requires ACCOUNTS_ENABLED");
         }
         Ok(self)
     }
@@ -102,6 +110,11 @@ pub struct ApiConfig {
     /// Present exactly when public comments and their safety controls are
     /// registered.
     pub comments: Option<CommentFeatureConfig>,
+    /// Present exactly when the account-deletion route is enabled.
+    pub account_deletion: Option<AccountDeletionFeatureConfig>,
+    /// Shared trusted-proxy boundary and keyed request-origin pseudonym used
+    /// by public expensive-operation and UGC rate limits.
+    pub request_origin: RequestOriginConfig,
     pub bind: SocketAddr,
     pub database_url: String,
     pub database_pool_size: u32,
@@ -129,6 +142,9 @@ pub struct AccountFeatureConfig {
     pub profile_update_window: Duration,
     pub auth_retry_initial: Duration,
     pub auth_retry_maximum: Duration,
+    /// Required in deployed account APIs so JIT provisioning continues to
+    /// honor deletion tombstones even while DELETE is feature-disabled.
+    pub identity_fingerprints: Option<IdentityFingerprintKeyring>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,10 +171,104 @@ impl FromStr for CommentModerationProvider {
     }
 }
 
+/// API-edge request-origin settings. The resolved address is HMAC-pseudonymized
+/// before it enters `PostgreSQL` and is never exposed through diagnostics.
+#[derive(Clone)]
+pub struct RequestOriginConfig {
+    origin_hasher: RequestOriginHasher,
+    trusted_proxy_networks: Vec<TrustedProxyNetwork>,
+}
+
+impl fmt::Debug for RequestOriginConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RequestOriginConfig")
+            .field("origin_hasher", &"[redacted]")
+            .field(
+                "trusted_proxy_network_count",
+                &self.trusted_proxy_networks.len(),
+            )
+            .finish()
+    }
+}
+
+impl RequestOriginConfig {
+    fn from_env(environment: ApiEnvironment) -> anyhow::Result<Self> {
+        let path = required_request_origin_env("API_ORIGIN_HASH_SECRET_FILE")?;
+        let config = Self {
+            origin_hasher: RequestOriginHasher::from_file(Path::new(&path))?,
+            trusted_proxy_networks: parse_trusted_proxy_networks(
+                std::env::var("API_TRUSTED_PROXY_CIDRS").ok().as_deref(),
+                environment,
+            )?,
+        };
+        config.validate(environment)?;
+        Ok(config)
+    }
+
+    /// Constructs a direct-peer configuration for tests and local embedders.
+    /// Deployed [`ApiConfig`] validation rejects the empty trusted-proxy set.
+    pub fn for_local_development(secret: &str) -> anyhow::Result<Self> {
+        Ok(Self {
+            origin_hasher: RequestOriginHasher::new(secret)?,
+            trusted_proxy_networks: Vec::new(),
+        })
+    }
+
+    /// Adds the exact reverse-proxy source ranges trusted to supply
+    /// `X-Forwarded-For`. The caller still chooses the deployment environment
+    /// through [`ApiConfig`], whose validation requires ranges when deployed.
+    pub fn with_trusted_proxy_cidrs(mut self, value: &str) -> anyhow::Result<Self> {
+        self.trusted_proxy_networks =
+            parse_trusted_proxy_networks(Some(value), ApiEnvironment::Development)?;
+        Ok(self)
+    }
+
+    pub(crate) fn scope(&self, headers: &HeaderMap, peer: SocketAddr) -> String {
+        self.origin_hasher
+            .scope_for(self.client_origin_address(headers, peer))
+    }
+
+    fn client_origin_address(&self, headers: &HeaderMap, peer: SocketAddr) -> IpAddr {
+        let peer = canonical_ip(peer.ip());
+        if !self.is_trusted_proxy(peer) {
+            return peer;
+        }
+        let Some(chain) = parse_x_forwarded_for(headers) else {
+            // Missing, oversized, or malformed proxy metadata must not let a
+            // caller select a fresh bucket. Fall back to the directly
+            // connected peer as a conservative circuit breaker.
+            return peer;
+        };
+        let mut current = peer;
+        for candidate in chain.into_iter().rev() {
+            if !self.is_trusted_proxy(current) {
+                break;
+            }
+            current = canonical_ip(candidate);
+        }
+        current
+    }
+
+    fn is_trusted_proxy(&self, address: IpAddr) -> bool {
+        self.trusted_proxy_networks
+            .iter()
+            .any(|network| network.contains(address))
+    }
+
+    fn validate(&self, environment: ApiEnvironment) -> anyhow::Result<()> {
+        if environment.is_deployed() && self.trusted_proxy_networks.is_empty() {
+            anyhow::bail!(
+                "API_TRUSTED_PROXY_CIDRS must enumerate the ingress proxy source ranges outside development"
+            );
+        }
+        Ok(())
+    }
+}
+
 /// API-edge settings that must not cross into domain/service diagnostics.
 #[derive(Clone)]
 pub struct CommentFeatureConfig {
-    origin_hasher: CommentOriginHasher,
     maximum_comment_scalars: usize,
     maximum_comment_bytes: usize,
     maximum_comment_urls: usize,
@@ -179,7 +289,6 @@ impl fmt::Debug for CommentFeatureConfig {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("CommentFeatureConfig")
-            .field("origin_hasher", &"[redacted]")
             .field("maximum_comment_scalars", &self.maximum_comment_scalars)
             .field("maximum_comment_bytes", &self.maximum_comment_bytes)
             .field("maximum_comment_urls", &self.maximum_comment_urls)
@@ -200,10 +309,8 @@ impl fmt::Debug for CommentFeatureConfig {
 
 impl CommentFeatureConfig {
     fn from_env(environment: ApiEnvironment) -> anyhow::Result<Self> {
-        let path = required_comments_env("COMMENT_ORIGIN_HASH_SECRET_FILE")?;
         let moderation_provider = std::env::var("COMMENT_MODERATION_PROVIDER").ok();
         let config = Self {
-            origin_hasher: CommentOriginHasher::from_file(Path::new(&path))?,
             maximum_comment_scalars: env_parse("COMMENT_MAX_SCALARS", COMMENT_MAX_SCALARS)?,
             maximum_comment_bytes: env_parse("COMMENT_MAX_BYTES", COMMENT_MAX_BYTES)?,
             maximum_comment_urls: env_parse("COMMENT_MAX_URLS", COMMENT_MAX_URLS)?,
@@ -239,9 +346,8 @@ impl CommentFeatureConfig {
     }
 
     #[cfg(test)]
-    pub(crate) fn for_test(secret: &str) -> anyhow::Result<Self> {
+    pub(crate) fn for_test() -> anyhow::Result<Self> {
         Ok(Self {
-            origin_hasher: CommentOriginHasher::new(secret)?,
             maximum_comment_scalars: COMMENT_MAX_SCALARS,
             maximum_comment_bytes: COMMENT_MAX_BYTES,
             maximum_comment_urls: COMMENT_MAX_URLS,
@@ -259,10 +365,6 @@ impl CommentFeatureConfig {
         })
     }
 
-    pub(crate) fn origin_scope(&self, address: SocketAddr) -> String {
-        self.origin_hasher.scope_for(address.ip())
-    }
-
     pub(crate) const fn moderation_provider(&self) -> CommentModerationProvider {
         self.moderation_provider
     }
@@ -273,7 +375,8 @@ impl CommentFeatureConfig {
             self.maximum_comment_bytes,
             self.maximum_comment_urls,
         )?;
-        validate_comment_support_contact_url(environment, &self.support_contact_url)
+        validate_comment_support_contact_url(environment, &self.support_contact_url)?;
+        Ok(())
     }
 
     pub(crate) fn service_config(
@@ -385,47 +488,183 @@ fn validate_comment_support_contact_url(
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct TrustedProxyNetwork {
+    network: IpAddr,
+    prefix_length: u8,
+}
+
+impl FromStr for TrustedProxyNetwork {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let (address, prefix_length) = value.split_once('/').ok_or_else(|| {
+            anyhow::anyhow!("trusted proxy range `{value}` must use CIDR notation")
+        })?;
+        let network: IpAddr = address
+            .parse()
+            .map_err(|_| anyhow::anyhow!("trusted proxy range `{value}` has an invalid address"))?;
+        if matches!(network, IpAddr::V6(address) if address.to_ipv4_mapped().is_some()) {
+            anyhow::bail!(
+                "trusted proxy range `{value}` must use IPv4 notation for IPv4-mapped addresses"
+            );
+        }
+        let prefix_length: u8 = prefix_length.parse().map_err(|_| {
+            anyhow::anyhow!("trusted proxy range `{value}` has an invalid prefix length")
+        })?;
+        let maximum = match network {
+            IpAddr::V4(_) => 32,
+            IpAddr::V6(_) => 128,
+        };
+        if prefix_length == 0 || prefix_length > maximum {
+            anyhow::bail!(
+                "trusted proxy range `{value}` must be narrower than an internet-wide range"
+            );
+        }
+        let canonical = mask_ip(network, prefix_length);
+        if canonical != network {
+            anyhow::bail!("trusted proxy range `{value}` must use its canonical network address");
+        }
+        Ok(Self {
+            network,
+            prefix_length,
+        })
+    }
+}
+
+impl TrustedProxyNetwork {
+    fn contains(self, address: IpAddr) -> bool {
+        let address = canonical_ip(address);
+        match (self.network, address) {
+            (IpAddr::V4(_), IpAddr::V4(_)) | (IpAddr::V6(_), IpAddr::V6(_)) => {
+                mask_ip(address, self.prefix_length) == self.network
+            }
+            _ => false,
+        }
+    }
+}
+
+fn mask_ip(address: IpAddr, prefix_length: u8) -> IpAddr {
+    match address {
+        IpAddr::V4(address) => {
+            let shift = 32_u32 - u32::from(prefix_length);
+            let mask = u32::MAX.checked_shl(shift).unwrap_or(0);
+            IpAddr::V4((u32::from(address) & mask).into())
+        }
+        IpAddr::V6(address) => {
+            let shift = 128_u32 - u32::from(prefix_length);
+            let mask = u128::MAX.checked_shl(shift).unwrap_or(0);
+            IpAddr::V6((u128::from(address) & mask).into())
+        }
+    }
+}
+
+fn canonical_ip(address: IpAddr) -> IpAddr {
+    match address {
+        IpAddr::V6(address) => address
+            .to_ipv4_mapped()
+            .map_or(IpAddr::V6(address), IpAddr::V4),
+        address @ IpAddr::V4(_) => address,
+    }
+}
+
+fn parse_trusted_proxy_networks(
+    value: Option<&str>,
+    environment: ApiEnvironment,
+) -> anyhow::Result<Vec<TrustedProxyNetwork>> {
+    let Some(value) = value.filter(|value| !value.trim().is_empty()) else {
+        if environment.is_deployed() {
+            anyhow::bail!("API_TRUSTED_PROXY_CIDRS is required outside development");
+        }
+        return Ok(Vec::new());
+    };
+    if value.len() > 4_096 || value.trim() != value {
+        anyhow::bail!("API_TRUSTED_PROXY_CIDRS must be a bounded comma-separated CIDR list");
+    }
+    let values: Vec<_> = value.split(',').map(str::trim).collect();
+    if values.len() > 64 || values.iter().any(|value| value.is_empty()) {
+        anyhow::bail!("API_TRUSTED_PROXY_CIDRS must contain 1 to 64 CIDR ranges");
+    }
+    let networks: Vec<TrustedProxyNetwork> = values
+        .into_iter()
+        .map(str::parse)
+        .collect::<anyhow::Result<_>>()?;
+    if networks.iter().enumerate().any(|(index, network)| {
+        networks
+            .iter()
+            .skip(index + 1)
+            .any(|other| other == network)
+    }) {
+        anyhow::bail!("API_TRUSTED_PROXY_CIDRS must not contain duplicate ranges");
+    }
+    Ok(networks)
+}
+
+fn parse_x_forwarded_for(headers: &HeaderMap) -> Option<Vec<IpAddr>> {
+    const MAXIMUM_BYTES: usize = 2_048;
+    const MAXIMUM_ADDRESSES: usize = 32;
+
+    let mut total_bytes = 0_usize;
+    let mut addresses = Vec::new();
+    let mut saw_header = false;
+    for value in headers.get_all("x-forwarded-for") {
+        saw_header = true;
+        let value = value.to_str().ok()?;
+        total_bytes = total_bytes.checked_add(value.len())?;
+        if total_bytes > MAXIMUM_BYTES {
+            return None;
+        }
+        for address in value.split(',').map(str::trim) {
+            if address.is_empty() || addresses.len() == MAXIMUM_ADDRESSES {
+                return None;
+            }
+            addresses.push(address.parse().ok()?);
+        }
+    }
+    saw_header
+        .then_some(addresses)
+        .filter(|chain| !chain.is_empty())
+}
+
 #[derive(Clone)]
-struct CommentOriginHasher {
+struct RequestOriginHasher {
     secret: SecretString,
 }
 
-impl CommentOriginHasher {
+impl RequestOriginHasher {
     fn from_file(path: &Path) -> anyhow::Result<Self> {
         let path_metadata = fs::symlink_metadata(path).map_err(|error| {
-            anyhow::anyhow!("could not read COMMENT_ORIGIN_HASH_SECRET_FILE metadata: {error}")
+            anyhow::anyhow!("could not read API_ORIGIN_HASH_SECRET_FILE metadata: {error}")
         })?;
         if path_metadata.file_type().is_symlink() || !path_metadata.is_file() {
-            anyhow::bail!("COMMENT_ORIGIN_HASH_SECRET_FILE must be a regular non-symlink file");
+            anyhow::bail!("API_ORIGIN_HASH_SECRET_FILE must be a regular non-symlink file");
         }
         let mut file = fs::File::open(path).map_err(|error| {
-            anyhow::anyhow!("could not open COMMENT_ORIGIN_HASH_SECRET_FILE: {error}")
+            anyhow::anyhow!("could not open API_ORIGIN_HASH_SECRET_FILE: {error}")
         })?;
         let metadata = file.metadata().map_err(|error| {
-            anyhow::anyhow!(
-                "could not read opened COMMENT_ORIGIN_HASH_SECRET_FILE metadata: {error}"
-            )
+            anyhow::anyhow!("could not read opened API_ORIGIN_HASH_SECRET_FILE metadata: {error}")
         })?;
         if !metadata.is_file() {
-            anyhow::bail!("COMMENT_ORIGIN_HASH_SECRET_FILE must be a regular file");
+            anyhow::bail!("API_ORIGIN_HASH_SECRET_FILE must be a regular file");
         }
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt as _;
             if path_metadata.dev() != metadata.dev() || path_metadata.ino() != metadata.ino() {
-                anyhow::bail!("COMMENT_ORIGIN_HASH_SECRET_FILE changed while it was opened");
+                anyhow::bail!("API_ORIGIN_HASH_SECRET_FILE changed while it was opened");
             }
         }
         let expected_length = metadata.len();
         if !(32..=4_096).contains(&expected_length) {
-            anyhow::bail!("COMMENT_ORIGIN_HASH_SECRET_FILE must contain 32 to 4096 bytes");
+            anyhow::bail!("API_ORIGIN_HASH_SECRET_FILE must contain 32 to 4096 bytes");
         }
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt as _;
             if metadata.mode() & 0o077 != 0 {
                 anyhow::bail!(
-                    "COMMENT_ORIGIN_HASH_SECRET_FILE must not be accessible by group or others"
+                    "API_ORIGIN_HASH_SECRET_FILE must not be accessible by group or others"
                 );
             }
         }
@@ -434,27 +673,27 @@ impl CommentOriginHasher {
             .take(4_097)
             .read_to_end(&mut bytes)
             .map_err(|error| {
-                anyhow::anyhow!("could not read COMMENT_ORIGIN_HASH_SECRET_FILE: {error}")
+                anyhow::anyhow!("could not read API_ORIGIN_HASH_SECRET_FILE: {error}")
             })?;
         let final_metadata = file.metadata().map_err(|error| {
-            anyhow::anyhow!("could not recheck COMMENT_ORIGIN_HASH_SECRET_FILE metadata: {error}")
+            anyhow::anyhow!("could not recheck API_ORIGIN_HASH_SECRET_FILE metadata: {error}")
         })?;
         if final_metadata.len() != expected_length
             || u64::try_from(bytes.len()).ok() != Some(expected_length)
         {
-            anyhow::bail!("COMMENT_ORIGIN_HASH_SECRET_FILE changed while it was read");
+            anyhow::bail!("API_ORIGIN_HASH_SECRET_FILE changed while it was read");
         }
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt as _;
             if final_metadata.mode() & 0o077 != 0 {
                 anyhow::bail!(
-                    "COMMENT_ORIGIN_HASH_SECRET_FILE must not be accessible by group or others"
+                    "API_ORIGIN_HASH_SECRET_FILE must not be accessible by group or others"
                 );
             }
         }
         let value = String::from_utf8(bytes)
-            .map_err(|_| anyhow::anyhow!("COMMENT_ORIGIN_HASH_SECRET_FILE must contain UTF-8"))?;
+            .map_err(|_| anyhow::anyhow!("API_ORIGIN_HASH_SECRET_FILE must contain UTF-8"))?;
         Self::new(value.trim_end_matches(['\r', '\n']))
     }
 
@@ -470,7 +709,7 @@ impl CommentOriginHasher {
         if !(32..=4_096).contains(&value.len()) || value.trim() != value || weak_marker || repeated
         {
             anyhow::bail!(
-                "COMMENT_ORIGIN_HASH_SECRET_FILE must contain a non-placeholder 32 to 4096 byte secret"
+                "API_ORIGIN_HASH_SECRET_FILE must contain a non-placeholder 32 to 4096 byte secret"
             );
         }
         Ok(Self {
@@ -486,7 +725,7 @@ impl CommentOriginHasher {
                 |address| (4, address.octets().to_vec()),
             ),
         };
-        let mut message = b"pakperk:comment-origin:v1\0".to_vec();
+        let mut message = b"pakperk:request-origin:v1\0".to_vec();
         message.push(family);
         message.extend_from_slice(&octets);
         let digest = hmac_sha256(self.secret.expose_secret().as_bytes(), &message);
@@ -555,7 +794,10 @@ impl LibraryFeatureConfig {
 }
 
 impl AccountFeatureConfig {
-    fn from_env(environment: ApiEnvironment) -> anyhow::Result<Self> {
+    fn from_env(
+        environment: ApiEnvironment,
+        require_identity_fingerprints: bool,
+    ) -> anyhow::Result<Self> {
         let issuer_raw = required_env("OIDC_ISSUER_URL")?;
         let issuer = Url::parse(&issuer_raw)
             .map_err(|_| anyhow::anyhow!("OIDC_ISSUER_URL must be a valid URL"))?;
@@ -611,6 +853,13 @@ impl AccountFeatureConfig {
                 "OIDC_RETRY_MAX_SECONDS",
                 5 * 60_u64,
             )?),
+            identity_fingerprints: if require_identity_fingerprints
+                || std::env::var_os("ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE").is_some()
+            {
+                Some(load_identity_fingerprint_keyring()?)
+            } else {
+                None
+            },
         };
         config.validate()?;
         Ok(config)
@@ -652,11 +901,13 @@ impl ApiConfig {
             library_writes: env_bool("LIBRARY_WRITES_ENABLED", false)?,
             comments: env_bool("COMMENTS_ENABLED", false)?,
             comment_creation: env_bool("COMMENT_CREATION_ENABLED", false)?,
+            account_deletion: env_bool("ACCOUNT_DELETION_ENABLED", false)?,
         }
         .validate()?;
+        let request_origin = RequestOriginConfig::from_env(environment)?;
         let accounts = features
             .accounts
-            .then(|| AccountFeatureConfig::from_env(environment))
+            .then(|| AccountFeatureConfig::from_env(environment, true))
             .transpose()?;
         let library = features
             .library
@@ -665,6 +916,20 @@ impl ApiConfig {
         let comments = features
             .comments
             .then(|| CommentFeatureConfig::from_env(environment))
+            .transpose()?;
+        let account_deletion = features
+            .account_deletion
+            .then(|| {
+                let keyring = accounts
+                    .as_ref()
+                    .and_then(|account| account.identity_fingerprints.clone())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "identity fingerprint keys are required for account deletion"
+                        )
+                    })?;
+                AccountDeletionFeatureConfig::from_env(environment, keyring)
+            })
             .transpose()?;
         let bind = std::env::var("API_BIND")
             .unwrap_or_else(|_| "0.0.0.0:8080".to_owned())
@@ -706,7 +971,8 @@ impl ApiConfig {
             .ok()
             .map(|value| value.parse())
             .transpose()?;
-        let (embedding_dimension, llm) = provider_config_from_env(configured_embedding_dimension)?;
+        let (embedding_dimension, llm) =
+            provider_config_from_env(environment, configured_embedding_dimension)?;
         let default_chat_timeout = llm
             .as_ref()
             .map_or(Duration::from_secs(65), ApiModelConfig::request_timeout)
@@ -722,6 +988,8 @@ impl ApiConfig {
             accounts,
             library,
             comments,
+            account_deletion,
+            request_origin,
             bind,
             database_url,
             database_pool_size: env_parse("DATABASE_POOL_SIZE", 10_u32)?,
@@ -758,6 +1026,48 @@ impl ApiConfig {
 
     fn validate(&self) -> anyhow::Result<()> {
         self.features.validate()?;
+        self.request_origin.validate(self.environment)?;
+        self.validate_feature_configs()?;
+        if self.database_pool_size == 0 {
+            anyhow::bail!("DATABASE_POOL_SIZE must be greater than zero");
+        }
+        if self.max_request_bytes == 0 {
+            anyhow::bail!("API_MAX_REQUEST_BYTES must be greater than zero");
+        }
+        if self.request_timeout.is_zero() || self.chat_request_timeout.is_zero() {
+            anyhow::bail!("API request timeouts must be greater than zero");
+        }
+        if self.prepare_requests_per_minute == 0 || self.chat_requests_per_minute == 0 {
+            anyhow::bail!("API rate limits must be greater than zero");
+        }
+        if self.environment.is_deployed() {
+            if self.cors_allowed_origins.is_empty() {
+                anyhow::bail!("CORS_ALLOWED_ORIGINS is required in staging and production");
+            }
+            for origin in &self.cors_allowed_origins {
+                validate_cors_origin(self.environment, origin)?;
+            }
+            if !self.database_url.starts_with("postgres://")
+                && !self.database_url.starts_with("postgresql://")
+            {
+                anyhow::bail!("DATABASE_URL must use postgres:// or postgresql://");
+            }
+        }
+        if self.environment == ApiEnvironment::Production {
+            if self.run_migrations {
+                anyhow::bail!("RUN_MIGRATIONS must be false in production");
+            }
+            if self.fulltext_policy != FulltextPolicy::Strict {
+                anyhow::bail!("FULLTEXT_POLICY must be strict in production");
+            }
+            if matches!(self.llm, Some(ApiModelConfig::Deterministic { .. })) {
+                anyhow::bail!("the deterministic model provider is not allowed in production");
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_feature_configs(&self) -> anyhow::Result<()> {
         match (self.features.accounts, self.accounts.as_ref()) {
             (true, Some(accounts)) => {
                 accounts.validate()?;
@@ -802,41 +1112,27 @@ impl ApiConfig {
                 anyhow::bail!("comment configuration requires comments to be enabled")
             }
         }
-        if self.database_pool_size == 0 {
-            anyhow::bail!("DATABASE_POOL_SIZE must be greater than zero");
-        }
-        if self.max_request_bytes == 0 {
-            anyhow::bail!("API_MAX_REQUEST_BYTES must be greater than zero");
-        }
-        if self.request_timeout.is_zero() || self.chat_request_timeout.is_zero() {
-            anyhow::bail!("API request timeouts must be greater than zero");
-        }
-        if self.prepare_requests_per_minute == 0 || self.chat_requests_per_minute == 0 {
-            anyhow::bail!("API rate limits must be greater than zero");
-        }
-        if self.environment.is_deployed() {
-            if self.cors_allowed_origins.is_empty() {
-                anyhow::bail!("CORS_ALLOWED_ORIGINS is required in staging and production");
+        match (
+            self.features.account_deletion,
+            self.account_deletion.as_ref(),
+        ) {
+            (true, Some(deletion)) => deletion.validate(self.environment)?,
+            (false, None) => {}
+            (true, None) => {
+                anyhow::bail!("account-deletion configuration is required when deletion is enabled")
             }
-            for origin in &self.cors_allowed_origins {
-                validate_cors_origin(self.environment, origin)?;
-            }
-            if !self.database_url.starts_with("postgres://")
-                && !self.database_url.starts_with("postgresql://")
-            {
-                anyhow::bail!("DATABASE_URL must use postgres:// or postgresql://");
+            (false, Some(_)) => {
+                anyhow::bail!("account-deletion configuration requires deletion to be enabled")
             }
         }
-        if self.environment == ApiEnvironment::Production {
-            if self.run_migrations {
-                anyhow::bail!("RUN_MIGRATIONS must be false in production");
-            }
-            if self.fulltext_policy != FulltextPolicy::Strict {
-                anyhow::bail!("FULLTEXT_POLICY must be strict in production");
-            }
-            if matches!(self.llm, Some(ApiModelConfig::Deterministic { .. })) {
-                anyhow::bail!("the deterministic model provider is not allowed in production");
-            }
+        if self.features.accounts
+            && self
+                .accounts
+                .as_ref()
+                .and_then(|account| account.identity_fingerprints.as_ref())
+                .is_none()
+        {
+            anyhow::bail!("account APIs require ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE");
         }
         Ok(())
     }
@@ -854,6 +1150,13 @@ fn required_comments_env(name: &str) -> anyhow::Result<String> {
         .ok()
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| anyhow::anyhow!("{name} is required when comments are enabled"))
+}
+
+fn required_request_origin_env(name: &str) -> anyhow::Result<String> {
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| anyhow::anyhow!("{name} is required for shared public rate limits"))
 }
 
 fn validate_oidc_issuer_environment(
@@ -909,7 +1212,7 @@ fn validate_cors_origin(_environment: ApiEnvironment, value: &HeaderValue) -> an
 #[derive(Debug, Clone)]
 pub enum ApiModelConfig {
     Deterministic { embedding_dimension: usize },
-    OpenAiCompatible(OpenAiCompatibleConfig),
+    OpenAiCompatible(Box<OpenAiCompatibleConfig>),
 }
 
 impl ApiModelConfig {
@@ -922,6 +1225,7 @@ impl ApiModelConfig {
 }
 
 fn provider_config_from_env(
+    environment: ApiEnvironment,
     embedding_dimension: Option<usize>,
 ) -> anyhow::Result<(Option<usize>, Option<ApiModelConfig>)> {
     let demo_mode = env_bool("DEMO_MODE", true)?;
@@ -951,10 +1255,8 @@ fn provider_config_from_env(
     {
         config.base_url = Url::parse(&base_url)?;
     }
-    config.api_key = std::env::var("LLM_API_KEY")
-        .ok()
-        .filter(|key| !key.is_empty())
-        .map(SecretString::from);
+    config.require_https = environment.is_deployed();
+    config.api_key = model_api_key(environment)?;
     config.chat_model = std::env::var("LLM_CHAT_MODEL")
         .map_err(|_| anyhow::anyhow!("LLM_CHAT_MODEL is required when LLM_PROVIDER is enabled"))?;
     config.embedding_model = std::env::var("LLM_EMBEDDING_MODEL").map_err(|_| {
@@ -968,8 +1270,86 @@ fn provider_config_from_env(
     config.maximum_retries = env_parse("LLM_MAX_RETRIES", 2_usize)?;
     Ok((
         embedding_dimension,
-        Some(ApiModelConfig::OpenAiCompatible(config)),
+        Some(ApiModelConfig::OpenAiCompatible(Box::new(config))),
     ))
+}
+
+fn model_api_key(environment: ApiEnvironment) -> anyhow::Result<Option<SecretString>> {
+    let inline = std::env::var("LLM_API_KEY")
+        .ok()
+        .filter(|value| !value.is_empty());
+    let file = std::env::var("LLM_API_KEY_FILE")
+        .ok()
+        .filter(|value| !value.is_empty());
+    validate_model_api_key_sources(environment, inline.is_some(), file.is_some())?;
+    if let Some(path) = file {
+        return Ok(Some(SecretString::from(read_model_api_key_file(
+            Path::new(&path),
+        )?)));
+    }
+    Ok(inline.map(SecretString::from))
+}
+
+fn validate_model_api_key_sources(
+    environment: ApiEnvironment,
+    has_inline: bool,
+    has_file: bool,
+) -> anyhow::Result<()> {
+    if has_inline && has_file {
+        anyhow::bail!("set only one of LLM_API_KEY or LLM_API_KEY_FILE");
+    }
+    if environment.is_deployed() && has_inline {
+        anyhow::bail!("LLM_API_KEY_FILE is required instead of LLM_API_KEY in deployed APIs");
+    }
+    Ok(())
+}
+
+fn read_model_api_key_file(path: &Path) -> anyhow::Result<String> {
+    let path_metadata = fs::symlink_metadata(path)
+        .map_err(|error| anyhow::anyhow!("could not read LLM_API_KEY_FILE metadata: {error}"))?;
+    if path_metadata.file_type().is_symlink() || !path_metadata.is_file() {
+        anyhow::bail!("LLM_API_KEY_FILE must reference a regular non-symlink file");
+    }
+    let mut file = fs::File::open(path)
+        .map_err(|error| anyhow::anyhow!("could not open LLM_API_KEY_FILE: {error}"))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| anyhow::anyhow!("could not read opened LLM_API_KEY_FILE: {error}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        if path_metadata.dev() != metadata.dev() || path_metadata.ino() != metadata.ino() {
+            anyhow::bail!("LLM_API_KEY_FILE changed while it was opened");
+        }
+        if metadata.mode() & 0o077 != 0 {
+            anyhow::bail!("LLM_API_KEY_FILE must not be accessible by group or others");
+        }
+    }
+    if !(1..=16_384).contains(&metadata.len()) {
+        anyhow::bail!("LLM_API_KEY_FILE must contain 1 to 16384 bytes");
+    }
+    let expected_length = metadata.len();
+    let mut bytes = Vec::with_capacity(usize::try_from(expected_length).unwrap_or(16_384));
+    (&mut file)
+        .take(16_385)
+        .read_to_end(&mut bytes)
+        .map_err(|error| anyhow::anyhow!("could not read LLM_API_KEY_FILE: {error}"))?;
+    let final_metadata = file
+        .metadata()
+        .map_err(|error| anyhow::anyhow!("could not recheck LLM_API_KEY_FILE: {error}"))?;
+    if final_metadata.len() != expected_length
+        || u64::try_from(bytes.len()).ok() != Some(expected_length)
+    {
+        anyhow::bail!("LLM_API_KEY_FILE changed while it was read");
+    }
+    let value = String::from_utf8(bytes)
+        .map_err(|_| anyhow::anyhow!("LLM_API_KEY_FILE must contain UTF-8"))?
+        .trim_end_matches(['\r', '\n'])
+        .to_owned();
+    if value.is_empty() || value.trim() != value || value.chars().any(char::is_control) {
+        anyhow::bail!("LLM_API_KEY_FILE must contain one non-blank line");
+    }
+    Ok(value)
 }
 
 fn env_parse<T>(name: &str, default: T) -> anyhow::Result<T>
@@ -1045,6 +1425,7 @@ mod tests {
                 library_writes: false,
                 comments: false,
                 comment_creation: false,
+                account_deletion: false,
             }
             .validate()
             .is_err()
@@ -1056,6 +1437,7 @@ mod tests {
                 library_writes: false,
                 comments: true,
                 comment_creation: false,
+                account_deletion: false,
             }
             .validate()
             .is_err()
@@ -1067,6 +1449,7 @@ mod tests {
                 library_writes: true,
                 comments: true,
                 comment_creation: true,
+                account_deletion: true,
             }
             .validate()
             .is_ok()
@@ -1078,6 +1461,7 @@ mod tests {
                 library_writes: true,
                 comments: false,
                 comment_creation: false,
+                account_deletion: false,
             }
             .validate()
             .is_err()
@@ -1089,6 +1473,7 @@ mod tests {
                 library_writes: false,
                 comments: false,
                 comment_creation: true,
+                account_deletion: false,
             }
             .validate()
             .is_err()
@@ -1096,19 +1481,24 @@ mod tests {
     }
 
     #[test]
-    fn comment_origin_scope_is_keyed_canonical_and_never_contains_the_address() {
-        let first = CommentFeatureConfig::for_test("a-strong-random-development-secret-0123456789")
-            .unwrap();
-        let second =
-            CommentFeatureConfig::for_test("another-strong-random-development-secret-987654321")
-                .unwrap();
-        let replica =
-            CommentFeatureConfig::for_test("a-strong-random-development-secret-0123456789")
-                .unwrap();
+    fn request_origin_scope_is_keyed_canonical_and_never_contains_the_address() {
+        let first = RequestOriginConfig::for_local_development(
+            "a-strong-random-development-secret-0123456789",
+        )
+        .unwrap();
+        let second = RequestOriginConfig::for_local_development(
+            "another-strong-random-development-secret-987654321",
+        )
+        .unwrap();
+        let replica = RequestOriginConfig::for_local_development(
+            "a-strong-random-development-secret-0123456789",
+        )
+        .unwrap();
         let address = "203.0.113.7:12345".parse().unwrap();
         let same_ip_other_port = "203.0.113.7:54321".parse().unwrap();
         let mapped = "[::ffff:203.0.113.7]:12345".parse().unwrap();
-        let scope = first.origin_scope(address);
+        let headers = HeaderMap::new();
+        let scope = first.scope(&headers, address);
         assert_eq!(scope.len(), 64);
         assert!(
             scope
@@ -1116,21 +1506,93 @@ mod tests {
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
         );
         assert!(!scope.contains("203.0.113.7"));
-        assert_eq!(scope, first.origin_scope(same_ip_other_port));
-        assert_eq!(scope, first.origin_scope(mapped));
-        assert_eq!(scope, replica.origin_scope(address));
-        assert_ne!(scope, second.origin_scope(address));
+        assert_eq!(scope, first.scope(&headers, same_ip_other_port));
+        assert_eq!(scope, first.scope(&headers, mapped));
+        assert_eq!(scope, replica.scope(&headers, address));
+        assert_ne!(scope, second.scope(&headers, address));
         let debug = format!("{first:?}");
         assert!(!debug.contains("development-secret"));
         assert!(debug.contains("origin_hasher: \"[redacted]\""));
-        assert!(debug.contains("maximum_comment_scalars: 2000"));
-        assert!(debug.contains("maximum_comment_bytes: 8000"));
-        assert!(debug.contains("maximum_comment_urls: 3"));
-        assert!(debug.contains("moderation_provider: Rules"));
-        assert!(debug.contains("https://pakperk.app/support"));
 
-        assert!(CommentFeatureConfig::for_test("change-me-change-me-change-me-change-me").is_err());
-        assert!(CommentFeatureConfig::for_test(&"x".repeat(64)).is_err());
+        assert!(
+            RequestOriginConfig::for_local_development("change-me-change-me-change-me-change-me")
+                .is_err()
+        );
+        assert!(RequestOriginConfig::for_local_development(&"x".repeat(64)).is_err());
+    }
+
+    #[test]
+    fn trusted_proxy_chain_uses_the_rightmost_untrusted_address() {
+        let mut config = RequestOriginConfig::for_local_development(
+            "a-strong-random-development-secret-0123456789",
+        )
+        .unwrap();
+        config.trusted_proxy_networks = parse_trusted_proxy_networks(
+            Some("10.244.0.0/16,10.0.0.0/24,2001:db8:abcd::/48"),
+            ApiEnvironment::Development,
+        )
+        .unwrap();
+
+        let peer = "10.244.7.8:43123".parse().unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            "203.0.113.99, 198.51.100.24, 10.0.0.9".parse().unwrap(),
+        );
+        assert_eq!(
+            config.client_origin_address(&headers, peer),
+            "198.51.100.24".parse::<IpAddr>().unwrap()
+        );
+
+        let untrusted_peer = "192.0.2.10:43123".parse().unwrap();
+        assert_eq!(
+            config.client_origin_address(&headers, untrusted_peer),
+            "192.0.2.10".parse::<IpAddr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn malformed_forwarding_metadata_falls_back_to_the_direct_peer() {
+        let mut config = RequestOriginConfig::for_local_development(
+            "a-strong-random-development-secret-0123456789",
+        )
+        .unwrap();
+        config.trusted_proxy_networks =
+            parse_trusted_proxy_networks(Some("10.244.0.0/16"), ApiEnvironment::Development)
+                .unwrap();
+        let peer = "10.244.7.8:43123".parse().unwrap();
+        for value in ["not-an-address", "198.51.100.2,", "198.51.100.2:1234"] {
+            let mut headers = HeaderMap::new();
+            headers.insert("x-forwarded-for", value.parse().unwrap());
+            assert_eq!(
+                config.client_origin_address(&headers, peer),
+                "10.244.7.8".parse::<IpAddr>().unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn trusted_proxy_cidrs_are_bounded_canonical_and_not_internet_wide() {
+        assert!(
+            parse_trusted_proxy_networks(None, ApiEnvironment::Development)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(parse_trusted_proxy_networks(None, ApiEnvironment::Staging).is_err());
+        for invalid in [
+            "0.0.0.0/0",
+            "::/0",
+            "10.244.1.1/16",
+            "10.244.0.0/33",
+            "::ffff:10.244.0.0/120",
+            "10.244.0.0/16,10.244.0.0/16",
+            "10.244.0.0/16,",
+        ] {
+            assert!(
+                parse_trusted_proxy_networks(Some(invalid), ApiEnvironment::Development).is_err(),
+                "accepted invalid trusted proxy list: {invalid}"
+            );
+        }
     }
 
     #[test]
@@ -1252,7 +1714,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn comment_origin_secret_file_is_bounded_owner_only_and_not_a_symlink() {
+    fn request_origin_secret_file_is_bounded_owner_only_and_not_a_symlink() {
         use std::{
             fs::OpenOptions,
             io::Write as _,
@@ -1260,7 +1722,7 @@ mod tests {
         };
 
         let path = std::env::temp_dir().join(format!(
-            "pakperk-comment-origin-secret-{}",
+            "pakperk-request-origin-secret-{}",
             uuid::Uuid::now_v7()
         ));
         let mut file = OpenOptions::new()
@@ -1272,17 +1734,66 @@ mod tests {
         file.write_all(b"owner-only-random-secret-material-0123456789")
             .unwrap();
         drop(file);
-        assert!(CommentOriginHasher::from_file(&path).is_ok());
+        assert!(RequestOriginHasher::from_file(&path).is_ok());
 
         let link = path.with_extension("link");
         std::os::unix::fs::symlink(&path, &link).unwrap();
-        assert!(CommentOriginHasher::from_file(&link).is_err());
+        assert!(RequestOriginHasher::from_file(&link).is_err());
         fs::remove_file(link).unwrap();
 
         fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
-        assert!(CommentOriginHasher::from_file(&path).is_ok());
+        assert!(RequestOriginHasher::from_file(&path).is_ok());
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
-        assert!(CommentOriginHasher::from_file(&path).is_err());
+        assert!(RequestOriginHasher::from_file(&path).is_err());
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn deployed_model_credentials_require_the_file_boundary() {
+        assert!(validate_model_api_key_sources(ApiEnvironment::Development, true, false).is_ok());
+        assert!(validate_model_api_key_sources(ApiEnvironment::Production, false, true).is_ok());
+        assert!(validate_model_api_key_sources(ApiEnvironment::Staging, true, false).is_err());
+        assert!(validate_model_api_key_sources(ApiEnvironment::Production, true, true).is_err());
+    }
+
+    #[test]
+    fn deployed_api_model_configuration_requires_https() {
+        assert!(ApiEnvironment::Staging.is_deployed());
+        assert!(ApiEnvironment::Production.is_deployed());
+        assert!(!ApiEnvironment::Development.is_deployed());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn model_api_key_file_is_owner_only_bounded_and_not_a_symlink() {
+        use std::{
+            fs::OpenOptions,
+            io::Write as _,
+            os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _},
+        };
+
+        let path =
+            std::env::temp_dir().join(format!("pakperk-model-api-key-{}", uuid::Uuid::now_v7()));
+        let mut file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o600)
+            .open(&path)
+            .unwrap();
+        file.write_all(b"owner-only-model-credential\n").unwrap();
+        drop(file);
+        assert_eq!(
+            read_model_api_key_file(&path).unwrap(),
+            "owner-only-model-credential"
+        );
+
+        let link = path.with_extension("link");
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        assert!(read_model_api_key_file(&link).is_err());
+        fs::remove_file(link).unwrap();
+
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(read_model_api_key_file(&path).is_err());
         fs::remove_file(path).unwrap();
     }
 
@@ -1422,6 +1933,13 @@ mod tests {
             accounts: None,
             library: None,
             comments: None,
+            account_deletion: None,
+            request_origin: RequestOriginConfig::for_local_development(
+                "production-config-request-origin-secret-0123456789",
+            )
+            .unwrap()
+            .with_trusted_proxy_cidrs("10.244.0.0/16")
+            .unwrap(),
             bind: "0.0.0.0:8080".parse().unwrap(),
             database_url: "postgresql://api@database/pakperk".to_owned(),
             database_pool_size: 10,

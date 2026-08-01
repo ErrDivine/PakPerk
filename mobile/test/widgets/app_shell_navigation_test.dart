@@ -198,6 +198,43 @@ void main() {
     );
   });
 
+  testWidgets(
+    'accounts-off auth and deletion links stay public and restore safely',
+    (tester) async {
+      await _pumpApp(
+        tester,
+        repository: _repositoryFor([samplePaper]),
+        restoration: const AppRestorationState(),
+      );
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PakPerkApp)),
+      );
+
+      container.read(pakPerkRouterProvider).go(PakPerkRoutes.auth);
+      await tester.pumpAndSettle();
+      expect(find.text('Accounts are not enabled'), findsWidgets);
+      expect(tester.takeException(), isNull);
+
+      container.read(pakPerkRouterProvider).go(PakPerkRoutes.youAccountDelete);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('account-deletion-disabled')),
+        findsOneWidget,
+      );
+      expect(find.text('Read the deletion policy'), findsOneWidget);
+      expect(find.text('Use the web deletion request'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.restartAndRestore();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('account-deletion-disabled')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('validated public paper link opens Read on Abstract', (
     tester,
   ) async {
@@ -273,8 +310,9 @@ void main() {
     container.read(pakPerkRouterProvider).go('https://pakperk.app$route');
     await tester.pumpAndSettle();
 
-    expect(repository.paperByArxivCalls, 1);
-    expect(repository.lastArxivId, 'hep-th/9901001v3');
+    // The exact legacy identifier is already in the cached feed, so routing
+    // resolves locally without an unnecessary exact-lookup request.
+    expect(repository.paperByArxivCalls, 0);
     expect(find.text('Legacy arXiv paper'), findsWidgets);
     _expectAbstractSelected();
     expect(

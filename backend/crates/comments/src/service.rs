@@ -1,4 +1,8 @@
-use std::{fmt, sync::Arc, time::Duration};
+use std::{
+    fmt,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use db::{
     CommentCreateOutcome, CommentCreatePrecondition, CommentCreateResolution,
@@ -14,6 +18,7 @@ use domain::{
     TermsVersion,
 };
 use moderation::{ContentModerator, ModerationDecision, ModerationInput, ModerationReasonCode};
+use observability::{ModerationDecisionOutcome, record_moderation_decision};
 use serde::Serialize;
 use thiserror::Error;
 use uuid::Uuid;
@@ -145,8 +150,8 @@ pub enum CommentServiceConfigError {
 pub struct CreateCommentRequest {
     pub client_request_id: Uuid,
     pub body: String,
-    /// Lowercase hexadecimal SHA-256 of the trusted direct peer address under
-    /// a server-only secret. Raw network/device identifiers are rejected.
+    /// Lowercase hexadecimal SHA-256 of the API-resolved client origin under a
+    /// server-only secret. Raw network/device identifiers are rejected.
     pub origin_scope: String,
 }
 
@@ -715,13 +720,26 @@ impl CommentService {
         &self,
         body: CommentBody,
     ) -> Result<(domain::CommentStatus, Option<ModerationReasonCode>), CommentServiceError> {
-        let decision = match self.moderator.evaluate(ModerationInput::new(body)).await {
-            Ok(decision) => decision,
-            Err(_) => ModerationDecision::PendingReview {
-                reason_code: ModerationReasonCode::parse("moderator_unavailable")
-                    .map_err(|_| CommentServiceError::ContentRejected)?,
-            },
+        let started = Instant::now();
+        let (decision, outcome) = match self.moderator.evaluate(ModerationInput::new(body)).await {
+            Ok(decision @ ModerationDecision::Publish) => {
+                (decision, ModerationDecisionOutcome::Publish)
+            }
+            Ok(decision @ ModerationDecision::PendingReview { .. }) => {
+                (decision, ModerationDecisionOutcome::PendingReview)
+            }
+            Ok(decision @ ModerationDecision::Reject { .. }) => {
+                (decision, ModerationDecisionOutcome::Reject)
+            }
+            Err(_) => (
+                ModerationDecision::PendingReview {
+                    reason_code: ModerationReasonCode::parse("moderator_unavailable")
+                        .map_err(|_| CommentServiceError::ContentRejected)?,
+                },
+                ModerationDecisionOutcome::ProviderUnavailable,
+            ),
         };
+        record_moderation_decision(outcome, started.elapsed());
         match decision {
             ModerationDecision::Publish => Ok((domain::CommentStatus::Published, None)),
             ModerationDecision::PendingReview { reason_code } => {

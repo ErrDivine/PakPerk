@@ -1,5 +1,7 @@
 import 'dart:developer' as developer;
 
+import '../../core/telemetry/telemetry.dart';
+
 /// Content-free counters emitted by the predictive feed cache.
 enum FeedPrefetchMetric {
   requested('feed_prefetch_requested'),
@@ -57,5 +59,32 @@ class DeveloperFeedPrefetchTelemetry implements FeedPrefetchTelemetry {
         if (event.attempt case final attempt?) 'attempt': attempt,
       },
     );
+  }
+}
+
+/// Bridges the existing closed feed metrics into the provider-neutral sink
+/// while retaining local timeline diagnostics.
+final class PakPerkFeedPrefetchTelemetry implements FeedPrefetchTelemetry {
+  const PakPerkFeedPrefetchTelemetry({
+    required this.sink,
+    this.timeline = const DeveloperFeedPrefetchTelemetry(),
+  });
+
+  final TelemetrySink sink;
+  final FeedPrefetchTelemetry timeline;
+
+  @override
+  void record(FeedPrefetchEvent event) {
+    timeline.record(event);
+    final name = switch (event.metric) {
+      FeedPrefetchMetric.nextPaperCacheHit =>
+        PakPerkTelemetryEvent.nextPaperCacheHit,
+      FeedPrefetchMetric.nextPaperCacheMiss =>
+        PakPerkTelemetryEvent.nextPaperCacheMiss,
+      _ => null,
+    };
+    if (name != null) {
+      emitTelemetry(sink, name, const {'cache_tier': 'device'});
+    }
   }
 }

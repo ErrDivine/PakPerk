@@ -1,0 +1,73 @@
+{{- if .Values.grobid.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pakperk.fullname" . }}-grobid
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grobid
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy: { type: Recreate }
+  selector:
+    matchLabels:
+      {{- include "pakperk.componentLabels" (dict "root" . "component" "grobid") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "pakperk.componentLabels" (dict "root" . "component" "grobid") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "pakperk.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      imagePullSecrets: {{ toYaml .Values.imagePullSecrets | nindent 8 }}
+      containers:
+        - name: grobid
+          image: {{ printf "%s@%s" .Values.grobid.image.repository .Values.grobid.image.digest }}
+          imagePullPolicy: {{ .Values.grobid.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8070, protocol: TCP }
+          readinessProbe:
+            httpGet: { path: /api/isalive, port: http }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            httpGet: { path: /api/isalive, port: http }
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 4
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities: { drop: ["ALL"] }
+          resources: {{ toYaml .Values.grobid.resources | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pakperk.fullname" . }}-grobid
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grobid
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "pakperk.componentLabels" (dict "root" . "component" "grobid") | nindent 4 }}
+  ports:
+    - { name: http, port: 8070, targetPort: http, protocol: TCP }
+{{- end }}

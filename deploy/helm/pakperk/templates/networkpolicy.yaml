@@ -1,0 +1,236 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pakperk.fullname" . }}-api
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "pakperk.componentLabels" (dict "root" . "component" "api") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {{ toYaml .Values.networkPolicy.ingressController.namespaceSelector | nindent 14 }}
+          podSelector:
+            matchLabels: {{ toYaml .Values.networkPolicy.ingressController.podSelector | nindent 14 }}
+      ports: [{ protocol: TCP, port: 8080 }]
+  egress:
+    {{- include "pakperk.dnsEgress" . | nindent 4 }}
+    {{- include "pakperk.databaseEgress" . | nindent 4 }}
+    {{- include "pakperk.apiHttpsEgress" . | nindent 4 }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "pakperk.componentLabels" (dict "root" . "component" "otel-collector") | nindent 14 }}
+      ports: [{ protocol: TCP, port: 4317 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pakperk.fullname" . }}-site
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "pakperk.componentLabels" (dict "root" . "component" "site") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {{ toYaml .Values.networkPolicy.ingressController.namespaceSelector | nindent 14 }}
+          podSelector:
+            matchLabels: {{ toYaml .Values.networkPolicy.ingressController.podSelector | nindent 14 }}
+      ports: [{ protocol: TCP, port: 8080 }]
+  # Static files make no server-side network calls; API and OIDC requests are
+  # made by the visitor's browser, not by this pod.
+  egress: []
+{{- if .Values.telemetryGateway.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pakperk.fullname" . }}-telemetry-gateway
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "pakperk.componentLabels" (dict "root" . "component" "telemetry-gateway") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {{ toYaml .Values.networkPolicy.ingressController.namespaceSelector | nindent 14 }}
+          podSelector:
+            matchLabels: {{ toYaml .Values.networkPolicy.ingressController.podSelector | nindent 14 }}
+      ports: [{ protocol: TCP, port: 8080 }]
+  egress:
+    {{- include "pakperk.dnsEgress" . | nindent 4 }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "pakperk.componentLabels" (dict "root" . "component" "otel-collector") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 4317 }
+        - { protocol: TCP, port: 4318 }
+{{- end }}
+{{- if .Values.paperWorker.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pakperk.fullname" . }}-paper-worker
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "pakperk.componentLabels" (dict "root" . "component" "paper-worker") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    {{- include "pakperk.dnsEgress" . | nindent 4 }}
+    {{- include "pakperk.databaseEgress" . | nindent 4 }}
+    {{- include "pakperk.paperHttpsEgress" . | nindent 4 }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "pakperk.componentLabels" (dict "root" . "component" "grobid") | nindent 14 }}
+      ports: [{ protocol: TCP, port: 8070 }]
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "pakperk.componentLabels" (dict "root" . "component" "otel-collector") | nindent 14 }}
+      ports: [{ protocol: TCP, port: 4317 }]
+{{- end }}
+{{- if .Values.metadataSync.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pakperk.fullname" . }}-metadata-sync
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "pakperk.componentLabels" (dict "root" . "component" "metadata-sync") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    {{- include "pakperk.dnsEgress" . | nindent 4 }}
+    {{- include "pakperk.databaseEgress" . | nindent 4 }}
+    {{- include "pakperk.paperHttpsEgress" . | nindent 4 }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "pakperk.componentLabels" (dict "root" . "component" "grobid") | nindent 14 }}
+      ports: [{ protocol: TCP, port: 8070 }]
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "pakperk.componentLabels" (dict "root" . "component" "otel-collector") | nindent 14 }}
+      ports: [{ protocol: TCP, port: 4317 }]
+{{- end }}
+{{- if .Values.deletionWorker.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pakperk.fullname" . }}-deletion-worker
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "pakperk.componentLabels" (dict "root" . "component" "deletion-worker") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    {{- include "pakperk.dnsEgress" . | nindent 4 }}
+    {{- include "pakperk.databaseEgress" . | nindent 4 }}
+    {{- include "pakperk.identityAdminHttpsEgress" . | nindent 4 }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "pakperk.componentLabels" (dict "root" . "component" "otel-collector") | nindent 14 }}
+      ports: [{ protocol: TCP, port: 4317 }]
+{{- end }}
+{{- if .Values.migration.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pakperk.fullname" . }}-migration
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "pakperk.componentLabels" (dict "root" . "component" "migration") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    {{- include "pakperk.dnsEgress" . | nindent 4 }}
+    {{- include "pakperk.databaseEgress" . | nindent 4 }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "pakperk.componentLabels" (dict "root" . "component" "otel-collector") | nindent 14 }}
+      ports: [{ protocol: TCP, port: 4317 }]
+{{- end }}
+{{- if .Values.grobid.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pakperk.fullname" . }}-grobid
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "pakperk.componentLabels" (dict "root" . "component" "grobid") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values: [paper-worker, metadata-sync]
+      ports: [{ protocol: TCP, port: 8070 }]
+  egress: []
+{{- end }}
+{{- if .Values.otelCollector.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pakperk.fullname" . }}-otel-collector
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "pakperk.componentLabels" (dict "root" . "component" "otel-collector") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values: [api, telemetry-gateway, paper-worker, metadata-sync, deletion-worker, migration]
+      ports:
+        - { protocol: TCP, port: 4317 }
+        - { protocol: TCP, port: 4318 }
+  egress:
+    {{- include "pakperk.dnsEgress" . | nindent 4 }}
+    {{- include "pakperk.telemetryEgress" . | nindent 4 }}
+{{- end }}
+{{- end }}

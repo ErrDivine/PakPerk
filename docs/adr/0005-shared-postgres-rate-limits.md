@@ -1,6 +1,6 @@
 # ADR 0005: Shared PostgreSQL rate limits
 
-**Status:** Accepted — Phase 3 foundation implemented; later buckets pending
+**Status:** Accepted — implemented through Phase 6
 **Date:** 2026-07-31
 
 ## Context
@@ -20,19 +20,22 @@ synchronization records. Apply edge reverse-proxy limits as an additional
 coarse abuse control, not as the sole application limit. Return the stable
 `RATE_LIMITED` error and `Retry-After`.
 
-Initial buckets cover comment creation (user and IP/device), comment edits,
-reports (user and target), profile updates, library mutations, account deletion,
-and eventually current prepare/chat behavior. The limiter never relies only on
-the client-supplied anonymous session ID.
+Initial buckets cover comment creation (user and keyed request origin), comment
+edits, reports (user, target, and keyed request origin), profile updates,
+library mutations, account deletion, and anonymous preparation/chat. The
+public preparation/chat limiter always consumes a keyed origin bucket and may
+also consume an anonymous-session bucket; it never relies only on the
+client-supplied session ID.
 
-## Phase 3 implementation status
+## Implementation status
 
 Phase 3 adds the shared PostgreSQL bucket table, atomic fixed-window repository,
 bounded cleanup operation, and the first `profile_update` per-user bucket. A
 denied profile update maps to the stable `RATE_LIMITED` error and a
-delta-seconds `Retry-After` value. This is the common foundation, not the end of
-the decision: library, comments, reports, account deletion, and migration of
-the existing prepare/chat limits remain owned by their later phases.
+delta-seconds `Retry-After` value. Phases 4–6 extend that foundation to library,
+comments/reports, account deletion, and preparation/chat. Public-operation and
+comment origin scopes use the shared trusted-proxy boundary and one generic,
+owner-only HMAC key; database failures fail these protected actions closed.
 
 ## Consequences
 

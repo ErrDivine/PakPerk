@@ -1,0 +1,90 @@
+environment: staging
+
+image:
+  repository: ghcr.io/pakperk/pakperk
+  digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+siteImage:
+  repository: ghcr.io/pakperk/pakperk-site
+  digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+secret:
+  existingSecret: pakperk-staging-runtime
+  rotationVersion: "2026-07-31-r1"
+
+public:
+  siteOrigin: https://staging.pakperk.app
+  apiOrigin: https://api.staging.pakperk.app
+  mobileTelemetryOrigin: https://telemetry.staging.pakperk.app
+  oidcOrigin: https://identity.staging.pakperk.app
+  oidcIssuer: https://identity.staging.pakperk.app/realms/pakperk
+  oidcAudience: pakperk-api-staging
+  oidcWebClientId: pakperk-web-deletion-staging
+  oidcNativeClientId: pakperk-mobile-staging
+  supportEmail: support@pakperk.app
+  documentVersion: "2026-07-31"
+
+# Render-only signing-association fixture. These are deliberately not release
+# credentials and this values file must never be deployed.
+mobileAssociations:
+  androidPackageName: app.pakperk.pakperk.staging
+  androidSha256Fingerprints:
+    - "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF"
+  appleTeamId: ZZZZZZZZZZ
+  appleBundleId: app.pakperk.pakperk.staging
+
+policy:
+  fulltext: strict
+  termsVersion: "2026-07-31"
+  communityGuidelinesVersion: "2026-07-31"
+
+api:
+  # Render-only example. A deployment must use the source CIDRs actually
+  # observed from its ingress-controller pods.
+  trustedProxyCidrs: [10.244.0.0/16]
+
+paperWorker:
+  arxivContactEmail: research-ops@pakperk.app
+  llmBaseUrl: https://model.staging.pakperk.app/v1/
+  llmChatModel: staging-chat
+  llmEmbeddingModel: staging-embedding
+
+deletionLedger:
+  existingClaim: pakperk-staging-deletion-ledger
+  environmentId: staging
+
+deletionWorker:
+  keycloakAdminBaseUrl: https://identity.staging.pakperk.app/
+  keycloakRealm: pakperk
+  keycloakAdminClientId: pakperk-deletion-worker-staging
+
+migration:
+  confirmBackupId: staging-backup-contract-fixture
+
+metadataSync:
+  manifestJson: |
+    {
+      "schema_version": 1,
+      "topic": "Pakperk staging metadata sync",
+      "papers": [{"arxiv_id":"1706.03762","prepared":false,"highlight":false}]
+    }
+
+grobid:
+  image:
+    digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+
+otelCollector:
+  exporterEndpoint: https://telemetry-upstream.staging.pakperk.app:4317
+
+ingress:
+  className: nginx
+  tlsSecretName: pakperk-staging-tls
+  siteHost: staging.pakperk.app
+  apiHost: api.staging.pakperk.app
+  telemetryHost: telemetry.staging.pakperk.app
+
+networkPolicy:
+  apiHttpsCidrs: [203.0.113.10/32]
+  paperHttpsCidrs: [203.0.113.20/32]
+  identityAdminHttpsCidrs: [203.0.113.30/32]
+  databaseCidrs: [198.51.100.10/32]
+  telemetryCidrs: [192.0.2.40/32]

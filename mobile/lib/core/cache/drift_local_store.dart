@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../content_policy.dart';
 import '../database/app_database.dart';
+import '../database/account_cache_dao.dart';
 import '../database/cache_maintenance_dao.dart';
 import '../database/derived_cache_dao.dart';
 import '../database/feed_cache_dao.dart';
@@ -188,6 +189,10 @@ class DriftLocalStore
     await _restoration.waitForWrites();
     await database.close();
   }
+
+  @override
+  Future<void> purgeAccountDeletionCommentSnapshots() =>
+      AccountCacheDao(database).purgeCommentPagesForAccountDeletion();
 
   @override
   Future<String> getOrCreateSessionId() => _preferences.getOrCreateSessionId();

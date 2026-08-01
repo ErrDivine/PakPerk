@@ -21,7 +21,10 @@ and its [documentation entrypoint](docs/production-v0.0-plan.md).
 
 ## Production migration status
 
-Phases 0–5 are complete and accepted. Phase 3 OIDC account integration is
+Phases 0–5 are complete and accepted. The Phase 6 repository implementation is
+present as a dark-launched release candidate; live restore, deployment,
+physical-device, signing/store, performance, crash-window, and legal approvals
+remain external release blockers. Phase 3 OIDC account integration is
 [accepted](docs/phase-reports/phase-3.md), and Phase 4 To Read synchronization
 is [accepted](docs/phase-reports/phase-4.md) with its exact server/mobile
 contract in [the To Read synchronization document](docs/library-sync.md).
@@ -38,9 +41,13 @@ light/dark design tokens, native launch assets, a bounded cached-first opening
 transition, a relational cache-ahead feed, and the account session/onboarding
 foundation plus an offline-first synchronized To Read list, account-scoped
 comment drafts/pages/blocks, and guest/authenticated discussion surfaces.
-Account, library, and comment controls remain off by default. Account deletion,
-hosted policy/support pages, release telemetry, and production operations remain
-the Phase 6 public-launch gate.
+Account, library, comment, and deletion controls remain off by default. The
+recent-auth deletion API/mobile/web flow, dedicated provider-deletion worker,
+independent signed restore ledger, hosted policy/support site, validating mobile
+telemetry gateway, OTLP deployment, Helm topology, security/SBOM jobs, signed
+candidate workflow, and operational runbooks are implemented. The
+[Phase 6 report](docs/phase-reports/phase-6.md) distinguishes repository evidence
+from the public/store/deployed evidence that is still required.
 
 The accepted Phase 4 API uses authenticated list/change/save/remove routes with durable
 operation IDs, server revisions, removal tombstones, and an independent
@@ -56,7 +63,8 @@ blocking, and audited moderator actions; and never places comment/report text in
 ordinary diagnostics. `COMMENTS_ENABLED` registers the surface, while
 `COMMENT_CREATION_ENABLED` can stop only new publication without disabling
 reading, author removal, reporting, blocking, or moderation. Public deployment
-must keep creation off until Phase 6 closes the deletion and operational gates.
+must keep creation off until its deletion, moderation, telemetry, legal,
+restore, and store-review evidence is approved.
 
 The demo baseline is frozen at the annotated `production-v0.0-baseline` tag.
 Architecture choices for OIDC, Drift, stateful navigation, comments, and shared
@@ -71,6 +79,7 @@ with pgvector 0.8.2 and the CPU-friendly GROBID 0.9.0 CRF image.
 ```bash
 cp .env.example .env
 # Edit .env and replace ARXIV_CONTACT_EMAIL with a monitored, real address.
+./scripts/prepare_dev_api_origin_secret.sh
 docker compose up -d --build
 ```
 
@@ -106,12 +115,15 @@ issuer. For the reference topology, run the API on the host (and do not also
 start the Compose `api` service):
 
 ```bash
+./scripts/prepare_dev_account_secrets.sh
 set -a
 source .env
 set +a
 ACCOUNTS_ENABLED=true \
 DATABASE_URL=postgres://pakperk:pakperk@127.0.0.1:5432/pakperk \
 OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
+API_ORIGIN_HASH_SECRET_FILE="$PWD/.local/pakperk-secrets/API_ORIGIN_HASH_SECRET" \
+ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE="$PWD/.local/pakperk-secrets/ACCOUNT_IDENTITY_FINGERPRINT_KEYS" \
 API_BIND=127.0.0.1:8080 \
 cargo run --manifest-path backend/Cargo.toml -p pakperk-api
 ```
@@ -151,7 +163,10 @@ toolchain.
 ```bash
 cd mobile
 flutter pub get
-flutter run --dart-define=PAKPERK_API_BASE_URL=http://localhost:8080
+flutter run \
+  --flavor dev \
+  --dart-define=PAKPERK_ENV=development \
+  --dart-define=PAKPERK_API_BASE_URL=http://localhost:8080
 ```
 
 Use `http://10.0.2.2:8080` from an Android emulator. The app starts with its
@@ -335,7 +350,7 @@ These operations require an OIDC bearer token. Both return a private account
 envelope and strong `"profile-N"` ETag; `PATCH` requires the matching
 `If-Match` value. The routes are absent when accounts are disabled.
 
-With the corresponding default-off Phase 4/5 flags enabled, the API also
+With the corresponding default-off Phase 4–6 flags enabled, the API also
 registers:
 
 ```text
@@ -353,12 +368,15 @@ GET    /v1/me/comments
 GET    /v1/me/blocked-users
 PUT    /v1/me/blocked-users/{user_id}
 DELETE /v1/me/blocked-users/{user_id}
+DELETE /v1/me
+GET    /v1/me/deletion-verification
 ```
 
-Library and personalized comment responses are private/no-store. Library
+Library, personalized comment, and deletion responses are private/no-store. Library
 mutations use an `Idempotency-Key`; comment creation carries its durable client
-request ID in the strict JSON body. `DELETE /v1/me` remains unpublished until
-the Phase 6 provider-deletion and retention lifecycle is complete.
+request ID in the strict JSON body. Deletion routes register only when
+`ACCOUNT_DELETION_ENABLED=true`; they require recent authentication and the
+durable worker/ledger/provider configuration to pass startup.
 
 Development and staging also expose `GET /openapi.json`. The reviewed artifact
 is checked in at [`docs/openapi-v1.json`](docs/openapi-v1.json). Regenerate and

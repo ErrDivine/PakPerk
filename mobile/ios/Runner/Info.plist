@@ -7,7 +7,7 @@
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
 		<key>CFBundleDisplayName</key>
-		<string>PakPerk</string>
+		<string>$(PAKPERK_DISPLAY_NAME)</string>
 		<key>CFBundleExecutable</key>
 		<string>$(EXECUTABLE_NAME)</string>
 		<key>CFBundleIdentifier</key>
@@ -30,11 +30,11 @@
 				<key>CFBundleTypeRole</key>
 				<string>Viewer</string>
 				<key>CFBundleURLName</key>
-				<string>app.pakperk.pakperk</string>
+				<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 				<key>CFBundleURLSchemes</key>
 				<array>
 					<string>pakperk</string>
-					<string>pakperk-auth</string>
+					<string>$(PAKPERK_AUTH_CALLBACK_SCHEME)</string>
 				</array>
 			</dict>
 		</array>
@@ -42,17 +42,6 @@
 		<true/>
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
-		<key>NSAppTransportSecurity</key>
-		<dict>
-			<key>NSExceptionDomains</key>
-			<dict>
-				<key>localhost</key>
-				<dict>
-					<key>NSExceptionAllowsInsecureHTTPLoads</key>
-					<true/>
-				</dict>
-			</dict>
-		</dict>
 		<key>UIApplicationSceneManifest</key>
 		<dict>
 			<key>UIApplicationSupportsMultipleScenes</key>

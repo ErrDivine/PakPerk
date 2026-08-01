@@ -7,6 +7,9 @@ target/
 backend/target/
 mobile/.dart_tool/
 mobile/build/
+site/node_modules/
+site/test-results/
+site/playwright-report/
 mobile/.flutter-plugins
 mobile/.flutter-plugins-dependencies
 mobile/ios/Pods/
@@ -17,6 +20,10 @@ demo/verification_report*.json
 demo/content_evaluation_structure_report*.json
 demo/*.tmp
 *.log
+release/
+.local/
+__pycache__/
+*.py[cod]
 *.swp
 *.swo
 .idea/

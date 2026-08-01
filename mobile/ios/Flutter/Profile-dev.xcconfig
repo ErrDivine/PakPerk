@@ -1,0 +1,9 @@
+#include "Release.xcconfig"
+#include? "LocalSigning.xcconfig"
+PAKPERK_BUNDLE_IDENTIFIER = app.pakperk.pakperk.dev
+PAKPERK_DISPLAY_NAME = PakPerk Dev
+PAKPERK_AUTH_CALLBACK_SCHEME = pakperk-auth-dev
+PAKPERK_APP_LINK_HOST = localhost
+PAKPERK_INFO_PLIST = Runner/Info-Dev.plist
+PAKPERK_ENTITLEMENTS_FILE = Runner/RunnerDev.entitlements
+DEVELOPMENT_TEAM = $(PAKPERK_DEVELOPMENT_TEAM)

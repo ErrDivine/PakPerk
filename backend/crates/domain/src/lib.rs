@@ -4,6 +4,7 @@
 //! provider. They are safe to use at persistence and API boundaries.
 
 mod account;
+mod account_deletion;
 mod chat;
 mod comment;
 mod connection;
@@ -18,6 +19,10 @@ pub use account::{
     AccountStatus, AccountStatusParseError, AuthenticatedUserId, DisplayName,
     DisplayNameValidationError, Handle, HandleValidationError, PublicUser, TermsVersion,
     TermsVersionValidationError, User,
+};
+pub use account_deletion::{
+    AccountDeletionOperation, AccountDeletionState, AccountDeletionStateParseError,
+    IdentityFingerprint, IdentityFingerprintError,
 };
 pub use chat::{
     ChatAnswer, ChatEvidence, ChatMessage, ChatRequest, ChatRole, ChatTurn, SuggestedFollowUp,

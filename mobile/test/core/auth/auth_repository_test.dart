@@ -70,6 +70,44 @@ void main() {
   );
 
   test(
+    'recent deletion auth never replaces the normal session or storage',
+    () async {
+      const accountId = '00000000-0000-4000-8000-000000000123';
+      final oidc = FakeOidcClient();
+      oidc.refreshHandler = (_) async => tokenSet(
+        accessToken: 'normal-access',
+        refreshToken: 'normal-rotated-refresh',
+        idToken: 'normal-id-token',
+      );
+      oidc.reauthenticateHandler = () async => tokenSet(
+        accessToken: 'ephemeral-recent-access',
+        refreshToken: 'must-not-be-persisted',
+        idToken: 'must-not-be-persisted-either',
+      );
+      final store = MemorySecureTokenStore(storedRecord(accountId: accountId));
+      final auth = repository(oidc: oidc, store: store);
+      await auth.inspectStoredSession();
+      expect(await auth.accessTokenForRequest(), 'normal-access');
+      final durableBeforeRecentAuth = store.record;
+      final writesBeforeRecentAuth = store.writeCalls;
+      final epochBeforeRecentAuth = auth.epoch;
+
+      final recent = await auth.reauthenticateForAccountDeletion(
+        expectedAuthEpoch: epochBeforeRecentAuth,
+      );
+
+      expect(recent.bearer, 'ephemeral-recent-access');
+      expect(recent.accountId, accountId);
+      expect(recent.sessionEpoch, epochBeforeRecentAuth);
+      expect(auth.epoch, epochBeforeRecentAuth);
+      expect(store.record, same(durableBeforeRecentAuth));
+      expect(store.writeCalls, writesBeforeRecentAuth);
+      expect(await auth.accessTokenForRequest(), 'normal-access');
+      expect(oidc.reauthenticateCalls, 1);
+    },
+  );
+
+  test(
     'proactive refresh is single-flight across concurrent requests',
     () async {
       final completer = Completer<OidcTokenSet>();

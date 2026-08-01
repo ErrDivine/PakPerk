@@ -11,6 +11,7 @@ import '../../core/comments/comment_models.dart';
 import '../../core/comments/comment_controllers.dart';
 import '../../core/comments/comment_repository.dart';
 import '../../core/providers.dart';
+import '../../core/telemetry/telemetry.dart';
 
 final class CommentsScreen extends ConsumerStatefulWidget {
   const CommentsScreen({
@@ -37,6 +38,18 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   void initState() {
     super.initState();
     _scroll.addListener(_maybeLoadMore);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      emitTelemetry(
+        ref.read(telemetrySinkProvider),
+        PakPerkTelemetryEvent.commentSheetOpened,
+        {
+          'viewer': ref.read(commentViewerScopeProvider).authenticated
+              ? 'authenticated'
+              : 'guest',
+        },
+      );
+    });
   }
 
   @override
@@ -291,7 +304,22 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     final comment = await ref
         .read(commentThreadProvider(widget.paperId).notifier)
         .send();
-    if (!mounted || comment == null) return;
+    if (!mounted) return;
+    if (comment == null) {
+      emitTelemetry(
+        ref.read(telemetrySinkProvider),
+        PakPerkTelemetryEvent.commentRejected,
+        const {'failure_code': 'not_accepted', 'retryable': true},
+      );
+      return;
+    }
+    emitTelemetry(
+      ref.read(telemetrySinkProvider),
+      comment.underReview
+          ? PakPerkTelemetryEvent.commentPending
+          : PakPerkTelemetryEvent.commentCreated,
+      {'visibility': comment.underReview ? 'private_review' : 'published'},
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -380,6 +408,11 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
           detail: selection.detail,
         );
     if (mounted && sent) {
+      emitTelemetry(
+        ref.read(telemetrySinkProvider),
+        PakPerkTelemetryEvent.commentReported,
+        const {'outcome': 'accepted'},
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Report received. Thank you.')),
       );

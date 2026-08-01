@@ -1,11 +1,11 @@
 use super::{
     ApiError, AppState, ChatBody, ChatCompletionRequest, ChatResponse, ConnectInfo,
-    ContextSelectionConfig, DbError, Duration, EmbeddingRequest, EvidenceExcerpt, Extension,
-    HeaderMap, Instant, IntoResponse, Json, Path, RequestId, RetrievalScope, SESSION_ID_HEADER,
-    SearchHit, SocketAddr, State, StatusCode, Uuid, capability_not_ready, client_keys,
-    enforce_derived_policy, hybrid_rank, info, internal_db_error, keyword_websearch_query,
-    paper_not_found, provider_error, rate_limited, reciprocal_rank_score, retrieval_error,
-    select_context,
+    ContextSelectionConfig, DbError, EmbeddingRequest, EvidenceExcerpt, Extension, HeaderMap,
+    Instant, IntoResponse, Json, Path, PublicRequestAction, RequestId, RetrievalScope,
+    SESSION_ID_HEADER, SearchHit, SocketAddr, State, StatusCode, Uuid, capability_not_ready,
+    enforce_derived_policy, enforce_public_request_limit, hybrid_rank, info, internal_db_error,
+    keyword_websearch_query, paper_not_found, provider_error, reciprocal_rank_score,
+    retrieval_error, select_context,
 };
 use crate::middleware::OptionalPrincipal;
 
@@ -59,17 +59,16 @@ pub(crate) async fn chat(
     Json(body): Json<ChatBody>,
 ) -> Result<impl IntoResponse, ApiError> {
     let mut observation = ChatObservation::new(request_id, paper_id);
-    state
-        .limiter
-        .check_all(
-            "chat",
-            client_keys(&headers, Some(&remote)),
-            state.chat_limit,
-            Duration::from_secs(60),
-        )
-        .await
-        .map_err(|_| rate_limited(request_id))?;
     let session_id = validate_chat_body(request_id, &headers, paper_id, &body)?;
+    enforce_public_request_limit(
+        &state,
+        PublicRequestAction::Chat,
+        request_id,
+        &headers,
+        remote.0,
+        Some(session_id),
+    )
+    .await?;
     let paper = enforce_derived_policy(&state, request_id, paper_id).await?;
     let processing = state
         .papers

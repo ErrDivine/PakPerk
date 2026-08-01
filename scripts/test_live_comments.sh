@@ -50,11 +50,13 @@ fi
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/pakperk-live-comments.XXXXXX")"
 state_file="$work_dir/state.json"
 comment_secret="$work_dir/comment-origin-secret"
+identity_fingerprint_keys="$work_dir/account-identity-fingerprint-keys"
 write_log="$work_dir/api-write.log"
 read_only_log="$work_dir/api-read-only.log"
 unavailable_log="$work_dir/api-unavailable.log"
 umask 077
 openssl rand -hex 48 >"$comment_secret"
+printf 'live-comments-current:%s\n' "$(openssl rand -base64 32)" >"$identity_fingerprint_keys"
 run_id="$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
 ugc_sentinel="PAKPERK_UGC_SENTINEL_${run_id}"
 token_sentinel="PAKPERK_TOKEN_SENTINEL_${run_id}"
@@ -67,7 +69,7 @@ export LIVE_COMMENTS_UNAVAILABLE_API="http://127.0.0.1:$unavailable_port"
 export LIVE_COMMENTS_KEYCLOAK_BASE_URL="$keycloak_base"
 export LIVE_COMMENTS_KEYCLOAK_REALM="${LIVE_COMMENTS_KEYCLOAK_REALM:-pakperk}"
 export LIVE_COMMENTS_OIDC_CLIENT_ID="${LIVE_COMMENTS_OIDC_CLIENT_ID:-pakperk-mobile-dev}"
-export LIVE_COMMENTS_OIDC_REDIRECT_URI="${LIVE_COMMENTS_OIDC_REDIRECT_URI:-pakperk-auth://oauth/callback}"
+export LIVE_COMMENTS_OIDC_REDIRECT_URI="${LIVE_COMMENTS_OIDC_REDIRECT_URI:-pakperk-auth-dev://oauth/callback}"
 export LIVE_COMMENTS_KEYCLOAK_ADMIN_USERNAME="$keycloak_admin_username"
 export LIVE_COMMENTS_KEYCLOAK_ADMIN_PASSWORD="$keycloak_admin_password"
 export LIVE_COMMENTS_POSTGRES_USER="${LIVE_COMMENTS_POSTGRES_USER:-pakperk}"
@@ -214,7 +216,8 @@ start_api() {
     LIBRARY_WRITES_ENABLED=false \
     COMMENTS_ENABLED=true \
     COMMENT_CREATION_ENABLED="$creation_enabled" \
-    COMMENT_ORIGIN_HASH_SECRET_FILE="$comment_secret" \
+    ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE="$identity_fingerprint_keys" \
+    API_ORIGIN_HASH_SECRET_FILE="$comment_secret" \
     COMMENT_MAX_SCALARS=2000 \
     COMMENT_MAX_BYTES=8000 \
     COMMENT_MAX_URLS=3 \

@@ -12,6 +12,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::mpsc,
+    time::timeout,
 };
 use url::Url;
 use uuid::Uuid;
@@ -70,6 +71,7 @@ async fn mocked_provider_exercises_all_boundaries_and_rebuilds_trusted_sources()
     let server = tokio::spawn(serve_json(listener, responses, request_sender));
 
     let provider = OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
+        require_https: false,
         base_url: Url::parse(&format!("http://{address}/v1")).unwrap(),
         api_key: Some(SecretString::from("fixture-secret".to_owned())),
         chat_model: "fixture-chat".to_owned(),
@@ -198,6 +200,58 @@ async fn mocked_provider_exercises_all_boundaries_and_rebuilds_trusted_sources()
         relationship_payload["response_format"]["json_schema"]["name"],
         "paper_relationship"
     );
+}
+
+#[tokio::test]
+async fn provider_never_follows_cross_origin_redirects_with_credentials_or_content() {
+    for status in [307, 308] {
+        let Some(source) = bind_loopback().await else {
+            return;
+        };
+        let Some(sink) = bind_loopback().await else {
+            return;
+        };
+        let source_address = source.local_addr().unwrap();
+        let sink_address = sink.local_addr().unwrap();
+        let source_server = tokio::spawn(async move {
+            let (mut stream, _) = source.accept().await.unwrap();
+            let request = read_request(&mut stream).await;
+            assert_eq!(
+                request.headers.get("authorization").map(String::as_str),
+                Some("Bearer redirect-secret")
+            );
+            assert!(!request.body.is_empty());
+            let response = format!(
+                "HTTP/1.1 {status} Redirect\r\nLocation: http://{sink_address}/credential-sink\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+        });
+        let sink_server =
+            tokio::spawn(async move { timeout(Duration::from_millis(500), sink.accept()).await });
+        let provider = OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
+            require_https: false,
+            base_url: Url::parse(&format!("http://{source_address}/v1")).unwrap(),
+            api_key: Some(SecretString::from("redirect-secret".to_owned())),
+            chat_model: "fixture-chat".to_owned(),
+            embedding_model: "fixture-embedding".to_owned(),
+            embedding_dimension: 3,
+            connect_timeout: Duration::from_secs(2),
+            request_timeout: Duration::from_secs(2),
+            maximum_response_bytes: 4096,
+            maximum_retries: 0,
+        })
+        .unwrap();
+        assert!(
+            provider
+                .embed(&EmbeddingRequest {
+                    inputs: vec!["protected paper content".to_owned()],
+                })
+                .await
+                .is_err()
+        );
+        source_server.await.unwrap();
+        assert!(sink_server.await.unwrap().is_err());
+    }
 }
 
 async fn bind_loopback() -> Option<TcpListener> {

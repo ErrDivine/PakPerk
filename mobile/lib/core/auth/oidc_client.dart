@@ -6,6 +6,12 @@ abstract interface class OidcClient {
   /// immediately exchanges the returned code.
   Future<OidcTokenSet> authorizeAndExchangeCode();
 
+  /// Performs a fresh Authorization Code + PKCE ceremony for a sensitive
+  /// action. Implementations must force provider login (`prompt=login`) and
+  /// require an authentication age of zero (`max_age=0`). The returned token
+  /// set is ephemeral and must not replace the normal refresh session.
+  Future<OidcTokenSet> reauthenticateForSensitiveAction();
+
   Future<OidcTokenSet> refresh(String refreshToken);
 
   /// Best-effort RP-initiated logout. Local sign-out must never depend on it.

@@ -54,21 +54,30 @@ class BundleDemoContentStore implements DemoContentStore {
 
   @override
   Future<PaperIntroduction?> loadIntroduction(String paperId) async {
-    _introductions ??= await _loadMap('assets/prepared_introductions.json');
+    _introductions ??= await _loadOptionalMap(
+      'assets/prepared_introductions.json',
+    );
     final value = _paperValue(_introductions!, paperId);
     return value == null ? null : PaperIntroduction.fromJson(value);
   }
 
   @override
   Future<PaperConnections?> loadConnections(String paperId) async {
-    _connections ??= await _loadMap('assets/prepared_connections.json');
+    _connections ??= await _loadOptionalMap('assets/prepared_connections.json');
     final value = _paperValue(_connections!, paperId);
     return value == null ? null : PaperConnections.fromJson(value);
   }
 
-  Future<Map<String, dynamic>> _loadMap(String asset) async {
-    final raw = await _bundle.loadString(asset);
-    return Map<String, dynamic>.from(jsonDecode(raw) as Map);
+  Future<Map<String, dynamic>> _loadOptionalMap(String asset) async {
+    try {
+      final raw = await _bundle.loadString(asset);
+      return Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    } on Object {
+      // Strict staging/production flavors intentionally omit prototype
+      // derived content. Treat an absent or invalid optional asset exactly as
+      // unavailable content; the network capability path remains authoritative.
+      return const {};
+    }
   }
 
   Map<String, dynamic>? _paperValue(Map<String, dynamic> root, String paperId) {

@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+secret_dir="${1:-$project_dir/.local/pakperk-secrets}"
+ledger_dir="${2:-$project_dir/.local/pakperk-deletion-ledger}"
+
+"$project_dir/scripts/prepare_dev_api_origin_secret.sh" "$secret_dir"
+
+if ! command -v openssl >/dev/null 2>&1; then
+  echo "OpenSSL is required to generate development account keyrings." >&2
+  exit 2
+fi
+for path in "$secret_dir" "$ledger_dir"; do
+  if [[ -L "$path" ]]; then
+    echo "Refusing a symlinked development account path: $path" >&2
+    exit 1
+  fi
+  mkdir -p "$path"
+  chmod 0700 "$path"
+done
+
+umask 077
+generate_keyring() {
+  local target="$1"
+  if [[ -L "$target" ]]; then
+    echo "Refusing a symlinked development keyring: $target" >&2
+    exit 1
+  fi
+  if [[ ! -e "$target" ]]; then
+    local key
+    key="$(openssl rand -base64 48 | tr -d '\r\n')"
+    printf 'dev-v1:%s\n' "$key" >"$target"
+  fi
+  if [[ ! -f "$target" || ! -s "$target" ]]; then
+    echo "Development keyring is not a non-empty regular file: $target" >&2
+    exit 1
+  fi
+  chmod 0600 "$target"
+}
+
+generate_keyring "$secret_dir/ACCOUNT_IDENTITY_FINGERPRINT_KEYS"
+generate_keyring "$secret_dir/ACCOUNT_DELETION_LEDGER_SIGNING_KEYS"
+generate_keyring "$secret_dir/ACCOUNT_DELETION_PROVIDER_IDENTITY_KEYS"
+
+printf '%s\n' "Development account keyrings are ready (values were not printed)."
+printf 'ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE=%s\n' \
+  "$secret_dir/ACCOUNT_IDENTITY_FINGERPRINT_KEYS"
+printf 'ACCOUNT_DELETION_LEDGER_SIGNING_KEYS_FILE=%s\n' \
+  "$secret_dir/ACCOUNT_DELETION_LEDGER_SIGNING_KEYS"
+printf 'ACCOUNT_DELETION_PROVIDER_IDENTITY_KEYS_FILE=%s\n' \
+  "$secret_dir/ACCOUNT_DELETION_PROVIDER_IDENTITY_KEYS"
+printf 'ACCOUNT_DELETION_LEDGER_DIRECTORY=%s\n' "$ledger_dir"

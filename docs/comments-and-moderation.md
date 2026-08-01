@@ -20,8 +20,9 @@ Community Guidelines version. Only the author may edit or delete a comment.
 Suspended or deletion-pending accounts cannot mutate UGC.
 
 Public deployment keeps comment creation off until the complete UGC policy gate
-and Phase 6 account-deletion path are live. Development and staging may enable
-creation to exercise the same production code path.
+and the implemented account-deletion path are exercised and approved in that
+environment. Development and staging may enable creation to exercise the same
+production code path.
 
 ## HTTP surface
 
@@ -88,14 +89,20 @@ deterministic pass may publish. When a configured adapter is unavailable or
 uncertain, the comment is held privately instead of failing open. Moderator
 output and error detail remain private and content-free in diagnostics.
 
-Request-origin rate limiting never persists a raw network address. The API
-canonicalizes the directly connected peer address and derives an HMAC-SHA-256
-scope with `COMMENT_ORIGIN_HASH_SECRET_FILE`; forwarded-address headers are not
-trusted. The file must be an owner-only, non-symlink regular file containing
-32–4,096 non-placeholder bytes. Rotating it deliberately starts fresh origin
-buckets while account buckets continue unchanged, so production rotation is
-coordinated during an abuse-rate window and the previous deployment secret is
-retained only until old replicas and their buckets have expired.
+Request-origin rate limiting never persists a raw network address. A direct
+development connection uses its peer address. A deployed API requires
+`API_TRUSTED_PROXY_CIDRS`; it accepts `X-Forwarded-For` only from a peer in
+those reviewed ingress ranges, walks the chain right-to-left through trusted
+proxies, and uses the first untrusted address. Missing, malformed, oversized,
+or untrusted metadata falls back to the direct peer, so a caller cannot choose
+a fresh bucket. The selected address is canonicalized and immediately becomes
+an HMAC-SHA-256 scope under `API_ORIGIN_HASH_SECRET_FILE`; it is not logged
+or persisted. The file must be an owner-only, non-symlink regular file
+containing 32–4,096 non-placeholder bytes. Rotating it deliberately starts
+fresh origin buckets while account buckets continue unchanged, so production
+rotation is coordinated during an abuse-rate window and the previous
+deployment secret is retained only until old replicas and their buckets have
+expired.
 
 ## Device behavior
 

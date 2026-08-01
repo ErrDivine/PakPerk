@@ -8,7 +8,7 @@ use domain::{
     ParsedSection, SectionKind,
 };
 use quick_xml::{
-    Reader,
+    Reader, XmlVersion,
     events::{BytesStart, Event},
 };
 use regex::Regex;
@@ -252,7 +252,7 @@ fn xml_element(
         let attribute = result.map_err(|error| DocumentError::InvalidXml(error.to_string()))?;
         let key = String::from_utf8_lossy(attribute.key.local_name().as_ref()).into_owned();
         let value = attribute
-            .decode_and_unescape_value(reader.decoder())
+            .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
             .map_err(|error| DocumentError::InvalidXml(error.to_string()))?
             .into_owned();
         attributes.insert(key, value);

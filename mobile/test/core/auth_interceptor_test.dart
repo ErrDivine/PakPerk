@@ -71,6 +71,56 @@ void main() {
     expect(adapter.requests, 1);
   });
 
+  test(
+    'recent auth uses only its supplied bearer and never replays 401',
+    () async {
+      final tokens = _TokenSource();
+      final adapter = _SequenceAdapter([401, 200]);
+      final dio = _dio(tokens, adapter);
+
+      await expectLater(
+        dio.delete<Object?>(
+          '/v1/me',
+          options: pakPerkRequestOptions(
+            auth: RequestAuthPolicy.recent,
+            retry: AuthRetryPolicy.never,
+            expectedAuthEpoch: 1,
+            recentBearer: 'one-use-recent',
+          ),
+        ),
+        throwsA(isA<DioException>()),
+      );
+
+      expect(tokens.accessCalls, 0);
+      expect(tokens.refreshCalls, 0);
+      expect(adapter.requests, 1);
+      expect(adapter.authorizationHeaders, ['Bearer one-use-recent']);
+    },
+  );
+
+  test(
+    'recent auth synchronously rejects a stale epoch before transport',
+    () async {
+      final tokens = _EpochTokenSource(epoch: 8, token: 'account-b-access');
+      final adapter = _SequenceAdapter([200]);
+      final dio = _dio(tokens, adapter);
+
+      await expectLater(
+        dio.delete<Object?>(
+          '/v1/me',
+          options: pakPerkRequestOptions(
+            auth: RequestAuthPolicy.recent,
+            expectedAuthEpoch: 7,
+            recentBearer: 'account-a-recent',
+          ),
+        ),
+        throwsA(_authError('AUTH_SUPERSEDED')),
+      );
+
+      expect(adapter.requests, 0);
+    },
+  );
+
   test('a safe 401 refreshes and replays exactly once', () async {
     final tokens = _TokenSource();
     final adapter = _SequenceAdapter([401, 200]);
@@ -224,6 +274,9 @@ final class _TokenSource implements AuthTokenSource {
   String currentToken = 'access-one';
 
   @override
+  bool isCurrentEpoch(int expectedAuthEpoch) => expectedAuthEpoch >= 0;
+
+  @override
   Future<String?> accessTokenForRequest({int? expectedAuthEpoch}) async {
     accessCalls += 1;
     return currentToken;
@@ -258,6 +311,9 @@ final class _EpochTokenSource implements AuthTokenSource {
     this.epoch = epoch;
     this.token = token;
   }
+
+  @override
+  bool isCurrentEpoch(int expectedAuthEpoch) => expectedAuthEpoch == epoch;
 
   @override
   Future<String?> accessTokenForRequest({int? expectedAuthEpoch}) async {

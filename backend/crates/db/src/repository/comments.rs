@@ -816,6 +816,7 @@ impl CommentRepository {
             JOIN users ON users.id = comments.author_user_id
             WHERE comments.paper_id = $1
               AND comments.status = 'published'
+              AND users.status = 'active'
               AND (
                     $2::uuid IS NULL
                     OR NOT EXISTS (
@@ -905,7 +906,16 @@ impl CommentRepository {
         )
         .await?;
         let comment_exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS (SELECT 1 FROM paper_comments WHERE id = $1 AND status <> 'deleted')",
+            r"
+            SELECT EXISTS (
+                SELECT 1
+                FROM paper_comments comments
+                JOIN users ON users.id = comments.author_user_id
+                WHERE comments.id = $1
+                  AND comments.status <> 'deleted'
+                  AND users.status = 'active'
+            )
+            ",
         )
         .bind(comment_id)
         .fetch_one(&mut *transaction)
@@ -987,7 +997,16 @@ impl CommentRepository {
             )?));
         }
         let comment_exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS (SELECT 1 FROM paper_comments WHERE id = $1 AND status <> 'deleted')",
+            r"
+            SELECT EXISTS (
+                SELECT 1
+                FROM paper_comments comments
+                JOIN users ON users.id = comments.author_user_id
+                WHERE comments.id = $1
+                  AND comments.status <> 'deleted'
+                  AND users.status = 'active'
+            )
+            ",
         )
         .bind(comment_id)
         .fetch_one(&mut *transaction)

@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use chrono::{DateTime, Utc};
 use domain::{ArxivIdentifier, Author, PaperMetadata};
 use quick_xml::{
-    Reader,
+    Reader, XmlVersion,
     events::{BytesStart, Event},
 };
 use url::Url;
@@ -230,7 +230,7 @@ fn attribute(
         let attr = result.map_err(|error| ArxivError::Xml(error.to_string()))?;
         if attr.key.local_name().as_ref() == wanted {
             return attr
-                .decode_and_unescape_value(reader.decoder())
+                .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
                 .map(|value| Some(value.into_owned()))
                 .map_err(|error| ArxivError::Xml(error.to_string()));
         }

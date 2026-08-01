@@ -1,0 +1,194 @@
+name: security-and-supply-chain
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_TOOLCHAIN: 1.91.1
+  FLUTTER_VERSION: 3.44.8
+
+jobs:
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+          deny-licenses: AGPL-1.0-only, AGPL-1.0-or-later, AGPL-3.0-only, AGPL-3.0-or-later, GPL-2.0-only, GPL-3.0-only
+
+  codeql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: rust
+            build_mode: manual
+          - language: javascript-typescript
+            build_mode: none
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build_mode }}
+      - name: Install pinned Rust toolchain
+        if: matrix.language == 'rust'
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup override set "$RUST_TOOLCHAIN"
+      - if: matrix.language == 'rust'
+        run: cargo build --manifest-path backend/Cargo.toml --locked --workspace --all-targets --all-features
+      - uses: github/codeql-action/analyze@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-policy-and-artifacts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify immutable workflow pins exist upstream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/validate_workflow_pins.py --verify-upstream
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup override set "$RUST_TOOLCHAIN"
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      # cargo-audit 0.22.x is required for RustSec advisories using CVSS 4.0.
+      - run: cargo install --locked --version 0.22.2 cargo-audit
+      - run: cargo install --locked --version 0.20.2 cargo-deny
+      # RUSTSEC-2023-0071 remains only in SQLx's lockfile-only optional MySQL
+      # graph. Fail first if RSA ever becomes reachable from any workspace
+      # target, then ignore only that exact unreachable lockfile advisory.
+      - name: Prove the ignored RSA advisory is unreachable
+        shell: bash
+        run: |
+          cargo tree --manifest-path backend/Cargo.toml --locked --workspace \
+            --all-features --target all --invert rsa --prefix none --format '{p}' \
+            >"$RUNNER_TEMP/reachable-rsa.txt" \
+            2>"$RUNNER_TEMP/reachable-rsa.stderr.txt"
+          if [[ -s "$RUNNER_TEMP/reachable-rsa.txt" ]]; then
+            cat "$RUNNER_TEMP/reachable-rsa.txt" >&2
+            echo "The advisory-affected rsa crate is reachable; remove the audit exception only after remediation." >&2
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/reachable-rsa.stderr.txt" >&2
+      - run: cargo audit --file backend/Cargo.lock --ignore RUSTSEC-2023-0071
+      - run: cargo deny --manifest-path backend/Cargo.toml check advisories bans licenses sources
+      - working-directory: site
+        run: npm ci --ignore-scripts
+      - working-directory: site
+        run: npm audit --audit-level=high
+      - working-directory: mobile
+        run: flutter pub get --enforce-lockfile
+      - name: Test and generate release metadata
+        run: |
+          python3 scripts/test_generate_release_metadata.py
+          ./scripts/generate_release_metadata.py --flutter-sdk-version "$FLUTTER_VERSION"
+        env:
+          SOURCE_REVISION: ${{ github.sha }}
+      - name: Verify release metadata is reproducible
+        run: |
+          source_epoch="$(git show -s --format=%ct HEAD)"
+          SOURCE_REVISION="${GITHUB_SHA}" SOURCE_DATE_EPOCH="$source_epoch" ./scripts/generate_release_metadata.py --flutter-sdk-version "$FLUTTER_VERSION" --output-dir /tmp/release-metadata-a
+          SOURCE_REVISION="${GITHUB_SHA}" SOURCE_DATE_EPOCH="$source_epoch" ./scripts/generate_release_metadata.py --flutter-sdk-version "$FLUTTER_VERSION" --output-dir /tmp/release-metadata-b
+          cmp /tmp/release-metadata-a/open-source-notices.txt /tmp/release-metadata-b/open-source-notices.txt
+          cmp /tmp/release-metadata-a/dependencies.cdx.json /tmp/release-metadata-b/dependencies.cdx.json
+      - run: ./scripts/prepare_release_site.sh
+      - run: docker build --file backend/Dockerfile --target runtime --tag pakperk-backend:ci .
+      - name: Smoke-test every release utility in the runtime image
+        run: |
+          docker run --rm pakperk-backend:ci /bin/sh -ceu 'test -x /bin/sh; test -x /usr/bin/install; test -s /app/demo/seed_manifest.json; test -s /app/demo/fallback_feed.json'
+          docker run --rm pakperk-backend:ci /usr/local/bin/pakperk-deletion-worker --help
+          docker run --rm pakperk-backend:ci /usr/local/bin/pakperk-migrate --help
+          docker run --rm pakperk-backend:ci /usr/local/bin/pakperk-telemetry-gateway --help
+          ./scripts/test_secret_init_capabilities.sh pakperk-backend:ci
+      - run: docker build --file site/Dockerfile --tag pakperk-site:ci .
+      - name: Verify the release site fails closed without runtime mounts
+        run: |
+          container_id="$(docker run --detach --publish 127.0.0.1:18084:8080 pakperk-site:ci)"
+          trap 'docker rm --force "$container_id" >/dev/null' EXIT
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:18084/privacy/ >/dev/null && break
+            sleep 1
+          done
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18084/config.js)" = 404
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18084/.well-known/assetlinks.json)" = 404
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18084/.well-known/apple-app-site-association)" = 404
+          curl --fail --silent http://127.0.0.1:18084/open-source-licenses/notices.txt | grep -Eiv 'placeholder|must replace|not the release inventory' >/dev/null
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: pakperk-backend:ci
+          format: sarif
+          output: release/metadata/backend-trivy.sarif
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: pakperk-site:ci
+          format: sarif
+          output: release/metadata/site-trivy.sarif
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: pakperk-backend:ci
+          format: cyclonedx
+          output: release/metadata/backend-image.cdx.json
+          scanners: vuln
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: pakperk-site:ci
+          format: cyclonedx
+          output: release/metadata/site-image.cdx.json
+          scanners: vuln
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-security-evidence-${{ github.sha }}
+          path: release/metadata
+          if-no-files-found: error
+          retention-days: 90

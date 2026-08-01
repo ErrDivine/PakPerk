@@ -687,6 +687,110 @@
           }
         ]
       },
+      "delete": {
+        "tags": [
+          "accounts"
+        ],
+        "description": "Registered only when ACCOUNT_DELETION_ENABLED=true. The verified issuer/subject is the replay key; no Idempotency-Key header is accepted. A replay resumes durable externalization and returns the original operation. ACCOUNT_DELETION_UNAVAILABLE is unusual: the account is already locally deletion_pending, ordinary access remains blocked, and the worker/operator owns completion even though the external tombstone was not yet acknowledged durable.",
+        "operationId": "delete_me",
+        "responses": {
+          "202": {
+            "description": "Deletion accepted or identity-scoped replay; clients must immediately clear credentials and account-owned local data",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionEnvelope"
+                },
+                "example": {
+                  "deletion": {
+                    "operation_id": "0198f4d7-a4ce-7b40-8ee8-4f350350810c",
+                    "requested_at": "2026-07-31T12:34:56.789Z",
+                    "state": "requested",
+                    "updated_at": "2026-07-31T12:34:56.789Z"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_REQUEST when the DELETE body is non-empty or any Idempotency-Key header is supplied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED, TOKEN_EXPIRED, or REAUTHENTICATION_REQUIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED for a new operation only; identity-scoped replays never consume quota",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ACCOUNT_DELETION_UNAVAILABLE proves post-commit local disable and asynchronous ownership. SERVICE_UNAVAILABLE is ambiguous and never asserts acceptance. Clients fail closed for either response after dispatch.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds before retry"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
+      },
       "patch": {
         "tags": [
           "accounts"
@@ -1288,6 +1392,93 @@
           },
           "503": {
             "description": "AUTHENTICATION_UNAVAILABLE or COMMENT_SERVICE_UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/me/deletion-verification": {
+      "get": {
+        "tags": [
+          "accounts"
+        ],
+        "description": "Registered only when ACCOUNT_DELETION_ENABLED=true. Resolves a verified OIDC identity to a bounded existing account record without JIT provisioning. This endpoint intentionally accepts a currently valid access token regardless of auth_time; DELETE /v1/me alone enforces recent authentication.",
+        "operationId": "verify_deletion_identity",
+        "responses": {
+          "200": {
+            "description": "Existing account identity used to bind the destructive confirmation flow",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always private, no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionVerificationEnvelope"
+                },
+                "example": {
+                  "account": {
+                    "deletion_operation_id": null,
+                    "id": "0198f4d7-a4ce-7b40-8ee8-4f350350810c",
+                    "status": "active"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED or TOKEN_EXPIRED",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ACCOUNT_NOT_FOUND or FEATURE_DISABLED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelopeSchema"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHENTICATION_UNAVAILABLE or ACCOUNT_DELETION_UNAVAILABLE",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Seconds before retry"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -2584,6 +2775,55 @@
   },
   "components": {
     "schemas": {
+      "AccountDeletionEnvelope": {
+        "type": "object",
+        "required": [
+          "deletion"
+        ],
+        "properties": {
+          "deletion": {
+            "$ref": "#/components/schemas/AccountDeletionResponse"
+          }
+        }
+      },
+      "AccountDeletionResponse": {
+        "type": "object",
+        "required": [
+          "operation_id",
+          "state",
+          "requested_at",
+          "updated_at"
+        ],
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AccountDeletionStateSchema"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AccountDeletionStateSchema": {
+        "type": "string",
+        "enum": [
+          "requested",
+          "sessions_revoked",
+          "identity_deleted",
+          "app_data_deleted",
+          "completed",
+          "failed_retryable",
+          "failed_terminal"
+        ]
+      },
       "AccountProfileEnvelope": {
         "type": "object",
         "required": [
@@ -3171,6 +3411,41 @@
           }
         },
         "additionalProperties": false
+      },
+      "DeletionVerificationAccount": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "deletion_operation_id"
+        ],
+        "properties": {
+          "deletion_operation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AccountStatusSchema"
+          }
+        }
+      },
+      "DeletionVerificationEnvelope": {
+        "type": "object",
+        "required": [
+          "account"
+        ],
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/DeletionVerificationAccount"
+          }
+        }
       },
       "EditCommentBody": {
         "type": "object",

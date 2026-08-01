@@ -1,11 +1,13 @@
 [package]
 name = "grobid_client"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+observability.workspace = true
 reqwest.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

@@ -80,6 +80,10 @@ class AccountYouScreen extends ConsumerWidget {
         onOpenSupport: onOpenSupport,
         onOpenDeleteAccount: onOpenDeleteAccount,
       ),
+      AuthSessionPhase.deletionPending => _DeletionPendingAccountScreen(
+        onOpenStatus: onOpenDeleteAccount,
+        onOpenSupport: onOpenSupport,
+      ),
       AuthSessionPhase.checkingStoredSession ||
       AuthSessionPhase.authenticating ||
       AuthSessionPhase.refreshRequired ||
@@ -132,6 +136,7 @@ class _AuthenticatedAccountLoader extends ConsumerWidget {
           onRetry: () =>
               unawaited(ref.read(currentAccountProvider.notifier).load()),
           onSignOut: () => _signOut(ref),
+          onDeleteAccount: onOpenDeleteAccount,
         );
       }
       return const _AccountProgressScreen();
@@ -385,7 +390,7 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
               icon: Icons.person_off_outlined,
               label: 'Delete account',
               supportingText:
-                  'End-to-end deletion is not available until Phase 6.',
+                  'Permanently erase your account and associated data.',
               onTap: onOpenDeleteAccount,
               destructive: true,
             ),
@@ -470,11 +475,13 @@ class _AccountLoadFailureScreen extends StatelessWidget {
     required this.message,
     required this.onRetry,
     required this.onSignOut,
+    required this.onDeleteAccount,
   });
 
   final String message;
   final VoidCallback onRetry;
   final VoidCallback onSignOut;
+  final VoidCallback onDeleteAccount;
 
   @override
   Widget build(BuildContext context) => _AccountMessageScreen(
@@ -484,7 +491,35 @@ class _AccountLoadFailureScreen extends StatelessWidget {
     primaryLabel: 'Retry',
     onPrimary: onRetry,
     secondary: [
+      TextButton(
+        onPressed: onDeleteAccount,
+        child: const Text('Delete account'),
+      ),
       TextButton(onPressed: onSignOut, child: const Text('Sign out')),
+    ],
+  );
+}
+
+class _DeletionPendingAccountScreen extends StatelessWidget {
+  const _DeletionPendingAccountScreen({
+    required this.onOpenStatus,
+    required this.onOpenSupport,
+  });
+
+  final VoidCallback onOpenStatus;
+  final VoidCallback onOpenSupport;
+
+  @override
+  Widget build(BuildContext context) => _AccountMessageScreen(
+    icon: Icons.person_off_outlined,
+    title: 'Account deletion pending',
+    message:
+        'This account is disabled. Secure credentials and private local data '
+        'are being removed; public reading remains available.',
+    primaryLabel: 'View deletion status',
+    onPrimary: onOpenStatus,
+    secondary: [
+      TextButton(onPressed: onOpenSupport, child: const Text('Support')),
     ],
   );
 }

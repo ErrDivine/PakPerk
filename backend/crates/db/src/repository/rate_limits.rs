@@ -125,8 +125,8 @@ impl RateLimitRequest {
     }
 
     /// A hashed request-origin scope consumed alongside the account bucket by
-    /// API boundaries which have a trusted peer/device fingerprint. Raw IPs or
-    /// device identifiers must never be passed here.
+    /// API boundaries which have a source-validated origin/device fingerprint.
+    /// Raw IPs or device identifiers must never be passed here.
     pub fn comment_origin(
         hashed_origin_scope: impl Into<String>,
         limit: u32,

@@ -7,7 +7,10 @@ use arxiv_client::ArxivClientConfig;
 use axum::{
     body::{Body, to_bytes},
     extract::ConnectInfo,
-    http::{Request, StatusCode, header::CONTENT_TYPE},
+    http::{
+        Request, StatusCode,
+        header::{CONTENT_TYPE, RETRY_AFTER},
+    },
 };
 use chrono::{TimeDelta, Utc};
 use db::{Database, PaperRepository};
@@ -17,7 +20,8 @@ use domain::{
 };
 use llm_provider::{DeterministicProvider, EmbeddingProvider, EmbeddingRequest};
 use pakperk_api::{
-    ApiConfig, ApiEnvironment, ApiModelConfig, AppState, FeatureFlags, build_router,
+    ApiConfig, ApiEnvironment, ApiModelConfig, AppState, FeatureFlags, RequestOriginConfig,
+    build_router,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt as _;
@@ -160,6 +164,81 @@ async fn postgres_backed_router_serves_scoped_chat_and_prepared_capabilities() {
         .unwrap();
 }
 
+#[tokio::test]
+async fn postgres_public_limits_are_shared_and_untrusted_forwarding_cannot_rotate_origin() {
+    let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
+        eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL public rate-limit coverage");
+        return;
+    };
+    let database = Database::connect(&database_url, 8).await.unwrap();
+    database.migrate_embedded().await.unwrap();
+    let unique = Uuid::now_v7().simple().to_string();
+    let mut config = api_config(database_url);
+    config.request_origin = RequestOriginConfig::for_local_development(&format!(
+        "public-rate-limit-{unique}-strong-random-material"
+    ))
+    .unwrap();
+    config.prepare_requests_per_minute = 1;
+    config.chat_requests_per_minute = 2;
+    let first = build_router(AppState::new(database.clone(), &config).unwrap(), &config);
+    let second = build_router(AppState::new(database, &config).unwrap(), &config);
+    let peer = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 81)), 41_234);
+    let missing_paper = Uuid::now_v7();
+
+    let prepare = |forwarded_for: &str, session: Uuid| {
+        let mut request = Request::post(format!("/v1/papers/{missing_paper}/prepare"))
+            .header(CONTENT_TYPE, "application/json")
+            .header("x-forwarded-for", forwarded_for)
+            .header("x-session-id", session.to_string())
+            .body(Body::from(r#"{"retry":false}"#))
+            .unwrap();
+        request.extensions_mut().insert(ConnectInfo(peer));
+        request
+    };
+    let accepted = first
+        .clone()
+        .oneshot(prepare("203.0.113.10", Uuid::now_v7()))
+        .await
+        .unwrap();
+    assert_eq!(accepted.status(), StatusCode::NOT_FOUND);
+    let denied = second
+        .clone()
+        .oneshot(prepare("192.0.2.44", Uuid::now_v7()))
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(denied.headers().contains_key(RETRY_AFTER));
+
+    let chat = |forwarded_for: &str, session: Uuid| {
+        let mut request = Request::post(format!("/v1/papers/{missing_paper}/chat"))
+            .header(CONTENT_TYPE, "application/json")
+            .header("x-forwarded-for", forwarded_for)
+            .header("x-session-id", session.to_string())
+            .body(Body::from(
+                json!({"thread_id": null, "message": "Is this paper ready?"}).to_string(),
+            ))
+            .unwrap();
+        request.extensions_mut().insert(ConnectInfo(peer));
+        request
+    };
+    for (app, forwarded_for) in [
+        (first.clone(), "203.0.113.11"),
+        (second.clone(), "192.0.2.45"),
+    ] {
+        let response = app
+            .oneshot(chat(forwarded_for, Uuid::now_v7()))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+    let denied = first
+        .oneshot(chat("203.0.113.99", Uuid::now_v7()))
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(denied.headers().contains_key(RETRY_AFTER));
+}
+
 fn api_config(database_url: String) -> ApiConfig {
     let arxiv = ArxivClientConfig {
         contact_email: "integration@pakperk.dev".to_owned(),
@@ -172,6 +251,11 @@ fn api_config(database_url: String) -> ApiConfig {
         accounts: None,
         library: None,
         comments: None,
+        account_deletion: None,
+        request_origin: RequestOriginConfig::for_local_development(
+            "postgres-chat-api-request-origin-secret-0123456789",
+        )
+        .unwrap(),
         bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
         database_url,
         database_pool_size: 8,

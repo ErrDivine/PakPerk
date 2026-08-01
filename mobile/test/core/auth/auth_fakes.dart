@@ -24,10 +24,12 @@ OidcTokenSet tokenSet({
 
 final class FakeOidcClient implements OidcClient {
   Future<OidcTokenSet> Function()? authorizeHandler;
+  Future<OidcTokenSet> Function()? reauthenticateHandler;
   Future<OidcTokenSet> Function(String refreshToken)? refreshHandler;
   Future<void> Function(String? idTokenHint)? endSessionHandler;
 
   int authorizeCalls = 0;
+  int reauthenticateCalls = 0;
   int refreshCalls = 0;
   int endSessionCalls = 0;
   final List<String> suppliedRefreshTokens = [];
@@ -37,6 +39,13 @@ final class FakeOidcClient implements OidcClient {
   Future<OidcTokenSet> authorizeAndExchangeCode() {
     authorizeCalls += 1;
     return authorizeHandler?.call() ?? Future.value(tokenSet());
+  }
+
+  @override
+  Future<OidcTokenSet> reauthenticateForSensitiveAction() {
+    reauthenticateCalls += 1;
+    return reauthenticateHandler?.call() ??
+        Future.value(tokenSet(refreshToken: null, idToken: null));
   }
 
   @override

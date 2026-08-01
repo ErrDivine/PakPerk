@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../auth/auth.dart';
 
-enum RequestAuthPolicy { none, optional, required }
+enum RequestAuthPolicy { none, optional, required, recent }
 
 enum AuthRetryPolicy { safe, idempotencyProtected, never }
 
@@ -10,7 +10,12 @@ const _authPolicyKey = 'pakperk.auth_policy';
 const _authRetryPolicyKey = 'pakperk.auth_retry_policy';
 const _authRetriedKey = 'pakperk.auth_retried';
 const _expectedAuthEpochKey = 'pakperk.expected_auth_epoch';
+const _strictRawResponseStreamKey = 'pakperk.strict_raw_response_stream';
 const _authorizationHeader = 'Authorization';
+final _bearerToken = RegExp(r'^[A-Za-z0-9\-._~+/]+=*$');
+
+typedef AccountDeletionPendingHandler =
+    Future<void> Function(int expectedAuthEpoch, String? requestId);
 
 /// Builds request metadata consumed only by [AuthInterceptor].
 ///
@@ -22,26 +27,50 @@ Options pakPerkRequestOptions({
   required RequestAuthPolicy auth,
   AuthRetryPolicy retry = AuthRetryPolicy.never,
   int? expectedAuthEpoch,
+  String? recentBearer,
   Map<String, Object?>? headers,
   Duration? receiveTimeout,
+  ResponseType? responseType,
+  bool strictRawResponseStream = false,
   bool Function(int?)? validateStatus,
 }) {
   final validEpoch = expectedAuthEpoch != null && expectedAuthEpoch >= 0;
-  if ((auth == RequestAuthPolicy.required && !validEpoch) ||
-      (auth != RequestAuthPolicy.required && expectedAuthEpoch != null)) {
+  final authenticated =
+      auth == RequestAuthPolicy.required || auth == RequestAuthPolicy.recent;
+  final validRecentBearer =
+      recentBearer != null &&
+      recentBearer.isNotEmpty &&
+      recentBearer.length <= 64 * 1024 &&
+      _bearerToken.hasMatch(recentBearer);
+  if ((authenticated && !validEpoch) ||
+      (!authenticated && expectedAuthEpoch != null) ||
+      (auth == RequestAuthPolicy.recent && !validRecentBearer) ||
+      (auth != RequestAuthPolicy.recent && recentBearer != null) ||
+      (strictRawResponseStream &&
+          (authenticated == false || responseType != ResponseType.stream)) ||
+      headers?.keys.any(
+            (key) => key.toLowerCase() == _authorizationHeader.toLowerCase(),
+          ) ==
+          true) {
     throw ArgumentError.value(
       expectedAuthEpoch,
       'expectedAuthEpoch',
-      'Authenticated requests require a non-negative expected epoch.',
+      'Authenticated requests require a non-negative epoch; recent-auth '
+          'requests also require a bounded dedicated bearer.',
     );
   }
   return Options(
-    headers: headers,
+    headers: {
+      ...?headers,
+      if (recentBearer != null) _authorizationHeader: 'Bearer $recentBearer',
+    },
     receiveTimeout: receiveTimeout,
+    responseType: responseType,
     validateStatus: validateStatus,
     extra: {
       _authPolicyKey: auth,
       _authRetryPolicyKey: retry,
+      if (strictRawResponseStream) _strictRawResponseStreamKey: true,
       if (expectedAuthEpoch != null) _expectedAuthEpochKey: expectedAuthEpoch,
     },
   );
@@ -54,13 +83,16 @@ final class AuthInterceptor extends Interceptor {
     required Dio dio,
     required Uri apiBaseUri,
     required AuthTokenSource tokenSource,
+    AccountDeletionPendingHandler? onAccountDeletionPending,
   }) : _dio = dio,
        _apiOrigin = _Origin.fromUri(apiBaseUri),
-       _tokenSource = tokenSource;
+       _tokenSource = tokenSource,
+       _onAccountDeletionPending = onAccountDeletionPending;
 
   final Dio _dio;
   final _Origin _apiOrigin;
   final AuthTokenSource _tokenSource;
+  final AccountDeletionPendingHandler? _onAccountDeletionPending;
 
   @override
   void onRequest(
@@ -87,7 +119,7 @@ final class AuthInterceptor extends Interceptor {
           return;
         }
         options.headers[_authorizationHeader] = 'Bearer $token';
-        handler.next(options);
+        await _dispatchOrContinue(options, handler);
       } on AuthFailure catch (failure) {
         handler.reject(_authFailure(options, _safeAuthCode(failure)));
       } on Object {
@@ -95,11 +127,31 @@ final class AuthInterceptor extends Interceptor {
       }
       return;
     }
+    if (policy == RequestAuthPolicy.recent) {
+      final expectedAuthEpoch = _expectedAuthEpoch(options);
+      if (!_isApiRequest(options) ||
+          expectedAuthEpoch == null ||
+          !_tokenSource.isCurrentEpoch(expectedAuthEpoch) ||
+          _bearerValue(options.headers[_authorizationHeader]) == null) {
+        handler.reject(
+          _authFailure(
+            options,
+            expectedAuthEpoch != null &&
+                    !_tokenSource.isCurrentEpoch(expectedAuthEpoch)
+                ? 'AUTH_SUPERSEDED'
+                : 'AUTH_ORIGIN_REJECTED',
+          ),
+        );
+        return;
+      }
+      await _dispatchOrContinue(options, handler);
+      return;
+    }
     if (policy != RequestAuthPolicy.required) {
       // Optional public requests deliberately remain anonymous so a readable
       // feed can never wait for Keychain/Keystore or OIDC availability.
       options.headers.remove(_authorizationHeader);
-      handler.next(options);
+      await _dispatchOrContinue(options, handler);
       return;
     }
     if (!_isApiRequest(options)) {
@@ -120,7 +172,7 @@ final class AuthInterceptor extends Interceptor {
         return;
       }
       options.headers[_authorizationHeader] = 'Bearer $token';
-      handler.next(options);
+      await _dispatchOrContinue(options, handler);
     } on AuthFailure catch (failure) {
       handler.reject(_authFailure(options, _safeAuthCode(failure)));
     } on Object {
@@ -128,9 +180,98 @@ final class AuthInterceptor extends Interceptor {
     }
   }
 
+  /// Sends strict bodyless authenticated calls directly through Dio's adapter.
+  ///
+  /// Dio 5's public `ResponseType.stream` path eagerly subscribes an
+  /// unbounded intermediate controller and does not propagate consumer
+  /// cancellation upstream. These deletion-only requests therefore bypass
+  /// that wrapper after authentication has populated the final headers.
+  Future<void> _dispatchOrContinue(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
+    if (options.extra[_strictRawResponseStreamKey] != true) {
+      handler.next(options);
+      return;
+    }
+    if (options.responseType != ResponseType.stream || options.data != null) {
+      handler.reject(
+        DioException(
+          requestOptions: options,
+          type: DioExceptionType.unknown,
+          error: const FormatException(
+            'Strict raw requests must be bodyless response streams.',
+          ),
+        ),
+        true,
+      );
+      return;
+    }
+    try {
+      final responseBody = await _dio.httpClientAdapter.fetch(
+        options,
+        null,
+        options.cancelToken?.whenCancel,
+      );
+      final response = Response<ResponseBody>(
+        data: responseBody,
+        requestOptions: options,
+        headers: Headers.fromMap(
+          responseBody.headers,
+          preserveHeaderCase: options.preserveHeaderCase,
+        ),
+        redirects: responseBody.redirects ?? const [],
+        isRedirect: responseBody.isRedirect,
+        statusCode: responseBody.statusCode,
+        statusMessage: responseBody.statusMessage,
+        extra: responseBody.extra,
+      );
+      if (options.validateStatus(responseBody.statusCode)) {
+        handler.resolve(response, true);
+      } else {
+        handler.reject(
+          DioException.badResponse(
+            statusCode: responseBody.statusCode,
+            requestOptions: options,
+            response: response,
+          ),
+          true,
+        );
+      }
+    } on DioException catch (error) {
+      handler.reject(error, true);
+    } on Object catch (error, stackTrace) {
+      handler.reject(
+        DioException(
+          requestOptions: options,
+          error: error,
+          stackTrace: stackTrace,
+        ),
+        true,
+      );
+    }
+  }
+
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     final options = err.requestOptions;
+    final pendingHandler = _onAccountDeletionPending;
+    if (_accountDeletionPending(err) && pendingHandler != null) {
+      final expectedAuthEpoch = _expectedAuthEpoch(options);
+      if (expectedAuthEpoch != null) {
+        try {
+          await pendingHandler(
+            expectedAuthEpoch,
+            _safeResponseRequestId(err.response?.data),
+          );
+        } on Object {
+          // The handler is itself fail-closed and records local failures. The
+          // stable server error remains the result of this HTTP request.
+        }
+      }
+      handler.next(err);
+      return;
+    }
     if (err.response?.statusCode != 401 ||
         _authPolicy(options) != RequestAuthPolicy.required ||
         options.extra[_authRetriedKey] == true ||
@@ -201,6 +342,30 @@ final class AuthInterceptor extends Interceptor {
       AuthRetryPolicy.never => false,
     };
   }
+}
+
+bool _accountDeletionPending(DioException error) {
+  final data = error.response?.data;
+  if (data is! Map) return false;
+  final root = Map<String, Object?>.from(data);
+  final nested = root['error'];
+  final details = nested is Map ? Map<String, Object?>.from(nested) : root;
+  return details['code'] == 'ACCOUNT_DELETION_PENDING';
+}
+
+String? _safeResponseRequestId(Object? data) {
+  if (data is! Map) return null;
+  final root = Map<String, Object?>.from(data);
+  final nested = root['error'];
+  final details = nested is Map ? Map<String, Object?>.from(nested) : root;
+  final value = details['request_id'];
+  return value is String &&
+          RegExp(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+            r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+          ).hasMatch(value)
+      ? value.toLowerCase()
+      : null;
 }
 
 final class AuthRequestFailure implements Exception {

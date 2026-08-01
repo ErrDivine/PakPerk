@@ -1,0 +1,249 @@
+environment: ""
+
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+image:
+  repository: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+
+siteImage:
+  repository: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+
+secret:
+  # Created by the deployment platform, never by this chart.
+  existingSecret: ""
+  # Increment whenever the external Secret changes so copied/subPath-backed
+  # material is rolled into fresh pods.
+  rotationVersion: ""
+  apiDatabaseUrlKey: API_DATABASE_URL
+  paperWorkerDatabaseUrlKey: PAPER_WORKER_DATABASE_URL
+  metadataSyncDatabaseUrlKey: METADATA_SYNC_DATABASE_URL
+  deletionWorkerDatabaseUrlKey: DELETION_WORKER_DATABASE_URL
+  migrationDatabaseUrlKey: MIGRATION_DATABASE_URL
+  llmApiKeyKey: LLM_API_KEY
+  apiOriginHashKey: API_ORIGIN_HASH_SECRET
+  identityFingerprintKeysKey: ACCOUNT_IDENTITY_FINGERPRINT_KEYS
+  deletionLedgerSigningKeysKey: ACCOUNT_DELETION_LEDGER_SIGNING_KEYS
+  deletionProviderIdentityKeysKey: ACCOUNT_DELETION_PROVIDER_IDENTITY_KEYS
+  oidcAdminClientSecretKey: OIDC_ADMIN_CLIENT_SECRET
+  telemetryExporterHeadersKey: OTEL_EXPORTER_HEADERS
+
+public:
+  siteOrigin: ""
+  apiOrigin: ""
+  mobileTelemetryOrigin: ""
+  oidcOrigin: ""
+  oidcIssuer: ""
+  oidcAudience: pakperk-api
+  oidcWebClientId: ""
+  oidcNativeClientId: ""
+  supportEmail: ""
+  documentVersion: ""
+
+mobileAssociations:
+  # Production signing identity values belong in the protected environment
+  # values file, not in source control or the site image.
+  androidPackageName: ""
+  androidSha256Fingerprints: []
+  appleTeamId: ""
+  appleBundleId: ""
+
+features:
+  accounts: true
+  library: true
+  libraryWrites: true
+  comments: true
+  commentCreation: true
+  accountDeletion: true
+
+policy:
+  fulltext: strict
+  termsVersion: ""
+  communityGuidelinesVersion: ""
+  operationalTelemetryRetentionDays: 30
+
+api:
+  replicas: 2
+  # Source ranges actually observed by the API for the reviewed ingress proxy
+  # chain. Keep this aligned with the NetworkPolicy ingress-controller boundary.
+  trustedProxyCidrs: []
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { cpu: "1", memory: 768Mi }
+  databasePoolSize: 10
+  requestTimeoutSeconds: 30
+  chatTimeoutSeconds: 70
+  maxRequestBytes: 65536
+  terminationGracePeriodSeconds: 45
+  service:
+    port: 8080
+  pdb:
+    enabled: true
+    minAvailable: 1
+  topologySpread:
+    enabled: true
+
+telemetryGateway:
+  enabled: true
+  replicas: 2
+  command: [/usr/local/bin/pakperk-telemetry-gateway]
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 250m, memory: 192Mi }
+  service:
+    port: 8080
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+paperWorker:
+  enabled: true
+  replicas: 1
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "2", memory: 2Gi }
+  databasePoolSize: 5
+  leaseSeconds: 300
+  pollIntervalMs: 1000
+  arxivCategories: cs.AI,cs.CL,cs.LG
+  arxivBatchSize: 100
+  arxivContactEmail: ""
+  llmProvider: openai_compatible
+  llmBaseUrl: ""
+  llmChatModel: ""
+  llmEmbeddingModel: ""
+  embeddingDimension: 384
+  terminationGracePeriodSeconds: 330
+
+deletionWorker:
+  enabled: true
+  replicas: 1
+  command: [/usr/local/bin/pakperk-deletion-worker]
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  databasePoolSize: 5
+  pollIntervalMs: 1000
+  leaseSeconds: 60
+  stepTimeoutSeconds: 30
+  retryBaseSeconds: 5
+  retryMaxSeconds: 3600
+  cleanupIntervalSeconds: 3600
+  cleanupBatchSize: 1000
+  maximumAttempts: 12
+  recentAuthSeconds: 300
+  deleteLimit: 2
+  deleteWindowSeconds: 3600
+  recoverableBackupDays: 35
+  pendingFileMaxAgeSeconds: 3600
+  keycloakAdminBaseUrl: ""
+  keycloakRealm: ""
+  keycloakAdminClientId: ""
+  terminationGracePeriodSeconds: 90
+
+deletionLedger:
+  # Must be a separately backed-up RWX volume, outside the PostgreSQL restore boundary.
+  existingClaim: ""
+  environmentId: ""
+  retentionDays: 400
+  securityRetentionDays: 90
+
+migration:
+  enabled: true
+  command: [/usr/local/bin/pakperk-migrate]
+  confirmBackupId: ""
+  expectedVersion: 9
+  activeDeadlineSeconds: 900
+  resources:
+    requests: { cpu: 50m, memory: 96Mi }
+    limits: { cpu: 500m, memory: 384Mi }
+
+metadataSync:
+  enabled: true
+  schedule: "17 */6 * * *"
+  startingDeadlineSeconds: 1800
+  manifestJson: ""
+
+site:
+  enabled: true
+  replicas: 2
+  resources:
+    requests: { cpu: 20m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+  service:
+    port: 8080
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+grobid:
+  enabled: true
+  image:
+    repository: grobid/grobid
+    digest: ""
+    pullPolicy: IfNotPresent
+  resources:
+    requests: { cpu: "1", memory: 2Gi }
+    limits: { cpu: "2", memory: 4Gi }
+
+otelCollector:
+  enabled: true
+  image:
+    repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib
+    digest: sha256:e0f565815b2b8e78eb9fdbb80f6190c921ab323aaa8ccceab3255c6d4225f4af
+    pullPolicy: IfNotPresent
+  exporterEndpoint: ""
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  memoryLimitMiB: 384
+
+ingress:
+  # Set false only when an externally managed ingress implements the same TLS,
+  # exact-host/path, body/time-limit, rate-limit, and query-safe logging
+  # contract. NetworkPolicy ingress-controller selectors must still match it.
+  enabled: true
+  className: ""
+  annotations: {}
+  tlsSecretName: ""
+  siteHost: ""
+  apiHost: ""
+  telemetryHost: ""
+
+networkPolicy:
+  enabled: true
+  ingressController:
+    namespaceSelector:
+      kubernetes.io/metadata.name: ingress-nginx
+    podSelector:
+      app.kubernetes.io/component: controller
+  # Standard Kubernetes NetworkPolicy has no portable FQDN selector. Resolve
+  # and review these ranges for each managed environment before deployment.
+  apiHttpsCidrs: []
+  paperHttpsCidrs: []
+  identityAdminHttpsCidrs: []
+  databaseCidrs: []
+  databasePort: 5432
+  telemetryCidrs: []
+  telemetryPort: 4317
+  dnsNamespaceSelector:
+    kubernetes.io/metadata.name: kube-system
+  dnsPodSelector:
+    k8s-app: kube-dns
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

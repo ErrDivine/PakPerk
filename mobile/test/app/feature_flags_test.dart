@@ -10,6 +10,23 @@ void main() {
 
         expect(config.environment, AppEnvironment.development);
         expect(config.apiBaseUri, Uri.parse('http://localhost:8080'));
+        expect(config.publicSiteOriginUri, Uri.parse('http://localhost:3000'));
+        expect(config.supportUri, Uri.parse('http://localhost:3000/support'));
+        expect(
+          config.accountDeletionUri,
+          Uri.parse('http://localhost:3000/account-deletion'),
+        );
+        expect(config.appLinkOriginUri, Uri.parse('http://localhost:3000'));
+        expect(
+          {
+            config.apiBaseUri.host,
+            config.publicSiteOriginUri.host,
+            config.supportUri.host,
+            config.accountDeletionUri.host,
+          },
+          isNot(contains('pakperk.app')),
+          reason: 'a zero-config debug build must not contact production',
+        );
         expect(config.fulltextPolicy, 'prototype');
         expect(config.features, const FeatureFlags.disabled());
       },
@@ -29,6 +46,8 @@ void main() {
         'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth://oauth/callback',
         'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI': 'pakperk-auth://oauth/logout',
         'PAKPERK_COMMENT_SUPPORT_CONTACT_URL': 'https://pakperk.app/support',
+        'PAKPERK_PUBLIC_SITE_ORIGIN': 'https://pakperk.app',
+        'PAKPERK_TELEMETRY_ENDPOINT': 'https://telemetry.pakperk.app/v1/logs',
       });
 
       expect(config.environment, AppEnvironment.production);
@@ -76,6 +95,140 @@ void main() {
       }
     });
 
+    test('public HTTP endpoints are restricted to development loopback', () {
+      for (final values in [
+        const {'PAKPERK_PUBLIC_SITE_ORIGIN': 'http://pakperk.app'},
+        const {'PAKPERK_SUPPORT_URL': 'http://192.168.1.20:3000/support'},
+        const {
+          'PAKPERK_ACCOUNT_DELETION_URL':
+              'http://dev.internal/account-deletion',
+        },
+        const {'PAKPERK_APP_LINK_ORIGIN': 'http://dev.internal'},
+      ]) {
+        expect(
+          () => AppBuildConfig.fromValues(values),
+          throwsA(isA<BuildConfigurationException>()),
+          reason: values.toString(),
+        );
+      }
+    });
+
+    test('staging uses staging public URLs and dedicated auth scheme', () {
+      final config = AppBuildConfig.fromValues(const {
+        'PAKPERK_ENV': 'staging',
+        'PAKPERK_API_BASE_URL': 'https://api.staging.pakperk.app',
+        'PAKPERK_ACCOUNTS_ENABLED': 'true',
+        'PAKPERK_OIDC_ISSUER_URL':
+            'https://identity.staging.pakperk.app/realms/app',
+        'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-staging',
+        'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth-staging://oauth/callback',
+        'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
+            'pakperk-auth-staging://oauth/logout',
+        'PAKPERK_PUBLIC_SITE_ORIGIN': 'https://staging.pakperk.app',
+        'PAKPERK_TELEMETRY_ENDPOINT':
+            'https://telemetry.staging.pakperk.app/v1/logs',
+      });
+
+      expect(
+        config.publicSiteOriginUri,
+        Uri.parse('https://staging.pakperk.app'),
+      );
+      expect(config.oidcRedirectUri!.scheme, 'pakperk-auth-staging');
+    });
+
+    test('native build flavor must exactly match the Dart environment', () {
+      final configs = <({AppBuildConfig config, String flavor})>[
+        (config: AppBuildConfig.fromValues(const {}), flavor: 'dev'),
+        (
+          config: AppBuildConfig.fromValues(const {
+            'PAKPERK_ENV': 'staging',
+            'PAKPERK_API_BASE_URL': 'https://api.staging.pakperk.app',
+            'PAKPERK_PUBLIC_SITE_ORIGIN': 'https://staging.pakperk.app',
+            'PAKPERK_TELEMETRY_ENDPOINT':
+                'https://telemetry.staging.pakperk.app/v1/logs',
+          }),
+          flavor: 'staging',
+        ),
+        (
+          config: AppBuildConfig.fromValues(const {
+            'PAKPERK_ENV': 'production',
+            'PAKPERK_API_BASE_URL': 'https://api.pakperk.app',
+            'PAKPERK_FULLTEXT_POLICY': 'strict',
+            'PAKPERK_PUBLIC_SITE_ORIGIN': 'https://pakperk.app',
+            'PAKPERK_TELEMETRY_ENDPOINT':
+                'https://telemetry.pakperk.app/v1/logs',
+          }),
+          flavor: 'prod',
+        ),
+      ];
+
+      for (final entry in configs) {
+        expect(
+          () => entry.config.requireMatchingNativeFlavor(entry.flavor),
+          returnsNormally,
+          reason: entry.flavor,
+        );
+        for (final wrongFlavor in <String?>{
+          null,
+          'development',
+          'dev',
+          'staging',
+          'prod',
+        }..remove(entry.flavor)) {
+          expect(
+            () => entry.config.requireMatchingNativeFlavor(wrongFlavor),
+            throwsA(isA<BuildConfigurationException>()),
+            reason: '${entry.flavor} must reject $wrongFlavor',
+          );
+        }
+      }
+    });
+
+    test(
+      'staging and production require deployment-owned public telemetry URLs',
+      () {
+        for (final values in [
+          const {
+            'PAKPERK_ENV': 'staging',
+            'PAKPERK_API_BASE_URL': 'https://api.staging.pakperk.app',
+          },
+          const {
+            'PAKPERK_ENV': 'production',
+            'PAKPERK_API_BASE_URL': 'https://api.pakperk.app',
+            'PAKPERK_FULLTEXT_POLICY': 'strict',
+            'PAKPERK_PUBLIC_SITE_ORIGIN': 'https://pakperk.app',
+          },
+        ]) {
+          expect(
+            () => AppBuildConfig.fromValues(values),
+            throwsA(isA<BuildConfigurationException>()),
+            reason: values.toString(),
+          );
+        }
+      },
+    );
+
+    test('telemetry requires the exact OTLP logs path', () {
+      for (final endpoint in [
+        'https://telemetry.pakperk.app',
+        'https://telemetry.pakperk.app/v1/traces',
+        'https://telemetry.pakperk.app/v1/logs/',
+        'https://telemetry.pakperk.app/v1/logs?tenant=prod',
+      ]) {
+        expect(
+          () => AppBuildConfig.fromValues({
+            'PAKPERK_ENV': 'production',
+            'PAKPERK_API_BASE_URL': 'https://api.pakperk.app',
+            'PAKPERK_FULLTEXT_POLICY': 'strict',
+            'PAKPERK_PUBLIC_SITE_ORIGIN': 'https://pakperk.app',
+            'PAKPERK_TELEMETRY_ENDPOINT': endpoint,
+          }),
+          throwsA(isA<BuildConfigurationException>()),
+          reason: endpoint,
+        );
+      }
+    });
+
     test('account-owned features cannot be enabled without accounts', () {
       expect(
         () => AppBuildConfig.fromValues(const {
@@ -97,7 +250,7 @@ void main() {
           'PAKPERK_ACCOUNTS_ENABLED': 'true',
           'PAKPERK_OIDC_ISSUER_URL': 'http://localhost:8081/realms/app',
           'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-dev',
-          'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth://oauth/callback',
+          'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth-dev://oauth/callback',
         }),
         throwsA(isA<BuildConfigurationException>()),
       );
@@ -109,9 +262,9 @@ void main() {
         'data:text/plain,callback',
         'other-app://auth/callback',
         'pakperk://paper/callback',
-        'pakperk-auth://oauth/callback?forward=elsewhere',
-        'pakperk-auth://other/callback',
-        'pakperk-auth://oauth/wrong',
+        'pakperk-auth-dev://oauth/callback?forward=elsewhere',
+        'pakperk-auth-dev://other/callback',
+        'pakperk-auth-dev://oauth/wrong',
       ]) {
         expect(
           () => AppBuildConfig.fromValues({
@@ -120,7 +273,7 @@ void main() {
             'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-dev',
             'PAKPERK_OIDC_REDIRECT_URI': redirect,
             'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
-                'pakperk-auth://oauth/logout',
+                'pakperk-auth-dev://oauth/logout',
           }),
           throwsA(isA<BuildConfigurationException>()),
           reason: redirect,
@@ -139,7 +292,7 @@ void main() {
           'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-staging',
           'PAKPERK_OIDC_REDIRECT_URI': 'https://identity.pakperk.app/callback',
           'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
-              'pakperk-auth://oauth/logout',
+              'pakperk-auth-staging://oauth/logout',
         }),
         throwsA(isA<BuildConfigurationException>()),
       );
@@ -156,9 +309,9 @@ void main() {
             'PAKPERK_ACCOUNTS_ENABLED': 'true',
             'PAKPERK_OIDC_ISSUER_URL': issuer,
             'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-dev',
-            'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth://oauth/callback',
+            'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth-dev://oauth/callback',
             'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
-                'pakperk-auth://oauth/logout',
+                'pakperk-auth-dev://oauth/logout',
           }),
           throwsA(isA<BuildConfigurationException>()),
           reason: issuer,
@@ -174,9 +327,9 @@ void main() {
           'PAKPERK_ACCOUNTS_ENABLED': 'true',
           'PAKPERK_OIDC_ISSUER_URL': 'https://localhost:8081/realms/pakperk',
           'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-staging',
-          'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth://oauth/callback',
+          'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth-staging://oauth/callback',
           'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
-              'pakperk-auth://oauth/logout',
+              'pakperk-auth-staging://oauth/logout',
         }),
         throwsA(isA<BuildConfigurationException>()),
       );
@@ -189,12 +342,58 @@ void main() {
           'PAKPERK_COMMENTS_ENABLED': 'true',
           'PAKPERK_OIDC_ISSUER_URL': 'http://localhost:8081/realms/app',
           'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-dev',
-          'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth://oauth/callback',
+          'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth-dev://oauth/callback',
           'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
-              'pakperk-auth://oauth/logout',
+              'pakperk-auth-dev://oauth/logout',
         }),
         throwsA(isA<BuildConfigurationException>()),
       );
+    });
+
+    test('rejects callback schemes owned by another flavor', () {
+      for (final values in [
+        const {
+          'PAKPERK_ACCOUNTS_ENABLED': 'true',
+          'PAKPERK_OIDC_ISSUER_URL': 'http://localhost:8081/realms/app',
+          'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-dev',
+          'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth://oauth/callback',
+          'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
+              'pakperk-auth://oauth/logout',
+        },
+        const {
+          'PAKPERK_ENV': 'staging',
+          'PAKPERK_API_BASE_URL': 'https://api.staging.pakperk.app',
+          'PAKPERK_ACCOUNTS_ENABLED': 'true',
+          'PAKPERK_OIDC_ISSUER_URL':
+              'https://identity.staging.pakperk.app/realms/app',
+          'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-staging',
+          'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth-dev://oauth/callback',
+          'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
+              'pakperk-auth-dev://oauth/logout',
+          'PAKPERK_PUBLIC_SITE_ORIGIN': 'https://staging.pakperk.app',
+          'PAKPERK_TELEMETRY_ENDPOINT':
+              'https://telemetry.staging.pakperk.app/v1/logs',
+        },
+        const {
+          'PAKPERK_ENV': 'production',
+          'PAKPERK_API_BASE_URL': 'https://api.pakperk.app',
+          'PAKPERK_FULLTEXT_POLICY': 'strict',
+          'PAKPERK_ACCOUNTS_ENABLED': 'true',
+          'PAKPERK_OIDC_ISSUER_URL': 'https://identity.pakperk.app/realms/app',
+          'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-prod',
+          'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth-staging://oauth/callback',
+          'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
+              'pakperk-auth-staging://oauth/logout',
+          'PAKPERK_PUBLIC_SITE_ORIGIN': 'https://pakperk.app',
+          'PAKPERK_TELEMETRY_ENDPOINT': 'https://telemetry.pakperk.app/v1/logs',
+        },
+      ]) {
+        expect(
+          () => AppBuildConfig.fromValues(values),
+          throwsA(isA<BuildConfigurationException>()),
+          reason: values['PAKPERK_ENV'] ?? 'development',
+        );
+      }
     });
 
     test('rejects values that would bundle a secret in the app', () {

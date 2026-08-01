@@ -1,5 +1,6 @@
 [package]
 name = "comments"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,6 +10,7 @@ rust-version.workspace = true
 db.workspace = true
 domain.workspace = true
 moderation.workspace = true
+observability.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 uuid.workspace = true

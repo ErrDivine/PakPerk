@@ -35,6 +35,10 @@ abstract interface class LocalStore {
   Future<void> saveConnections(PaperConnections value);
   Future<ChatSnapshot?> loadChat(String readerKey);
   Future<void> saveChat(String readerKey, ChatSnapshot value);
+
+  /// Deletes every cached comment snapshot during account deletion.
+  /// Implementations must not silently succeed if they can retain comments.
+  Future<void> purgeAccountDeletionCommentSnapshots();
 }
 
 class SharedPreferencesLocalStore implements LocalStore {
@@ -213,6 +217,13 @@ class SharedPreferencesLocalStore implements LocalStore {
   @override
   Future<void> saveChat(String readerKey, ChatSnapshot value) =>
       _writeMap(_key('chat', readerKey), value.toJson());
+
+  @override
+  Future<void> purgeAccountDeletionCommentSnapshots() async {
+    // This lightweight store has never persisted comment pages. Keeping an
+    // explicit implementation makes alternate stores opt into the deletion
+    // contract instead of being treated as safe by type inference.
+  }
 
   Future<void> _clearChatsForArxivVersion(String arxivId) async {
     const prefix = 'pakperk.chat.v1.';

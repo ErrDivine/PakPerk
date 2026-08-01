@@ -1,9 +1,9 @@
 use super::{
-    ApiError, AppState, ConnectInfo, Duration, Extension, FulltextPolicy, HeaderMap, IntoResponse,
-    Json, Path, PrepareBody, RequestId, SocketAddr, State, StatusCode, Uuid,
-    apply_processing_policy, apply_summary_policy, capability_not_ready, client_keys,
-    enforce_derived_policy, internal_db_error, invalid_arxiv_id, negative_exact_cache_ttl,
-    normalize_arxiv_id, observe_arxiv_result, paper_not_found, rate_limited,
+    ApiError, AppState, ConnectInfo, Extension, FulltextPolicy, HeaderMap, IntoResponse, Json,
+    Path, PrepareBody, PublicRequestAction, RequestId, SocketAddr, State, StatusCode, Uuid,
+    apply_processing_policy, apply_summary_policy, capability_not_ready, enforce_derived_policy,
+    enforce_public_request_limit, internal_db_error, invalid_arxiv_id, negative_exact_cache_ttl,
+    normalize_arxiv_id, observe_arxiv_result, optional_session_id, paper_not_found,
 };
 use crate::middleware::OptionalPrincipal;
 
@@ -139,16 +139,15 @@ pub(crate) async fn prepare(
     Path(paper_id): Path<Uuid>,
     Json(body): Json<PrepareBody>,
 ) -> Result<impl IntoResponse, ApiError> {
-    state
-        .limiter
-        .check_all(
-            "prepare",
-            client_keys(&headers, Some(&remote)),
-            state.prepare_limit,
-            Duration::from_secs(60),
-        )
-        .await
-        .map_err(|_| rate_limited(request_id))?;
+    enforce_public_request_limit(
+        &state,
+        PublicRequestAction::Prepare,
+        request_id,
+        &headers,
+        remote.0,
+        optional_session_id(&headers),
+    )
+    .await?;
     let mut result = state
         .papers
         .prepare(paper_id, body.retry)

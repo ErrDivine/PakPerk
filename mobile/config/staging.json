@@ -1,0 +1,19 @@
+{
+  "PAKPERK_ENV": "staging",
+  "PAKPERK_API_BASE_URL": "https://api.staging.pakperk.app",
+  "PAKPERK_FULLTEXT_POLICY": "strict",
+  "PAKPERK_ACCOUNTS_ENABLED": "true",
+  "PAKPERK_LIBRARY_ENABLED": "true",
+  "PAKPERK_COMMENTS_ENABLED": "true",
+  "PAKPERK_OPENING_MOTION_ENABLED": "true",
+  "PAKPERK_OIDC_ISSUER_URL": "https://identity.staging.pakperk.app/realms/pakperk",
+  "PAKPERK_OIDC_CLIENT_ID": "pakperk-mobile-staging",
+  "PAKPERK_OIDC_REDIRECT_URI": "pakperk-auth-staging://oauth/callback",
+  "PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI": "pakperk-auth-staging://oauth/logout",
+  "PAKPERK_OIDC_SCOPES": "openid profile",
+  "PAKPERK_PUBLIC_SITE_ORIGIN": "https://staging.pakperk.app",
+  "PAKPERK_SUPPORT_URL": "https://staging.pakperk.app/support",
+  "PAKPERK_ACCOUNT_DELETION_URL": "https://staging.pakperk.app/account-deletion",
+  "PAKPERK_APP_LINK_ORIGIN": "https://staging.pakperk.app",
+  "PAKPERK_TELEMETRY_ENDPOINT": "https://telemetry.staging.pakperk.app/v1/logs"
+}

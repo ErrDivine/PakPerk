@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/build_info.dart';
+
 class GuestYouScreen extends StatelessWidget {
   const GuestYouScreen({
     required this.onOpenSettings,
@@ -110,8 +112,8 @@ class GuestYouScreen extends StatelessWidget {
             const AboutListTile(
               icon: Icon(Icons.info_outline),
               applicationName: 'Pakperk',
-              applicationVersion: '0.1.0',
-              applicationLegalese: 'Production v0.0 groundwork',
+              applicationVersion: PakPerkBuildInfo.displayVersion,
+              applicationLegalese: 'Production v0.0 release candidate',
             ),
           ],
         ),

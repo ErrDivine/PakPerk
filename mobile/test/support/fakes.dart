@@ -72,6 +72,12 @@ class MemoryLocalStore implements LocalStore {
   final Map<String, PaperIntroduction> introductions = {};
   final Map<String, PaperConnections> connections = {};
   final Map<String, ChatSnapshot> chats = {};
+  int accountDeletionCommentPurgeCalls = 0;
+
+  @override
+  Future<void> purgeAccountDeletionCommentSnapshots() async {
+    accountDeletionCommentPurgeCalls += 1;
+  }
 
   @override
   Future<String> getOrCreateSessionId() async =>

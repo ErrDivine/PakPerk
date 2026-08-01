@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'auth_models.dart';
 import 'auth_repository.dart';
+import '../telemetry/telemetry.dart';
 
 /// Deletes only account-owned local rows. Implementations must preserve the
 /// public paper/feed cache so signing out never destroys guest reading data.
@@ -13,12 +14,15 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
   AuthSessionController({
     required AuthRepository repository,
     required AccountOwnedDataClearer clearAccountOwnedData,
+    TelemetrySink telemetry = const NoopTelemetrySink(),
   }) : _repository = repository,
        _clearAccountOwnedData = clearAccountOwnedData,
+       _telemetry = telemetry,
        super(AuthSessionState.checking(epoch: repository.epoch));
 
   final AuthRepository _repository;
   final AccountOwnedDataClearer _clearAccountOwnedData;
+  final TelemetrySink _telemetry;
   _AccountCleanupFlight? _accountCleanupFlight;
   bool _disposed = false;
 
@@ -81,6 +85,9 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
   /// Returns false for a user-cancelled browser flow without surfacing an
   /// error. All other failures are represented only by a safe failure code.
   Future<bool> signIn() async {
+    emitTelemetry(_telemetry, PakPerkTelemetryEvent.authStarted, {
+      'purpose': 'session',
+    });
     // A new interactive identity must never inherit another account's local
     // library, drafts, or outbox. A null ID deliberately asks the application
     // clearer to remove all account-owned rows left by an unbound session.
@@ -121,10 +128,16 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
         epoch: session.epoch,
         accountId: session.accountId,
       );
+      emitTelemetry(_telemetry, PakPerkTelemetryEvent.authCompleted, {
+        'purpose': 'session',
+      });
       return true;
     } on AuthFailure catch (failure) {
       if (failure.isCancellation && _isCurrent(operationEpoch)) {
         state = AuthSessionState.guest(epoch: operationEpoch);
+        emitTelemetry(_telemetry, PakPerkTelemetryEvent.authCancelled, {
+          'purpose': 'session',
+        });
       } else {
         await _applyFailure(failure, operationEpoch);
       }
@@ -213,6 +226,75 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
       state = AuthSessionState.guest(epoch: signOutEpoch, failure: failure);
     }
   }
+
+  /// Enters a fail-closed deletion-pending session and removes all local
+  /// account material. Unlike sign-out this never opens a provider logout
+  /// browser: server-side deletion owns revocation and identity erasure.
+  ///
+  /// Returns true only when both secure credential invalidation and local
+  /// account-data cleanup completed. Callers retain their independent durable
+  /// guard until this succeeds, so process death cannot restore the session.
+  Future<bool> enterAccountDeletionPending({String? accountId}) async {
+    final previousAccountId =
+        accountId ?? _repository.accountId ?? state.accountId;
+    final repositoryInvalidation = _repository.invalidateForAccountDeletion();
+    final deletionEpoch = _repository.epoch;
+    _setIfCurrent(
+      deletionEpoch,
+      AuthSessionState.deletionPending(epoch: deletionEpoch),
+    );
+
+    Future<void>? accountDataClear;
+    AuthFailure? failure;
+    try {
+      accountDataClear = _clearAccountOwnedData(
+        previousAccountId,
+        deletionEpoch,
+      );
+    } on Object {
+      failure = AuthFailure(
+        AuthFailureKind.accountDeletionCleanup,
+        AuthFailureCode.accountDeletionCleanup,
+        sessionEpoch: deletionEpoch,
+      );
+    }
+    try {
+      await repositoryInvalidation;
+    } on AuthFailure {
+      failure ??= AuthFailure(
+        AuthFailureKind.accountDeletionCleanup,
+        AuthFailureCode.accountDeletionCleanup,
+        sessionEpoch: deletionEpoch,
+      );
+    }
+    try {
+      await accountDataClear;
+    } on Object {
+      failure ??= AuthFailure(
+        AuthFailureKind.accountDeletionCleanup,
+        AuthFailureCode.accountDeletionCleanup,
+        sessionEpoch: deletionEpoch,
+      );
+    }
+    if (_isCurrent(deletionEpoch)) {
+      state = AuthSessionState.deletionPending(
+        epoch: deletionEpoch,
+        failure: failure,
+      );
+    }
+    return failure == null;
+  }
+
+  /// Changes only the post-cleanup presentation state. The caller must verify
+  /// and clear the independent deletion guard before invoking this method.
+  void continueAsGuestAfterDeletion() {
+    final currentEpoch = _repository.epoch;
+    _setIfCurrent(currentEpoch, AuthSessionState.guest(epoch: currentEpoch));
+  }
+
+  @override
+  bool isCurrentEpoch(int expectedAuthEpoch) =>
+      !_disposed && _repository.isCurrentEpoch(expectedAuthEpoch);
 
   @override
   Future<String?> accessTokenForRequest({int? expectedAuthEpoch}) async {

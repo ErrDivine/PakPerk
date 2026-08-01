@@ -32,8 +32,11 @@ The checked-in realm uses:
 issuer:                  http://localhost:8081/realms/pakperk
 API audience:            pakperk-api
 native client:           pakperk-mobile-dev
-redirect URI:            pakperk-auth://oauth/callback
-post-logout redirect:    pakperk-auth://oauth/logout
+redirect URI:            pakperk-auth-dev://oauth/callback
+post-logout redirect:    pakperk-auth-dev://oauth/logout
+browser deletion client: pakperk-web-deletion-dev
+browser redirect URI:    http://localhost:8082/account-deletion/
+deletion admin client:   pakperk-deletion-worker-dev (runtime-generated secret)
 requested scopes:        openid profile
 verification inbox:      http://localhost:8025
 ```
@@ -95,12 +98,14 @@ Enable the native client with matching build values:
 ```bash
 cd mobile
 flutter run \
+  --flavor dev \
+  --dart-define=PAKPERK_ENV=development \
   --dart-define=PAKPERK_API_BASE_URL=http://localhost:8080 \
   --dart-define=PAKPERK_ACCOUNTS_ENABLED=true \
   --dart-define=PAKPERK_OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
   --dart-define=PAKPERK_OIDC_CLIENT_ID=pakperk-mobile-dev \
-  --dart-define=PAKPERK_OIDC_REDIRECT_URI=pakperk-auth://oauth/callback \
-  --dart-define=PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI=pakperk-auth://oauth/logout \
+  --dart-define=PAKPERK_OIDC_REDIRECT_URI=pakperk-auth-dev://oauth/callback \
+  --dart-define=PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI=pakperk-auth-dev://oauth/logout \
   --dart-define='PAKPERK_OIDC_SCOPES=openid profile'
 ```
 
@@ -259,12 +264,17 @@ X-Request-Id, ETag, Retry-After
 Native Flutter requests do not rely on CORS, but this contract prevents web
 tooling from requiring broader wildcard or credential behavior.
 
-## Later-phase extensions
+## Account-owned and deletion extensions
 
 Phase 4 now publishes library routes only when its independent account,
 library, and write gates allow them. Saving does not require a handle or terms
 acceptance; remote sync additionally requires an epoch-bound `/v1/me` account
-verification. The identity-admin types still include an honest Keycloak
-adapter skeleton, and destructive provider calls remain unwired until the
-idempotent Phase 6 deletion state machine lands. Comments remain disabled until
-every Phase 5 UGC safety gate is complete.
+verification. The provider-neutral identity-admin boundary now has a bounded
+Keycloak implementation used only by the dedicated deletion worker. Recent-auth
+`DELETE /v1/me`, deletion verification, the durable state machine, signed
+external restore ledger, provider session/identity removal, and replay tooling
+are implemented behind `ACCOUNT_DELETION_ENABLED`. They remain default-off
+until the target provider grant, independent ledger/backup topology, restore
+drill, alerts, and public disclosures have approved evidence. Comments are
+implemented behind independent read/publication flags and must not be enabled
+without their UGC operational gates.

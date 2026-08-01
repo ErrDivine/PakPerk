@@ -51,7 +51,7 @@ OIDC_CLIENT_ID = os.environ.get(
     "LIVE_COMMENTS_OIDC_CLIENT_ID", "pakperk-mobile-dev"
 )
 OIDC_REDIRECT_URI = os.environ.get(
-    "LIVE_COMMENTS_OIDC_REDIRECT_URI", "pakperk-auth://oauth/callback"
+    "LIVE_COMMENTS_OIDC_REDIRECT_URI", "pakperk-auth-dev://oauth/callback"
 )
 ADMIN_USERNAME = required_env("LIVE_COMMENTS_KEYCLOAK_ADMIN_USERNAME")
 ADMIN_PASSWORD = required_env("LIVE_COMMENTS_KEYCLOAK_ADMIN_PASSWORD")

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: pakperk
+description: Fail-closed staging and production deployment for Pakperk
+type: application
+version: 0.2.0
+appVersion: "0.2.0"
+kubeVersion: ">=1.29.0-0"
+annotations:
+  artifacthub.io/license: MIT
+  artifacthub.io/containsSecurityUpdates: "true"

@@ -51,7 +51,8 @@ final libraryDisplayScopeProvider = Provider<ActiveLibraryScope?>((ref) {
       session.phase == AuthSessionPhase.guest ||
       session.phase == AuthSessionPhase.authenticating ||
       session.phase == AuthSessionPhase.checkingStoredSession ||
-      session.phase == AuthSessionPhase.signingOut) {
+      session.phase == AuthSessionPhase.signingOut ||
+      session.phase == AuthSessionPhase.deletionPending) {
     return null;
   }
   return (accountId: accountId, authEpoch: session.epoch);
@@ -112,6 +113,7 @@ final librarySyncControllerProvider =
       return LibrarySyncController(
         repository: ref.watch(libraryRepositoryProvider),
         outbox: ref.watch(libraryOutboxControllerProvider),
+        telemetry: ref.watch(telemetrySinkProvider),
       );
     });
 

@@ -431,8 +431,8 @@ AppBuildConfig _accountConfig() => AppBuildConfig.fromValues(const {
   'PAKPERK_ACCOUNTS_ENABLED': 'true',
   'PAKPERK_OIDC_ISSUER_URL': 'https://identity.example.test/realms/pakperk',
   'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile',
-  'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth://oauth/callback',
-  'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI': 'pakperk-auth://oauth/logout',
+  'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth-dev://oauth/callback',
+  'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI': 'pakperk-auth-dev://oauth/logout',
 });
 
 const _accountId = '018f47a6-4b56-7f4c-8c7a-e2656e820001';

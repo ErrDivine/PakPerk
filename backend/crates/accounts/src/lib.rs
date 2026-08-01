@@ -5,8 +5,10 @@
 //! pair, maps it to a server-owned user ID, and applies profile policy around
 //! the `PostgreSQL` repositories.
 
+mod fingerprint;
 mod service;
 
+pub use fingerprint::{FingerprintKeyringError, IdentityFingerprintKeyring};
 pub use service::{
     AccountPolicy, AccountPolicyError, AccountService, AccountServiceError, AccountStore,
     PatchValue, ProfileUpdateCommand, RateLimitStore, VerifiedIdentity,

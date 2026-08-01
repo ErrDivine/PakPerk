@@ -13,8 +13,11 @@ docker compose --profile accounts up -d postgres keycloak
 
 - Issuer: `http://localhost:8081/realms/pakperk`
 - Native client: `pakperk-mobile-dev`
-- Redirect: `pakperk-auth://oauth/callback`
-- Post-logout redirect: `pakperk-auth://oauth/logout`
+- Redirect: `pakperk-auth-dev://oauth/callback`
+- Post-logout redirect: `pakperk-auth-dev://oauth/logout`
+- Browser deletion client: `pakperk-web-deletion-dev`
+- Browser callback: `http://localhost:8082/account-deletion/`
+- Deletion service account: `pakperk-deletion-worker-dev`
 - Mailpit verification inbox: `http://localhost:8025`
 
 An Android emulator must reach the same exact `localhost` issuer that the API
@@ -31,12 +34,15 @@ will correctly fail the exact-issuer check.
 The matching API runs on the host, not in the Compose `api` container:
 
 ```bash
+./scripts/prepare_dev_account_secrets.sh
 set -a
 source .env
 set +a
 ACCOUNTS_ENABLED=true \
 DATABASE_URL=postgres://pakperk:pakperk@127.0.0.1:5432/pakperk \
 OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
+API_ORIGIN_HASH_SECRET_FILE="$PWD/.local/pakperk-secrets/API_ORIGIN_HASH_SECRET" \
+ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE="$PWD/.local/pakperk-secrets/ACCOUNT_IDENTITY_FINGERPRINT_KEYS" \
 API_BIND=127.0.0.1:8080 \
 cargo run --manifest-path backend/Cargo.toml -p pakperk-api
 ```
@@ -45,9 +51,40 @@ This is required because `localhost` inside the Compose API container refers
 to the container itself, while changing the issuer hostname for just one
 participant breaks OIDC exact-issuer validation.
 
+The initializer creates the API request-origin key, rotation-capable identity
+fingerprint/deletion-ledger/provider-coordinate keyrings, and the ledger
+directory. It never prints key values, never overwrites an existing keyring,
+rejects symlinks, and enforces owner-only modes. The account/deletion keyrings
+are consumed only by the documented host-run API/worker commands and are not
+bind-mounted into Compose. The generic request-origin source is the sole
+exception: a root one-shot Compose initializer reads it from the host directory,
+copies it into a named volume with mode `0400`, and transfers ownership to the
+API's UID 10001. The API mounts only that volume read-only. This avoids relying
+on a host UID mapping that is not portable across Linux and Docker Desktop.
+Account/deletion development still keeps Keycloak/PostgreSQL in Compose and
+runs the matching Rust process on the host. Deployed containers use the
+equivalent Helm init-copy contract.
+
 Self-registration, email verification, password recovery, refresh-token
 rotation, brute-force protection, exact redirect URIs, and PKCE S256 are
-enabled. The local bootstrap administrator defaults are deliberately confined
+enabled. The deletion worker is a confidential service account with only
+`manage-users`. Runtime deletion addresses a previously verified subject UUID
+directly and never lists or searches users. The startup probe additionally
+runs one ID-prefixed, one-result query for the reserved nil UUID; `manage-users`
+already authorizes that read, so `query-users` and `view-users` are not granted.
+Keycloak generates its secret at import, and a local harness must
+retrieve it into an owner-only temporary file. No client secret exists in the
+realm export. Verify this contract with `./scripts/validate_keycloak_realm.sh`.
+Worker readiness exchanges those credentials and performs two
+non-destructive reads for the reserved nil UUID: the direct `GET` must return a
+bounded `404`, and an ID-prefixed query bounded to one result must return a JSON
+`[]`. The positive second response prevents a generic reverse-proxy 404 from
+passing. `401` or `403` catches a missing/incorrect `manage-users` grant before
+deletion traffic is enabled, while any surprising status, non-empty result,
+redirect, or malformed response fails closed. The probe cannot return a real
+user and never modifies, logs out, or deletes one.
+
+The local bootstrap administrator defaults are deliberately confined
 to Compose development; override them in `.env` even for a shared test host.
 Staging and production must use externally managed secrets, HTTPS, separate
 realms and clients, and their own reviewed realm export.

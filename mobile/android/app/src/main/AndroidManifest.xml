@@ -1,10 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="PakPerk"
+        android:label="${appDisplayName}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:allowBackup="false"
+        android:usesCleartextTraffic="false"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
@@ -36,22 +38,22 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="pakperk" android:host="paper" />
             </intent-filter>
-            <intent-filter android:autoVerify="true">
+            <intent-filter android:autoVerify="${appLinkAutoVerify}">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="https"
-                    android:host="pakperk.app"
+                    android:scheme="${appLinkScheme}"
+                    android:host="${appLinkHost}"
                     android:pathPrefix="/p/" />
             </intent-filter>
-            <intent-filter android:autoVerify="true">
+            <intent-filter android:autoVerify="${appLinkAutoVerify}">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="https"
-                    android:host="pakperk.app"
+                    android:scheme="${appLinkScheme}"
+                    android:host="${appLinkHost}"
                     android:pathPrefix="/arxiv/" />
             </intent-filter>
         </activity>

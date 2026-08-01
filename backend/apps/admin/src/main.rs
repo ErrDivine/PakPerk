@@ -1,12 +1,18 @@
 mod cli;
 
-use std::io::{self, Write as _};
+use std::{
+    io::{self, Write as _},
+    time::Instant,
+};
 
 use anyhow::{Context as _, Result};
 use cli::{CliError, Command};
 use db::{AdminReportResolution, Database};
 use domain::AuthenticatedUserId;
 use moderation::{AdminActor, ModerationActionResult, ModerationService};
+use observability::{
+    ObservabilityConfig, OperationClass, OperationOutcome, init, record_operation,
+};
 use serde::Serialize;
 use serde_json::json;
 
@@ -21,32 +27,68 @@ async fn main() -> Result<()> {
         }
         Err(error) => return Err(error.into()),
     };
-    let database_url = std::env::var("DATABASE_URL")
-        .context("DATABASE_URL must be provided through the environment")?;
-    let pool_size = std::env::var("ADMIN_DATABASE_POOL_SIZE")
-        .ok()
-        .map(|value| value.parse::<u32>())
-        .transpose()
-        .context("ADMIN_DATABASE_POOL_SIZE must be an integer")?
-        .unwrap_or(2);
-    if !(1..=10).contains(&pool_size) {
-        anyhow::bail!("ADMIN_DATABASE_POOL_SIZE must be between 1 and 10");
+    let telemetry_config = ObservabilityConfig::from_env("pakperk-admin")
+        .context("invalid telemetry configuration")?;
+    let telemetry = init(&telemetry_config).context("could not initialize telemetry")?;
+    let mutation = is_moderation_mutation(&parsed.command);
+    let started = Instant::now();
+    let result = async {
+        let database_url = std::env::var("DATABASE_URL")
+            .context("DATABASE_URL must be provided through the environment")?;
+        let pool_size = std::env::var("ADMIN_DATABASE_POOL_SIZE")
+            .ok()
+            .map(|value| value.parse::<u32>())
+            .transpose()
+            .context("ADMIN_DATABASE_POOL_SIZE must be an integer")?
+            .unwrap_or(2);
+        if !(1..=10).contains(&pool_size) {
+            anyhow::bail!("ADMIN_DATABASE_POOL_SIZE must be between 1 and 10");
+        }
+        let database = Database::connect(&database_url, pool_size)
+            .await
+            .context("could not connect to the moderation database")?;
+        database
+            .ready()
+            .await
+            .context("moderation database is not ready")?;
+        let actor =
+            AdminActor::label(parsed.actor.as_str()).context("PAKPERK_ADMIN_ACTOR is invalid")?;
+        execute(
+            &ModerationService::new(database.moderation()),
+            &actor,
+            parsed.command,
+        )
+        .await
     }
-    let database = Database::connect(&database_url, pool_size)
-        .await
-        .context("could not connect to the moderation database")?;
-    database
-        .ready()
-        .await
-        .context("moderation database is not ready")?;
-    let actor =
-        AdminActor::label(parsed.actor.as_str()).context("PAKPERK_ADMIN_ACTOR is invalid")?;
-    execute(
-        &ModerationService::new(database.moderation()),
-        &actor,
-        parsed.command,
+    .await;
+    if mutation {
+        record_operation(
+            OperationClass::ModerationAction,
+            if result.is_ok() {
+                OperationOutcome::Success
+            } else {
+                OperationOutcome::RetryableFailure
+            },
+            started.elapsed(),
+        );
+    }
+    let telemetry_result = telemetry
+        .shutdown()
+        .context("could not flush moderation telemetry");
+    result?;
+    telemetry_result
+}
+
+const fn is_moderation_mutation(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::CommentsHide { .. }
+            | Command::CommentsDelete { .. }
+            | Command::CommentsRestore { .. }
+            | Command::ReportsResolve { .. }
+            | Command::UsersSuspend { .. }
+            | Command::UsersReinstate { .. }
     )
-    .await
 }
 
 async fn execute(service: &ModerationService, actor: &AdminActor, command: Command) -> Result<()> {

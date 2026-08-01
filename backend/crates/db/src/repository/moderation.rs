@@ -477,6 +477,7 @@ impl ModerationRepository {
         reason_code: &str,
     ) -> Result<AdminCommentOutcome, DbError> {
         let mut transaction = self.pool.begin().await?;
+        lock_active_admin_actor(&mut transaction, actor).await?;
         sqlx::query(
             "SELECT pg_advisory_xact_lock(hashtextextended('moderate-comment:' || $1::text, 0))",
         )
@@ -549,6 +550,7 @@ impl ModerationRepository {
         reason_code: &str,
     ) -> Result<AdminReportOutcome, DbError> {
         let mut transaction = self.pool.begin().await?;
+        lock_active_admin_actor(&mut transaction, actor).await?;
         let current = sqlx::query_as::<_, (Uuid, String)>(
             "SELECT comment_id, status FROM comment_reports WHERE id = $1 FOR UPDATE",
         )
@@ -608,6 +610,7 @@ impl ModerationRepository {
         reason_code: &str,
     ) -> Result<AdminUserStatusOutcome, DbError> {
         let mut transaction = self.pool.begin().await?;
+        lock_active_admin_actor(&mut transaction, actor).await?;
         let current =
             sqlx::query_scalar::<_, String>("SELECT status FROM users WHERE id = $1 FOR UPDATE")
                 .bind(target_user_id.into_inner())
@@ -685,6 +688,31 @@ impl ModerationRepository {
             open_over_24h: row.open_over_24h,
             open_over_72h: row.open_over_72h,
         })
+    }
+}
+
+/// Serializes a user-backed administrator with account erasure before any
+/// target row is locked or an audit event is inserted. Without this lock, an
+/// already-authenticated request could append a fresh `actor_user_id` after
+/// the deletion transaction had pseudonymized the existing audit history.
+async fn lock_active_admin_actor(
+    transaction: &mut Transaction<'_, Postgres>,
+    actor: &StoredAdminActor,
+) -> Result<(), DbError> {
+    let StoredAdminActor::User(actor_id) = actor else {
+        return Ok(());
+    };
+    let status: Option<String> =
+        sqlx::query_scalar("SELECT status FROM users WHERE id = $1 FOR SHARE")
+            .bind(actor_id.into_inner())
+            .fetch_optional(&mut **transaction)
+            .await?;
+    match status.as_deref() {
+        Some("active") => Ok(()),
+        Some("deletion_pending" | "deleted") | None => Err(DbError::IdentityTombstoned),
+        Some(_) => Err(DbError::InvalidData(
+            "user-backed admin actor is not active".to_owned(),
+        )),
     }
 }
 

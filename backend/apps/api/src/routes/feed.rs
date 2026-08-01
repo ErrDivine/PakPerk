@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use axum::{
     http::{
         HeaderMap, HeaderValue,
@@ -7,6 +9,10 @@ use axum::{
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use domain::{Capabilities, FeedPage, PaperSummary};
+use observability::{
+    CacheClass, CacheOutcome, OperationClass, OperationOutcome, record_cache_result,
+    record_operation,
+};
 use sha2::{Digest as _, Sha256};
 
 use super::{
@@ -77,26 +83,64 @@ pub(crate) async fn feed(
         .transpose()
         .map_err(|error| cursor_error(request_id, &error))?;
     let limit = params.limit.unwrap_or(20);
-    let mut page = state
+    let feed_started = Instant::now();
+    let query_started = Instant::now();
+    let page_result = state
         .papers
         .feed(&FeedQuery {
             category: params.category.clone(),
             cursor,
             limit,
         })
-        .await
-        .map_err(|error| internal_db_error(request_id, &error))?;
+        .await;
+    record_operation(
+        OperationClass::DatabaseRead,
+        if page_result.is_ok() {
+            OperationOutcome::Success
+        } else {
+            OperationOutcome::RetryableFailure
+        },
+        query_started.elapsed(),
+    );
+    let mut page = match page_result {
+        Ok(page) => page,
+        Err(error) => {
+            record_operation(
+                OperationClass::Feed,
+                OperationOutcome::RetryableFailure,
+                feed_started.elapsed(),
+            );
+            return Err(internal_db_error(request_id, &error));
+        }
+    };
     if state.fulltext_policy == FulltextPolicy::Strict {
         let paper_ids = page
             .items
             .iter()
             .map(|paper| paper.paper_id)
             .collect::<Vec<_>>();
-        let licenses = state
-            .papers
-            .license_uris(&paper_ids)
-            .await
-            .map_err(|error| internal_db_error(request_id, &error))?;
+        let query_started = Instant::now();
+        let licenses_result = state.papers.license_uris(&paper_ids).await;
+        record_operation(
+            OperationClass::DatabaseRead,
+            if licenses_result.is_ok() {
+                OperationOutcome::Success
+            } else {
+                OperationOutcome::RetryableFailure
+            },
+            query_started.elapsed(),
+        );
+        let licenses = match licenses_result {
+            Ok(licenses) => licenses,
+            Err(error) => {
+                record_operation(
+                    OperationClass::Feed,
+                    OperationOutcome::RetryableFailure,
+                    feed_started.elapsed(),
+                );
+                return Err(internal_db_error(request_id, &error));
+            }
+        };
         for paper in &mut page.items {
             apply_summary_policy(
                 state.fulltext_policy,
@@ -111,6 +155,11 @@ pub(crate) async fn feed(
         cursor: params.cursor.as_deref(),
         limit,
     };
+    record_operation(
+        OperationClass::Feed,
+        OperationOutcome::Success,
+        feed_started.elapsed(),
+    );
     Ok(feed_response(page, representation, &headers))
 }
 
@@ -134,11 +183,13 @@ fn feed_response(
 ) -> Response {
     let entity_tag = feed_entity_tag(&page, representation);
     if if_none_match_matches(request_headers, &entity_tag.opaque) {
+        record_cache_result(CacheClass::FeedEtag, CacheOutcome::Hit);
         let mut response = StatusCode::NOT_MODIFIED.into_response();
         apply_feed_cache_headers(&mut response, &entity_tag.header);
         return response;
     }
 
+    record_cache_result(CacheClass::FeedEtag, CacheOutcome::Miss);
     let mut response = (StatusCode::OK, Json(page)).into_response();
     apply_feed_cache_headers(&mut response, &entity_tag.header);
     response

@@ -1,13 +1,14 @@
 # Pakperk architecture
 
-Pakperk is a modular monolith with two long-running Rust processes, one local
-administration binary, and one PostgreSQL database. The API owns short
+Pakperk is a modular monolith with an API, paper worker, deletion worker,
+schema-validating telemetry gateway, one-shot migration/admin utilities, and
+one PostgreSQL database. The API owns short
 request/response work, including cached or exact-ID metadata reads,
 paper-grounded chat inference, account/library synchronization, and public
 comment safety operations. The worker owns background metadata ingestion, PDF
 acquisition, GROBID parsing, embedding, reference resolution, and relationship
 generation. The administration binary exposes explicit, audited moderation
-operations without creating a second product backend. All three reuse
+operations without creating a second product backend. The product processes reuse
 transport-independent domain types and repositories, and every arXiv request
 is serialized through the same database-backed rate gate.
 
@@ -15,6 +16,9 @@ is serialized through the same database-backed rate gate.
 
 The production migration is specified in
 [the Production v0.0 plan](production-v0.0-plan.md). Phases 0–5 are accepted;
+Phase 6's account-lifecycle, deployment, telemetry, supply-chain, signed-build,
+and runbook implementation is present, while external production/store/restore
+evidence remains release-blocking in the [Phase 6 report](phase-reports/phase-6.md).
 the complete comment/moderation implementation and its live two-user evidence
 are recorded in the [Phase 5 report](phase-reports/phase-5.md):
 the Flutter client now has the Read/You shell and a bounded relational
@@ -34,8 +38,10 @@ account, social, queue, or rate-limit network service is introduced. To Read
 operations remain in the same backend and PostgreSQL database. Phase 5 keeps
 comments, reports, blocks, moderation audit, and shared UGC limits in that same
 boundary. Comment publication is independently kill-switchable while reads and
-safety actions remain live. Account deletion remains a Phase 6 capability and
-therefore blocks public comment enablement.
+safety actions remain live. Account deletion is now an independently gated API,
+worker, provider-admin adapter, signed external ledger, and restore-replay
+boundary. Public comment enablement still waits for exercised environment,
+moderation, deletion, retention, and store-policy evidence.
 
 The migration must preserve the capability-publication and reader-transition
 invariants documented below: metadata/abstract prefetch is permitted, but PDF
@@ -59,6 +65,11 @@ flowchart LR
   W --> L["Configured model provider"]
   W --> P
   O["Audited pakperk-admin CLI"] -->|"moderation actions"| P
+  DW["Deletion worker"] -->|"leased deletion jobs"| P
+  DW -->|"bounded admin calls"| I
+  DW --> EL[("Independent signed deletion ledger")]
+  M -->|"closed identifier-free events"| TG["Telemetry gateway"]
+  TG --> OC["OpenTelemetry Collector"]
 ```
 
 ## Identity and account boundary

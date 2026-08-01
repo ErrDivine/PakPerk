@@ -52,6 +52,9 @@ final class _TokenSource implements AuthTokenSource {
   var refreshCalls = 0;
 
   @override
+  bool isCurrentEpoch(int expectedAuthEpoch) => expectedAuthEpoch == 7;
+
+  @override
   Future<String?> accessTokenForRequest({int? expectedAuthEpoch}) async {
     expect(expectedAuthEpoch, 7);
     return token;

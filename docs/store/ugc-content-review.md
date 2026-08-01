@@ -16,6 +16,6 @@ Public comments must remain disabled until the release owner verifies:
   and
 - a signed release candidate passes the physical-device safety flow.
 
-This checklist records required review, not a completed store submission. Its
-Phase 6 evidence must identify the reviewer, date, build, environment, and
+This checklist records required review, not a completed store submission. The
+release evidence must identify the reviewer, date, build, environment, and
 store questionnaire versions.

@@ -1,0 +1,14 @@
+Pakperk release-candidate open-source notices
+==============================================
+
+This checked-in file is a deployment-safe placeholder, not the release
+inventory. The release workflow MUST replace it with the output of
+scripts/generate_license_inventory.py from the locked Rust and Flutter graphs.
+A production artifact validator rejects this placeholder text.
+
+Pakperk project code: MIT
+PostgreSQL: PostgreSQL License
+Keycloak: Apache License 2.0
+OpenTelemetry Collector: Apache License 2.0
+GROBID: Apache License 2.0
+Flutter: BSD 3-Clause License

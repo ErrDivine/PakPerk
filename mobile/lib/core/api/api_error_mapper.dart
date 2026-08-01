@@ -45,7 +45,9 @@ ApiException mapDioException(DioException error) {
     DioExceptionType.sendTimeout => true,
     _ => false,
   };
-  final retryAfter = _retryAfter(error.response?.headers.value('retry-after'));
+  final retryAfter = _retryAfter(
+    _singleHeader(error.response?.headers, 'retry-after'),
+  );
   final defaultRetryable =
       isOffline ||
       statusCode == 429 ||
@@ -67,7 +69,7 @@ ApiException mapDioException(DioException error) {
     isOffline: isOffline,
     requestId:
         _safeRequestId(details['request_id']) ??
-        _safeRequestId(error.response?.headers.value('x-request-id')),
+        _safeRequestId(_singleHeader(error.response?.headers, 'x-request-id')),
     retryAfter: retryAfter,
   );
 }
@@ -100,4 +102,9 @@ Duration? _retryAfter(String? value) {
     return null;
   }
   return Duration(seconds: seconds);
+}
+
+String? _singleHeader(Headers? headers, String name) {
+  final values = headers?[name];
+  return values?.length == 1 ? values!.single : null;
 }

@@ -8,6 +8,7 @@ import '../../core/api/request_cancellation.dart';
 import '../../core/models/paper.dart';
 import '../../core/models/reader_state.dart';
 import '../../core/providers.dart';
+import '../../core/telemetry/telemetry.dart';
 import '../../core/widgets/paper_stage_indicator.dart';
 import '../../core/widgets/status_widgets.dart';
 import '../chat/chat_controller.dart';
@@ -363,6 +364,17 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
       paperReaderNavigationControllerProvider(widget.readerKey),
     );
     navigation.setStage(index);
+    emitTelemetry(
+      ref.read(telemetrySinkProvider),
+      PakPerkTelemetryEvent.paperStageCommitted,
+      {
+        'stage': switch (index) {
+          0 => 'abstract',
+          1 => 'introduction',
+          _ => 'connections',
+        },
+      },
+    );
     final processing = ref.read(
       paperProcessingControllerProvider(widget.paper.versionKey).notifier,
     );

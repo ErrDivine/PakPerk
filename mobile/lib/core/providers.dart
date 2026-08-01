@@ -10,6 +10,8 @@ import 'cache/local_store.dart';
 import 'content_policy.dart';
 import 'models/reader_state.dart';
 import 'repository/paper_repository.dart';
+import 'telemetry/otlp_http_telemetry_sink.dart';
+import 'telemetry/telemetry.dart';
 
 final appBuildConfigProvider = Provider<AppBuildConfig>(
   (ref) => AppBuildConfig.fromCompileTime(),
@@ -17,6 +19,28 @@ final appBuildConfigProvider = Provider<AppBuildConfig>(
 
 final featureFlagsProvider = Provider<FeatureFlags>(
   (ref) => ref.watch(appBuildConfigProvider).features,
+);
+
+TelemetrySink createTelemetryExporter(AppBuildConfig config) {
+  final endpoint = config.telemetryEndpointUri;
+  if (endpoint == null) return const NoopTelemetrySink();
+  return OtlpHttpTelemetrySink(
+    endpoint: endpoint,
+    environment: config.environment.name,
+  );
+}
+
+/// Installs the bounded OTLP/HTTP exporter only when the build declares an
+/// endpoint. A zero-config development build remains network-silent.
+final telemetryExporterProvider = Provider<TelemetrySink>((ref) {
+  final config = ref.watch(appBuildConfigProvider);
+  final exporter = createTelemetryExporter(config);
+  if (exporter is OtlpHttpTelemetrySink) ref.onDispose(exporter.dispose);
+  return exporter;
+});
+
+final telemetrySinkProvider = Provider<TelemetrySink>(
+  (ref) => RedactingTelemetrySink(ref.watch(telemetryExporterProvider)),
 );
 
 final localStoreProvider = Provider<LocalStore>(

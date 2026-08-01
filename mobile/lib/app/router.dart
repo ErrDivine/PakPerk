@@ -9,8 +9,10 @@ import '../core/models/arxiv_identifier.dart';
 import '../core/models/paper.dart';
 import '../core/models/reader_state.dart';
 import '../core/providers.dart';
+import '../core/telemetry/telemetry.dart';
 import '../core/widgets/responsive_reader_frame.dart';
 import '../features/account/account_home_screen.dart';
+import '../features/account/account_deletion_screen.dart';
 import '../features/account/auth_flow_screen.dart';
 import '../features/chat/chat_controller.dart';
 import '../features/chat/chat_sheet.dart';
@@ -19,6 +21,7 @@ import '../features/comments/comments_screen.dart';
 import '../features/comments/my_comments_screen.dart';
 import '../features/feed/feed_screen.dart';
 import '../features/library/to_read_screen.dart';
+import '../features/legal/legal_document_screen.dart';
 import '../features/paper_reader/paper_metadata_controller.dart';
 import '../features/paper_reader/paper_reader.dart';
 import '../features/paper_reader/reader_navigation_controller.dart';
@@ -37,6 +40,8 @@ abstract final class PakPerkRoutes {
   static const terms = '/legal/terms';
   static const communityGuidelines = '/legal/community';
   static const support = '/support';
+  static const accountDeletionPolicy = '/legal/account-deletion';
+  static const openSourceLicenses = '/legal/open-source-licenses';
 
   static String paper(String paperId) =>
       '/read/paper/${_validatedPaperId(paperId)}';
@@ -89,15 +94,17 @@ abstract final class PakPerkRoutes {
 
   /// Converts only registered, public app links into internal locations.
   /// Absolute links on any other origin fail closed before path matching.
-  static String? normalizeIncomingLink(Uri uri) {
+  static String? normalizeIncomingLink(Uri uri, {Uri? appLinkOrigin}) {
     if (!uri.hasScheme) {
       return uri.hasAuthority ? read : null;
     }
     final custom = normalizeCustomScheme(uri);
     if (custom != null) return custom;
-    if (uri.scheme.toLowerCase() != 'https' ||
-        uri.host.toLowerCase() != 'pakperk.app' ||
-        uri.authority.toLowerCase() != 'pakperk.app' ||
+    final allowedOrigin = appLinkOrigin ?? Uri.parse('https://pakperk.app');
+    if (uri.scheme.toLowerCase() != allowedOrigin.scheme.toLowerCase() ||
+        uri.host.toLowerCase() != allowedOrigin.host.toLowerCase() ||
+        _effectivePort(uri) != _effectivePort(allowedOrigin) ||
+        uri.userInfo.isNotEmpty ||
         uri.hasQuery ||
         uri.hasFragment) {
       return read;
@@ -130,6 +137,14 @@ abstract final class PakPerkRoutes {
     }
     return value.toLowerCase();
   }
+
+  static int _effectivePort(Uri uri) => uri.hasPort
+      ? uri.port
+      : switch (uri.scheme.toLowerCase()) {
+          'https' => 443,
+          'http' => 80,
+          _ => -1,
+        };
 }
 
 abstract final class PakPerkRouteIdentifiers {
@@ -280,6 +295,7 @@ final pakPerkNavigatorKeysProvider = Provider<PakPerkNavigatorKeys>(
 
 final pakPerkRouterProvider = Provider<GoRouter>((ref) {
   final keys = ref.watch(pakPerkNavigatorKeysProvider);
+  final appLinkOrigin = ref.watch(appBuildConfigProvider).appLinkOriginUri;
   final restoredBranch = ref.read(activeAppBranchProvider);
   final router = GoRouter(
     navigatorKey: keys.root,
@@ -287,7 +303,10 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: restoredBranch == AppBranch.you
         ? PakPerkRoutes.you
         : PakPerkRoutes.read,
-    redirect: (_, state) => PakPerkRoutes.normalizeIncomingLink(state.uri),
+    redirect: (_, state) => PakPerkRoutes.normalizeIncomingLink(
+      state.uri,
+      appLinkOrigin: appLinkOrigin,
+    ),
     routes: [
       GoRoute(path: '/', redirect: (_, __) => PakPerkRoutes.read),
       GoRoute(
@@ -469,14 +488,7 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                   ),
                   GoRoute(
                     path: 'account/delete',
-                    builder: (_, __) => const PhaseOnePlaceholderScreen(
-                      title: 'Delete account',
-                      message:
-                          'End-to-end account deletion, including identity '
-                          'provider erasure, arrives in Phase 6. This screen '
-                          'does not claim that deletion has occurred.',
-                      icon: Icons.person_off_outlined,
-                    ),
+                    builder: (_, __) => const AccountDeletionScreen(),
                   ),
                 ],
               ),
@@ -502,49 +514,48 @@ List<GoRoute> _legalRoutes(GlobalKey<NavigatorState> rootNavigatorKey) => [
   GoRoute(
     path: PakPerkRoutes.privacy,
     parentNavigatorKey: rootNavigatorKey,
-    builder: (context, _) => PhaseOnePlaceholderScreen(
-      title: 'Privacy',
-      message:
-          'Privacy disclosures for this development account build are still '
-          'in progress. Reviewed release text will be published in Phase 6.',
-      icon: Icons.privacy_tip_outlined,
+    builder: (context, _) => LegalDocumentScreen(
+      kind: LegalDocumentKind.privacy,
       onClose: () => closePakPerkRootRoute(context),
     ),
   ),
   GoRoute(
     path: PakPerkRoutes.terms,
     parentNavigatorKey: rootNavigatorKey,
-    builder: (context, _) => PhaseOnePlaceholderScreen(
-      title: 'Terms',
-      message:
-          'The account flow records the API-provided terms version for '
-          'development testing. This is not reviewed production legal text; '
-          'release publication remains a Phase 6 gate.',
-      icon: Icons.description_outlined,
+    builder: (context, _) => LegalDocumentScreen(
+      kind: LegalDocumentKind.terms,
       onClose: () => closePakPerkRootRoute(context),
     ),
   ),
   GoRoute(
     path: PakPerkRoutes.communityGuidelines,
     parentNavigatorKey: rootNavigatorKey,
-    builder: (context, _) => PhaseOnePlaceholderScreen(
-      title: 'Community guidelines',
-      message:
-          'Public discussions are not enabled in this build. The '
-          'moderation policy will be published before they are enabled.',
-      icon: Icons.groups_outlined,
+    builder: (context, _) => LegalDocumentScreen(
+      kind: LegalDocumentKind.communityGuidelines,
       onClose: () => closePakPerkRootRoute(context),
     ),
   ),
   GoRoute(
     path: PakPerkRoutes.support,
     parentNavigatorKey: rootNavigatorKey,
-    builder: (context, _) => PhaseOnePlaceholderScreen(
-      title: 'Support',
-      message:
-          'A production support contact is not configured in this '
-          'build. No message or personal data has been submitted.',
-      icon: Icons.support_agent_outlined,
+    builder: (context, _) => LegalDocumentScreen(
+      kind: LegalDocumentKind.support,
+      onClose: () => closePakPerkRootRoute(context),
+    ),
+  ),
+  GoRoute(
+    path: PakPerkRoutes.accountDeletionPolicy,
+    parentNavigatorKey: rootNavigatorKey,
+    builder: (context, _) => LegalDocumentScreen(
+      kind: LegalDocumentKind.accountDeletion,
+      onClose: () => closePakPerkRootRoute(context),
+    ),
+  ),
+  GoRoute(
+    path: PakPerkRoutes.openSourceLicenses,
+    parentNavigatorKey: rootNavigatorKey,
+    builder: (context, _) => LegalDocumentScreen(
+      kind: LegalDocumentKind.openSourceLicenses,
       onClose: () => closePakPerkRootRoute(context),
     ),
   ),
@@ -610,6 +621,14 @@ class PakPerkAppShell extends ConsumerWidget {
 
   void _selectDestination(BuildContext context, WidgetRef ref, int index) {
     final currentIndex = navigationShell.currentIndex;
+    emitTelemetry(
+      ref.read(telemetrySinkProvider),
+      PakPerkTelemetryEvent.shellDestinationSelected,
+      {
+        'destination': index == AppBranch.read.index ? 'read' : 'you',
+        'reselected': index == currentIndex,
+      },
+    );
     final controller = ref.read(appRestorationControllerProvider.notifier);
     if (index == currentIndex) {
       if (index != AppBranch.read.index) return;

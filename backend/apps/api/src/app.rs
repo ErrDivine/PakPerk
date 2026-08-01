@@ -2,6 +2,7 @@
 
 use std::{sync::Arc, time::Duration};
 
+use account_deletion::{AccountDeletionService, FileExternalDeletionLedger};
 use accounts::AccountService;
 use arxiv_client::ArxivClient;
 use auth::{AuthRuntime, AuthUnavailableReason};
@@ -26,26 +27,23 @@ use moderation::{ContentModerator, ModerationPipeline};
 use tower_http::{
     compression::CompressionLayer,
     cors::{AllowOrigin, CorsLayer},
-    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
 };
-use tracing::Level;
 
 use crate::{
-    config::{
-        ApiConfig, ApiModelConfig, CommentFeatureConfig, CommentModerationProvider, FeatureFlags,
-    },
+    config::{ApiConfig, ApiModelConfig, CommentModerationProvider, FeatureFlags},
     middleware::{
-        REQUEST_ID_HEADER, RateLimiter, SESSION_ID_HEADER, TimeoutConfig, request_id_middleware,
-        stable_error_middleware, timeout_middleware,
+        REQUEST_ID_HEADER, SESSION_ID_HEADER, TimeoutConfig, request_id_middleware,
+        stable_error_middleware, telemetry_middleware, timeout_middleware,
     },
     openapi::openapi_json,
+    request_rate_limit::PublicRequestRateLimiter,
     routes::support::not_found,
     routes::{
-        block_user, chat, connections, create_comment, delete_comment, edit_comment, feed, get_me,
-        health_live, health_ready, introduction, library_changes, list_blocked_users, list_library,
-        list_my_comments, list_paper_comments, paper_by_arxiv, paper_metadata, patch_me, prepare,
-        private_account_cache_control, processing, remove_library_item, report_comment,
-        save_library_item, unblock_user,
+        block_user, chat, connections, create_comment, delete_comment, delete_me, edit_comment,
+        feed, get_me, health_live, health_ready, introduction, library_changes, list_blocked_users,
+        list_library, list_my_comments, list_paper_comments, paper_by_arxiv, paper_metadata,
+        patch_me, prepare, private_account_cache_control, processing, remove_library_item,
+        report_comment, save_library_item, unblock_user, verify_deletion_identity,
     },
 };
 
@@ -62,13 +60,11 @@ pub struct AppState {
     pub(crate) arxiv_cache_ttl: Duration,
     pub(crate) fulltext_policy: FulltextPolicy,
     pub(crate) model_provider: Option<Arc<dyn ApiModelProvider>>,
-    pub(crate) limiter: RateLimiter,
-    pub(crate) prepare_limit: u32,
-    pub(crate) chat_limit: u32,
+    pub(crate) request_limiter: PublicRequestRateLimiter,
     pub(crate) accounts: Option<AccountService>,
+    pub(crate) account_deletion: Option<AccountDeletionService>,
     pub(crate) library: Option<LibraryService>,
     pub(crate) comments: Option<CommentService>,
-    pub(crate) comment_config: Option<CommentFeatureConfig>,
     pub(crate) auth: AuthRuntime,
     feature_flags: FeatureFlags,
 }
@@ -96,63 +92,18 @@ impl AppState {
         config: &ApiConfig,
         auth: AuthRuntime,
     ) -> anyhow::Result<Self> {
-        config.features.validate()?;
-        if config.features.accounts != config.accounts.is_some()
-            || config.features.accounts != auth.is_enabled()
-            || config.features.library != config.library.is_some()
-            || config.features.comments != config.comments.is_some()
-        {
-            anyhow::bail!("feature configuration and authentication runtime are inconsistent");
-        }
+        validate_composition(config, &auth)?;
         let papers = database.papers();
         let mut arxiv_config = config.arxiv.clone();
         crate::config::enforce_cross_process_arxiv_gate(&mut arxiv_config);
-        let model_provider: Option<Arc<dyn ApiModelProvider>> = match config.llm.clone() {
-            Some(ApiModelConfig::Deterministic {
-                embedding_dimension,
-            }) => Some(Arc::new(DeterministicProvider::new(embedding_dimension)?)),
-            Some(ApiModelConfig::OpenAiCompatible(config)) => {
-                Some(Arc::new(OpenAiCompatibleProvider::new(config)?))
-            }
-            None => None,
-        };
-        let accounts = config
-            .accounts
-            .as_ref()
-            .map(|account| {
-                Ok::<_, anyhow::Error>(AccountService::new(
-                    database.accounts(),
-                    database.rate_limits(),
-                    account.account_policy()?,
-                ))
-            })
-            .transpose()?;
-        let library = config
-            .library
-            .map(|library| {
-                Ok::<_, anyhow::Error>(LibraryService::new(
-                    database.library(),
-                    database.rate_limits(),
-                    LibraryPolicy::new(library.mutation_limit, library.mutation_window)?,
-                ))
-            })
-            .transpose()?;
-        let comments = config
-            .comments
-            .as_ref()
-            .zip(config.accounts.as_ref())
-            .map(|(comment, account)| {
-                let moderator: Arc<dyn ContentModerator> = match comment.moderation_provider() {
-                    CommentModerationProvider::Rules => Arc::new(ModerationPipeline::default()),
-                };
-                Ok::<_, anyhow::Error>(CommentService::new(
-                    database.comments(),
-                    database.rate_limits(),
-                    moderator,
-                    comment.service_config(account, config.environment)?,
-                ))
-            })
-            .transpose()?;
+        let model_provider = build_model_provider(config.llm.clone())?;
+        let services = build_application_services(&database, config)?;
+        let request_limiter = PublicRequestRateLimiter::new(
+            database.rate_limits(),
+            config.request_origin.clone(),
+            config.prepare_requests_per_minute,
+            config.chat_requests_per_minute,
+        )?;
         Ok(Self {
             database,
             papers,
@@ -161,13 +112,11 @@ impl AppState {
             arxiv_cache_ttl: config.arxiv_cache_ttl,
             fulltext_policy: config.fulltext_policy,
             model_provider,
-            limiter: RateLimiter::default(),
-            prepare_limit: config.prepare_requests_per_minute.max(1),
-            chat_limit: config.chat_requests_per_minute.max(1),
-            accounts,
-            library,
-            comments,
-            comment_config: config.comments.clone(),
+            request_limiter,
+            accounts: services.accounts,
+            account_deletion: services.account_deletion,
+            library: services.library,
+            comments: services.comments,
             auth,
             feature_flags: config.features,
         })
@@ -183,6 +132,118 @@ impl AppState {
     pub fn library_service(&self) -> Option<LibraryService> {
         self.library.clone()
     }
+}
+
+fn validate_composition(config: &ApiConfig, auth: &AuthRuntime) -> anyhow::Result<()> {
+    config.features.validate()?;
+    if config.features.accounts != config.accounts.is_some()
+        || config.features.accounts != auth.is_enabled()
+        || config.features.library != config.library.is_some()
+        || config.features.comments != config.comments.is_some()
+        || config.features.account_deletion != config.account_deletion.is_some()
+    {
+        anyhow::bail!("feature configuration and authentication runtime are inconsistent");
+    }
+    Ok(())
+}
+
+fn build_model_provider(
+    config: Option<ApiModelConfig>,
+) -> anyhow::Result<Option<Arc<dyn ApiModelProvider>>> {
+    match config {
+        Some(ApiModelConfig::Deterministic {
+            embedding_dimension,
+        }) => Ok(Some(Arc::new(DeterministicProvider::new(
+            embedding_dimension,
+        )?))),
+        Some(ApiModelConfig::OpenAiCompatible(config)) => {
+            Ok(Some(Arc::new(OpenAiCompatibleProvider::new(*config)?)))
+        }
+        None => Ok(None),
+    }
+}
+
+struct ApplicationServices {
+    accounts: Option<AccountService>,
+    account_deletion: Option<AccountDeletionService>,
+    library: Option<LibraryService>,
+    comments: Option<CommentService>,
+}
+
+fn build_application_services(
+    database: &Database,
+    config: &ApiConfig,
+) -> anyhow::Result<ApplicationServices> {
+    let accounts = config
+        .accounts
+        .as_ref()
+        .map(|account| {
+            let service = AccountService::new(
+                database.accounts(),
+                database.rate_limits(),
+                account.account_policy()?,
+            );
+            Ok::<_, anyhow::Error>(
+                account
+                    .identity_fingerprints
+                    .clone()
+                    .map_or(service.clone(), |keyring| {
+                        service.with_identity_fingerprints(keyring)
+                    }),
+            )
+        })
+        .transpose()?;
+    let account_deletion = config
+        .account_deletion
+        .as_ref()
+        .map(|deletion| {
+            let external = FileExternalDeletionLedger::new(
+                deletion.external_ledger_directory.clone(),
+                deletion.signer.clone(),
+            )?;
+            AccountDeletionService::new(
+                database.account_deletions(),
+                deletion.identity_fingerprints.clone(),
+                Arc::new(external),
+                deletion.signer.clone(),
+                deletion.provider_identity_cipher.clone(),
+                deletion.policy.clone(),
+            )
+            .map_err(anyhow::Error::from)
+        })
+        .transpose()?;
+    let library = config
+        .library
+        .map(|library| {
+            Ok::<_, anyhow::Error>(LibraryService::new(
+                database.library(),
+                database.rate_limits(),
+                LibraryPolicy::new(library.mutation_limit, library.mutation_window)?,
+            ))
+        })
+        .transpose()?;
+    let comments = config
+        .comments
+        .as_ref()
+        .zip(config.accounts.as_ref())
+        .map(|(comment, account)| {
+            let moderator: Arc<dyn ContentModerator> = match comment.moderation_provider() {
+                CommentModerationProvider::Rules => Arc::new(ModerationPipeline::default()),
+            };
+            Ok::<_, anyhow::Error>(CommentService::new(
+                database.comments(),
+                database.rate_limits(),
+                moderator,
+                comment.service_config(account, config.environment)?,
+            ))
+        })
+        .transpose()?;
+    Ok(ApplicationServices {
+        accounts,
+        account_deletion,
+        library,
+        comments,
+    })
 }
 
 pub fn build_router(state: AppState, config: &ApiConfig) -> Router {
@@ -201,7 +262,15 @@ pub fn build_router(state: AppState, config: &ApiConfig) -> Router {
         .route("/v1/papers/{paper_id}/chat", post(chat))
         .route("/v1/papers/{paper_id}/connections", get(connections));
     let router = if config.features.accounts {
-        router.route("/v1/me", get(get_me).patch(patch_me))
+        let route = get(get_me).patch(patch_me);
+        if config.features.account_deletion {
+            router.route("/v1/me", route.delete(delete_me)).route(
+                "/v1/me/deletion-verification",
+                get(verify_deletion_identity),
+            )
+        } else {
+            router.route("/v1/me", route)
+        }
     } else {
         router
     };
@@ -249,15 +318,6 @@ pub fn build_router(state: AppState, config: &ApiConfig) -> Router {
         // Brotli/gzip negotiation for deployments that expose it directly.
         .layer(CompressionLayer::new())
         .layer(cors)
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(
-                    DefaultMakeSpan::new()
-                        .level(Level::INFO)
-                        .include_headers(false),
-                )
-                .on_response(DefaultOnResponse::new().level(Level::INFO)),
-        )
         .layer(middleware::from_fn_with_state(
             TimeoutConfig {
                 default: config.request_timeout,
@@ -266,6 +326,9 @@ pub fn build_router(state: AppState, config: &ApiConfig) -> Router {
             timeout_middleware,
         ))
         .layer(middleware::from_fn(stable_error_middleware))
+        // Telemetry must wrap every response synthesizer so cancelled inner
+        // futures still produce one status/latency observation.
+        .layer(middleware::from_fn(telemetry_middleware))
         .layer(middleware::from_fn(request_id_middleware))
         .layer(middleware::from_fn(private_account_cache_control))
 }
@@ -348,6 +411,7 @@ mod tests {
             library_writes: true,
             comments: true,
             comment_creation: true,
+            account_deletion: true,
         };
         assert_eq!(
             production_feature_routes(all_enabled),
@@ -371,6 +435,7 @@ mod tests {
                 library_writes: false,
                 comments: false,
                 comment_creation: false,
+                account_deletion: false,
             }),
             vec!["/v1/me"]
         );

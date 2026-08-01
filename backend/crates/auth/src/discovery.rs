@@ -1,6 +1,11 @@
-use std::{fmt, sync::Arc, time::Duration};
+use std::{
+    fmt,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use async_trait::async_trait;
+use observability::{OperationClass, OperationOutcome, record_operation};
 use reqwest::{Client, redirect::Policy};
 use serde::Deserialize;
 use url::Url;
@@ -146,14 +151,36 @@ pub(crate) async fn discover_provider(
     config: &OidcVerifierConfig,
     fetcher: Arc<dyn OidcDocumentFetcher>,
 ) -> Result<OidcProviderMetadata, OidcStartupError> {
-    let discovery_url = config
-        .discovery_url()
-        .map_err(|_| OidcStartupError::InvalidConfiguration)?;
-    let bytes = fetcher
-        .fetch(&discovery_url, config.max_metadata_bytes)
-        .await
-        .map_err(|_| OidcStartupError::ProviderUnavailable)?;
-    parse_provider_metadata(config, &bytes)
+    let started = Instant::now();
+    let result = async {
+        let discovery_url = config
+            .discovery_url()
+            .map_err(|_| OidcStartupError::InvalidConfiguration)?;
+        let bytes = fetcher
+            .fetch(&discovery_url, config.max_metadata_bytes)
+            .await
+            .map_err(|_| OidcStartupError::ProviderUnavailable)?;
+        parse_provider_metadata(config, &bytes)
+    }
+    .await;
+    record_operation(
+        OperationClass::OidcDiscovery,
+        startup_outcome(&result),
+        started.elapsed(),
+    );
+    result
+}
+
+fn startup_outcome<T>(result: &Result<T, OidcStartupError>) -> OperationOutcome {
+    match result {
+        Ok(_) => OperationOutcome::Success,
+        Err(OidcStartupError::ProviderUnavailable) => OperationOutcome::RetryableFailure,
+        Err(
+            OidcStartupError::InvalidConfiguration
+            | OidcStartupError::InvalidProviderMetadata
+            | OidcStartupError::InvalidSigningKeys,
+        ) => OperationOutcome::Rejected,
+    }
 }
 
 pub(crate) fn parse_provider_metadata(

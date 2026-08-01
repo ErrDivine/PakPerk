@@ -1,4 +1,4 @@
-use std::str::FromStr as _;
+use std::{str::FromStr as _, time::Instant};
 
 use axum::{
     Extension, Json,
@@ -9,6 +9,7 @@ use axum::{
 };
 use domain::LibraryState;
 use library::LibraryServiceError;
+use observability::{OperationClass, OperationOutcome, record_operation};
 use tracing::error;
 use uuid::Uuid;
 
@@ -180,10 +181,21 @@ pub(crate) async fn save_library_item(
             false,
         ));
     }
+    let started = Instant::now();
     let result = library_service(&state, request_id)?
         .save(principal.user_id, paper_id, operation_id, body.state.into())
-        .await
-        .map_err(|error_value| library_service_error(request_id, &error_value))?;
+        .await;
+    record_operation(
+        OperationClass::LibraryMutation,
+        library_mutation_outcome(&result),
+        started.elapsed(),
+    );
+    record_operation(
+        OperationClass::DatabaseWrite,
+        library_mutation_outcome(&result),
+        started.elapsed(),
+    );
+    let result = result.map_err(|error_value| library_service_error(request_id, &error_value))?;
     Ok(Json(LibraryMutationEnvelope::from(result.item)))
 }
 
@@ -227,10 +239,21 @@ pub(crate) async fn remove_library_item(
         ));
     }
     let operation_id = idempotency_key(&headers, request_id)?;
+    let started = Instant::now();
     let result = library_service(&state, request_id)?
         .remove(principal.user_id, paper_id, operation_id)
-        .await
-        .map_err(|error_value| library_service_error(request_id, &error_value))?;
+        .await;
+    record_operation(
+        OperationClass::LibraryMutation,
+        library_mutation_outcome(&result),
+        started.elapsed(),
+    );
+    record_operation(
+        OperationClass::DatabaseWrite,
+        library_mutation_outcome(&result),
+        started.elapsed(),
+    );
+    let result = result.map_err(|error_value| library_service_error(request_id, &error_value))?;
     Ok(Json(LibraryMutationEnvelope::from(result.item)))
 }
 
@@ -386,7 +409,7 @@ fn library_service_error(request_id: RequestId, error_value: &LibraryServiceErro
         )
         .with_retry_after(*retry_after_seconds),
         AccountNotFound | InvalidCleanupBatch | InvalidRateLimitPolicy | Storage(_) => {
-            error!(request_id = %request_id.0, error = %error_value, "library service operation failed");
+            error!(request_id = %request_id.0, error.kind = "library_service", "library service operation failed");
             ApiError::new(
                 request_id,
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -395,6 +418,16 @@ fn library_service_error(request_id: RequestId, error_value: &LibraryServiceErro
                 true,
             )
         }
+    }
+}
+
+fn library_mutation_outcome<T>(result: &Result<T, LibraryServiceError>) -> OperationOutcome {
+    match result {
+        Ok(_) => OperationOutcome::Success,
+        Err(LibraryServiceError::Storage(_) | LibraryServiceError::RateLimited { .. }) => {
+            OperationOutcome::RetryableFailure
+        }
+        Err(_) => OperationOutcome::Rejected,
     }
 }
 
@@ -410,8 +443,8 @@ async fn mask_paper_summaries(
         .iter()
         .map(|entry| entry.item.paper_id)
         .collect::<Vec<_>>();
-    let licenses = state.papers.license_uris(&paper_ids).await.map_err(|error_value| {
-        error!(request_id = %request_id.0, error = %error_value, "library metadata policy lookup failed");
+    let licenses = state.papers.license_uris(&paper_ids).await.map_err(|_error_value| {
+        error!(request_id = %request_id.0, error.kind = "database", "library metadata policy lookup failed");
         ApiError::new(
             request_id,
             StatusCode::SERVICE_UNAVAILABLE,
@@ -439,8 +472,8 @@ async fn mask_change_summaries(
         .iter()
         .filter_map(|change| change.paper.as_ref().map(|paper| paper.paper_id))
         .collect::<Vec<_>>();
-    let licenses = state.papers.license_uris(&paper_ids).await.map_err(|error_value| {
-        error!(request_id = %request_id.0, error = %error_value, "library change policy lookup failed");
+    let licenses = state.papers.license_uris(&paper_ids).await.map_err(|_error_value| {
+        error!(request_id = %request_id.0, error.kind = "database", "library change policy lookup failed");
         ApiError::new(
             request_id,
             StatusCode::SERVICE_UNAVAILABLE,
@@ -931,6 +964,7 @@ mod tests {
                 library_writes: writes_enabled,
                 comments: false,
                 comment_creation: false,
+                account_deletion: false,
             },
             accounts: Some(AccountFeatureConfig {
                 oidc: auth::OidcVerifierConfig::new(
@@ -948,12 +982,18 @@ mod tests {
                 profile_update_window: Duration::from_secs(60 * 60),
                 auth_retry_initial: Duration::from_secs(5),
                 auth_retry_maximum: Duration::from_secs(5 * 60),
+                identity_fingerprints: None,
             }),
             library: library_enabled.then_some(LibraryFeatureConfig {
                 mutation_limit: 120,
                 mutation_window: Duration::from_secs(60 * 60),
             }),
             comments: None,
+            account_deletion: None,
+            request_origin: crate::config::RequestOriginConfig::for_local_development(
+                "library-route-request-origin-secret-0123456789",
+            )
+            .unwrap(),
             bind: SocketAddr::from(([127, 0, 0, 1], 0)),
             database_url: "postgres://test:test@127.0.0.1/test".to_owned(),
             database_pool_size: 1,

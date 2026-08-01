@@ -3,7 +3,7 @@ use std::{str::FromStr, time::Duration};
 use chrono::{DateTime, Utc};
 use domain::{
     AccountStatus, AuthenticatedUserId, CommunityGuidelinesVersion, DisplayName, Handle,
-    TermsVersion, User,
+    IdentityFingerprint, TermsVersion, User,
 };
 use sqlx::{FromRow, PgPool};
 
@@ -147,6 +147,37 @@ impl AccountRepository {
         subject: &str,
         last_seen_interval: Duration,
     ) -> Result<User, DbError> {
+        self.provision_oidc_identity_inner(issuer, subject, last_seen_interval, &[])
+            .await
+    }
+
+    /// JIT mapping guarded by the same fingerprint advisory lock and durable
+    /// ledger used by account deletion. All configured key versions are
+    /// checked before any user insert, closing the cross-table TOCTOU race.
+    pub async fn provision_oidc_identity_guarded(
+        &self,
+        issuer: &str,
+        subject: &str,
+        last_seen_interval: Duration,
+        fingerprints: &[IdentityFingerprint],
+    ) -> Result<User, DbError> {
+        if fingerprints.is_empty() {
+            return Err(DbError::InvalidData(
+                "at least one identity fingerprint is required".to_owned(),
+            ));
+        }
+        self.provision_oidc_identity_inner(issuer, subject, last_seen_interval, fingerprints)
+            .await
+    }
+
+    #[allow(clippy::too_many_lines)] // Keep the lock, tombstone check, and JIT write in one auditable transaction.
+    async fn provision_oidc_identity_inner(
+        &self,
+        issuer: &str,
+        subject: &str,
+        last_seen_interval: Duration,
+        fingerprints: &[IdentityFingerprint],
+    ) -> Result<User, DbError> {
         let interval_seconds = last_seen_interval.as_secs_f64();
         if !interval_seconds.is_finite() || interval_seconds < 1.0 {
             return Err(DbError::InvalidData(
@@ -155,17 +186,80 @@ impl AccountRepository {
         }
 
         let mut transaction = self.pool.begin().await?;
-        sqlx::query(
-            r"
-            INSERT INTO users (oidc_issuer, oidc_subject)
-            VALUES ($1, $2)
-            ON CONFLICT (oidc_issuer, oidc_subject) DO NOTHING
-            ",
-        )
-        .bind(issuer)
-        .bind(subject)
-        .execute(&mut *transaction)
-        .await?;
+        let mut lock_keys = fingerprints
+            .iter()
+            .map(IdentityFingerprint::advisory_lock_key)
+            .collect::<Vec<_>>();
+        lock_keys.sort_unstable();
+        lock_keys.dedup();
+        for lock_key in lock_keys {
+            sqlx::query("SELECT pg_advisory_xact_lock($1)")
+                .bind(lock_key)
+                .execute(&mut *transaction)
+                .await?;
+        }
+        for fingerprint in fingerprints {
+            let tombstoned: bool = sqlx::query_scalar(
+                r"
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM account_deletion_ledger
+                    WHERE identity_fingerprint_key_id = $1
+                      AND identity_fingerprint = $2
+                )
+                ",
+            )
+            .bind(fingerprint.key_id())
+            .bind(fingerprint.digest().as_slice())
+            .fetch_one(&mut *transaction)
+            .await?;
+            if tombstoned {
+                return Err(DbError::IdentityTombstoned);
+            }
+        }
+
+        if let Some(current) = fingerprints.first() {
+            sqlx::query(
+                r"
+                INSERT INTO users (
+                    oidc_issuer,
+                    oidc_subject,
+                    identity_fingerprint_key_id,
+                    identity_fingerprint
+                )
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (oidc_issuer, oidc_subject) DO UPDATE
+                SET identity_fingerprint_key_id = CASE
+                        WHEN users.status IN ('active', 'suspended')
+                        THEN EXCLUDED.identity_fingerprint_key_id
+                        ELSE users.identity_fingerprint_key_id
+                    END,
+                    identity_fingerprint = CASE
+                        WHEN users.status IN ('active', 'suspended')
+                        THEN EXCLUDED.identity_fingerprint
+                        ELSE users.identity_fingerprint
+                    END
+                ",
+            )
+            .bind(issuer)
+            .bind(subject)
+            .bind(current.key_id())
+            .bind(current.digest().as_slice())
+            .execute(&mut *transaction)
+            .await?;
+        } else {
+            sqlx::query(
+                r"
+                INSERT INTO users (oidc_issuer, oidc_subject)
+                VALUES ($1, $2)
+                ON CONFLICT (oidc_issuer, oidc_subject) DO NOTHING
+                ",
+            )
+            .bind(issuer)
+            .bind(subject)
+            .execute(&mut *transaction)
+            .await?;
+        }
 
         // The timestamp (and therefore the UPDATE) advances only at the
         // configured cadence. The status predicate prevents this routine from

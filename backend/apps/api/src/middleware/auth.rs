@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use accounts::{AccountServiceError, VerifiedIdentity};
 use auth::{AuthRuntimeStatus, VerifyError};
@@ -8,6 +8,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use domain::{AccountStatus, AuthenticatedUserId};
+use observability::{OperationClass, OperationOutcome, record_operation};
 use uuid::Uuid;
 
 use crate::{
@@ -32,6 +33,25 @@ pub(crate) struct AuthenticatedPrincipal {
 /// tokens are never silently treated as an authenticated identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct OptionalPrincipal(pub(crate) Option<AuthenticatedPrincipal>);
+
+/// Verified provider identity for account deletion. Unlike ordinary account
+/// authentication this never JIT-provisions and never rejects suspended or
+/// deletion-pending accounts, so a lost response can be retried safely.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct AccountDeletionPrincipal {
+    pub(crate) identity: VerifiedIdentity,
+    pub(crate) auth_time: Option<DateTime<Utc>>,
+}
+
+impl std::fmt::Debug for AccountDeletionPrincipal {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AccountDeletionPrincipal")
+            .field("identity", &self.identity)
+            .field("auth_time", &self.auth_time)
+            .finish()
+    }
+}
 
 impl FromRequestParts<AppState> for AuthenticatedPrincipal {
     type Rejection = ApiError;
@@ -66,6 +86,46 @@ impl FromRequestParts<AppState> for OptionalPrincipal {
             Err(error) if optional_auth_falls_back_to_guest(&error) => Ok(Self(None)),
             Err(error) => Err(error),
         }
+    }
+}
+
+impl FromRequestParts<AppState> for AccountDeletionPrincipal {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let request_id = parts
+            .extensions
+            .get::<RequestId>()
+            .copied()
+            .unwrap_or_else(|| RequestId(Uuid::now_v7()));
+        if state.account_deletion.is_none() {
+            return Err(ApiError::new(
+                request_id,
+                StatusCode::NOT_FOUND,
+                "FEATURE_DISABLED",
+                "Account deletion is disabled.",
+                false,
+            ));
+        }
+        let token = bearer_token(parts, request_id)?;
+        let verifier = state
+            .auth
+            .verifier()
+            .ok_or_else(|| auth_runtime_error(request_id, state.auth.status()))?;
+        let claims = verifier
+            .verify(token)
+            .await
+            .map_err(|error| token_error(request_id, error))?;
+        let identity =
+            VerifiedIdentity::new(claims.issuer().to_owned(), claims.subject().to_owned())
+                .map_err(|error| account_service_error(request_id, &error))?;
+        Ok(Self {
+            identity,
+            auth_time: claims.auth_time(),
+        })
     }
 }
 
@@ -106,10 +166,14 @@ async fn authenticate(parts: &Parts, state: &AppState) -> Result<AuthenticatedPr
             false,
         )
     })?;
-    let user = service
-        .provision_authenticated(&identity)
-        .await
-        .map_err(|error| account_service_error(request_id, &error))?;
+    let started = Instant::now();
+    let user = service.provision_authenticated(&identity).await;
+    record_operation(
+        OperationClass::JitProvisioning,
+        account_operation_outcome(&user),
+        started.elapsed(),
+    );
+    let user = user.map_err(|error| account_service_error(request_id, &error))?;
     match user.status {
         AccountStatus::Active => Ok(AuthenticatedPrincipal {
             user_id: user.id,
@@ -127,6 +191,20 @@ async fn authenticate(parts: &Parts, state: &AppState) -> Result<AuthenticatedPr
             request_id,
             &AccountServiceError::Deleted,
         )),
+    }
+}
+
+fn account_operation_outcome<T>(result: &Result<T, AccountServiceError>) -> OperationOutcome {
+    match result {
+        Ok(_) => OperationOutcome::Success,
+        Err(AccountServiceError::Storage(_) | AccountServiceError::RateLimited { .. }) => {
+            OperationOutcome::RetryableFailure
+        }
+        Err(
+            AccountServiceError::InvalidRateLimitPolicy
+            | AccountServiceError::InvalidFingerprint(_),
+        ) => OperationOutcome::TerminalFailure,
+        Err(_) => OperationOutcome::Rejected,
     }
 }
 

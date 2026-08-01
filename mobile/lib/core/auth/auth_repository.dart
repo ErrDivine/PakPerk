@@ -42,6 +42,8 @@ final class AuthRepository implements AuthTokenSource {
   int get epoch => _epoch;
   String? get accountId => _secureRecord?.accountId;
   bool get hasStoredSessionInMemory => _secureRecord != null;
+  @override
+  bool isCurrentEpoch(int value) => value >= 0 && value == _epoch;
 
   /// Reads secure metadata without performing network I/O or refreshing.
   Future<AuthStoredSessionInspection> inspectStoredSession() async {
@@ -190,6 +192,62 @@ final class AuthRepository implements AuthTokenSource {
     await _writeSecureRecord(updated, operationEpoch);
     _ensureEpoch(operationEpoch);
     _secureRecord = updated;
+  }
+
+  /// Obtains a fresh, one-use bearer without mutating the normal session.
+  ///
+  /// The optional account identifier is only the locally bound Pakperk ID.
+  /// It can be absent after process death between token persistence and first
+  /// profile binding. The deletion repository independently calls the
+  /// deletion-verification endpoint with both the normal and ephemeral
+  /// bearers and compares the server-returned internal IDs before DELETE.
+  Future<RecentAuthCredential> reauthenticateForAccountDeletion({
+    required int expectedAuthEpoch,
+  }) async {
+    _ensureEpoch(expectedAuthEpoch);
+    final record = _secureRecord;
+    if (record == null) {
+      throw AuthFailure(
+        AuthFailureKind.invalidGrant,
+        AuthFailureCode.authSessionMissing,
+        sessionEpoch: expectedAuthEpoch,
+      );
+    }
+
+    late final OidcTokenSet tokens;
+    try {
+      tokens = await _oidcClient.reauthenticateForSensitiveAction();
+    } on OidcClientException catch (error) {
+      throw _mapOidcFailure(error, expectedAuthEpoch);
+    } on Object {
+      throw AuthFailure(
+        AuthFailureKind.provider,
+        AuthFailureCode.oidcUnexpected,
+        sessionEpoch: expectedAuthEpoch,
+      );
+    }
+    _ensureEpoch(expectedAuthEpoch);
+    _validateTokenSet(
+      tokens,
+      requireRefreshToken: false,
+      operationEpoch: expectedAuthEpoch,
+    );
+    return RecentAuthCredential(
+      bearer: tokens.accessToken,
+      expiresAt: tokens.accessTokenExpiresAt.toUtc(),
+      accountId: record.accountId,
+      sessionEpoch: expectedAuthEpoch,
+    );
+  }
+
+  /// Invalidates the local session after deletion acceptance without opening
+  /// a provider logout browser. The API has already disabled the account and
+  /// its worker owns provider-session revocation and identity erasure.
+  Future<int> invalidateForAccountDeletion() async {
+    final deletionEpoch = _beginNewEpoch();
+    await _invalidateDurableSession(deletionEpoch);
+    _ensureEpoch(deletionEpoch);
+    return deletionEpoch;
   }
 
   /// Immediately invalidates in-flight operations, clears memory, then removes
@@ -439,6 +497,8 @@ final class AuthRepository implements AuthTokenSource {
 
 /// Narrow interface consumed by authenticated HTTP middleware.
 abstract interface class AuthTokenSource {
+  bool isCurrentEpoch(int expectedAuthEpoch);
+
   Future<String?> accessTokenForRequest({int? expectedAuthEpoch});
 
   Future<String?> refreshAfterUnauthorized({

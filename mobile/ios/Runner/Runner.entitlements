@@ -4,7 +4,7 @@
 <dict>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>applinks:pakperk.app</string>
+		<string>applinks:$(PAKPERK_APP_LINK_HOST)</string>
 	</array>
 	<key>keychain-access-groups</key>
 	<array/>

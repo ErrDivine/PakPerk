@@ -1,0 +1,273 @@
+{{- $httpsOrigin := `^https://[A-Za-z0-9.-]+(?::[0-9]{1,5})?$` -}}
+{{- $digest := `^sha256:[a-f0-9]{64}$` -}}
+{{- if not (regexMatch $digest .Values.image.digest) -}}{{- fail "image.digest must be sha256-pinned" -}}{{- end -}}
+{{- if not (regexMatch $digest .Values.siteImage.digest) -}}{{- fail "siteImage.digest must be sha256-pinned" -}}{{- end -}}
+{{- if not (regexMatch $digest .Values.grobid.image.digest) -}}{{- fail "grobid.image.digest must be sha256-pinned" -}}{{- end -}}
+{{- if not (regexMatch $digest .Values.otelCollector.image.digest) -}}{{- fail "otelCollector.image.digest must be sha256-pinned" -}}{{- end -}}
+{{- if empty .Values.secret.rotationVersion -}}{{- fail "secret.rotationVersion is required and must change on external Secret rotation" -}}{{- end -}}
+{{- $databaseKeys := list .Values.secret.apiDatabaseUrlKey .Values.secret.paperWorkerDatabaseUrlKey .Values.secret.metadataSyncDatabaseUrlKey .Values.secret.deletionWorkerDatabaseUrlKey .Values.secret.migrationDatabaseUrlKey -}}
+{{- if ne (len (uniq $databaseKeys)) (len $databaseKeys) -}}
+{{- fail "every component must use a distinct database URL Secret key and least-privilege role" -}}
+{{- end -}}
+{{- if not (regexMatch $httpsOrigin .Values.public.siteOrigin) -}}
+{{- fail "public.siteOrigin must be an exact HTTPS origin without path, query, fragment, credentials, or wildcard" -}}
+{{- end -}}
+{{- if not (regexMatch $httpsOrigin .Values.public.apiOrigin) -}}
+{{- fail "public.apiOrigin must be an exact HTTPS origin without path, query, fragment, credentials, or wildcard" -}}
+{{- end -}}
+{{- if not (regexMatch $httpsOrigin .Values.public.mobileTelemetryOrigin) -}}
+{{- fail "public.mobileTelemetryOrigin must be an exact HTTPS origin" -}}
+{{- end -}}
+{{- if not (regexMatch $httpsOrigin .Values.public.oidcOrigin) -}}
+{{- fail "public.oidcOrigin must be an exact HTTPS origin without path, query, fragment, credentials, or wildcard" -}}
+{{- end -}}
+{{- range $origin := list .Values.public.siteOrigin .Values.public.apiOrigin .Values.public.mobileTelemetryOrigin .Values.public.oidcOrigin -}}
+{{- $lowerOrigin := lower $origin -}}
+{{- if or (contains "localhost" $lowerOrigin) (contains ".local" $lowerOrigin) (regexMatch `^https://(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)` $lowerOrigin) -}}
+{{- fail "public origins must not use loopback, link-local, or private hosts" -}}
+{{- end -}}
+{{- if or (contains ".test" $lowerOrigin) (contains ".invalid" $lowerOrigin) (contains ".example" $lowerOrigin) (contains "example.com" $lowerOrigin) (contains "example.org" $lowerOrigin) (contains "example.net" $lowerOrigin) -}}
+{{- fail "public origins must not use reserved example/test/invalid hosts" -}}
+{{- end -}}
+{{- end -}}
+{{- if not (regexMatch `^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}$` .Values.public.supportEmail) -}}
+{{- fail "public.supportEmail must be a monitored email address" -}}
+{{- end -}}
+{{- if not (hasPrefix (printf "%s/" .Values.public.oidcOrigin) .Values.public.oidcIssuer) -}}
+{{- fail "public.oidcIssuer must be below public.oidcOrigin" -}}
+{{- end -}}
+{{- if or (contains "*" .Values.public.siteOrigin) (contains "*" .Values.public.apiOrigin) (contains "*" .Values.public.oidcOrigin) -}}
+{{- fail "wildcard public origins are forbidden" -}}
+{{- end -}}
+{{- if eq .Values.public.oidcWebClientId .Values.public.oidcNativeClientId -}}
+{{- fail "browser deletion and native mobile must use separate public OIDC clients" -}}
+{{- end -}}
+{{- $expectedAppId := ternary "app.pakperk.pakperk" "app.pakperk.pakperk.staging" (eq .Values.environment "production") -}}
+{{- if ne .Values.mobileAssociations.androidPackageName $expectedAppId -}}
+{{- fail "mobileAssociations.androidPackageName does not match the release environment" -}}
+{{- end -}}
+{{- if ne .Values.mobileAssociations.appleBundleId $expectedAppId -}}
+{{- fail "mobileAssociations.appleBundleId does not match the release environment" -}}
+{{- end -}}
+{{- range .Values.mobileAssociations.androidSha256Fingerprints -}}
+{{- if not (regexMatch `^([A-F0-9]{2}:){31}[A-F0-9]{2}$` .) -}}
+{{- fail "every Android association fingerprint must be an uppercase colon-delimited SHA-256 fingerprint" -}}
+{{- end -}}
+{{- end -}}
+{{- if and (eq .Values.environment "production") (has .Values.mobileAssociations.appleTeamId (list "AAAAAAAAAA" "XXXXXXXXXX" "ZZZZZZZZZZ" "0000000000" "TEAMID1234")) -}}
+{{- fail "production mobileAssociations.appleTeamId must be the protected release Team ID, not a fixture" -}}
+{{- end -}}
+{{- if eq .Values.environment "production" -}}
+{{- range .Values.mobileAssociations.androidSha256Fingerprints -}}
+{{- if or (eq . "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF") (eq . "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00") (eq . "AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA") -}}
+{{- fail "production Android association fingerprints must come from protected signing evidence, not fixtures" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if and (eq .Values.environment "production") (ne .Values.policy.fulltext "strict") -}}
+{{- fail "production requires policy.fulltext=strict" -}}
+{{- end -}}
+{{- if and (eq .Values.environment "production") (ne (int .Values.deletionWorker.recoverableBackupDays) 35) -}}
+{{- fail "production privacy schedule requires deletionWorker.recoverableBackupDays=35" -}}
+{{- end -}}
+{{- if and (eq .Values.environment "production") (ne (int .Values.deletionLedger.securityRetentionDays) 90) -}}
+{{- fail "production privacy schedule requires deletionLedger.securityRetentionDays=90" -}}
+{{- end -}}
+{{- if and (eq .Values.environment "production") (lt (int .Values.deletionLedger.retentionDays) 400) -}}
+{{- fail "production deletion authority must be retained for at least 400 days" -}}
+{{- end -}}
+{{- if and (eq .Values.environment "production") (ne (int .Values.policy.operationalTelemetryRetentionDays) 30) -}}
+{{- fail "production privacy schedule requires 30-day operational telemetry retention" -}}
+{{- end -}}
+{{- if and (eq .Values.environment "production") (lt (int .Values.api.replicas) 2) -}}
+{{- fail "production requires at least two API replicas" -}}
+{{- end -}}
+{{- if and (eq .Values.environment "production") .Values.site.enabled (lt (int .Values.site.replicas) 2) -}}
+{{- fail "production requires at least two public-site replicas" -}}
+{{- end -}}
+{{- if not .Values.telemetryGateway.enabled -}}
+{{- fail "staging and production require the schema-validating mobile telemetry gateway" -}}
+{{- end -}}
+{{- if not .Values.networkPolicy.enabled -}}
+{{- fail "staging and production require networkPolicy.enabled=true" -}}
+{{- end -}}
+{{- if not .Values.site.enabled -}}
+{{- fail "staging and production require the chart-managed public site" -}}
+{{- end -}}
+{{- if not .Values.paperWorker.enabled -}}
+{{- fail "staging and production require the paper worker" -}}
+{{- end -}}
+{{- if not .Values.metadataSync.enabled -}}
+{{- fail "staging and production require scheduled metadata sync" -}}
+{{- end -}}
+{{- if not .Values.grobid.enabled -}}
+{{- fail "staging and production require the chart-managed GROBID dependency" -}}
+{{- end -}}
+{{- if not .Values.migration.enabled -}}
+{{- fail "staging and production require the verified migration job" -}}
+{{- end -}}
+{{- if and .Values.ingress.enabled (not .Values.site.enabled) -}}
+{{- fail "ingress.enabled requires site.enabled because the chart routes the site host to that Service" -}}
+{{- end -}}
+{{- if and (or .Values.paperWorker.enabled .Values.metadataSync.enabled) (not .Values.grobid.enabled) -}}
+{{- fail "paperWorker and metadataSync require the chart-managed GROBID Service" -}}
+{{- end -}}
+{{- if and .Values.metadataSync.enabled (not .Values.paperWorker.enabled) -}}
+{{- fail "metadataSync uses the paper-worker runtime contract and requires paperWorker.enabled" -}}
+{{- end -}}
+{{- if and (eq .Values.environment "production") (lt (int .Values.telemetryGateway.replicas) 2) -}}
+{{- fail "production requires at least two mobile telemetry gateway replicas" -}}
+{{- end -}}
+{{- if eq .Values.environment "production" -}}
+{{- range $imageDigest := list .Values.image.digest .Values.siteImage.digest .Values.grobid.image.digest .Values.otelCollector.image.digest -}}
+{{- if has $imageDigest (list (printf "sha256:%s" (repeat 64 "a")) (printf "sha256:%s" (repeat 64 "b")) (printf "sha256:%s" (repeat 64 "c")) (printf "sha256:%s" (repeat 64 "0"))) -}}
+{{- fail "production image digests must be signed release artifacts, not render fixtures" -}}
+{{- end -}}
+{{- end -}}
+{{- $backupId := lower .Values.migration.confirmBackupId -}}
+{{- if or (contains "fixture" $backupId) (contains "placeholder" $backupId) (contains "example" $backupId) (contains "staging" $backupId) -}}
+{{- fail "production migration.confirmBackupId must identify verified environment backup evidence" -}}
+{{- end -}}
+{{- range $category, $ranges := dict "apiHttpsCidrs" .Values.networkPolicy.apiHttpsCidrs "paperHttpsCidrs" .Values.networkPolicy.paperHttpsCidrs "identityAdminHttpsCidrs" .Values.networkPolicy.identityAdminHttpsCidrs "databaseCidrs" .Values.networkPolicy.databaseCidrs "telemetryCidrs" .Values.networkPolicy.telemetryCidrs -}}
+{{- range $cidr := $ranges -}}
+{{- if or (hasPrefix "192.0.2." $cidr) (hasPrefix "198.51.100." $cidr) (hasPrefix "203.0.113." $cidr) -}}
+{{- fail (printf "production networkPolicy.%s cannot contain TEST-NET documentation ranges" $category) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.features.library (not .Values.features.accounts) -}}
+{{- fail "features.library requires features.accounts" -}}
+{{- end -}}
+{{- if and .Values.features.libraryWrites (not .Values.features.library) -}}
+{{- fail "features.libraryWrites requires features.library" -}}
+{{- end -}}
+{{- if and .Values.features.comments (not .Values.features.accounts) -}}
+{{- fail "features.comments requires features.accounts" -}}
+{{- end -}}
+{{- if empty .Values.api.trustedProxyCidrs -}}
+{{- fail "api.trustedProxyCidrs is required for trustworthy anonymous prepare/chat and comment origin limits" -}}
+{{- end -}}
+{{- range $cidr := .Values.api.trustedProxyCidrs -}}
+{{- if or (eq $cidr "0.0.0.0/0") (eq $cidr "::/0") -}}
+{{- fail "api.trustedProxyCidrs cannot trust an internet-wide range" -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.features.commentCreation (not .Values.features.comments) -}}
+{{- fail "features.commentCreation requires features.comments" -}}
+{{- end -}}
+{{- if and .Values.features.accountDeletion (not .Values.features.accounts) -}}
+{{- fail "features.accountDeletion requires features.accounts" -}}
+{{- end -}}
+{{- if and .Values.features.accountDeletion (not .Values.deletionWorker.enabled) -}}
+{{- fail "account deletion requires the deletion worker" -}}
+{{- end -}}
+{{- if and .Values.features.accountDeletion (empty .Values.deletionLedger.existingClaim) -}}
+{{- fail "account deletion requires a separately backed-up deletionLedger.existingClaim" -}}
+{{- end -}}
+{{- if and .Values.features.accountDeletion (empty .Values.deletionLedger.environmentId) -}}
+{{- fail "account deletion requires deletionLedger.environmentId" -}}
+{{- end -}}
+{{- if and .Values.features.accountDeletion (ne .Values.deletionLedger.environmentId .Values.environment) -}}
+{{- fail "deletionLedger.environmentId must exactly equal the canonical environment" -}}
+{{- end -}}
+{{- if and .Values.deletionWorker.enabled (or (empty .Values.deletionWorker.keycloakAdminBaseUrl) (empty .Values.deletionWorker.keycloakRealm) (empty .Values.deletionWorker.keycloakAdminClientId)) -}}
+{{- fail "deletionWorker requires Keycloak admin base URL, realm, and client ID" -}}
+{{- end -}}
+{{- if and .Values.deletionWorker.enabled (not (regexMatch `^https://[A-Za-z0-9.-]+(?::[0-9]{1,5})?/?$` .Values.deletionWorker.keycloakAdminBaseUrl)) -}}
+{{- fail "deletionWorker.keycloakAdminBaseUrl must be an exact HTTPS origin" -}}
+{{- end -}}
+{{- if and .Values.deletionWorker.enabled (not (hasSuffix (printf "/realms/%s" .Values.deletionWorker.keycloakRealm) .Values.public.oidcIssuer)) -}}
+{{- fail "public.oidcIssuer must end with /realms/{deletionWorker.keycloakRealm}" -}}
+{{- end -}}
+{{- if and .Values.deletionWorker.enabled (gt (add (int .Values.deletionWorker.stepTimeoutSeconds) 2) (int .Values.deletionWorker.leaseSeconds)) -}}
+{{- fail "deletionWorker.stepTimeoutSeconds must be at most leaseSeconds minus two" -}}
+{{- end -}}
+{{- if and .Values.deletionWorker.enabled (le (int .Values.deletionWorker.terminationGracePeriodSeconds) (int .Values.deletionWorker.leaseSeconds)) -}}
+{{- fail "deletionWorker.terminationGracePeriodSeconds must exceed leaseSeconds" -}}
+{{- end -}}
+{{- if and .Values.deletionWorker.enabled (le (int .Values.deletionLedger.retentionDays) (int .Values.deletionWorker.recoverableBackupDays)) -}}
+{{- fail "deletionLedger.retentionDays must exceed deletionWorker.recoverableBackupDays" -}}
+{{- end -}}
+{{- if and .Values.paperWorker.enabled (ne .Values.paperWorker.llmProvider "openai_compatible") -}}
+{{- fail "deployed paper workers require paperWorker.llmProvider=openai_compatible" -}}
+{{- end -}}
+{{- if and .Values.paperWorker.enabled (or (empty .Values.paperWorker.llmBaseUrl) (empty .Values.paperWorker.llmChatModel) (empty .Values.paperWorker.llmEmbeddingModel) (empty .Values.paperWorker.arxivContactEmail)) -}}
+{{- fail "deployed paper workers require LLM coordinates/models and an arXiv contact" -}}
+{{- end -}}
+{{- if and .Values.paperWorker.enabled (not (regexMatch `^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~!$&'()*+,;=:@%-]*)*/?$` .Values.paperWorker.llmBaseUrl)) -}}
+{{- fail "paperWorker.llmBaseUrl must be a credential-free HTTPS URL without query or fragment" -}}
+{{- end -}}
+{{- if and .Values.paperWorker.enabled (or (contains "localhost" (lower .Values.paperWorker.llmBaseUrl)) (regexMatch `^https://127\.` .Values.paperWorker.llmBaseUrl)) -}}
+{{- fail "paperWorker.llmBaseUrl must not use a loopback host" -}}
+{{- end -}}
+{{- if not .Values.otelCollector.enabled -}}
+{{- fail "staging and production require otelCollector.enabled=true" -}}
+{{- end -}}
+{{- if empty .Values.otelCollector.exporterEndpoint -}}
+{{- fail "otelCollector.exporterEndpoint is required" -}}
+{{- end -}}
+{{- if not (regexMatch `^https://[A-Za-z0-9.-]+:[0-9]{1,5}/?$` .Values.otelCollector.exporterEndpoint) -}}
+{{- fail "otelCollector.exporterEndpoint must be a credential-free HTTPS host:port without path, query, or fragment" -}}
+{{- end -}}
+{{- if not (hasSuffix (printf ":%d" (int .Values.networkPolicy.telemetryPort)) (trimSuffix "/" .Values.otelCollector.exporterEndpoint)) -}}
+{{- fail "otelCollector.exporterEndpoint port must match networkPolicy.telemetryPort" -}}
+{{- end -}}
+{{- if and .Values.migration.enabled (empty .Values.migration.confirmBackupId) -}}
+{{- fail "migration.confirmBackupId is required as evidence of the verified pre-deploy backup" -}}
+{{- end -}}
+{{- if and .Values.metadataSync.enabled (empty .Values.metadataSync.manifestJson) -}}
+{{- fail "metadataSync.manifestJson is required when scheduled metadata sync is enabled" -}}
+{{- end -}}
+{{- if and .Values.ingress.enabled (or (empty .Values.ingress.siteHost) (empty .Values.ingress.apiHost) (empty .Values.ingress.telemetryHost) (empty .Values.ingress.tlsSecretName)) -}}
+{{- fail "ingress siteHost, apiHost, telemetryHost, and tlsSecretName are required" -}}
+{{- end -}}
+{{- if and .Values.ingress.enabled (ne .Values.public.siteOrigin (printf "https://%s" .Values.ingress.siteHost)) -}}
+{{- fail "public.siteOrigin must exactly match ingress.siteHost" -}}
+{{- end -}}
+{{- if and .Values.ingress.enabled (ne .Values.public.apiOrigin (printf "https://%s" .Values.ingress.apiHost)) -}}
+{{- fail "public.apiOrigin must exactly match ingress.apiHost" -}}
+{{- end -}}
+{{- if and .Values.ingress.enabled (ne .Values.public.mobileTelemetryOrigin (printf "https://%s" .Values.ingress.telemetryHost)) -}}
+{{- fail "public.mobileTelemetryOrigin must exactly match ingress.telemetryHost" -}}
+{{- end -}}
+{{- range $key, $_ := .Values.ingress.annotations -}}
+{{- if hasPrefix "nginx.ingress.kubernetes.io/" (lower $key) -}}
+{{- fail (printf "ingress.annotations[%s] is forbidden because chart-owned Nginx security annotations cannot be overridden" $key) -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.networkPolicy.enabled (empty .Values.networkPolicy.apiHttpsCidrs) -}}
+{{- fail "networkPolicy.apiHttpsCidrs must enumerate reviewed API HTTPS dependency ranges" -}}
+{{- end -}}
+{{- if and .Values.networkPolicy.enabled .Values.paperWorker.enabled (empty .Values.networkPolicy.paperHttpsCidrs) -}}
+{{- fail "networkPolicy.paperHttpsCidrs must enumerate reviewed paper-provider HTTPS ranges" -}}
+{{- end -}}
+{{- if and .Values.networkPolicy.enabled .Values.deletionWorker.enabled (empty .Values.networkPolicy.identityAdminHttpsCidrs) -}}
+{{- fail "networkPolicy.identityAdminHttpsCidrs must enumerate reviewed identity-admin HTTPS ranges" -}}
+{{- end -}}
+{{- if and .Values.networkPolicy.enabled (empty .Values.networkPolicy.databaseCidrs) -}}
+{{- fail "networkPolicy.databaseCidrs must enumerate the managed PostgreSQL ranges" -}}
+{{- end -}}
+{{- if and .Values.networkPolicy.enabled (empty .Values.networkPolicy.telemetryCidrs) -}}
+{{- fail "networkPolicy.telemetryCidrs must enumerate the upstream OTLP collector ranges" -}}
+{{- end -}}
+{{- range $category, $ranges := dict "apiHttpsCidrs" .Values.networkPolicy.apiHttpsCidrs "paperHttpsCidrs" .Values.networkPolicy.paperHttpsCidrs "identityAdminHttpsCidrs" .Values.networkPolicy.identityAdminHttpsCidrs "databaseCidrs" .Values.networkPolicy.databaseCidrs "telemetryCidrs" .Values.networkPolicy.telemetryCidrs -}}
+{{- range $cidr := $ranges -}}
+{{- if or (eq $cidr "0.0.0.0/0") (eq $cidr "::/0") -}}
+{{- fail (printf "networkPolicy.%s cannot contain an internet-wide CIDR" $category) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- range $cidr := .Values.networkPolicy.identityAdminHttpsCidrs -}}
+{{- if has $cidr $.Values.networkPolicy.paperHttpsCidrs -}}
+{{- fail "identityAdminHttpsCidrs and paperHttpsCidrs must be distinct so paper workers cannot reach identity administration" -}}
+{{- end -}}
+{{- end -}}
+{{- if and (eq .Values.environment "production") (or (hasSuffix ".test" (lower .Values.public.supportEmail)) (hasSuffix ".invalid" (lower .Values.public.supportEmail)) (contains "@example." (lower .Values.public.supportEmail)) (hasSuffix "@localhost" (lower .Values.public.supportEmail)) (contains "placeholder" (lower .Values.public.supportEmail))) -}}
+{{- fail "production public.supportEmail cannot use a reserved or placeholder domain" -}}
+{{- end -}}
+apiVersion: v1
+kind: List
+metadata:
+  name: {{ include "pakperk.fullname" . }}-validated
+items: []

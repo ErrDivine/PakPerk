@@ -2,9 +2,9 @@
 
 **Owner:** the designated Pakperk Trust & Safety on-call operator.
 **Backup:** the production incident commander.
-**Public-enablement state:** blocked until the support route, account deletion,
-retention policy, store review, monitoring, and this runbook are exercised in
-the Phase 6 environment.
+**Public-enablement state:** the controls are implemented but blocked until the
+support route, account deletion, retention, store review, monitoring, staffing,
+and this runbook are exercised in the target environment.
 
 ## Response targets
 
@@ -47,7 +47,7 @@ outside shell history.
 - Suspected credential exposure follows the incident runbook and secret
   rotation; never paste the credential into a report.
 
-`COMMENT_ORIGIN_HASH_SECRET_FILE` is a rotation-sensitive abuse-control secret,
+`API_ORIGIN_HASH_SECRET_FILE` is a rotation-sensitive abuse-control secret,
 not an IP archive. It must remain an owner-only, non-symlink regular file with
 32–4,096 non-placeholder bytes. A replacement changes every origin digest and
 therefore starts fresh origin buckets (account buckets are unaffected). Rotate
@@ -55,6 +55,15 @@ deliberately while the queue and abuse-rate dashboards are staffed; roll every
 replica, retain the old deployment secret only until the previous replicas and
 rate windows expire, then destroy it. Never log either secret or a raw peer
 address during validation.
+
+`API_TRUSTED_PROXY_CIDRS` must contain only the source ranges actually
+observed from the ingress-controller chain. The API accepts
+`X-Forwarded-For` only when the direct peer is in those ranges and walks the
+chain right-to-left; malformed or missing metadata falls back to the direct
+peer. Before changing the list, confirm the NetworkPolicy still admits only the
+reviewed ingress-controller namespace/pods, verify the controller appends the
+connection address, and test both a normal client and a spoofed leftmost entry
+in staging. Never add an internet-wide range.
 
 Before re-enabling creation, clear the incident cause, drain the open queue,
 test a published and held staging comment, confirm alerts/age metrics, and

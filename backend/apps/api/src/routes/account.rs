@@ -1,6 +1,8 @@
+use account_deletion::{AccountDeletionServiceError, RequestDeletionOutcome};
 use accounts::{AccountServiceError, PatchValue, ProfileUpdateCommand};
 use axum::{
     Extension, Json,
+    body::Bytes,
     extract::{Request, State},
     http::{
         HeaderMap, HeaderValue, Method, StatusCode,
@@ -12,9 +14,12 @@ use axum::{
 
 use crate::{
     AppState,
-    dto::{AccountProfileEnvelope, ProfilePatchField, ProfileUpdateBody},
+    dto::{
+        AccountDeletionEnvelope, AccountProfileEnvelope, DeletionVerificationEnvelope,
+        ProfilePatchField, ProfileUpdateBody,
+    },
     error::{ApiError, RequestId, account_service_error, profile_entity_tag},
-    middleware::AuthenticatedPrincipal,
+    middleware::{AccountDeletionPrincipal, AuthenticatedPrincipal},
 };
 
 const ACCOUNT_CACHE_CONTROL: &str = "private, no-store";
@@ -202,6 +207,229 @@ pub(crate) async fn patch_me(
     account_response(&state, request_id, &user)
 }
 
+#[utoipa::path(
+    delete,
+    path = "/v1/me",
+    tag = "accounts",
+    description = "Registered only when ACCOUNT_DELETION_ENABLED=true. The verified issuer/subject is the replay key; no Idempotency-Key header is accepted. A replay resumes durable externalization and returns the original operation. ACCOUNT_DELETION_UNAVAILABLE is unusual: the account is already locally deletion_pending, ordinary access remains blocked, and the worker/operator owns completion even though the external tombstone was not yet acknowledged durable.",
+    security(("oidcBearer" = [])),
+    responses(
+        (
+            status = 202,
+            description = "Deletion accepted or identity-scoped replay; clients must immediately clear credentials and account-owned local data",
+            body = AccountDeletionEnvelope,
+            headers(("Cache-Control" = String, description = "Always private, no-store")),
+            example = json!({
+                "deletion": {
+                    "operation_id": "0198f4d7-a4ce-7b40-8ee8-4f350350810c",
+                    "state": "requested",
+                    "requested_at": "2026-07-31T12:34:56.789Z",
+                    "updated_at": "2026-07-31T12:34:56.789Z"
+                }
+            })
+        ),
+        (status = 400, description = "INVALID_REQUEST when the DELETE body is non-empty or any Idempotency-Key header is supplied", body = crate::openapi::ErrorEnvelopeSchema),
+        (status = 401, description = "UNAUTHENTICATED, TOKEN_EXPIRED, or REAUTHENTICATION_REQUIRED", body = crate::openapi::ErrorEnvelopeSchema, headers(("WWW-Authenticate" = String, description = "Bearer challenge"))),
+        (status = 429, description = "RATE_LIMITED for a new operation only; identity-scoped replays never consume quota", body = crate::openapi::ErrorEnvelopeSchema, headers(("Retry-After" = String, description = "Seconds before retry"))),
+        (status = 503, description = "ACCOUNT_DELETION_UNAVAILABLE proves post-commit local disable and asynchronous ownership. SERVICE_UNAVAILABLE is ambiguous and never asserts acceptance. Clients fail closed for either response after dispatch.", body = crate::openapi::ErrorEnvelopeSchema, headers(("Retry-After" = String, description = "Seconds before retry")))
+    )
+)]
+pub(crate) async fn delete_me(
+    State(state): State<AppState>,
+    Extension(request_id): Extension<RequestId>,
+    principal: AccountDeletionPrincipal,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Response, ApiError> {
+    validate_delete_request(request_id, &headers, &body)?;
+    let service = deletion_service(&state, request_id)?;
+    let replay = service
+        .lookup(&principal.identity)
+        .await
+        .map_err(|error| deletion_service_error(request_id, &error))?
+        .is_some();
+    if !replay {
+        require_recent_auth(
+            request_id,
+            principal.auth_time,
+            service.policy().recent_auth(),
+        )?;
+    }
+    match service
+        .request(&principal.identity)
+        .await
+        .map_err(|error| deletion_service_error(request_id, &error))?
+    {
+        RequestDeletionOutcome::Accepted { operation, .. } => Ok((
+            StatusCode::ACCEPTED,
+            Json(AccountDeletionEnvelope::from(operation)),
+        )
+            .into_response()),
+        RequestDeletionOutcome::RateLimited {
+            retry_after_seconds,
+        } => Err(ApiError::new(
+            request_id,
+            StatusCode::TOO_MANY_REQUESTS,
+            "RATE_LIMITED",
+            "Too many account deletion requests. Please wait before retrying.",
+            true,
+        )
+        .with_retry_after(retry_after_seconds)),
+    }
+}
+
+fn validate_delete_request(
+    request_id: RequestId,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> Result<(), ApiError> {
+    if body.is_empty() && !headers.contains_key("idempotency-key") {
+        return Ok(());
+    }
+    Err(ApiError::new(
+        request_id,
+        StatusCode::BAD_REQUEST,
+        "INVALID_REQUEST",
+        "DELETE /v1/me accepts neither a request body nor Idempotency-Key.",
+        false,
+    ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/me/deletion-verification",
+    tag = "accounts",
+    description = "Registered only when ACCOUNT_DELETION_ENABLED=true. Resolves a verified OIDC identity to a bounded existing account record without JIT provisioning. This endpoint intentionally accepts a currently valid access token regardless of auth_time; DELETE /v1/me alone enforces recent authentication.",
+    security(("oidcBearer" = [])),
+    responses(
+        (
+            status = 200,
+            description = "Existing account identity used to bind the destructive confirmation flow",
+            body = DeletionVerificationEnvelope,
+            headers(("Cache-Control" = String, description = "Always private, no-store")),
+            example = json!({
+                "account": {
+                    "id": "0198f4d7-a4ce-7b40-8ee8-4f350350810c",
+                    "status": "active",
+                    "deletion_operation_id": null
+                }
+            })
+        ),
+        (status = 401, description = "UNAUTHENTICATED or TOKEN_EXPIRED", body = crate::openapi::ErrorEnvelopeSchema, headers(("WWW-Authenticate" = String, description = "Bearer challenge"))),
+        (status = 404, description = "ACCOUNT_NOT_FOUND or FEATURE_DISABLED", body = crate::openapi::ErrorEnvelopeSchema),
+        (status = 503, description = "AUTHENTICATION_UNAVAILABLE or ACCOUNT_DELETION_UNAVAILABLE", body = crate::openapi::ErrorEnvelopeSchema, headers(("Retry-After" = String, description = "Seconds before retry")))
+    )
+)]
+pub(crate) async fn verify_deletion_identity(
+    State(state): State<AppState>,
+    Extension(request_id): Extension<RequestId>,
+    principal: AccountDeletionPrincipal,
+) -> Result<Response, ApiError> {
+    let service = deletion_service(&state, request_id)?;
+    let Some(verification) = service
+        .verify_identity(&principal.identity)
+        .await
+        .map_err(|error| deletion_service_error(request_id, &error))?
+    else {
+        return Err(ApiError::new(
+            request_id,
+            StatusCode::NOT_FOUND,
+            "ACCOUNT_NOT_FOUND",
+            "No existing account is associated with this identity.",
+            false,
+        ));
+    };
+    Ok(Json(DeletionVerificationEnvelope::from(verification)).into_response())
+}
+
+fn require_recent_auth(
+    request_id: RequestId,
+    auth_time: Option<chrono::DateTime<chrono::Utc>>,
+    maximum_age: std::time::Duration,
+) -> Result<(), ApiError> {
+    require_recent_auth_at(request_id, auth_time, maximum_age, chrono::Utc::now())
+}
+
+fn require_recent_auth_at(
+    request_id: RequestId,
+    auth_time: Option<chrono::DateTime<chrono::Utc>>,
+    maximum_age: std::time::Duration,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), ApiError> {
+    let Some(auth_time) = auth_time else {
+        return Err(reauthentication_required(request_id));
+    };
+    let maximum_age =
+        chrono::TimeDelta::from_std(maximum_age).unwrap_or_else(|_| chrono::TimeDelta::seconds(0));
+    if auth_time > now || now.signed_duration_since(auth_time) > maximum_age {
+        return Err(reauthentication_required(request_id));
+    }
+    Ok(())
+}
+
+fn reauthentication_required(request_id: RequestId) -> ApiError {
+    ApiError::new(
+        request_id,
+        StatusCode::UNAUTHORIZED,
+        "REAUTHENTICATION_REQUIRED",
+        "Sign in again before deleting your account.",
+        false,
+    )
+    .with_bearer_challenge()
+}
+
+fn deletion_service(
+    state: &AppState,
+    request_id: RequestId,
+) -> Result<&account_deletion::AccountDeletionService, ApiError> {
+    state.account_deletion.as_ref().ok_or_else(|| {
+        ApiError::new(
+            request_id,
+            StatusCode::NOT_FOUND,
+            "FEATURE_DISABLED",
+            "Account deletion is disabled.",
+            false,
+        )
+    })
+}
+
+fn deletion_service_error(
+    request_id: RequestId,
+    error_value: &AccountDeletionServiceError,
+) -> ApiError {
+    let (error_kind, post_commit) = match error_value {
+        AccountDeletionServiceError::InvalidPolicy => ("invalid_policy", false),
+        AccountDeletionServiceError::Fingerprint(_) => ("fingerprint", false),
+        AccountDeletionServiceError::Storage(_) => ("storage", false),
+        AccountDeletionServiceError::ExternalizationUnavailable { .. } => ("externalization", true),
+        AccountDeletionServiceError::PostCommitStorageUnavailable { .. } => {
+            ("post_commit_storage", true)
+        }
+        AccountDeletionServiceError::ExternalLedger(_) => ("external_ledger", false),
+        AccountDeletionServiceError::ProviderIdentity(_) => ("provider_identity", false),
+    };
+    tracing::error!(request_id = %request_id.0, error.kind = error_kind, "account deletion request failed");
+    if post_commit {
+        ApiError::new(
+            request_id,
+            StatusCode::SERVICE_UNAVAILABLE,
+            "ACCOUNT_DELETION_UNAVAILABLE",
+            "Your account is disabled, but durable deletion processing is temporarily unavailable. Cleanup will continue automatically.",
+            true,
+        )
+        .with_retry_after(30)
+    } else {
+        ApiError::new(
+            request_id,
+            StatusCode::SERVICE_UNAVAILABLE,
+            "SERVICE_UNAVAILABLE",
+            "Account deletion is temporarily unavailable. Please try again.",
+            true,
+        )
+        .with_retry_after(30)
+    }
+}
+
 fn account_service(
     state: &AppState,
     request_id: RequestId,
@@ -348,6 +576,88 @@ mod tests {
         let mut valid = HeaderMap::new();
         valid.insert(IF_MATCH, HeaderValue::from_static("\"profile-42\""));
         assert_eq!(expected_profile_version(&valid, request_id).unwrap(), 42);
+    }
+
+    #[test]
+    fn delete_rejects_any_idempotency_key_and_nonempty_body() {
+        let request_id = RequestId(Uuid::nil());
+        assert!(validate_delete_request(request_id, &HeaderMap::new(), b"").is_ok());
+
+        let mut headers = HeaderMap::new();
+        headers.append("idempotency-key", HeaderValue::from_static(""));
+        let error = validate_delete_request(request_id, &headers, b"").unwrap_err();
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "INVALID_REQUEST");
+
+        headers.append("idempotency-key", HeaderValue::from_static("second"));
+        assert_eq!(
+            validate_delete_request(request_id, &headers, b"")
+                .unwrap_err()
+                .code,
+            "INVALID_REQUEST"
+        );
+        assert_eq!(
+            validate_delete_request(request_id, &HeaderMap::new(), b"{}")
+                .unwrap_err()
+                .code,
+            "INVALID_REQUEST"
+        );
+    }
+
+    #[test]
+    fn deletion_errors_distinguish_proven_acceptance_from_ambiguous_failure() {
+        let request_id = RequestId(Uuid::nil());
+        let pre_commit = deletion_service_error(
+            request_id,
+            &AccountDeletionServiceError::Storage(DbError::InvalidData("sentinel".to_owned())),
+        );
+        assert_eq!(pre_commit.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(pre_commit.code, "SERVICE_UNAVAILABLE");
+        assert!(!pre_commit.message.contains("account is disabled"));
+
+        let operation = domain::AccountDeletionOperation {
+            operation_id: Uuid::now_v7(),
+            state: domain::AccountDeletionState::Requested,
+            requested_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let post_commit = deletion_service_error(
+            request_id,
+            &AccountDeletionServiceError::ExternalizationUnavailable {
+                operation,
+                source: account_deletion::ExternalDeletionLedgerError::Unavailable,
+            },
+        );
+        assert_eq!(post_commit.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(post_commit.code, "ACCOUNT_DELETION_UNAVAILABLE");
+        assert!(post_commit.message.contains("account is disabled"));
+        assert_eq!(post_commit.retry_after_seconds, Some(30));
+    }
+
+    #[test]
+    fn recent_auth_rejects_missing_future_and_stale_claims_at_exact_boundaries() {
+        let request_id = RequestId(Uuid::nil());
+        let now = Utc.with_ymd_and_hms(2026, 8, 1, 12, 0, 0).unwrap();
+        let maximum_age = Duration::from_secs(300);
+        assert!(require_recent_auth_at(request_id, Some(now), maximum_age, now).is_ok());
+        assert!(
+            require_recent_auth_at(
+                request_id,
+                Some(now - chrono::TimeDelta::seconds(300)),
+                maximum_age,
+                now,
+            )
+            .is_ok()
+        );
+        for invalid in [
+            None,
+            Some(now + chrono::TimeDelta::milliseconds(1)),
+            Some(now - chrono::TimeDelta::milliseconds(300_001)),
+        ] {
+            let error = require_recent_auth_at(request_id, invalid, maximum_age, now).unwrap_err();
+            assert_eq!(error.status, StatusCode::UNAUTHORIZED);
+            assert_eq!(error.code, "REAUTHENTICATION_REQUIRED");
+        }
     }
 
     #[tokio::test]
@@ -588,6 +898,7 @@ mod tests {
             profile_update_window: Duration::from_secs(60 * 60),
             auth_retry_initial: Duration::from_secs(5),
             auth_retry_maximum: Duration::from_secs(5 * 60),
+            identity_fingerprints: None,
         });
         ApiConfig {
             environment: ApiEnvironment::Development,
@@ -597,10 +908,16 @@ mod tests {
                 library_writes: false,
                 comments: false,
                 comment_creation: false,
+                account_deletion: false,
             },
             accounts: account,
             library: None,
             comments: None,
+            account_deletion: None,
+            request_origin: crate::config::RequestOriginConfig::for_local_development(
+                "account-route-request-origin-secret-0123456789",
+            )
+            .unwrap(),
             bind: "127.0.0.1:0".parse().unwrap(),
             database_url: "postgres://test:test@127.0.0.1/test".to_owned(),
             database_pool_size: 1,

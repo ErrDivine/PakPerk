@@ -37,7 +37,10 @@ void main() {
             CachedCommentPagesCompanion.insert(
               pageKey: 'comments:guest',
               paperId: samplePaper.paperId,
-              payloadJson: '{"items":[],"next_cursor":null}',
+              payloadJson:
+                  '{"items":[{"body":"deleted author body",'
+                  '"author":{"handle":"deleted_reader"}}],'
+                  '"next_cursor":null}',
               fetchedAt: now,
               expiresAt: now.add(const Duration(minutes: 5)),
             ),
@@ -208,6 +211,12 @@ void main() {
             .pinnedByLibrary,
         isFalse,
       );
+
+      await accounts.purgeCommentPagesForAccountDeletion();
+
+      expect(await database.select(database.cachedCommentPages).get(), isEmpty);
+      expect(await feeds.loadPage(queryKey), isNotNull);
+      expect(await database.select(database.cachedPapers).get(), hasLength(1));
     },
   );
 }

@@ -1,0 +1,229 @@
+{{- if .Values.otelCollector.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pakperk.fullname" . }}-otel-collector
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+  annotations:
+    pakperk.app/upstream-retention-days: {{ .Values.policy.operationalTelemetryRetentionDays | quote }}
+data:
+  collector.yaml: |
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      file_storage/filelog:
+        directory: /var/lib/otelcol/file-storage
+        create_directory: true
+        compaction:
+          directory: /var/lib/otelcol/file-storage
+          on_start: true
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+            max_recv_msg_size_mib: 4
+          http:
+            endpoint: 0.0.0.0:4318
+      # Node-local backend stdout collection. Every include is scoped to this
+      # release namespace/name and a named Rust container; site, collector,
+      # GROBID, and unrelated namespace logs are never opened.
+      filelog/pakperk_backend:
+        include:
+          - /var/log/pods/{{ .Release.Namespace }}_{{ include "pakperk.fullname" . }}-api-*_*/api/*.log
+          - /var/log/pods/{{ .Release.Namespace }}_{{ include "pakperk.fullname" . }}-paper-worker-*_*/paper-worker/*.log
+          - /var/log/pods/{{ .Release.Namespace }}_{{ include "pakperk.fullname" . }}-deletion-worker-*_*/deletion-worker/*.log
+          - /var/log/pods/{{ .Release.Namespace }}_{{ include "pakperk.fullname" . }}-metadata-sync-*_*/metadata-sync/*.log
+          - /var/log/pods/{{ .Release.Namespace }}_{{ include "pakperk.fullname" . }}-migrate-*_*/migration/*.log
+          - /var/log/pods/{{ .Release.Namespace }}_{{ include "pakperk.fullname" . }}-telemetry-gateway-*_*/telemetry-gateway/*.log
+        exclude:
+          - /var/log/pods/{{ .Release.Namespace }}_{{ include "pakperk.fullname" . }}-otel-collector-*_*/collector/*.log
+        start_at: beginning
+        storage: file_storage/filelog
+        # The container operator needs the path while parsing pod/container
+        # metadata. The terminal retain operator below removes it before the
+        # record leaves this receiver.
+        include_file_path: true
+        operators:
+          - id: parse-cri
+            type: container
+            # Production nodes use containerd's CRI log framing. Declaring the
+            # format avoids requiring log.file.path solely for auto-detection;
+            # the path can therefore remain absent from every exported record.
+            format: containerd
+          - id: parse-pakperk-json
+            type: json_parser
+            parse_from: body
+            parse_to: attributes.pakperk
+            on_error: drop
+          - id: require-static-message
+            type: filter
+            expr: 'attributes.pakperk.message == nil'
+          - type: move
+            from: attributes.pakperk.message
+            to: body
+          - type: move
+            from: attributes.pakperk.level
+            to: attributes["log.severity_text"]
+          - type: move
+            from: attributes.pakperk.target
+            to: attributes["code.namespace"]
+          # Drop all event fields, spans, raw JSON, CRI metadata, paths, and
+          # any accidental content. Only static message, level, and Rust target
+          # leave the node.
+          - type: retain
+            fields:
+              - body
+              - attributes["log.severity_text"]
+              - attributes["code.namespace"]
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: {{ .Values.otelCollector.memoryLimitMiB }}
+        spike_limit_mib: 64
+      attributes/redact:
+        actions:
+          - { key: http.request.header.authorization, action: delete }
+          - { key: http.request.header.cookie, action: delete }
+          - { key: http.response.header.set-cookie, action: delete }
+          - { key: http.url, action: delete }
+          - { key: url.full, action: delete }
+          - { key: db.statement, action: delete }
+          - { key: enduser.id, action: delete }
+          - { key: user.email, action: delete }
+          - { key: comment.body, action: delete }
+          - { key: model.prompt, action: delete }
+          - { key: model.response, action: delete }
+      resource/backend-defaults:
+        attributes:
+          - { key: service.name, value: pakperk-backend-stdout, action: insert }
+          - { key: deployment.environment.name, value: {{ .Values.environment | quote }}, action: insert }
+      batch:
+        send_batch_size: 512
+        send_batch_max_size: 1024
+        timeout: 5s
+    exporters:
+      otlp:
+        endpoint: ${env:PAKPERK_TELEMETRY_EXPORTER_ENDPOINT}
+        headers: ${env:PAKPERK_TELEMETRY_EXPORTER_HEADERS}
+        tls:
+          insecure: false
+        sending_queue:
+          enabled: true
+          queue_size: 2048
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+    service:
+      telemetry:
+        logs:
+          level: warn
+        metrics:
+          level: none
+      extensions: [health_check, file_storage/filelog]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, attributes/redact, batch]
+          exporters: [otlp]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp]
+        logs:
+          receivers: [otlp, filelog/pakperk_backend]
+          processors: [memory_limiter, attributes/redact, resource/backend-defaults, batch]
+          exporters: [otlp]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "pakperk.fullname" . }}-otel-collector
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+spec:
+  revisionHistoryLimit: 3
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 1 }
+  selector:
+    matchLabels:
+      {{- include "pakperk.componentLabels" (dict "root" . "component" "otel-collector") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "pakperk.componentLabels" (dict "root" . "component" "otel-collector") | nindent 8 }}
+      annotations:
+        checksum/config: {{ toJson .Values.otelCollector | sha256sum }}
+        checksum/runtime-secrets: {{ printf "%s|%s|%s" .Values.secret.existingSecret .Values.secret.rotationVersion .Values.secret.telemetryExporterHeadersKey | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "pakperk.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      imagePullSecrets: {{ toYaml .Values.imagePullSecrets | nindent 8 }}
+      containers:
+        - name: collector
+          image: {{ printf "%s@%s" .Values.otelCollector.image.repository .Values.otelCollector.image.digest }}
+          imagePullPolicy: {{ .Values.otelCollector.image.pullPolicy }}
+          args: ["--config=/conf/collector.yaml"]
+          env:
+            - { name: PAKPERK_TELEMETRY_EXPORTER_ENDPOINT, value: {{ .Values.otelCollector.exporterEndpoint | quote }} }
+            - name: PAKPERK_TELEMETRY_EXPORTER_HEADERS
+              valueFrom: { secretKeyRef: { name: {{ .Values.secret.existingSecret }}, key: {{ .Values.secret.telemetryExporterHeadersKey }} } }
+          ports:
+            - { name: otlp-grpc, containerPort: 4317, protocol: TCP }
+            - { name: otlp-http, containerPort: 4318, protocol: TCP }
+            - { name: health, containerPort: 13133, protocol: TCP }
+          readinessProbe:
+            httpGet: { path: /, port: health }
+            periodSeconds: 10
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet: { path: /, port: health }
+            periodSeconds: 20
+            timeoutSeconds: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources: {{ toYaml .Values.otelCollector.resources | nindent 12 }}
+          volumeMounts:
+            - { name: config, mountPath: /conf, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+            - { name: filelog-state, mountPath: /var/lib/otelcol/file-storage }
+            - { name: pod-logs, mountPath: /var/log/pods, readOnly: true }
+      volumes:
+        - name: config
+          configMap: { name: {{ include "pakperk.fullname" . }}-otel-collector, defaultMode: 0444 }
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+        - name: filelog-state
+          emptyDir: { sizeLimit: 128Mi }
+        - name: pod-logs
+          hostPath: { path: /var/log/pods, type: Directory }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pakperk.fullname" . }}-otel-collector
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "pakperk.componentLabels" (dict "root" . "component" "otel-collector") | nindent 4 }}
+  ports:
+    - { name: otlp-grpc, port: 4317, targetPort: otlp-grpc, protocol: TCP }
+    - { name: otlp-http, port: 4318, targetPort: otlp-http, protocol: TCP }
+{{- end }}

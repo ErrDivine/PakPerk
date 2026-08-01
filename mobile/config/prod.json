@@ -1,0 +1,19 @@
+{
+  "PAKPERK_ENV": "production",
+  "PAKPERK_API_BASE_URL": "https://api.pakperk.app",
+  "PAKPERK_FULLTEXT_POLICY": "strict",
+  "PAKPERK_ACCOUNTS_ENABLED": "true",
+  "PAKPERK_LIBRARY_ENABLED": "true",
+  "PAKPERK_COMMENTS_ENABLED": "true",
+  "PAKPERK_OPENING_MOTION_ENABLED": "true",
+  "PAKPERK_OIDC_ISSUER_URL": "https://identity.pakperk.app/realms/pakperk",
+  "PAKPERK_OIDC_CLIENT_ID": "pakperk-mobile-prod",
+  "PAKPERK_OIDC_REDIRECT_URI": "pakperk-auth://oauth/callback",
+  "PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI": "pakperk-auth://oauth/logout",
+  "PAKPERK_OIDC_SCOPES": "openid profile",
+  "PAKPERK_PUBLIC_SITE_ORIGIN": "https://pakperk.app",
+  "PAKPERK_SUPPORT_URL": "https://pakperk.app/support",
+  "PAKPERK_ACCOUNT_DELETION_URL": "https://pakperk.app/account-deletion",
+  "PAKPERK_APP_LINK_ORIGIN": "https://pakperk.app",
+  "PAKPERK_TELEMETRY_ENDPOINT": "https://telemetry.pakperk.app/v1/logs"
+}

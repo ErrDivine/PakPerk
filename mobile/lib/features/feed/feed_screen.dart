@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models/reader_state.dart';
+import '../../core/providers.dart';
+import '../../core/telemetry/telemetry.dart';
 import '../../core/widgets/responsive_reader_frame.dart';
 import '../paper_reader/paper_reader.dart';
 import '../paper_reader/reader_navigation_controller.dart';
@@ -156,7 +158,16 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
   void _commitPage(FeedState feed, int index) {
     _lastCommittedSignature = _commitSignature(feed, index);
+    _recordCommittedPage(feed, index);
     ref.read(feedControllerProvider.notifier).onCommittedPage(index);
+  }
+
+  void _recordCommittedPage(FeedState feed, int index) {
+    emitTelemetry(
+      ref.read(telemetrySinkProvider),
+      PakPerkTelemetryEvent.paperPageCommitted,
+      {'source': 'read_feed', 'position_bucket': index.clamp(0, 100)},
+    );
   }
 
   String _commitSignature(FeedState feed, int index) => jsonEncode([

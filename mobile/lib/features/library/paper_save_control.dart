@@ -11,6 +11,7 @@ import '../../app/library_providers.dart';
 import '../../core/library/library_models.dart';
 import '../../core/models/paper.dart';
 import '../../core/providers.dart';
+import '../../core/telemetry/telemetry.dart';
 
 /// Connected control used once above the reader's stage PageView, so Abstract,
 /// Introduction, and Connections always observe the same Drift projection.
@@ -60,6 +61,11 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
 
     setState(() => _committing = true);
     final saved = !current.saved;
+    emitTelemetry(
+      ref.read(telemetrySinkProvider),
+      PakPerkTelemetryEvent.saveRequested,
+      {'intent': saved ? 'save' : 'remove'},
+    );
     try {
       await ref
           .read(libraryRepositoryProvider)
@@ -82,6 +88,15 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
       }
       unawaited(ref.read(librarySyncControllerProvider.notifier).drain());
     } on Object {
+      emitTelemetry(
+        ref.read(telemetrySinkProvider),
+        PakPerkTelemetryEvent.saveFailed,
+        {
+          'intent': saved ? 'save' : 'remove',
+          'failure_code': 'local_write',
+          'retryable': true,
+        },
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

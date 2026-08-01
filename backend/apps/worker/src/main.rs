@@ -28,10 +28,15 @@ async fn main() -> Result<()> {
         return Ok(());
     }
     let config = WorkerConfig::from_env().context("invalid worker configuration")?;
-    init(&ObservabilityConfig::from_env("pakperk-worker"))
-        .context("could not initialize tracing")?;
+    let telemetry_config = ObservabilityConfig::from_env("pakperk-worker")
+        .context("invalid telemetry configuration")?;
+    let telemetry = init(&telemetry_config).context("could not initialize telemetry")?;
     let worker = Worker::initialize(config)
         .await
         .context("could not initialize worker")?;
-    worker.execute_cli(cli).await
+    let worker_result = worker.execute_cli(cli).await;
+    telemetry
+        .shutdown()
+        .context("could not flush worker telemetry")?;
+    worker_result
 }

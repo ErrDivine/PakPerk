@@ -9,10 +9,12 @@ The production migration now contains a feature-gated public paper-comment
 implementation. It includes authenticated posting, explicit Terms and
 Community Guidelines acceptance, normalized plain-text validation, reporting,
 durable user blocking, audited moderation actions, shared rate limits, and a
-stable support contract. Both comment flags remain off by default, and public
-comment creation is prohibited until Phase 6 supplies the exercised account
-deletion, hosted-policy, retention, monitoring, and store-review gates. This is
-an implemented dark-launch capability, not a claim that public UGC is live.
+stable support contract. Both comment flags remain off by default. The
+repository now supplies account deletion, hosted policy/support, retention
+enforcement, telemetry, and operational controls, but public creation remains
+prohibited until those controls are exercised in the target environment and
+legal/store/moderation owners approve the evidence. This is an implemented
+dark-launch capability, not a claim that public UGC is live.
 
 When comments are enabled in a production release, comments are public
 user-generated content. They are not private notes or scholarly endorsements;

@@ -146,6 +146,15 @@ class AccountCacheDao {
     }
   });
 
+  /// Stronger deletion-only purge for public comment snapshots.
+  ///
+  /// Guest-scoped pages can contain the deleting account's formerly public
+  /// body and handle, so they cannot survive hard deletion. Ordinary sign-out
+  /// intentionally does not call this method. Paper/feed caches are separate
+  /// tables and remain available for anonymous reading.
+  Future<void> purgeCommentPagesForAccountDeletion() =>
+      database.delete(database.cachedCommentPages).go();
+
   Future<void> _refreshPaperPin(String paperId) async {
     final active =
         await (database.selectOnly(database.libraryItems)

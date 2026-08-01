@@ -168,8 +168,9 @@ pub(crate) fn account_service_error(
         .with_retry_after(*retry_after_seconds),
         AccountServiceError::NotFound
         | AccountServiceError::Storage(_)
-        | AccountServiceError::InvalidRateLimitPolicy => {
-            error!(request_id = %request_id.0, error = %error_value, "account service operation failed");
+        | AccountServiceError::InvalidRateLimitPolicy
+        | AccountServiceError::InvalidFingerprint(_) => {
+            error!(request_id = %request_id.0, error.kind = "account_service", "account service operation failed");
             ApiError::new(
                 request_id,
                 StatusCode::SERVICE_UNAVAILABLE,

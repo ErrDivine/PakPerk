@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -43,12 +44,15 @@ void main() {
       expect(lazy.capabilities.chat, isFalse);
       expect(lazy.capabilities.connections, isFalse);
 
-      final introductionRaw = await rootBundle.loadString(
+      // Prepared demo data is a development-flavor asset and therefore is
+      // deliberately absent from the unflavored/strict test bundle. Validate
+      // its checked-in source here; artifact tests cover flavor packaging.
+      final introductionRaw = await File(
         'assets/prepared_introductions.json',
-      );
-      final connectionRaw = await rootBundle.loadString(
+      ).readAsString();
+      final connectionRaw = await File(
         'assets/prepared_connections.json',
-      );
+      ).readAsString();
       final introductions = Map<String, dynamic>.from(
         jsonDecode(introductionRaw) as Map,
       );

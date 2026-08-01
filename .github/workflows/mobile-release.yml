@@ -1,0 +1,520 @@
+name: signed-mobile-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected release environment
+        required: true
+        type: choice
+        options: [development, staging, production]
+      upload_to_stores:
+        description: Upload the verified candidate to TestFlight and Google Play internal track
+        required: true
+        default: false
+        type: boolean
+      previous_android_version_code:
+        description: Highest version code already uploaded in this Play application
+        required: true
+        default: "1"
+        type: string
+      previous_ios_build_number:
+        description: Highest build number already uploaded in this App Store application
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signed-mobile-${{ inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: 3.44.8
+
+jobs:
+  signed-candidate:
+    name: ${{ inputs.environment }} signed candidate
+    runs-on: macos-latest
+    timeout-minutes: 150
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Resolve and cross-check release identity
+        id: release
+        shell: bash
+        run: |
+          mobile_version="$(awk '$1 == "version:" { print $2; exit }' mobile/pubspec.yaml)"
+          version_name="${mobile_version%%+*}"
+          build_number="${mobile_version##*+}"
+          backend_version="$(awk '/^\[workspace.package\]$/ { section=1; next } section && /^version = / { gsub(/[\" ]/, "", $3); print $3; exit }' backend/Cargo.toml)"
+          helm_app_version="$(awk '$1 == "appVersion:" { gsub(/\"/, "", $2); print $2; exit }' deploy/helm/pakperk/Chart.yaml)"
+          if [[ "$mobile_version" != *+* || ! "$build_number" =~ ^[1-9][0-9]*$ ]]; then
+            echo "mobile/pubspec.yaml must contain a positive store build number." >&2
+            exit 1
+          fi
+          if [[ "$version_name" != "$backend_version" || "$version_name" != "$helm_app_version" ]]; then
+            echo "Mobile, Rust workspace, and Helm app versions must match." >&2
+            exit 1
+          fi
+          case "${{ inputs.environment }}" in
+            development)
+              flavor=dev
+              bundle_id=app.pakperk.pakperk.dev
+              callback_scheme=pakperk-auth-dev
+              app_link_host=-
+              android_app_link_host=localhost
+              android_version_name="$version_name-dev"
+              ;;
+            staging)
+              flavor=staging
+              bundle_id=app.pakperk.pakperk.staging
+              callback_scheme=pakperk-auth-staging
+              app_link_host=staging.pakperk.app
+              android_app_link_host="$app_link_host"
+              android_version_name="$version_name-staging"
+              ;;
+            production)
+              flavor=prod
+              bundle_id=app.pakperk.pakperk
+              callback_scheme=pakperk-auth
+              app_link_host=pakperk.app
+              android_app_link_host="$app_link_host"
+              android_version_name="$version_name"
+              ;;
+            *) exit 2 ;;
+          esac
+          for pair in \
+            "flavor=$flavor" \
+            "bundle_id=$bundle_id" \
+            "callback_scheme=$callback_scheme" \
+            "app_link_host=$app_link_host" \
+            "android_app_link_host=$android_app_link_host" \
+            "version_name=$version_name" \
+            "android_version_name=$android_version_name" \
+            "build_number=$build_number"; do
+            echo "$pair" >>"$GITHUB_OUTPUT"
+          done
+
+      - name: Validate protected inputs and monotonic store builds
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.PAKPERK_ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.PAKPERK_ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.PAKPERK_ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.PAKPERK_ANDROID_KEY_PASSWORD }}
+          ANDROID_APP_SIGNING_SHA256: ${{ secrets.PAKPERK_ANDROID_APP_SIGNING_SHA256 }}
+          IOS_CERTIFICATE_BASE64: ${{ secrets.PAKPERK_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.PAKPERK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          IOS_PROFILE_BASE64: ${{ secrets.PAKPERK_IOS_PROVISIONING_PROFILE_BASE64 }}
+          IOS_TEAM_ID: ${{ secrets.PAKPERK_DEVELOPMENT_TEAM }}
+          IOS_PROFILE_NAME: ${{ secrets.PAKPERK_IOS_PROVISIONING_PROFILE_SPECIFIER }}
+          GOOGLE_PLAY_JSON_BASE64: ${{ secrets.PAKPERK_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}
+          APP_STORE_ISSUER_ID: ${{ secrets.PAKPERK_APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_KEY_ID: ${{ secrets.PAKPERK_APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_KEY_BASE64: ${{ secrets.PAKPERK_APP_STORE_CONNECT_PRIVATE_KEY_BASE64 }}
+          PREVIOUS_ANDROID_VERSION_CODE: ${{ inputs.previous_android_version_code }}
+          PREVIOUS_IOS_BUILD_NUMBER: ${{ inputs.previous_ios_build_number }}
+          RELEASE_BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+        run: |
+          required=(
+            ANDROID_KEYSTORE_BASE64 ANDROID_STORE_PASSWORD ANDROID_KEY_ALIAS
+            ANDROID_KEY_PASSWORD IOS_CERTIFICATE_BASE64 IOS_CERTIFICATE_PASSWORD
+            IOS_PROFILE_BASE64 IOS_TEAM_ID IOS_PROFILE_NAME
+          )
+          if [[ "${{ inputs.environment }}" != development ]]; then
+            required+=(ANDROID_APP_SIGNING_SHA256)
+          fi
+          if [[ "${{ inputs.upload_to_stores }}" == true ]]; then
+            required+=(GOOGLE_PLAY_JSON_BASE64 APP_STORE_ISSUER_ID APP_STORE_KEY_ID APP_STORE_KEY_BASE64)
+          fi
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Protected environment input is missing: $name" >&2
+              exit 1
+            fi
+            if [[ "${!name}" == *$'\n'* || "${!name}" == *$'\r'* ]]; then
+              echo "Protected scalar input contains a line break: $name" >&2
+              exit 1
+            fi
+          done
+          if [[ "${{ inputs.environment }}" != development ]] && \
+             ! [[ "$ANDROID_APP_SIGNING_SHA256" =~ ^([A-F0-9]{2}:){31}[A-F0-9]{2}$ ]]; then
+            echo "The Play app-signing SHA-256 fingerprint has an invalid format." >&2
+            exit 1
+          fi
+          if [[ "${{ inputs.upload_to_stores }}" == true ]] && {
+            ! [[ "$APP_STORE_ISSUER_ID" =~ ^[0-9a-fA-F-]{36}$ ]] ||
+            ! [[ "$APP_STORE_KEY_ID" =~ ^[A-Z0-9]{10}$ ]];
+          }; then
+            echo "App Store Connect issuer/key identifiers have an invalid format." >&2
+            exit 1
+          fi
+          if ! [[ "$PREVIOUS_ANDROID_VERSION_CODE" =~ ^[0-9]+$ ]] || \
+             ! [[ "$PREVIOUS_IOS_BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "Previous store build inputs must be non-negative integers." >&2
+            exit 1
+          fi
+          if (( RELEASE_BUILD_NUMBER <= PREVIOUS_ANDROID_VERSION_CODE )) || \
+             (( RELEASE_BUILD_NUMBER <= PREVIOUS_IOS_BUILD_NUMBER )); then
+            echo "The checked-in build number is not newer than both confirmed store builds." >&2
+            exit 1
+          fi
+
+      - name: Resolve locked Flutter dependencies
+        working-directory: mobile
+        run: flutter pub get --enforce-lockfile
+
+      - name: Gate Apple SDK and capture exact build toolchain
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/evidence"
+          python3 scripts/validate_gradle_wrapper.py
+          xcode_version="$(xcodebuild -version | awk '$1 == "Xcode" { print $2; exit }')"
+          iphoneos_sdk="$(xcrun --sdk iphoneos --show-sdk-version)"
+          if ! [[ "$xcode_version" =~ ^[0-9]+([.][0-9]+)*$ ]] || \
+             ! [[ "$iphoneos_sdk" =~ ^[0-9]+([.][0-9]+)*$ ]]; then
+            echo "Could not parse the Xcode/iPhoneOS SDK versions." >&2
+            exit 1
+          fi
+          if (( ${xcode_version%%.*} < 26 || ${iphoneos_sdk%%.*} < 26 )); then
+            echo "App Store candidates require Xcode 26+ and the iOS 26+ SDK." >&2
+            exit 1
+          fi
+          flutter --version --machine >"$RUNNER_TEMP/evidence/flutter-toolchain.json"
+          python3 - "$FLUTTER_VERSION" "$RUNNER_TEMP/evidence/flutter-toolchain.json" <<'PY'
+          import json, pathlib, re, sys
+          expected, path = sys.argv[1:]
+          value = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+          if value.get("frameworkVersion") != expected:
+              raise SystemExit("Resolved Flutter SDK does not match FLUTTER_VERSION")
+          if not re.fullmatch(r"[0-9a-f]{40}", value.get("frameworkRevision", "")):
+              raise SystemExit("Resolved Flutter SDK revision is not immutable")
+          PY
+          {
+            printf 'github_runner_image=%s\n' "${ImageOS:-unknown}"
+            printf 'github_runner_version=%s\n' "${ImageVersion:-unknown}"
+            sw_vers
+            uname -m
+            xcode-select -p
+            xcodebuild -version
+            printf 'iphoneos_sdk=%s\n' "$iphoneos_sdk"
+            dart --version 2>&1
+            java -version 2>&1
+            ruby --version
+            gem --version
+            (cd mobile/android && ./gradlew --no-daemon --version)
+          } >"$RUNNER_TEMP/evidence/native-toolchain.txt"
+
+      - name: Materialize Android upload keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.PAKPERK_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          python3 - <<'PY'
+          import base64, os, pathlib
+          pathlib.Path(os.environ["RUNNER_TEMP"], "pakperk-upload.jks").write_bytes(
+              base64.b64decode(os.environ["ANDROID_KEYSTORE_BASE64"], validate=True)
+          )
+          PY
+          chmod 0600 "$RUNNER_TEMP/pakperk-upload.jks"
+
+      - name: Build and inspect signed Android artifacts
+        id: android
+        shell: bash
+        working-directory: mobile
+        env:
+          PAKPERK_ANDROID_STORE_FILE: ${{ runner.temp }}/pakperk-upload.jks
+          PAKPERK_ANDROID_STORE_PASSWORD: ${{ secrets.PAKPERK_ANDROID_STORE_PASSWORD }}
+          PAKPERK_ANDROID_KEY_ALIAS: ${{ secrets.PAKPERK_ANDROID_KEY_ALIAS }}
+          PAKPERK_ANDROID_KEY_PASSWORD: ${{ secrets.PAKPERK_ANDROID_KEY_PASSWORD }}
+          ANDROID_APP_SIGNING_SHA256: ${{ secrets.PAKPERK_ANDROID_APP_SIGNING_SHA256 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/symbols/android-aab" "$RUNNER_TEMP/symbols/android-apk" "$RUNNER_TEMP/evidence" "$RUNNER_TEMP/artifacts"
+          flutter build appbundle --release --flavor "${{ steps.release.outputs.flavor }}" \
+            --dart-define-from-file="config/${{ steps.release.outputs.flavor }}.json" \
+            --obfuscate --split-debug-info="$RUNNER_TEMP/symbols/android-aab"
+          flutter build apk --release --flavor "${{ steps.release.outputs.flavor }}" \
+            --dart-define-from-file="config/${{ steps.release.outputs.flavor }}.json" \
+            --obfuscate --split-debug-info="$RUNNER_TEMP/symbols/android-apk"
+          aab="build/app/outputs/bundle/${{ steps.release.outputs.flavor }}Release/app-${{ steps.release.outputs.flavor }}-release.aab"
+          apk="build/app/outputs/flutter-apk/app-${{ steps.release.outputs.flavor }}-release.apk"
+          "$GITHUB_WORKSPACE/scripts/verify_android_release_artifacts.sh" \
+            "$aab" "$apk" "${{ steps.release.outputs.bundle_id }}" \
+            "${{ steps.release.outputs.android_version_name }}" "${{ steps.release.outputs.build_number }}" \
+            "${{ steps.release.outputs.callback_scheme }}" \
+            "${{ steps.release.outputs.android_app_link_host }}" \
+            | tee "$RUNNER_TEMP/evidence/android-upload-identity.txt"
+          if [[ "${{ inputs.environment }}" != development ]]; then
+            dart run tool/verify_strict_artifact_assets.dart "$aab"
+            dart run tool/verify_strict_artifact_assets.dart "$apk"
+            printf 'android_play_app_signing_sha256=%s\n' "$ANDROID_APP_SIGNING_SHA256" \
+              >"$RUNNER_TEMP/evidence/android-installed-identity.txt"
+          fi
+          cp "$aab" "$RUNNER_TEMP/artifacts/"
+          cp "$apk" "$RUNNER_TEMP/artifacts/"
+
+      - name: Import protected Apple signing identity and profile
+        id: apple_signing
+        shell: bash
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.PAKPERK_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.PAKPERK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          IOS_PROFILE_BASE64: ${{ secrets.PAKPERK_IOS_PROVISIONING_PROFILE_BASE64 }}
+          IOS_TEAM_ID: ${{ secrets.PAKPERK_DEVELOPMENT_TEAM }}
+          IOS_PROFILE_NAME: ${{ secrets.PAKPERK_IOS_PROVISIONING_PROFILE_SPECIFIER }}
+          EXPECTED_BUNDLE_ID: ${{ steps.release.outputs.bundle_id }}
+        run: |
+          python3 - <<'PY'
+          import base64, os, pathlib
+          root = pathlib.Path(os.environ["RUNNER_TEMP"])
+          root.joinpath("distribution.p12").write_bytes(base64.b64decode(os.environ["IOS_CERTIFICATE_BASE64"], validate=True))
+          root.joinpath("profile.mobileprovision").write_bytes(base64.b64decode(os.environ["IOS_PROFILE_BASE64"], validate=True))
+          PY
+          chmod 0600 "$RUNNER_TEMP/distribution.p12" "$RUNNER_TEMP/profile.mobileprovision"
+          keychain_password="$(openssl rand -hex 32)"
+          keychain="$RUNNER_TEMP/pakperk-release.keychain-db"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/distribution.p12" -k "$keychain" \
+            -P "$IOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" >"$RUNNER_TEMP/profile.plist"
+          profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/profile.plist")"
+          profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")"
+          profile_team="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$RUNNER_TEMP/profile.plist")"
+          profile_app_id="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/profile.plist")"
+          if ! [[ "$profile_uuid" =~ ^[A-Fa-f0-9-]{36}$ ]] || \
+             ! [[ "$IOS_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || \
+             ! [[ "$IOS_PROFILE_NAME" =~ ^[A-Za-z0-9._\ -]{1,128}$ ]]; then
+            echo "Protected Apple signing identifiers have an invalid format." >&2
+            exit 1
+          fi
+          if [[ "$profile_name" != "$IOS_PROFILE_NAME" || "$profile_team" != "$IOS_TEAM_ID" || \
+                "$profile_app_id" != "$IOS_TEAM_ID.$EXPECTED_BUNDLE_ID" ]]; then
+            echo "Protected provisioning profile does not match this environment." >&2
+            exit 1
+          fi
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$RUNNER_TEMP/profile.mobileprovision" \
+            "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
+          echo "profile_uuid=$profile_uuid" >>"$GITHUB_OUTPUT"
+          python3 - <<'PY'
+          import os, pathlib, plistlib
+          root = pathlib.Path(os.environ["RUNNER_TEMP"])
+          pathlib.Path("mobile/ios/Flutter/LocalSigning.xcconfig").write_text(
+              "PAKPERK_DEVELOPMENT_TEAM = " + os.environ["IOS_TEAM_ID"] + "\n"
+              "CODE_SIGN_STYLE = Manual\n"
+              "CODE_SIGN_IDENTITY = Apple Distribution\n"
+              "PROVISIONING_PROFILE_SPECIFIER = " + os.environ["IOS_PROFILE_NAME"] + "\n",
+              encoding="utf-8",
+          )
+          with root.joinpath("ExportOptions.plist").open("wb") as handle:
+              plistlib.dump({
+                  "method": "app-store-connect",
+                  "signingStyle": "manual",
+                  "teamID": os.environ["IOS_TEAM_ID"],
+                  "provisioningProfiles": {
+                      os.environ["EXPECTED_BUNDLE_ID"]: os.environ["IOS_PROFILE_NAME"],
+                  },
+                  "manageAppVersionAndBuildNumber": False,
+                  "uploadSymbols": False,
+              }, handle)
+          PY
+
+      - name: Build and inspect signed iOS artifact
+        id: ios
+        shell: bash
+        working-directory: mobile
+        run: |
+          mkdir -p "$RUNNER_TEMP/symbols/ios" "$RUNNER_TEMP/native-symbols"
+          flutter build ipa --release --flavor "${{ steps.release.outputs.flavor }}" \
+            --dart-define-from-file="config/${{ steps.release.outputs.flavor }}.json" \
+            --export-options-plist="$RUNNER_TEMP/ExportOptions.plist" \
+            --obfuscate --split-debug-info="$RUNNER_TEMP/symbols/ios"
+          shopt -s nullglob
+          ipas=(build/ios/ipa/*.ipa)
+          if [[ ${#ipas[@]} -ne 1 ]]; then
+            echo "Expected exactly one signed IPA, found ${#ipas[@]}." >&2
+            exit 1
+          fi
+          ipa="${ipas[0]}"
+          "$GITHUB_WORKSPACE/scripts/verify_ios_release_artifact.sh" \
+            "$ipa" "${{ steps.release.outputs.bundle_id }}" \
+            "${{ steps.release.outputs.version_name }}" "${{ steps.release.outputs.build_number }}" \
+            "${{ steps.release.outputs.callback_scheme }}" "${{ steps.release.outputs.app_link_host }}" \
+            | tee "$RUNNER_TEMP/evidence/apple-installed-identity.txt"
+          if [[ "${{ inputs.environment }}" != development ]]; then
+            dart run tool/verify_strict_artifact_assets.dart "$ipa"
+          fi
+          cp "$ipa" "$RUNNER_TEMP/artifacts/"
+          find build/ios/archive -type d -name '*.dSYM' \
+            -exec cp -R '{}' "$RUNNER_TEMP/native-symbols/" ';'
+
+      - name: Verify deployed association documents against installed-app identities
+        if: inputs.environment != 'development'
+        shell: bash
+        env:
+          ANDROID_APP_SIGNING_SHA256: ${{ secrets.PAKPERK_ANDROID_APP_SIGNING_SHA256 }}
+        run: |
+          host="${{ steps.release.outputs.app_link_host }}"
+          for document in assetlinks.json apple-app-site-association; do
+            curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
+              --max-redirs 0 --connect-timeout 5 --max-time 15 \
+              --dump-header "$RUNNER_TEMP/evidence/$document.headers" \
+              --output "$RUNNER_TEMP/evidence/$document" \
+              "https://$host/.well-known/$document"
+            if ! grep -Eiq '^content-type:[[:space:]]*application/json([[:space:]]*;|[[:space:]]*$)' \
+              "$RUNNER_TEMP/evidence/$document.headers"; then
+              echo "$document was not served as application/json." >&2
+              exit 1
+            fi
+          done
+          apple_team_id="$(sed -n 's/^apple_team_id=//p' "$RUNNER_TEMP/evidence/apple-installed-identity.txt")"
+          PAKPERK_RELEASE_ENV="${{ inputs.environment }}" \
+          PAKPERK_ANDROID_PACKAGE="${{ steps.release.outputs.bundle_id }}" \
+          PAKPERK_ANDROID_SHA256="$ANDROID_APP_SIGNING_SHA256" \
+          PAKPERK_APPLE_TEAM_ID="$apple_team_id" \
+          PAKPERK_APPLE_BUNDLE_ID="${{ steps.release.outputs.bundle_id }}" \
+            ./scripts/verify_mobile_associations.sh \
+              "$RUNNER_TEMP/evidence/assetlinks.json" \
+              "$RUNNER_TEMP/evidence/apple-app-site-association"
+
+      - name: Install and record the pinned store upload client
+        if: inputs.upload_to_stores
+        shell: bash
+        env:
+          FASTLANE_SKIP_UPDATE_CHECK: "1"
+        run: |
+          gem install --user-install fastlane --version 2.235.0 --no-document
+          fastlane_bin="$(ruby -e 'print Gem.user_dir')/bin/fastlane"
+          echo "FASTLANE_BIN=$fastlane_bin" >>"$GITHUB_ENV"
+          "$fastlane_bin" --version >"$RUNNER_TEMP/evidence/fastlane.txt" 2>&1
+          gem list --local | LC_ALL=C sort >"$RUNNER_TEMP/evidence/ruby-gems.txt"
+
+      - name: Generate SBOM, notices, and immutable evidence hashes
+        shell: bash
+        run: |
+          source_epoch="$(git show -s --format=%ct HEAD)"
+          SOURCE_REVISION="$GITHUB_SHA" SOURCE_DATE_EPOCH="$source_epoch" \
+            ./scripts/generate_release_metadata.py \
+              --flutter-sdk-version "$FLUTTER_VERSION" \
+              --output-dir "$RUNNER_TEMP/evidence/release-metadata"
+          python3 - <<'PY'
+          import hashlib, os, pathlib
+          root = pathlib.Path(os.environ["RUNNER_TEMP"])
+          lines = []
+          for name in ("artifacts", "symbols", "native-symbols", "evidence"):
+              for path in sorted(root.joinpath(name).rglob("*")):
+                  if path.is_file() and not path.is_symlink():
+                      digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                      lines.append(f"{digest}  {path.relative_to(root)}")
+          root.joinpath("release-sha256.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Retain signed candidates, symbols, SBOM, and release evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pakperk-${{ inputs.environment }}-${{ steps.release.outputs.version_name }}-${{ steps.release.outputs.build_number }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/artifacts
+            ${{ runner.temp }}/symbols
+            ${{ runner.temp }}/native-symbols
+            ${{ runner.temp }}/evidence
+            ${{ runner.temp }}/release-sha256.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload Android candidate to Google Play internal track
+        if: inputs.upload_to_stores
+        shell: bash
+        env:
+          GOOGLE_PLAY_JSON_BASE64: ${{ secrets.PAKPERK_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}
+        run: |
+          python3 - <<'PY'
+          import base64, os, pathlib
+          pathlib.Path(os.environ["RUNNER_TEMP"], "google-play.json").write_bytes(
+              base64.b64decode(os.environ["GOOGLE_PLAY_JSON_BASE64"], validate=True)
+          )
+          PY
+          chmod 0600 "$RUNNER_TEMP/google-play.json"
+          shopt -s nullglob
+          aabs=("$RUNNER_TEMP"/artifacts/*.aab)
+          if [[ ${#aabs[@]} -ne 1 ]]; then
+            echo "Expected exactly one retained AAB." >&2
+            exit 1
+          fi
+          aab="${aabs[0]}"
+          "$FASTLANE_BIN" supply \
+            --aab "$aab" \
+            --package_name "${{ steps.release.outputs.bundle_id }}" \
+            --track internal \
+            --release_status completed \
+            --json_key "$RUNNER_TEMP/google-play.json" \
+            --skip_upload_metadata true \
+            --skip_upload_images true \
+            --skip_upload_screenshots true \
+            --skip_upload_changelogs true
+
+      - name: Upload iOS candidate to TestFlight
+        if: inputs.upload_to_stores
+        shell: bash
+        env:
+          APP_STORE_ISSUER_ID: ${{ secrets.PAKPERK_APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_KEY_ID: ${{ secrets.PAKPERK_APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_KEY_BASE64: ${{ secrets.PAKPERK_APP_STORE_CONNECT_PRIVATE_KEY_BASE64 }}
+        run: |
+          key_dir="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$key_dir"
+          export APP_STORE_KEY_PATH="$key_dir/AuthKey_${APP_STORE_KEY_ID}.p8"
+          python3 - <<'PY'
+          import base64, os, pathlib
+          pathlib.Path(os.environ["APP_STORE_KEY_PATH"]).write_bytes(
+              base64.b64decode(os.environ["APP_STORE_KEY_BASE64"], validate=True)
+          )
+          PY
+          chmod 0600 "$APP_STORE_KEY_PATH"
+          shopt -s nullglob
+          ipas=("$RUNNER_TEMP"/artifacts/*.ipa)
+          if [[ ${#ipas[@]} -ne 1 ]]; then
+            echo "Expected exactly one retained IPA." >&2
+            exit 1
+          fi
+          ipa="${ipas[0]}"
+          xcrun altool --upload-app --type ios --file "$ipa" \
+            --apiKey "$APP_STORE_KEY_ID" --apiIssuer "$APP_STORE_ISSUER_ID"
+
+      - name: Remove protected signing material
+        if: always()
+        shell: bash
+        env:
+          APP_STORE_KEY_ID: ${{ secrets.PAKPERK_APP_STORE_CONNECT_KEY_ID }}
+          PROFILE_UUID: ${{ steps.apple_signing.outputs.profile_uuid }}
+        run: |
+          security delete-keychain "$RUNNER_TEMP/pakperk-release.keychain-db" >/dev/null 2>&1 || true
+          rm -f \
+            "$RUNNER_TEMP/pakperk-upload.jks" \
+            "$RUNNER_TEMP/distribution.p12" \
+            "$RUNNER_TEMP/profile.mobileprovision" \
+            "$RUNNER_TEMP/google-play.json" \
+            mobile/ios/Flutter/LocalSigning.xcconfig
+          if [[ "$PROFILE_UUID" =~ ^[A-Fa-f0-9-]{36}$ ]]; then
+            rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          fi
+          if [[ "$APP_STORE_KEY_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_KEY_ID}.p8"
+          fi

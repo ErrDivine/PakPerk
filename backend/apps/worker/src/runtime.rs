@@ -22,7 +22,10 @@ use llm_provider::{
     DeterministicProvider, EmbeddingProvider, EmbeddingRequest, OpenAiCompatibleProvider,
     ProviderError, RelationshipContext, RelationshipProvider, RelationshipRequest,
 };
-use observability::sanitized_detail;
+use observability::{
+    OperationClass, OperationOutcome, PaperJobStage, record_operation, record_paper_job_stage,
+    sanitized_detail,
+};
 use retrieval::{
     ChunkingConfig, KeyReferenceSignals, MatchDecision, ParagraphChunker, ResolutionSignals,
     RetrievalError, key_reference_score, normalize_title, resolution_confidence_for_title,
@@ -82,7 +85,7 @@ impl Worker {
                 embedding_dimension,
             } => Arc::new(DeterministicProvider::new(embedding_dimension)?),
             WorkerModelConfig::OpenAiCompatible(config) => {
-                Arc::new(OpenAiCompatibleProvider::new(config)?)
+                Arc::new(OpenAiCompatibleProvider::new(*config)?)
             }
         };
         let queue = JobQueue::new(database.pool().clone());
@@ -145,9 +148,12 @@ impl Worker {
         // period expires first, the PostgreSQL lease safely recovers the job.
         let mut shutdown = tokio::spawn(shutdown_signal());
         if self.config.metadata_sync_on_start
-            && let Err(error) = self.sync_recent_metadata().await
+            && let Err(_error) = self.sync_recent_metadata().await
         {
-            warn!(%error, "initial metadata sync failed; job processing will continue");
+            warn!(
+                error.kind = "metadata_sync",
+                "initial metadata sync failed; job processing will continue"
+            );
         }
         let mut next_metadata_sync =
             tokio::time::Instant::now() + self.config.metadata_sync_interval;
@@ -163,22 +169,25 @@ impl Worker {
                 }
                 Ok(None) => {}
                 Err(error) => {
-                    warn!(%error, "could not claim a job");
+                    warn!(
+                        error.kind = queue_error_kind(&error),
+                        "could not claim a job"
+                    );
                 }
             }
 
             tokio::select! {
                 result = &mut shutdown => {
-                    if let Err(error) = result {
-                        warn!(%error, "worker shutdown listener failed");
+                    if let Err(_error) = result {
+                        warn!(error.kind = "task_join", "worker shutdown listener failed");
                     }
                     info!("worker shutdown requested");
                     return Ok(());
                 }
                 () = tokio::time::sleep(self.config.poll_interval) => {}
                 () = tokio::time::sleep_until(next_metadata_sync) => {
-                    if let Err(error) = self.sync_recent_metadata().await {
-                        warn!(%error, "scheduled metadata sync failed; job processing will continue");
+                    if let Err(_error) = self.sync_recent_metadata().await {
+                        warn!(error.kind = "metadata_sync", "scheduled metadata sync failed; job processing will continue");
                     }
                     next_metadata_sync = tokio::time::Instant::now()
                         + self.config.metadata_sync_interval;
@@ -200,18 +209,27 @@ impl Worker {
     }
 
     async fn process_claimed(&self, job: ClaimedJob) {
+        let started = Instant::now();
         let (stop_heartbeat, heartbeat) = self.start_heartbeat(&job);
         let result = self.execute_job(&job).await;
         let _ = stop_heartbeat.send(true);
-        if let Err(error) = heartbeat.await {
-            warn!(job_id = %job.id, %error, "lease heartbeat task failed");
+        if let Err(_error) = heartbeat.await {
+            warn!(job_id = %job.id, error.kind = "task_join", "lease heartbeat task failed");
         }
+
+        let outcome = match &result {
+            Ok(()) => OperationOutcome::Success,
+            Err(PipelineError::Database(DbError::StaleGeneration)) => OperationOutcome::Rejected,
+            Err(_) => OperationOutcome::RetryableFailure,
+        };
+        record_operation(OperationClass::PaperJob, outcome, started.elapsed());
+        record_paper_job_stage(paper_job_stage(job.kind), outcome, started.elapsed());
 
         match result {
             Ok(()) => {
                 if let Err(error) = self.queue.complete(job.id, &self.config.worker_id).await {
                     // A version update legitimately cancels a running stale job.
-                    warn!(job_id = %job.id, %error, "job completed after losing its lease");
+                    warn!(job_id = %job.id, error.kind = queue_error_kind(&error), "job completed after losing its lease");
                 }
             }
             Err(PipelineError::Database(DbError::StaleGeneration)) => {
@@ -230,7 +248,7 @@ impl Worker {
                     generation = job.generation,
                     attempt = job.attempt,
                     code = %failure.code,
-                    error = %error_value,
+                    error.kind = pipeline_error_kind(&error_value),
                     "job failed"
                 );
                 match self
@@ -258,12 +276,12 @@ impl Worker {
                                 )
                                 .await
                         };
-                        if let Err(error) = publish {
-                            warn!(job_id = %job.id, %error, "could not publish processing failure");
+                        if let Err(_error) = publish {
+                            warn!(job_id = %job.id, error.kind = "database", "could not publish processing failure");
                         }
                     }
                     Err(error) => {
-                        warn!(job_id = %job.id, %error, "could not record job failure");
+                        warn!(job_id = %job.id, error.kind = queue_error_kind(&error), "could not record job failure");
                     }
                 }
             }
@@ -295,7 +313,7 @@ impl Worker {
                             .extend_lease(job_id, &worker_id, lease_duration)
                             .await
                         {
-                            warn!(%job_id, %error, "could not extend job lease");
+                            warn!(%job_id, error.kind = queue_error_kind(&error), "could not extend job lease");
                             return;
                         }
                     }
@@ -394,7 +412,7 @@ impl Worker {
                 generation = job.generation,
                 grobid.duration_ms = grobid_started.elapsed().as_millis(),
                 outcome = "error",
-                error = %error,
+                error.kind = grobid_error_kind(error),
                 "GROBID full-text parsing failed"
             ),
         }
@@ -489,7 +507,7 @@ impl Worker {
                         embedding.batch_count = batch_count,
                         embedding.duration_ms = embedding_duration.as_millis(),
                         outcome = "error",
-                        error = %error,
+                        error.kind = provider_error_kind(&error),
                         "paper chunk embedding failed"
                     );
                     return Err(PipelineError::Provider(error));
@@ -521,7 +539,7 @@ impl Worker {
             chunk_count = chunks.len(),
             embedding.batch_count = batch_count,
             embedding.duration_ms = embedding_duration.as_millis(),
-            embedding.model_id = model_id.as_deref().unwrap_or("unknown"),
+            embedding.model_source = "provider_validated",
             outcome = "success",
             "paper chunk embedding completed"
         );
@@ -618,7 +636,7 @@ impl Worker {
                 }
                 warn!(
                     reference_id = %item.reference.id,
-                    %error,
+                    error.kind = pipeline_error_kind(&error),
                     "remote reference resolution degraded; keeping citation unlinked"
                 );
                 self.papers
@@ -803,7 +821,7 @@ impl Worker {
                 }
                 warn!(
                     reference_id = %work.reference.id,
-                    %error,
+                    error.kind = pipeline_error_kind(&error),
                     "exact arXiv resolution degraded"
                 );
                 Ok(false)
@@ -1089,10 +1107,10 @@ impl Worker {
             Ok(value) => Ok(value),
             Err(error_value) => {
                 if let Some(cooldown) = error_value.shared_cooldown()
-                    && let Err(database_error) = self.papers.defer_arxiv_requests(cooldown).await
+                    && let Err(_database_error) = self.papers.defer_arxiv_requests(cooldown).await
                 {
                     warn!(
-                        error = %database_error,
+                        error.kind = "database",
                         cooldown_seconds = cooldown.as_secs(),
                         "could not publish shared arXiv cooldown"
                     );
@@ -1220,10 +1238,18 @@ impl Worker {
     }
 }
 
+const fn paper_job_stage(kind: JobKind) -> PaperJobStage {
+    match kind {
+        JobKind::PrepareDocument => PaperJobStage::PrepareDocument,
+        JobKind::IndexChat => PaperJobStage::IndexChat,
+        JobKind::ResolveConnections => PaperJobStage::ResolveConnections,
+    }
+}
+
 async fn shutdown_signal() {
     let ctrl_c = async {
-        if let Err(error) = tokio::signal::ctrl_c().await {
-            warn!(%error, "failed to install Ctrl-C handler");
+        if let Err(_error) = tokio::signal::ctrl_c().await {
+            warn!(error.kind = "signal", "failed to install Ctrl-C handler");
         }
     };
     #[cfg(unix)]
@@ -1232,7 +1258,7 @@ async fn shutdown_signal() {
             Ok(mut signal) => {
                 signal.recv().await;
             }
-            Err(error) => warn!(%error, "failed to install SIGTERM handler"),
+            Err(_error) => warn!(error.kind = "signal", "failed to install SIGTERM handler"),
         }
     };
     #[cfg(not(unix))]
@@ -1404,6 +1430,59 @@ enum PipelineError {
     MissingReferenceTitle,
     #[error("reference resolution confidence {0} is below the automatic-link threshold")]
     UnsafeResolutionConfidence(f32),
+}
+
+fn pipeline_error_kind(error: &PipelineError) -> &'static str {
+    match error {
+        PipelineError::Database(_) => "database",
+        PipelineError::Queue(error) => queue_error_kind(error),
+        PipelineError::Arxiv(_) => "arxiv",
+        PipelineError::Grobid(error) => grobid_error_kind(error),
+        PipelineError::Document(_) => "document",
+        PipelineError::Provider(error) => provider_error_kind(error),
+        PipelineError::Retrieval(_) => "retrieval",
+        PipelineError::Io(_) => "io",
+        PipelineError::PaperMissing => "paper_missing",
+        PipelineError::PolicyDenied => "policy_denied",
+        PipelineError::NoChatCorpus => "no_chat_corpus",
+        PipelineError::MissingReferenceTitle => "missing_reference_title",
+        PipelineError::UnsafeResolutionConfidence(_) => "unsafe_resolution_confidence",
+    }
+}
+
+fn queue_error_kind(error: &QueueError) -> &'static str {
+    match error {
+        QueueError::Sql(_) => "queue_sql",
+        QueueError::UnknownJobKind(_) => "unknown_job_kind",
+        QueueError::LeaseLost => "lease_lost",
+        QueueError::DurationOverflow => "duration_overflow",
+    }
+}
+
+fn grobid_error_kind(error: &GrobidError) -> &'static str {
+    match error {
+        GrobidError::InvalidConfiguration(_) => "grobid_invalid_configuration",
+        GrobidError::Transport(_) => "grobid_transport",
+        GrobidError::ReadPdf(_) => "grobid_read_pdf",
+        GrobidError::HttpStatus { .. } => "grobid_http_status",
+        GrobidError::EmptyDocument => "grobid_empty_document",
+        GrobidError::TeiTooLarge { .. } => "grobid_tei_too_large",
+        GrobidError::PdfTooLarge { .. } => "grobid_pdf_too_large",
+        GrobidError::InvalidUtf8 => "grobid_invalid_utf8",
+    }
+}
+
+fn provider_error_kind(error: &ProviderError) -> &'static str {
+    match error {
+        ProviderError::InvalidConfiguration(_) => "provider_invalid_configuration",
+        ProviderError::InvalidRequest(_) => "provider_invalid_request",
+        ProviderError::Transport(_) => "provider_transport",
+        ProviderError::OperationTimeout => "provider_timeout",
+        ProviderError::HttpStatus { .. } => "provider_http_status",
+        ProviderError::ResponseTooLarge { .. } => "provider_response_too_large",
+        ProviderError::InvalidResponse(_) => "provider_invalid_response",
+        ProviderError::StructuredOutput(_) => "provider_structured_output",
+    }
 }
 
 fn pipeline_failure(error: &PipelineError) -> JobFailure {
@@ -1881,5 +1960,25 @@ mod tests {
             .map(<[usize]>::len)
             .collect::<Vec<_>>();
         assert_eq!(batch_sizes, [50, 33]);
+    }
+
+    #[test]
+    fn telemetry_error_kinds_never_echo_upstream_or_user_sentinels() {
+        let sentinel = "Bearer token=secret content=private user@pakperk.test";
+        let kinds = [
+            pipeline_error_kind(&PipelineError::Arxiv(ArxivError::InvalidIdentifier(
+                sentinel.to_owned(),
+            ))),
+            provider_error_kind(&ProviderError::InvalidRequest(sentinel.to_owned())),
+            queue_error_kind(&QueueError::UnknownJobKind(sentinel.to_owned())),
+            grobid_error_kind(&GrobidError::InvalidConfiguration(sentinel.to_owned())),
+        ];
+        for kind in kinds {
+            assert!(!kind.contains("secret"));
+            assert!(!kind.contains('@'));
+            assert!(kind.bytes().all(|byte| {
+                byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'
+            }));
+        }
     }
 }

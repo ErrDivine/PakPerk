@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../core/account/account.dart';
 import '../core/account/account_data_write_barrier.dart';
+import '../core/account_deletion/account_deletion.dart';
 import '../core/api/api_client.dart';
 import '../core/api/auth_interceptor.dart';
 import '../core/auth/auth.dart';
@@ -38,6 +39,36 @@ final pakPerkDioProvider = Provider<Dio>((ref) {
         dio: dio,
         apiBaseUri: config.apiBaseUri,
         tokenSource: ref.watch(authSessionProvider.notifier),
+        onAccountDeletionPending: (expectedAuthEpoch, requestId) async {
+          final session = ref.read(authSessionProvider);
+          if (session.epoch != expectedAuthEpoch) return;
+          final accountId = session.accountId;
+          final guard = AccountDeletionGuardRecord(
+            acceptance: LocalAccountDeletionAcceptance.serviceUnavailable,
+            accountId: accountId,
+            requestId: requestId,
+            acceptedAt: DateTime.now().toUtc(),
+            localCleanupComplete: false,
+          );
+          final store = ref.read(accountDeletionGuardStoreProvider);
+          Object? guardFailure;
+          try {
+            await store.write(guard);
+          } on Object catch (error) {
+            guardFailure = error;
+          }
+          final cleaned = await ref.read(accountDeletionLocalFinalizerProvider)(
+            accountId,
+          );
+          if (cleaned) {
+            try {
+              await store.write(guard.cleanupCompleted());
+            } on Object {
+              guardFailure ??= StateError('Deletion guard update failed.');
+            }
+          }
+          if (guardFailure != null) throw guardFailure;
+        },
       ),
     );
   }
@@ -54,12 +85,14 @@ final oidcClientConfigurationProvider = Provider<OidcClientConfiguration>((
       'OIDC configuration is unavailable when accounts are off.',
     );
   }
+  final redirectUri = config.oidcRedirectUri!;
   return OidcClientConfiguration(
     issuer: config.oidcIssuerUri!,
     clientId: config.oidcClientId!,
-    redirectUri: config.oidcRedirectUri!,
+    redirectUri: redirectUri,
     postLogoutRedirectUri: config.oidcPostLogoutRedirectUri!,
     scopes: config.oidcScopes,
+    registeredRedirectScheme: redirectUri.scheme,
     allowInsecureLocalhost: config.environment == AppEnvironment.development,
   );
 });
@@ -106,6 +139,44 @@ final accountOwnedDataClearerProvider = Provider<AccountOwnedDataClearer>((
   };
 });
 
+typedef AccountDeletionLocalFinalizer =
+    Future<bool> Function(String? accountId);
+
+final accountDeletionCommentCachePurgerProvider =
+    Provider<Future<void> Function()>((ref) {
+      return () async {
+        await ref
+            .read(localStoreProvider)
+            .purgeAccountDeletionCommentSnapshots();
+      };
+    });
+
+/// Deletion is stronger than sign-out: it clears the authenticated scope and
+/// every guest/authenticated comment snapshot that could retain the deleted
+/// author's old public body or handle. Both operations are attempted, and the
+/// durable deletion guard remains incomplete unless both succeed.
+final accountDeletionLocalFinalizerProvider =
+    Provider<AccountDeletionLocalFinalizer>((ref) {
+      return (accountId) async {
+        var sessionCleaned = false;
+        var commentPagesPurged = false;
+        try {
+          sessionCleaned = await ref
+              .read(authSessionProvider.notifier)
+              .enterAccountDeletionPending(accountId: accountId);
+        } on Object {
+          // Continue to the independent comment-cache purge.
+        }
+        try {
+          await ref.read(accountDeletionCommentCachePurgerProvider)();
+          commentPagesPurged = true;
+        } on Object {
+          // The caller retains its durable guard for startup recovery.
+        }
+        return sessionCleaned && commentPagesPurged;
+      };
+    });
+
 final authSessionProvider =
     StateNotifierProvider<AuthSessionController, AuthSessionState>((ref) {
       if (!ref.watch(featureFlagsProvider).accounts) {
@@ -116,8 +187,13 @@ final authSessionProvider =
       return AuthSessionController(
         repository: ref.watch(authRepositoryProvider),
         clearAccountOwnedData: ref.watch(accountOwnedDataClearerProvider),
+        telemetry: ref.watch(telemetrySinkProvider),
       );
     });
+
+final accountDeletionGuardStoreProvider = Provider<AccountDeletionGuardStore>(
+  (ref) => const SharedPreferencesAccountDeletionGuardStore(),
+);
 
 final accountApiProvider = Provider<AccountApi>(
   (ref) => AccountApi(ref.watch(pakPerkDioProvider)),
@@ -126,6 +202,34 @@ final accountApiProvider = Provider<AccountApi>(
 final accountRepositoryProvider = Provider<AccountRepository>(
   (ref) => AccountRepository(ref.watch(accountApiProvider)),
 );
+
+final accountDeletionApiProvider = Provider<AccountDeletionRemoteDataSource>(
+  (ref) => AccountDeletionApi(ref.watch(pakPerkDioProvider)),
+);
+
+final accountDeletionRepositoryProvider = Provider<AccountDeletionRepository>(
+  (ref) => AccountDeletionRepository(
+    auth: ref.watch(authRepositoryProvider),
+    remote: ref.watch(accountDeletionApiProvider),
+    guardStore: ref.watch(accountDeletionGuardStoreProvider),
+    finalizeLocalDeletion: ref.watch(accountDeletionLocalFinalizerProvider),
+    telemetry: ref.watch(telemetrySinkProvider),
+  ),
+);
+
+final accountDeletionControllerProvider =
+    StateNotifierProvider<AccountDeletionController, AccountDeletionState>((
+      ref,
+    ) {
+      if (!ref.watch(featureFlagsProvider).accounts) {
+        throw StateError(
+          'accountDeletionControllerProvider was read with accounts disabled.',
+        );
+      }
+      return AccountDeletionController(
+        repository: ref.watch(accountDeletionRepositoryProvider),
+      );
+    });
 
 final currentAccountProvider =
     StateNotifierProvider<CurrentAccountController, CurrentAccountState>((ref) {
@@ -187,23 +291,29 @@ final pendingAuthenticatedActionExecutorProvider =
 /// Adds account work to the existing startup machine without making OIDC or
 /// `/v1/me` part of the first-readable-frame gate.
 final class AccountAwareStartupBootstrapper implements StartupBootstrapper {
-  const AccountAwareStartupBootstrapper({
+  AccountAwareStartupBootstrapper({
     required StartupBootstrapper delegate,
     required AuthSessionController authSession,
     required CurrentAccountController currentAccount,
+    required AccountDeletionController accountDeletion,
   }) : _delegate = delegate,
        _authSession = authSession,
-       _currentAccount = currentAccount;
+       _currentAccount = currentAccount,
+       _accountDeletion = accountDeletion;
 
   final StartupBootstrapper _delegate;
   final AuthSessionController _authSession;
   final CurrentAccountController _currentAccount;
+  final AccountDeletionController _accountDeletion;
+  bool _deletionPending = false;
 
   @override
   Future<void> hydrateLocalState() => _delegate.hydrateLocalState();
 
   @override
   Future<StartupSessionStatus> checkAuthenticatedSession() async {
+    _deletionPending = await _accountDeletion.recoverAtStartup();
+    if (_deletionPending) return StartupSessionStatus.anonymous;
     final status = await _authSession.inspectStoredSession();
     return switch (status) {
       AuthStoredSessionStatus.guest => StartupSessionStatus.anonymous,
@@ -225,6 +335,7 @@ final class AccountAwareStartupBootstrapper implements StartupBootstrapper {
   }
 
   Future<void> _restoreAccount() async {
+    if (_deletionPending) return;
     if (await _authSession.restoreSession()) await _currentAccount.load();
   }
 }
@@ -240,6 +351,7 @@ List<Override> accountApplicationOverrides(
       delegate: bootstrapper,
       authSession: ref.watch(authSessionProvider.notifier),
       currentAccount: ref.watch(currentAccountProvider.notifier),
+      accountDeletion: ref.watch(accountDeletionControllerProvider.notifier),
     );
   }),
   apiClientProvider.overrideWith((ref) {

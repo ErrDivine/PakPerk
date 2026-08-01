@@ -5,7 +5,7 @@ use std::{
 
 use async_trait::async_trait;
 use domain::ChatAnswer;
-use reqwest::{Client, Response, StatusCode, header::RETRY_AFTER};
+use reqwest::{Client, Response, StatusCode, header::RETRY_AFTER, redirect::Policy};
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -22,6 +22,9 @@ use crate::{
 #[derive(Clone)]
 pub struct OpenAiCompatibleConfig {
     pub base_url: Url,
+    /// Require an Internet-safe TLS endpoint. Staging and production callers
+    /// set this to true; development may use a local HTTP model process.
+    pub require_https: bool,
     pub api_key: Option<SecretString>,
     pub chat_model: String,
     pub embedding_model: String,
@@ -36,7 +39,10 @@ impl std::fmt::Debug for OpenAiCompatibleConfig {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("OpenAiCompatibleConfig")
-            .field("base_url", &self.base_url)
+            // A provider URL can be operator-supplied. Keep it out of Debug so
+            // a rejected credential/query value cannot reach startup logs.
+            .field("base_url", &"[REDACTED]")
+            .field("require_https", &self.require_https)
             .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
             .field("chat_model", &self.chat_model)
             .field("embedding_model", &self.embedding_model)
@@ -54,6 +60,7 @@ impl Default for OpenAiCompatibleConfig {
         Self {
             base_url: Url::parse("https://api.openai.com/v1")
                 .expect("default provider URL is valid"),
+            require_https: false,
             api_key: None,
             chat_model: String::new(),
             embedding_model: String::new(),
@@ -76,6 +83,7 @@ impl OpenAiCompatibleProvider {
     pub fn new(config: OpenAiCompatibleConfig) -> Result<Self, ProviderError> {
         validate_config(&config)?;
         let http = Client::builder()
+            .redirect(Policy::none())
             .connect_timeout(config.connect_timeout)
             .timeout(config.request_timeout)
             .build()?;
@@ -102,7 +110,11 @@ impl OpenAiCompatibleProvider {
         let url = endpoint(&self.config.base_url, path);
         let mut attempt = 0usize;
         loop {
-            let mut request = self.http.post(url.clone()).json(payload);
+            let mut request = self
+                .http
+                .post(url.clone())
+                .headers(observability::current_trace_headers())
+                .json(payload);
             if let Some(api_key) = &self.config.api_key {
                 request = request.bearer_auth(api_key.expose_secret());
             }
@@ -152,15 +164,17 @@ impl ChatProvider for OpenAiCompatibleProvider {
             .ok_or_else(|| {
                 ProviderError::InvalidResponse("chat response contains no content".into())
             })?;
-        validate_chat_output(
-            &content,
-            request,
-            response
-                .model
-                .or_else(|| Some(self.config.chat_model.clone())),
-            response.id,
-        )
-        .map_err(ProviderError::from)
+        let model_id = validated_provider_identifier(
+            response.model.as_deref().unwrap_or(&self.config.chat_model),
+            "model",
+        )?;
+        let provider_request_id = response
+            .id
+            .as_deref()
+            .map(|value| validated_provider_identifier(value, "request"))
+            .transpose()?;
+        validate_chat_output(&content, request, Some(model_id), provider_request_id)
+            .map_err(ProviderError::from)
     }
 }
 
@@ -198,12 +212,22 @@ impl EmbeddingProvider for OpenAiCompatibleProvider {
             }
             vectors.push(item.embedding);
         }
+        let model_id = validated_provider_identifier(
+            response
+                .model
+                .as_deref()
+                .unwrap_or(&self.config.embedding_model),
+            "model",
+        )?;
+        let provider_request_id = response
+            .id
+            .as_deref()
+            .map(|value| validated_provider_identifier(value, "request"))
+            .transpose()?;
         Ok(EmbeddingResponse {
             vectors,
-            model_id: response
-                .model
-                .unwrap_or_else(|| self.config.embedding_model.clone()),
-            provider_request_id: response.id,
+            model_id,
+            provider_request_id,
         })
     }
 }
@@ -230,15 +254,17 @@ impl RelationshipProvider for OpenAiCompatibleProvider {
             .ok_or_else(|| {
                 ProviderError::InvalidResponse("relationship response contains no content".into())
             })?;
-        validate_relationship_output(
-            &content,
-            request,
-            response
-                .model
-                .or_else(|| Some(self.config.chat_model.clone())),
-            response.id,
-        )
-        .map_err(ProviderError::from)
+        let model_id = validated_provider_identifier(
+            response.model.as_deref().unwrap_or(&self.config.chat_model),
+            "model",
+        )?;
+        let provider_request_id = response
+            .id
+            .as_deref()
+            .map(|value| validated_provider_identifier(value, "request"))
+            .transpose()?;
+        validate_relationship_output(&content, request, Some(model_id), provider_request_id)
+            .map_err(ProviderError::from)
     }
 }
 
@@ -273,7 +299,18 @@ struct EmbeddingItem {
 }
 
 fn validate_config(config: &OpenAiCompatibleConfig) -> Result<(), ProviderError> {
+    let host_is_loopback = config.base_url.host().is_some_and(|host| match host {
+        url::Host::Domain(host) => host.eq_ignore_ascii_case("localhost"),
+        url::Host::Ipv4(address) => address.is_loopback(),
+        url::Host::Ipv6(address) => address.is_loopback(),
+    });
     if !matches!(config.base_url.scheme(), "http" | "https")
+        || config.base_url.host().is_none()
+        || !config.base_url.username().is_empty()
+        || config.base_url.password().is_some()
+        || config.base_url.query().is_some()
+        || config.base_url.fragment().is_some()
+        || (config.require_https && (config.base_url.scheme() != "https" || host_is_loopback))
         || config.chat_model.trim().is_empty()
         || config.embedding_model.trim().is_empty()
         || config.embedding_dimension == 0
@@ -281,12 +318,31 @@ fn validate_config(config: &OpenAiCompatibleConfig) -> Result<(), ProviderError>
         || config.request_timeout.is_zero()
         || config.maximum_response_bytes == 0
         || config.maximum_retries > 5
+        || !is_safe_provider_identifier(&config.chat_model)
+        || !is_safe_provider_identifier(&config.embedding_model)
     {
         return Err(ProviderError::InvalidConfiguration(
-            "base URL, model IDs, dimension, positive timeouts/limit, and at most five retries are required".into(),
+            "a credential-free provider URL, safe model IDs, dimension, positive timeouts/limit, and at most five retries are required; deployed endpoints require non-loopback HTTPS".into(),
         ));
     }
     Ok(())
+}
+
+fn validated_provider_identifier(value: &str, kind: &'static str) -> Result<String, ProviderError> {
+    if !is_safe_provider_identifier(value) {
+        return Err(ProviderError::InvalidResponse(format!(
+            "provider {kind} identifier is invalid"
+        )));
+    }
+    Ok(value.to_owned())
+}
+
+fn is_safe_provider_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b'/' | b':')
+        })
 }
 
 fn endpoint(base_url: &Url, path: &str) -> Url {
@@ -367,11 +423,71 @@ mod tests {
     #[test]
     fn redacts_api_key_in_configuration_debug() {
         let config = OpenAiCompatibleConfig {
+            base_url: Url::parse(
+                "https://user:query-secret@provider.example/v1?token=query-secret",
+            )
+            .unwrap(),
             api_key: Some(SecretString::from("super-secret".to_owned())),
             ..OpenAiCompatibleConfig::default()
         };
         let debug = format!("{config:?}");
         assert!(!debug.contains("super-secret"));
+        assert!(!debug.contains("query-secret"));
+        assert!(!debug.contains("provider.example"));
         assert!(debug.contains("REDACTED"));
+    }
+
+    #[test]
+    fn provider_url_rejects_credentials_query_fragment_and_deployed_plaintext() {
+        let valid = |base_url: &str, require_https: bool| OpenAiCompatibleConfig {
+            base_url: Url::parse(base_url).unwrap(),
+            require_https,
+            chat_model: "chat-model".to_owned(),
+            embedding_model: "embedding-model".to_owned(),
+            embedding_dimension: 384,
+            ..OpenAiCompatibleConfig::default()
+        };
+
+        assert!(validate_config(&valid("http://localhost:11434/v1", false)).is_ok());
+        assert!(validate_config(&valid("https://models.pakperk.app/v1", true)).is_ok());
+        for url in [
+            "https://user:secret@models.pakperk.app/v1",
+            "https://models.pakperk.app/v1?api_key=secret",
+            "https://models.pakperk.app/v1#secret",
+        ] {
+            assert!(
+                validate_config(&valid(url, false)).is_err(),
+                "accepted {url}"
+            );
+        }
+        for url in [
+            "http://models.pakperk.app/v1",
+            "https://localhost:8443/v1",
+            "https://127.0.0.1:8443/v1",
+            "https://[::1]:8443/v1",
+        ] {
+            assert!(
+                validate_config(&valid(url, true)).is_err(),
+                "accepted {url}"
+            );
+        }
+    }
+
+    #[test]
+    fn provider_identifiers_reject_content_and_credential_sentinels() {
+        for sentinel in [
+            "maintainer@pakperk.test",
+            "Bearer token-sentinel",
+            "access_token=token-sentinel",
+            "model\nforged-field",
+        ] {
+            assert!(!is_safe_provider_identifier(sentinel));
+            assert!(validated_provider_identifier(sentinel, "model").is_err());
+        }
+        let oversized = "x".repeat(129);
+        assert!(!is_safe_provider_identifier(&oversized));
+        assert!(validated_provider_identifier(&oversized, "model").is_err());
+        assert!(is_safe_provider_identifier("text-embedding-3-small"));
+        assert!(is_safe_provider_identifier("provider/model:v1"));
     }
 }

@@ -9,12 +9,13 @@ use utoipa::{Modify, OpenApi, ToSchema};
 
 use crate::{
     dto::{
+        AccountDeletionEnvelope, AccountDeletionResponse, AccountDeletionStateSchema,
         AccountProfileEnvelope, AccountProfileResponse, AccountStatusSchema, BlockedUserEnvelope,
         BlockedUserPageEnvelope, BlockedUserResponse, ChatBody, CommentAuthorResponse,
         CommentEnvelope, CommentPageEnvelope, CommentReportEnvelope, CommentReportReasonBody,
         CommentReportResponse, CommentReportStatusSchema, CommentResponse, CommentStatusSchema,
-        CreateCommentBody, EditCommentBody, LibrarySaveBody, PrepareBody, ProfileUpdateBody,
-        ReportCommentBody,
+        CreateCommentBody, DeletionVerificationAccount, DeletionVerificationEnvelope,
+        EditCommentBody, LibrarySaveBody, PrepareBody, ProfileUpdateBody, ReportCommentBody,
     },
     routes,
 };
@@ -39,6 +40,8 @@ use crate::{
         routes::papers::connections,
         routes::account::get_me,
         routes::account::patch_me,
+        routes::account::delete_me,
+        routes::account::verify_deletion_identity,
         routes::library::list_library,
         routes::library::library_changes,
         routes::library::save_library_item,
@@ -83,6 +86,11 @@ use crate::{
         AccountProfileEnvelope,
         AccountProfileResponse,
         AccountStatusSchema,
+        AccountDeletionStateSchema,
+        AccountDeletionResponse,
+        AccountDeletionEnvelope,
+        DeletionVerificationAccount,
+        DeletionVerificationEnvelope,
         ProfileUpdateBody,
         LibrarySaveBody,
         LibraryStateSchema,
@@ -504,6 +512,7 @@ mod tests {
             "/v1/papers/{paper_id}/chat",
             "/v1/papers/{paper_id}/connections",
             "/v1/me",
+            "/v1/me/deletion-verification",
             "/v1/me/library",
             "/v1/me/library/changes",
             "/v1/me/library/{paper_id}",
@@ -575,6 +584,34 @@ mod tests {
         ] {
             assert!(required.iter().any(|required| required == field));
         }
+    }
+
+    #[test]
+    fn deletion_contract_is_recent_auth_private_and_idempotency_header_free() {
+        let document = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let delete = &document["paths"]["/v1/me"]["delete"];
+        assert_eq!(delete["security"][0]["oidcBearer"], json!([]));
+        assert!(delete.get("requestBody").is_none());
+        assert!(delete["parameters"].as_array().is_none_or(|parameters| {
+            parameters
+                .iter()
+                .all(|parameter| parameter["name"] != "Idempotency-Key")
+        }));
+        assert!(delete["responses"]["202"]["headers"]["Cache-Control"].is_object());
+        assert!(delete["responses"]["401"]["headers"]["WWW-Authenticate"].is_object());
+        for status in ["429", "503"] {
+            assert!(delete["responses"][status]["headers"]["Retry-After"].is_object());
+        }
+        assert!(
+            delete["responses"]["503"]["description"]
+                .as_str()
+                .is_some_and(|description| description.contains("SERVICE_UNAVAILABLE"))
+        );
+
+        let verify = &document["paths"]["/v1/me/deletion-verification"]["get"];
+        assert_eq!(verify["security"][0]["oidcBearer"], json!([]));
+        assert!(verify["responses"]["200"]["headers"]["Cache-Control"].is_object());
+        assert!(verify["responses"]["404"].is_object());
     }
 
     #[test]

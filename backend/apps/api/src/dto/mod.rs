@@ -2,9 +2,9 @@
 
 use chrono::{SecondsFormat, Utc};
 use domain::{
-    AccountStatus, BlockedUser, CommentReportReason, CommentStatus, CommunityGuidelinesVersion,
-    LibraryItem, LibraryState, PaperComment, PaperSummary, PublicUser, SavedLibraryPaper,
-    TermsVersion, User,
+    AccountDeletionOperation, AccountDeletionState, AccountStatus, BlockedUser,
+    CommentReportReason, CommentStatus, CommunityGuidelinesVersion, LibraryItem, LibraryState,
+    PaperComment, PaperSummary, PublicUser, SavedLibraryPaper, TermsVersion, User,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -583,6 +583,31 @@ impl From<AccountStatus> for AccountStatusSchema {
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
+pub(crate) struct DeletionVerificationEnvelope {
+    pub(crate) account: DeletionVerificationAccount,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub(crate) struct DeletionVerificationAccount {
+    pub(crate) id: Uuid,
+    pub(crate) status: AccountStatusSchema,
+    #[schema(required = true, nullable)]
+    pub(crate) deletion_operation_id: Option<Uuid>,
+}
+
+impl From<account_deletion::DeletionIdentityVerification> for DeletionVerificationEnvelope {
+    fn from(value: account_deletion::DeletionIdentityVerification) -> Self {
+        Self {
+            account: DeletionVerificationAccount {
+                id: value.account_id.into_inner(),
+                status: value.status.into(),
+                deletion_operation_id: value.operation_id,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub(crate) struct AccountProfileEnvelope {
     pub(crate) account: AccountProfileResponse,
 }
@@ -653,6 +678,60 @@ impl AccountProfileEnvelope {
                 ),
                 created_at: format_timestamp(user.created_at),
                 updated_at: format_timestamp(user.updated_at),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum AccountDeletionStateSchema {
+    Requested,
+    SessionsRevoked,
+    IdentityDeleted,
+    AppDataDeleted,
+    Completed,
+    FailedRetryable,
+    FailedTerminal,
+}
+
+impl From<AccountDeletionState> for AccountDeletionStateSchema {
+    fn from(value: AccountDeletionState) -> Self {
+        match value {
+            AccountDeletionState::Requested => Self::Requested,
+            AccountDeletionState::SessionsRevoked => Self::SessionsRevoked,
+            AccountDeletionState::IdentityDeleted => Self::IdentityDeleted,
+            AccountDeletionState::AppDataDeleted => Self::AppDataDeleted,
+            AccountDeletionState::Completed => Self::Completed,
+            AccountDeletionState::FailedRetryable => Self::FailedRetryable,
+            AccountDeletionState::FailedTerminal => Self::FailedTerminal,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub(crate) struct AccountDeletionResponse {
+    pub(crate) operation_id: Uuid,
+    pub(crate) state: AccountDeletionStateSchema,
+    #[schema(value_type = String, format = DateTime)]
+    pub(crate) requested_at: String,
+    #[schema(value_type = String, format = DateTime)]
+    pub(crate) updated_at: String,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub(crate) struct AccountDeletionEnvelope {
+    pub(crate) deletion: AccountDeletionResponse,
+}
+
+impl From<AccountDeletionOperation> for AccountDeletionEnvelope {
+    fn from(operation: AccountDeletionOperation) -> Self {
+        Self {
+            deletion: AccountDeletionResponse {
+                operation_id: operation.operation_id,
+                state: operation.state.into(),
+                requested_at: format_timestamp(operation.requested_at),
+                updated_at: format_timestamp(operation.updated_at),
             },
         }
     }

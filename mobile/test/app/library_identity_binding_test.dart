@@ -189,8 +189,8 @@ AppBuildConfig _accountLibraryConfig() => AppBuildConfig.fromValues(const {
   'PAKPERK_LIBRARY_ENABLED': 'true',
   'PAKPERK_OIDC_ISSUER_URL': 'https://identity.example.test/realms/pakperk',
   'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile',
-  'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth://oauth/callback',
-  'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI': 'pakperk-auth://oauth/logout',
+  'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth-dev://oauth/callback',
+  'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI': 'pakperk-auth-dev://oauth/logout',
 });
 
 final class _StartupDelegate implements StartupBootstrapper {

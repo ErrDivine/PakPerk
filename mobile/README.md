@@ -5,6 +5,8 @@ is configured at build time:
 
 ```sh
 flutter run \
+  --flavor dev \
+  --dart-define=PAKPERK_ENV=development \
   --dart-define=PAKPERK_API_BASE_URL=http://localhost:8080 \
   --dart-define=PAKPERK_FULLTEXT_POLICY=prototype
 ```
@@ -27,14 +29,23 @@ Compose `accounts` profile and run with the exact public-client values:
 
 ```sh
 flutter run \
+  --flavor dev \
+  --dart-define=PAKPERK_ENV=development \
   --dart-define=PAKPERK_API_BASE_URL=http://localhost:8080 \
   --dart-define=PAKPERK_ACCOUNTS_ENABLED=true \
   --dart-define=PAKPERK_OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
   --dart-define=PAKPERK_OIDC_CLIENT_ID=pakperk-mobile-dev \
-  --dart-define=PAKPERK_OIDC_REDIRECT_URI=pakperk-auth://oauth/callback \
-  --dart-define=PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI=pakperk-auth://oauth/logout \
+  --dart-define=PAKPERK_OIDC_REDIRECT_URI=pakperk-auth-dev://oauth/callback \
+  --dart-define=PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI=pakperk-auth-dev://oauth/logout \
   --dart-define='PAKPERK_OIDC_SCOPES=openid profile'
 ```
+
+Every app launch requires an exact native/Dart pairing: `dev` with
+`PAKPERK_ENV=development`, `staging` with `PAKPERK_ENV=staging`, and `prod`
+with `PAKPERK_ENV=production`. Missing or crossed flavor configuration fails
+before any network client is created. The complete release commands use the
+checked-in files under `config/` and are documented in
+[`../docs/mobile-release.md`](../docs/mobile-release.md).
 
 The login uses the system browser and PKCE. Access tokens stay in memory;
 refresh/session material is stored in platform secure storage rather than
@@ -49,6 +60,20 @@ The native hosts accept `pakperk://paper/{paper_id}` and registered
 `https://pakperk.app/p/...` or `/arxiv/...` links. Release builds also require
 the external Apple and Android association files described in
 [`../docs/mobile-app-links.md`](../docs/mobile-app-links.md).
+
+The canonical launcher artwork is
+`assets/brand/pakperk_app_icon.svg`. Do not hand-edit its generated PNGs. From
+the repository root, install `rsvg-convert` and ImageMagick's `magick`, then
+regenerate every opaque iOS AppIcon plus Android legacy and round icon with:
+
+```sh
+./scripts/generate_mobile_icons.sh
+```
+
+Android adaptive and themed launchers use the checked-in foreground and
+monochrome vectors. The mobile tests and strict-artifact verifier reject the
+stock Flutter launcher, missing density/round resources, or missing adaptive
+and monochrome resources.
 
 Set both the backend `FULLTEXT_POLICY` and the mobile
 `PAKPERK_FULLTEXT_POLICY` to `strict` for a strict deployment. A strict mobile

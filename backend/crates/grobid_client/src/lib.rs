@@ -80,7 +80,12 @@ impl GrobidClient {
     }
 
     pub async fn health(&self) -> Result<(), GrobidError> {
-        let response = self.http.get(self.endpoint("api/isalive")).send().await?;
+        let response = self
+            .http
+            .get(self.endpoint("api/isalive"))
+            .headers(observability::current_trace_headers())
+            .send()
+            .await?;
         if !response.status().is_success() {
             return Err(GrobidError::HttpStatus {
                 status: response.status(),
@@ -137,6 +142,7 @@ impl GrobidClient {
         let response = self
             .http
             .post(self.endpoint("api/processFulltextDocument"))
+            .headers(observability::current_trace_headers())
             .multipart(form)
             .send()
             .await?;

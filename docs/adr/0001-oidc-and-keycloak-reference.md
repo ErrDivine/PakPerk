@@ -1,6 +1,6 @@
 # ADR 0001: OIDC and Keycloak reference deployment
 
-**Status:** Accepted — Phase 3 implemented and verified
+**Status:** Accepted — account verification and deletion administration implemented
 **Date:** 2026-07-31
 
 ## Context
@@ -29,7 +29,7 @@ Only refresh tokens and minimum session metadata are persisted in platform
 secure storage. Access tokens remain in memory where practical. Pakperk does
 not copy email into its database by default.
 
-## Phase 3 implementation status
+## Implementation status
 
 The provider-neutral verifier, publishable auth-readiness runtime, local
 account mapping, native AppAuth client, platform secure token store, reference
@@ -38,11 +38,15 @@ Keycloak realm, and optional `GET`/`PATCH /v1/me` surface are integrated under
 Phase 3 verification report records successful repository, native, live
 PostgreSQL, and real Keycloak/Mailpit acceptance runs.
 
-The Keycloak identity-admin adapter is deliberately an honest skeleton in this
-phase. It validates only non-secret coordinates and reports that destructive
-operations are unwired. Phase 6 must add provider credentials, bounded calls,
-retries, and the idempotent deletion state machine before account deletion can
-be enabled.
+The provider-neutral identity-admin adapter now has a bounded Keycloak
+implementation loaded only by the dedicated deletion worker. Startup obtains a
+client-credentials token and proves its exact `manage-users` grant with
+non-destructive reserved-user reads; redirects, wrong status/shape, oversized
+responses, and missing privileges fail closed. Session revocation and identity
+deletion are idempotent steps in the leased deletion state machine. Credentials
+are owner-only files and provider coordinates are encrypted in the independently
+signed restore ledger. Production enablement still requires the exercised realm
+grant, secret rotation, alerts, independent backup topology, and restore replay.
 
 ## Consequences
 

@@ -1,8 +1,8 @@
 # Pakperk Community Guidelines
 
 **Version:** `2026-07-31`
-**Publication status:** release-candidate text; public deployment remains a
-Phase 6 gate.
+**Publication status:** release-candidate text; public deployment and final
+Trust & Safety/store review remain external release gates.
 
 Pakperk comments are public observations about papers. Be specific, civil, and
 useful to other readers. Disagreement and criticism are welcome; abuse is not.

@@ -49,6 +49,36 @@ final class FlutterAppAuthOidcClient implements OidcClient {
   }
 
   @override
+  Future<OidcTokenSet> reauthenticateForSensitiveAction() async {
+    try {
+      final response = await _appAuth.authorizeAndExchangeCode(
+        AuthorizationTokenRequest(
+          _configuration.clientId,
+          _configuration.redirectUri.toString(),
+          issuer: _configuration.issuer.toString(),
+          scopes: _configuration.scopes,
+          promptValues: const ['login'],
+          additionalParameters: const {'max_age': '0'},
+          allowInsecureConnections: _configuration.allowInsecureLocalhost,
+          externalUserAgent: ExternalUserAgent.asWebAuthenticationSession,
+        ),
+      );
+      return _tokenSet(
+        accessToken: response.accessToken,
+        refreshToken: null,
+        idToken: null,
+        expiresAt: response.accessTokenExpirationDateTime,
+      );
+    } on FlutterAppAuthUserCancelledException {
+      throw const OidcClientException.cancelled();
+    } on FlutterAppAuthPlatformException catch (error) {
+      throw _platformFailure(error.platformErrorDetails);
+    } on PlatformException catch (error) {
+      throw _legacyPlatformFailure(error);
+    }
+  }
+
+  @override
   Future<OidcTokenSet> refresh(String refreshToken) async {
     try {
       final response = await _appAuth.token(
