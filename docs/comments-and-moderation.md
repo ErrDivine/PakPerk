@@ -52,9 +52,10 @@ Create uses a canonical client UUID:
 ```
 
 An exact replay returns the existing canonical comment. Reusing the request ID
-for another paper or normalized body returns `IDEMPOTENCY_CONFLICT`. Edits carry
-the complete replacement body and `expected_version`; stale versions return
-`COMMENT_EDIT_CONFLICT`. Delete, comment report, user report, block, and
+for another paper or normalized body returns `IDEMPOTENCY_CONFLICT`; that code
+is intentionally separate from a library operation-ID reuse conflict. Edits
+carry the complete replacement body and `expected_version`; stale versions
+return `COMMENT_EDIT_CONFLICT`. Delete, comment report, user report, block, and
 unblock are repeat-safe. Comment reports are unique per reporter/comment and
 user reports are independently unique per reporter/reported-user pair.
 Both report request bodies use the closed shape `{"reason": ..., "detail":
@@ -132,6 +133,9 @@ shows them before refresh. Drafts are account-scoped, one per paper, and never
 enter the sync outbox or auto-send after connectivity returns. Explicit Send is
 required; a draft clears only after the server accepts the canonical result.
 A `pending_review` result is visible privately to its author as “Under review.”
+`COMMENT_PENDING_REVIEW` remains a reserved stable name, not an emitted error:
+the current v0.0 contract accepts the write and returns the private canonical
+comment with status `pending_review`.
 
 Block state is account-scoped and persisted. Blocking removes that author's
 cached comments from the active view immediately, while server-side filtering
@@ -139,11 +143,18 @@ makes the choice persistent across devices. Sign-out/account switch clears
 drafts, block projections, personalized pages, and in-flight account work while
 preserving guest-safe public paper data.
 
+`USER_BLOCKED` is likewise reserved rather than emitted as an error. Blocking
+and unblocking are idempotent relation mutations, and blocked authors are
+removed by list filtering instead of turning an otherwise valid read into an
+error response.
+
 The comment action menu labels **Report comment**, **Report user**, and
 **Block user** separately. A successful user report confirms that no block was
 added; only the explicit block action removes the author's comments.
 
 The code-first [OpenAPI artifact](openapi-v1.json) is the machine-readable wire
-contract. The [moderation runbook](runbooks/moderation.md) owns operational
-response, and the [Community Guidelines](legal/community-guidelines.md) own the
-reader-facing conduct rules.
+contract. The [API error catalogue](api-error-catalogue.md) distinguishes
+emitted error codes from reserved stable names. The
+[moderation runbook](runbooks/moderation.md) owns operational response, and the
+[Community Guidelines](legal/community-guidelines.md) own the reader-facing
+conduct rules.

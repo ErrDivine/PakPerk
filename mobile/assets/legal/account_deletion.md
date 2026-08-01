@@ -1,7 +1,7 @@
 # Account deletion
 
-You can request deletion in the app from You > Delete account, or through the
-published web deletion page.
+You can request deletion in the app from You > Settings > Delete account (also
+available directly from You), or through the published web deletion page.
 
 The in-app action requires a fresh system-browser sign-in. Pakperk verifies
 that the freshly authenticated identity is the same account already open in

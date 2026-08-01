@@ -54,10 +54,10 @@ receives 410 `LIBRARY_SYNC_RESET_REQUIRED`.
 
 Both mutation directions use one canonical client UUID. Exact replays return
 the canonical row; reuse for another paper or intent returns 409
-`IDEMPOTENCY_CONFLICT`. Operation recording, canonical mutation, revision
-allocation, and rate-limit behavior are transactionally ordered. Cleanup locks
-per-user metadata in deterministic UUID order before child rows, avoiding its
-mutation race.
+`LIBRARY_OPERATION_CONFLICT`. Operation recording, canonical mutation,
+revision allocation, and rate-limit behavior are transactionally ordered.
+Cleanup locks per-user metadata in deterministic UUID order before child rows,
+avoiding its mutation race.
 
 Every private outcome is `Cache-Control: private, no-store`. DTOs reject unknown
 or malformed state, cursor, limit, revision, operation, header, body, and paper

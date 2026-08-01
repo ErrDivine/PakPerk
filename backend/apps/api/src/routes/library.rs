@@ -157,7 +157,7 @@ pub(crate) async fn library_changes(
         (status = 401, description = "UNAUTHENTICATED or TOKEN_EXPIRED", body = crate::openapi::ErrorEnvelopeSchema, headers(("WWW-Authenticate" = String, description = "Bearer challenge"))),
         (status = 403, description = "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING", body = crate::openapi::ErrorEnvelopeSchema),
         (status = 404, description = "PAPER_NOT_FOUND", body = crate::openapi::ErrorEnvelopeSchema),
-        (status = 409, description = "IDEMPOTENCY_CONFLICT", body = crate::openapi::ErrorEnvelopeSchema),
+        (status = 409, description = "LIBRARY_OPERATION_CONFLICT", body = crate::openapi::ErrorEnvelopeSchema),
         (status = 429, description = "RATE_LIMITED", body = crate::openapi::ErrorEnvelopeSchema, headers(("Retry-After" = String, description = "Seconds until the shared write window resets"))),
         (status = 503, description = "FEATURE_DISABLED, AUTHENTICATION_UNAVAILABLE, or LIBRARY_SERVICE_UNAVAILABLE", body = crate::openapi::ErrorEnvelopeSchema)
     )
@@ -215,7 +215,7 @@ pub(crate) async fn save_library_item(
         (status = 401, description = "UNAUTHENTICATED or TOKEN_EXPIRED", body = crate::openapi::ErrorEnvelopeSchema, headers(("WWW-Authenticate" = String, description = "Bearer challenge"))),
         (status = 403, description = "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING", body = crate::openapi::ErrorEnvelopeSchema),
         (status = 404, description = "PAPER_NOT_FOUND", body = crate::openapi::ErrorEnvelopeSchema),
-        (status = 409, description = "IDEMPOTENCY_CONFLICT", body = crate::openapi::ErrorEnvelopeSchema),
+        (status = 409, description = "LIBRARY_OPERATION_CONFLICT", body = crate::openapi::ErrorEnvelopeSchema),
         (status = 429, description = "RATE_LIMITED", body = crate::openapi::ErrorEnvelopeSchema, headers(("Retry-After" = String, description = "Seconds until the shared write window resets"))),
         (status = 503, description = "FEATURE_DISABLED, AUTHENTICATION_UNAVAILABLE, or LIBRARY_SERVICE_UNAVAILABLE", body = crate::openapi::ErrorEnvelopeSchema)
     )
@@ -387,7 +387,7 @@ fn library_service_error(request_id: RequestId, error_value: &LibraryServiceErro
         IdempotencyConflict => ApiError::new(
             request_id,
             StatusCode::CONFLICT,
-            "IDEMPOTENCY_CONFLICT",
+            "LIBRARY_OPERATION_CONFLICT",
             "This operation ID was already used for a different library intent.",
             false,
         ),
@@ -638,7 +638,7 @@ mod tests {
             (
                 LibraryServiceError::IdempotencyConflict,
                 StatusCode::CONFLICT,
-                "IDEMPOTENCY_CONFLICT",
+                "LIBRARY_OPERATION_CONFLICT",
             ),
             (
                 LibraryServiceError::SyncResetRequired {

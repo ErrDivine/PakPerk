@@ -1881,7 +1881,7 @@
             }
           },
           "409": {
-            "description": "IDEMPOTENCY_CONFLICT",
+            "description": "LIBRARY_OPERATION_CONFLICT",
             "content": {
               "application/json": {
                 "schema": {
@@ -2021,7 +2021,7 @@
             }
           },
           "409": {
-            "description": "IDEMPOTENCY_CONFLICT",
+            "description": "LIBRARY_OPERATION_CONFLICT",
             "content": {
               "application/json": {
                 "schema": {

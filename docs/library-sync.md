@@ -146,9 +146,11 @@ Removing a never-saved paper produces a tombstone so an offline optimistic
 save on another device is still defeated.
 
 An exact replay returns the current canonical row. Reusing an operation ID for
-a different paper or intent returns 409 `IDEMPOTENCY_CONFLICT`. Durable known
-replays and conflicts are resolved before consuming a new mutation permit, so
-a full rate-limit bucket cannot turn a previously accepted replay into 429.
+a different paper or intent returns 409 `LIBRARY_OPERATION_CONFLICT`. This
+library-specific code is distinct from the comment creation contract's
+`IDEMPOTENCY_CONFLICT`. Durable known replays and conflicts are resolved before
+consuming a new mutation permit, so a full rate-limit bucket cannot turn a
+previously accepted replay into 429.
 Distinct operation IDs are serialized and last server acceptance wins, so an
 ordinary cross-device race is not an error. Shared PostgreSQL rate limits are
 keyed by the server-owned user UUID and return 429 with `Retry-After`.
@@ -205,4 +207,6 @@ boundary.
 
 The code-first [OpenAPI artifact](openapi-v1.json) is the machine-readable
 contract. This document records synchronization behavior that is intentionally
-more detailed than the endpoint schema.
+more detailed than the endpoint schema. The plan-mandated stable names and
+their emitted or reserved status are recorded in the
+[API error catalogue](api-error-catalogue.md).

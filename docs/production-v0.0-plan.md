@@ -29,6 +29,9 @@ paper-processing lifecycle while adding, in releasable phases:
 - PostgreSQL-backed shared rate limits, contract checks, observability, and
   production operations.
 
+The canonical plan's stable API names, including names reserved by successful
+v0.0 semantics, are indexed in the [API error catalogue](api-error-catalogue.md).
+
 ## Non-negotiable guardrails
 
 The canonical plan's execution contract is binding. In particular:
