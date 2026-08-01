@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/app/feature_flags.dart';
 import 'package:pakperk/app/library_providers.dart';
@@ -8,6 +9,7 @@ import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/models/processing.dart';
 import 'package:pakperk/core/models/reader_state.dart';
 import 'package:pakperk/core/providers.dart';
+import 'package:pakperk/features/paper_reader/paper_action_bar.dart';
 import 'package:pakperk/features/paper_reader/paper_reader.dart';
 import 'package:pakperk/features/paper_reader/reader_navigation_controller.dart';
 
@@ -179,6 +181,110 @@ void main() {
     },
   );
 
+  testWidgets(
+    'compact paper actions keep full labels and keyboard order at 320 px and 200% text',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final semantics = tester.ensureSemantics();
+      final links = _RecordingLinks();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            featureFlagsProvider.overrideWithValue(
+              const FeatureFlags(
+                accounts: true,
+                library: true,
+                comments: true,
+                openingMotion: false,
+              ),
+            ),
+            paperSavedStateProvider.overrideWith(
+              (ref, paperId) => Stream.value(
+                const LibrarySavedState(saved: false, syncPending: false),
+              ),
+            ),
+            externalLinkOpenerProvider.overrideWithValue(links),
+          ],
+          child: MaterialApp(
+            theme: ThemeData(useMaterial3: true),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(2)),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.topCenter,
+                child: PaperActionBar(paper: samplePaper),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Save'), findsOneWidget);
+      expect(find.text('Comments'), findsOneWidget);
+      expect(find.text('arXiv'), findsOneWidget);
+      for (final key in const [
+        ValueKey('paper-save-label'),
+        ValueKey('paper-comments-label'),
+        ValueKey('paper-arxiv-label'),
+      ]) {
+        final label = tester.widget<Text>(find.byKey(key));
+        expect(label.maxLines, isNull);
+        expect(label.overflow, isNull);
+      }
+
+      expect(find.bySemanticsLabel('Save to To Read'), findsOneWidget);
+      expect(find.bySemanticsLabel('Open paper discussions'), findsOneWidget);
+      expect(find.bySemanticsLabel('Open on arXiv'), findsOneWidget);
+
+      final controls = const [
+        ValueKey('paper-save-control'),
+        ValueKey('paper-comments-control'),
+        ValueKey('paper-arxiv-control'),
+      ];
+      final centers = <Offset>[];
+      for (final key in controls) {
+        final control = find.byKey(key);
+        expect(tester.getSize(control).height, greaterThanOrEqualTo(48));
+        expect(tester.getSize(control).width, greaterThanOrEqualTo(48));
+        centers.add(tester.getCenter(control));
+      }
+      expect(centers[0].dx, lessThan(centers[1].dx));
+      expect(centers[1].dx, lessThan(centers[2].dx));
+
+      for (final key in controls) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+        expect(_focusedInkWellKey(), key);
+      }
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(links.opened, [samplePaper.canonicalAbsUri]);
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump();
+      expect(_focusedInkWellKey(), const ValueKey('paper-comments-control'));
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(_focusedInkWellKey(), const ValueKey('paper-comments-control'));
+      expect(links.opened, [samplePaper.canonicalAbsUri]);
+      expect(tester.takeException(), isNull);
+      semantics.dispose();
+    },
+  );
+
   testWidgets('reduced motion commits an explicit stage jump immediately', (
     tester,
   ) async {
@@ -271,18 +377,9 @@ void main() {
     );
     await tester.pump();
 
-    final openRecord = find.text('Open on arXiv');
-    await tester.scrollUntilVisible(
-      openRecord,
-      280,
-      scrollable: find
-          .descendant(
-            of: find.byKey(const PageStorageKey('abstract-scroll')),
-            matching: find.byType(Scrollable),
-          )
-          .first,
-    );
-    await tester.tap(openRecord);
+    expect(find.byKey(const ValueKey('paper-arxiv-control')), findsOneWidget);
+    expect(find.bySemanticsLabel('Open on arXiv'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('paper-arxiv-control')));
     await tester.pump();
     expect(links.opened, [Uri.parse('https://arxiv.org/abs/1706.03762v7')]);
 
@@ -304,6 +401,10 @@ void main() {
     expect(links.opened.last, Uri.parse('https://arxiv.org/pdf/1706.03762v7'));
   });
 }
+
+Key? _focusedInkWellKey() => FocusManager.instance.primaryFocus?.context
+    ?.findAncestorWidgetOfExactType<InkWell>()
+    ?.key;
 
 final class _RecordingLinks implements ExternalLinkOpener {
   final opened = <Uri>[];

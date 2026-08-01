@@ -3,6 +3,7 @@ import 'package:pakperk/core/api/api_client.dart';
 import 'package:pakperk/core/api/api_exception.dart';
 import 'package:pakperk/core/api/request_cancellation.dart';
 import 'package:pakperk/core/cache/demo_asset_store.dart';
+import 'package:pakperk/core/cache/feed_prefetch_config.dart';
 import 'package:pakperk/core/content_policy.dart';
 import 'package:pakperk/core/models/chat.dart';
 import 'package:pakperk/core/models/connections.dart';
@@ -438,7 +439,7 @@ class _PolicyApiClient extends ApiClient {
   Future<FeedPage> getFeed({
     String? category,
     String? cursor,
-    int limit = 20,
+    int limit = FeedPrefetchConfig.defaultRemotePageSize,
     RequestCancellation? cancellation,
   }) async {
     throw feedError ?? _offline();

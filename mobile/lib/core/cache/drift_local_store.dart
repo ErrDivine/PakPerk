@@ -22,6 +22,7 @@ import '../models/reader_state.dart';
 import '../settings/appearance.dart';
 import 'drift_restoration_persistence.dart';
 import 'feed_cache_persistence.dart';
+import 'feed_prefetch_config.dart';
 import 'local_store.dart';
 import 'restoration_persistence.dart';
 import 'versioned_derived_cache.dart';
@@ -45,13 +46,20 @@ class DriftLocalStore
     required SharedPreferences preferences,
     required this.database,
     this.fulltextPolicy = ClientFulltextPolicy.prototype,
+    this.cachePolicy = const FeedPrefetchConfig(),
     bool startLegacyImport = false,
     Future<int> Function()? databaseByteMeasurer,
     LegacySharedPreferencesImporter? legacyImporter,
   }) : _preferences = SharedPreferencesLocalStore(preferences),
-       _papers = PaperCacheDao(database),
-       _feeds = FeedCacheDao(database, PaperCacheDao(database)),
-       _derived = DerivedCacheDao(database, PaperCacheDao(database)),
+       _papers = PaperCacheDao(database, metadataTtl: cachePolicy.metadataTtl),
+       _feeds = FeedCacheDao(
+         database,
+         PaperCacheDao(database, metadataTtl: cachePolicy.metadataTtl),
+       ),
+       _derived = DerivedCacheDao(
+         database,
+         PaperCacheDao(database, metadataTtl: cachePolicy.metadataTtl),
+       ),
        _maintenance = CacheMaintenanceDao(
          database,
          databaseByteMeasurer: databaseByteMeasurer,
@@ -62,7 +70,12 @@ class DriftLocalStore
              preferences: preferences,
              database: database,
              fulltextPolicy: fulltextPolicy,
-           ) {
+             cachePolicy: cachePolicy,
+           ),
+       _lastActiveQueryKey = feedQueryKey(limit: cachePolicy.remotePageSize),
+       _lastMaxMetadataPapers = cachePolicy.maxCachedMetadataPapers,
+       _lastMaxDatabaseBytes = cachePolicy.maxDatabaseBytes,
+       _lastMetadataTtl = cachePolicy.metadataTtl {
     _restoration = DriftRestorationPersistence(
       preferences: RestorationPreferences(preferences),
       persistPapers: (papers) =>
@@ -82,11 +95,13 @@ class DriftLocalStore
 
   static Future<DriftLocalStore> create({
     ClientFulltextPolicy fulltextPolicy = ClientFulltextPolicy.prototype,
+    FeedPrefetchConfig cachePolicy = const FeedPrefetchConfig(),
   }) async {
     final store = DriftLocalStore(
       preferences: await SharedPreferences.getInstance(),
       database: PakPerkDatabase.defaults(),
       fulltextPolicy: fulltextPolicy,
+      cachePolicy: cachePolicy,
     );
     store.attachLifecycleMaintenance();
     return store;
@@ -96,6 +111,7 @@ class DriftLocalStore
   /// restoration, library, drafts, or pending sync operations.
   static Future<void> repairPublicCache({
     ClientFulltextPolicy fulltextPolicy = ClientFulltextPolicy.prototype,
+    FeedPrefetchConfig cachePolicy = const FeedPrefetchConfig(),
   }) async {
     final preferences = await SharedPreferences.getInstance();
     final database = PakPerkDatabase.defaults();
@@ -103,6 +119,7 @@ class DriftLocalStore
       preferences: preferences,
       database: database,
       fulltextPolicy: fulltextPolicy,
+      cachePolicy: cachePolicy,
     );
     try {
       await store.clearRebuildablePublicCache();
@@ -113,6 +130,7 @@ class DriftLocalStore
 
   final PakPerkDatabase database;
   final ClientFulltextPolicy fulltextPolicy;
+  final FeedPrefetchConfig cachePolicy;
   final SharedPreferencesLocalStore _preferences;
   final PaperCacheDao _papers;
   final FeedCacheDao _feeds;
@@ -125,11 +143,11 @@ class DriftLocalStore
   WidgetsBinding? _lifecycleBinding;
   Future<CacheCompactionResult>? _lifecycleMaintenance;
   Future<CacheEvictionResult>? _memoryPressureMaintenance;
-  String _lastActiveQueryKey = feedQueryKey();
+  String _lastActiveQueryKey;
   Set<String> _lastProtectedPaperIds = const {};
-  int _lastMaxMetadataPapers = 500;
-  int _lastMaxDatabaseBytes = 64 * 1024 * 1024;
-  Duration _lastMetadataTtl = const Duration(days: 7);
+  int _lastMaxMetadataPapers;
+  int _lastMaxDatabaseBytes;
+  Duration _lastMetadataTtl;
   AppRestorationState? _liveRestoration;
 
   Future<LegacyImportStats> get legacyImportDone =>
@@ -217,7 +235,7 @@ class DriftLocalStore
     await database.clearAllLocalData();
     await _preferences.clearAllLocalData();
     _liveRestoration = const AppRestorationState();
-    _lastActiveQueryKey = feedQueryKey();
+    _lastActiveQueryKey = feedQueryKey(limit: cachePolicy.remotePageSize);
     _lastProtectedPaperIds = const {};
   }
 
@@ -258,11 +276,15 @@ class DriftLocalStore
   }
 
   @override
-  Future<FeedPage?> loadFeed() => loadFeedPage(feedQueryKey());
+  Future<FeedPage?> loadFeed() =>
+      loadFeedPage(feedQueryKey(limit: cachePolicy.remotePageSize));
 
   @override
-  Future<void> saveFeed(FeedPage value) =>
-      persistFeedPage(queryKey: feedQueryKey(), page: value, replace: true);
+  Future<void> saveFeed(FeedPage value) => persistFeedPage(
+    queryKey: feedQueryKey(limit: cachePolicy.remotePageSize),
+    page: value,
+    replace: true,
+  );
 
   @override
   Future<FeedPage?> loadFeedPage(String queryKey) async {
@@ -546,9 +568,9 @@ class DriftLocalStore
   Future<CacheEvictionResult> evictCache({
     required String activeQueryKey,
     required Set<String> protectedPaperIds,
-    int maxMetadataPapers = 500,
-    int maxDatabaseBytes = 64 * 1024 * 1024,
-    Duration metadataTtl = const Duration(days: 7),
+    int maxMetadataPapers = FeedPrefetchConfig.defaultMaxCachedMetadataPapers,
+    int maxDatabaseBytes = FeedPrefetchConfig.defaultMaxDatabaseBytes,
+    Duration metadataTtl = FeedPrefetchConfig.defaultMetadataTtl,
     DateTime? now,
   }) async {
     _lastActiveQueryKey = activeQueryKey;
@@ -600,7 +622,7 @@ class DriftLocalStore
   @override
   Future<CacheCompactionResult> compactCacheIfNeeded({
     required bool lifecycleSafe,
-    int maxDatabaseBytes = 64 * 1024 * 1024,
+    int maxDatabaseBytes = FeedPrefetchConfig.defaultMaxDatabaseBytes,
   }) => _maintenance.compactIfNeeded(
     lifecycleSafe: lifecycleSafe,
     maxDatabaseBytes: maxDatabaseBytes,

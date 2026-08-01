@@ -31,6 +31,7 @@ class _AbstractViewState extends ConsumerState<AbstractView> {
   @override
   Widget build(BuildContext context) {
     final paper = widget.paper;
+    final features = ref.watch(featureFlagsProvider);
     return CustomScrollView(
       key: const PageStorageKey('abstract-scroll'),
       controller: widget.scrollController,
@@ -71,11 +72,13 @@ class _AbstractViewState extends ConsumerState<AbstractView> {
                 spacing: 10,
                 runSpacing: 8,
                 children: [
-                  OutlinedButton.icon(
-                    onPressed: () => _open(paper.canonicalAbsUri),
-                    icon: const Icon(Icons.open_in_new),
-                    label: const Text('Open on arXiv'),
-                  ),
+                  if (!features.library && !features.comments)
+                    OutlinedButton.icon(
+                      key: const ValueKey('paper-arxiv-control'),
+                      onPressed: () => _open(paper.canonicalAbsUri),
+                      icon: const Icon(Icons.open_in_new),
+                      label: const Text('Open on arXiv'),
+                    ),
                   FilledButton.icon(
                     onPressed: () =>
                         widget.onStageRequested(PaperStage.introduction),

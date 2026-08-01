@@ -3,7 +3,7 @@
 # binds this inventory to the checked-in Pub/Gradle inputs and Gradle checksum
 # policy. Regenerate the production SBOM and review the complete purl delta
 # whenever the digest changes.
-contract-sha256:b3dfedeeb432102c280bde44a7f187ed1d8c9568c3b1dff321294ecdbb1c15d4
+contract-sha256:84823fe68bd5ae4be4aff903381170ca424af3a2b734de03747dd54940b04598
 pkg:maven/androidx.activity/activity-ktx@1.9.0?type=aar
 pkg:maven/androidx.activity/activity@1.9.0?type=aar
 pkg:maven/androidx.annotation/annotation-experimental@1.4.1?type=aar

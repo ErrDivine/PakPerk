@@ -4,6 +4,7 @@ import '../api/request_cancellation.dart';
 import '../api/transport_network_status.dart';
 import '../cache/demo_asset_store.dart';
 import '../cache/feed_cache_persistence.dart';
+import '../cache/feed_prefetch_config.dart';
 import '../cache/local_store.dart';
 import '../cache/versioned_derived_cache.dart';
 import '../content_policy.dart';
@@ -37,11 +38,14 @@ abstract interface class PaperDataSource {
   Stream<bool> get offlineChanges;
   bool get isOffline;
 
-  Future<RepositoryValue<FeedPage>> getCachedFeed({String? category});
+  Future<RepositoryValue<FeedPage>> getCachedFeed({
+    String? category,
+    int limit = FeedPrefetchConfig.defaultRemotePageSize,
+  });
   Future<RepositoryValue<FeedPage>> getFeed({
     String? category,
     String? cursor,
-    int limit = 20,
+    int limit = FeedPrefetchConfig.defaultRemotePageSize,
     RequestCancellation? cancellation,
   });
   Future<void> cacheFeed(FeedPage value, {bool replaceFeed = true});
@@ -109,11 +113,11 @@ class PaperRepository implements PaperDataSource {
   }
 
   @override
-  Future<RepositoryValue<FeedPage>> getCachedFeed({String? category}) async {
-    return _loadCachedOrDemoFeed(
-      category: category,
-      limit: defaultFeedPageLimit,
-    );
+  Future<RepositoryValue<FeedPage>> getCachedFeed({
+    String? category,
+    int limit = FeedPrefetchConfig.defaultRemotePageSize,
+  }) async {
+    return _loadCachedOrDemoFeed(category: category, limit: limit);
   }
 
   Future<RepositoryValue<FeedPage>> _loadCachedOrDemoFeed({
@@ -168,7 +172,7 @@ class PaperRepository implements PaperDataSource {
   Future<RepositoryValue<FeedPage>> getFeed({
     String? category,
     String? cursor,
-    int limit = 20,
+    int limit = FeedPrefetchConfig.defaultRemotePageSize,
     RequestCancellation? cancellation,
   }) async {
     try {

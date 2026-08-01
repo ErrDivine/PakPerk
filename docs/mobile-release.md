@@ -304,10 +304,70 @@ required reviewers and deployment-branch restrictions on the fixed
 YAML name alone does not make an environment protected. Store the exact Flutter
 device identifier only as that environment's `PAKPERK_MOBILE_DEVICE_ID` secret;
 never pass it as a workflow-dispatch input because run metadata retains inputs
-outside log masks.
+outside log masks. Dispatch also requires an explicit full lowercase
+`source_revision` equal to the selected `main` revision and fetched
+`origin/main` tip, plus the exact confirmation phrase. This prevents a green
+fixture probe from being attached to a different source revision.
 
-A release owner must separately execute the plan's live manual/staging lane on
-the exact signed candidate:
+The separate manually dispatched `protected mobile acceptance` workflow is the
+automated entrypoint for the live staging/device lane. It accepts only an exact
+main-tip source revision plus exact `sha256:` candidate and signed-release
+provenance content IDs, runs exclusively in the protected
+`mobile-device-verification` environment, and invokes the fixed
+`/opt/pakperk/bin/pakperk-mobile-acceptance-driver` only after all of `/`,
+`/opt`, `/opt/pakperk`, and `/opt/pakperk/bin` are root-owned and non-writable
+outside root and an open-descriptor identity/digest check matches
+`PAKPERK_MOBILE_ACCEPTANCE_DRIVER_SHA256`. The workflow fixes its command path
+to `/usr/bin:/bin`; the pinned driver must use absolute, reviewed paths for any
+Android SDK or other runner tools outside those system directories.
+
+The candidate content ID must resolve to a canonical, root-owned manifest at
+`/opt/pakperk/mobile-candidates/<digest>.json`. That manifest binds the source,
+staging environment, app version/build, strict flavor, Android and iOS install-
+artifact hashes, the exact staging application ID
+`app.pakperk.pakperk.staging`, signer digests, Apple team ID, and its provenance
+content ID. The provenance must independently resolve beneath
+`/opt/pakperk/mobile-release-provenance/<digest>.json` and exactly bind the AAB,
+APK, and IPA SHA-256 values to repository `ErrDivine/PakPerk`, workflow
+`.github/workflows/mobile-release.yml`, job `signed-candidate`, the reviewed
+workflow/source SHA, GitHub run ID/attempt, and stage `artifacts_verified`.
+Coordinates are read from the reviewed `mobile/config/staging.json`; mutable
+coordinate and package/bundle-ID variables are not accepted.
+
+The signed-release job emits canonical candidate and provenance files and their
+content IDs, but it cannot install them into a self-hosted runner's protected
+filesystem. After authenticated artifact retrieval, a runner administrator must
+verify the canonical-file digests and import them with root ownership, one link,
+and no group/world write permission into the fixed content-addressed roots. The
+non-root runner still needs read access; mode `0444` is the simple reviewed
+installation choice because these manifests contain identities and hashes, not
+credentials. This authenticated root-side import is an external operational
+boundary, not an action performed or proven by the repository workflow.
+
+The protected environment variable `PAKPERK_MOBILE_RUNNER_SESSION_ID` must also
+name a canonical root-owned attestation at
+`/opt/pakperk/mobile-runner-sessions/<digest>.json`. Its closed schema binds the
+exact integer `schema: 1`, classification
+`dedicated ephemeral mobile acceptance runner session`, source revision, opaque
+session and host-identity hashes, runner class
+`dedicated-macos-physical-mobile`, exact `dedicated: true` and `ephemeral: true`
+flags, a closed `physical_identities` map with one distinct root-keyed commitment
+for each required role, and a creation/expiry interval no longer than eight
+hours. The same protected-parent, root-owner, one-link, non-writable, canonical-
+digest rules apply. The validator rejects an expired attestation. Creating and
+root-installing this attestation, isolating the host for the session, and
+destroying its disposable state afterward remain runner-administrator
+responsibilities.
+
+The protected runner exposes four distinct installed-device secrets to the
+root-owned, digest-pinned driver: an Android gesture-navigation phone, an
+Android three-button phone, an iPhone with a home indicator, and a physical-
+keyboard iPad that is also the independent second synchronization installation.
+Test accounts and passwords are environment secrets and are never written into
+the request or evidence.
+
+The driver must automate every path below against disposable staging accounts
+and emit the closed `mobile-acceptance-evidence.json` contract:
 
 1. Cold launch from populated local cache and collect first-readable-frame and
    native-launch continuity measurements.
@@ -332,12 +392,56 @@ the exact signed candidate:
 14. Use the strict signed flavor and verify metadata/save/comments/original
     arXiv links remain while every cached derived fallback stays masked.
 
-Attach source revision, signed build/version, device model and OS/build,
-staging endpoint/tenant, UTC test window, result for every path, sanitized
-logs/screenshots, measured sample sizes, and release-owner approval. Never put
-tokens, device serials, private query/comment content, handles, or real-user
-data in the evidence bundle. A repository test, simulator, workflow dispatch,
-or operator statement without those artifacts does not complete this lane.
+The validator requires exact source, app version/build, candidate and driver
+digests; the signed-release provenance and ephemeral runner-session bindings;
+the staging API/OIDC/client coordinates read from `mobile/config/staging.json`;
+the four ordered physical-device roles; distinct installation and physical-
+identity hashes; sanitized hardware model and OS versions; and all 16 ordered
+scenarios. Those are the 14 paths above plus root-navigation safe-area/system-
+back coverage across the required navigation modes and physical-keyboard Tab/
+Shift-Tab/Enter/Escape coverage. A scenario passes only with its exact device-
+role assignment, exact ordered assertion-ID list (70 markers in total), and
+closed integer threshold/equality metrics (37 rules in total); a generic
+positive count is not accepted. Every Android role must identify an
+installation of the provenance-bound APK; every iOS role must identify the
+provenance-bound IPA. Each device must also echo the exact staging application,
+signer, and Apple team binding for its platform.
+
+For each role, the driver derives a run-specific `device_identity_hash` without
+retaining a serial or other raw identifier. It first computes a stable secret as
+`HMAC-SHA256(root_owned_device_identity_key, platform || NUL || raw_id)`, then
+places that stable secret as the role's root-attested commitment, and computes
+`HMAC-SHA256(run_challenge, stable_secret)` for evidence. The validator performs
+the second computation itself and never copies the stable commitments into the
+request binding or retained evidence. Because the role is not part of the
+derivation, reusing one physical device for two roles produces the same
+commitment and is rejected. The public challenge makes retained hashes
+change across runs, while the root-owned key prevents one from becoming a
+direct serial-number oracle. Evidence still intentionally identifies the
+runner session and can therefore be correlated when one attestation is reused.
+All four hashes and all four installation hashes must be distinct. Raw device
+identifiers stay only in protected process environment and must not appear in
+request, evidence, logs, or artifacts.
+
+Evidence schema v2 is also bound to a fresh cryptographic challenge, GitHub run
+ID and attempt, and whole-second UTC not-before time. Validation limits the run
+to six hours, rejects stale/replayed completion, duplicate or noncanonical JSON,
+non-finite numbers, extra fields, credential-shaped strings, symlinks,
+oversized evidence, partial scenarios, and failed paths. The validator packages
+the exact already-read canonical bytes and checksum by directly creating the
+final archive with exclusive-open semantics. It checks the final inode, owner,
+mode `0400`, link count, size, and SHA-256, then repeats the structural and
+digest checks immediately before upload. The local tar digest is bound into the
+artifact name; the final step also requires the upload action's separate
+artifact-container digest. The owner-only driver log is trapped and discarded,
+while device serials, credentials, handles, and comment/query text are excluded.
+
+A release owner must dispatch this workflow for the exact installed signed
+candidate and attach its immutable artifact plus the protected-environment
+approval. The checked-in orchestration and validators do not prove that the
+runner-managed driver, staging tenant, accounts, or devices were available, and
+an undispatched workflow, repository test, simulator, or operator statement
+does not complete this lane.
 
 ## Telemetry and release-candidate gates
 

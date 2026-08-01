@@ -11,6 +11,7 @@ import '../core/database/comment_cache_dao.dart';
 import '../core/database/comments_dao.dart';
 import '../core/database/library_dao.dart';
 import '../core/providers.dart';
+import '../features/feed/feed_prefetch_config.dart';
 import 'account_providers.dart';
 import 'library_providers.dart';
 
@@ -40,6 +41,7 @@ final commentRepositoryProvider = Provider<CommentRepository>(
     local: ref.watch(commentsDaoProvider),
     remote: ref.watch(commentsApiProvider),
     accountWrites: ref.watch(accountDataWriteBarrierProvider),
+    cachePolicy: ref.watch(feedPrefetchConfigProvider),
     sessionScope: () {
       final session = ref.read(authSessionProvider);
       return (accountId: session.accountId, authEpoch: session.epoch);

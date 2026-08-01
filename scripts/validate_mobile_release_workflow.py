@@ -14,12 +14,13 @@ import validate_flutter_toolchain as flutter_toolchain
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/mobile-release.yml"
 SECURITY_WORKFLOW = ROOT / ".github/workflows/security.yml"
+IOS_VERIFIER = ROOT / "scripts/verify_ios_release_artifact.sh"
 CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 EXPECTED_TRIGGER_SHA256 = (
     "0fb2be1cd95989cfab15d87f6eebb2ad2edf0a53928a190e7ca8ebeb1675970f"
 )
 EXPECTED_STEP_ITEMS_SHA256 = (
-    "4d17e98e13297db79c4e91af4fd4bc92bfaa6def6dd03432634acb62dcd03aeb"
+    "b3122f9f51fdb3113f9f2c77dfe35bbe222348fb6d2d5f02e14fcc20eab21048"
 )
 EXPECTED_CHECKOUT_STEP_SHA256 = (
     "b4a8b878bb5923badf0b69619820ec21476ed7fa3ff811b2e9e0f61b79542f86"
@@ -29,6 +30,24 @@ EXPECTED_ROOT_ENV_SHA256 = (
 )
 EXPECTED_SOURCE_STEP_SHA256 = (
     "62bdf540dd03b642475def0f869332db633cceabcae3f9fff40b1ade39f82351"
+)
+EXPECTED_MANIFEST_STEP_SHA256 = (
+    "ccb8d20246d5e2d676a075d6a7381022a5d23fe3b3bbf43b9d8d46ee13d04fd8"
+)
+EXPECTED_ANDROID_BUILD_STEP_SHA256 = (
+    "8db56d32003950e3ce768438bbdea04c651adf47b4cfb7b9fcc6bf23e9b4f026"
+)
+EXPECTED_IOS_BUILD_STEP_SHA256 = (
+    "5a428a670360b679c85e2e45debfbc2b47e007af974306e08f7fbac651114d9a"
+)
+EXPECTED_POST_UPLOAD_REVALIDATION_STEP_SHA256 = (
+    "481eb832b411b879e43f1a70667064191740be85a145ee8dec18ad80b88fc71a"
+)
+EXPECTED_EVIDENCE_UPLOAD_STEP_SHA256 = (
+    "f2563c86345137320d55fb88d78b2b897b8e2ee9f9e3d4b2dceff540fd5ba6de"
+)
+EXPECTED_IOS_VERIFIER_SHA256 = (
+    "e5e0193a51b71f1455eeadae610d82155abaf5257ddf7fad1d927c1fcadeaee5"
 )
 
 
@@ -83,6 +102,7 @@ def _mapping_keys(source: str, indent: int) -> list[str]:
 def validate(
     workflow: pathlib.Path = WORKFLOW,
     security_workflow: pathlib.Path = SECURITY_WORKFLOW,
+    ios_verifier: pathlib.Path = IOS_VERIFIER,
 ) -> None:
     flutter_contract = (
         flutter_toolchain.EXPECTED_FLUTTER_VERSION,
@@ -253,7 +273,7 @@ def validate(
             "validate_gradle_verification.py",
             "android-native.cdx.json",
             "Generate SBOM, notices, and immutable evidence hashes",
-            'root.joinpath("release-sha256.txt").write_text',
+            'checksum_path = root / "release-sha256.txt"',
             "Retain signed candidates, symbols, SBOM, and release evidence",
             "pakperk-${{ inputs.environment }}-${{ steps.release.outputs.version_name }}-${{ steps.release.outputs.build_number }}-${{ steps.source.outputs.source_revision }}",
             "if-no-files-found: error",
@@ -348,7 +368,7 @@ def validate(
             '"schema": 2',
             "RELEASE_DOCUMENT_VERSION: ${{ vars.PAKPERK_PUBLIC_DOCUMENT_VERSION }}",
             'expected_document_version = os.environ.get("RELEASE_DOCUMENT_VERSION", "")',
-            'config[key] != expected_document_version',
+            "config[key] != expected_document_version",
             '"termsDocumentVersion": config["PAKPERK_TERMS_DOCUMENT_VERSION"]',
             '"communityGuidelinesDocumentVersion": config["PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION"]',
             ' / "evidence" / "mobile-feature-flags.json"',
@@ -390,11 +410,109 @@ def validate(
     if evidence_hashes >= evidence_upload:
         raise RuntimeError("signed evidence must be hashed before mandatory upload")
 
+    for step_name, expected_digest in (
+        (
+            "Build and inspect signed Android artifacts",
+            EXPECTED_ANDROID_BUILD_STEP_SHA256,
+        ),
+        ("Build and inspect signed iOS artifact", EXPECTED_IOS_BUILD_STEP_SHA256),
+    ):
+        build_step = _step_block(source, step_name, "signed mobile workflow")
+        if hashlib.sha256(build_step.encode("utf-8")).hexdigest() != expected_digest:
+            raise RuntimeError(f"{step_name} contract changed")
+
+    manifest_step = _step_block(
+        source,
+        "Generate SBOM, notices, and immutable evidence hashes",
+        "signed mobile workflow",
+    )
+    if (
+        hashlib.sha256(manifest_step.encode("utf-8")).hexdigest()
+        != EXPECTED_MANIFEST_STEP_SHA256
+    ):
+        raise RuntimeError("signed candidate manifest generation step changed")
+    if re.findall(r"(?m)^        ([a-z][a-z0-9-]*):", manifest_step) != [
+        "id",
+        "shell",
+        "env",
+        "run",
+    ]:
+        raise RuntimeError(
+            "signed candidate manifest step has unexpected or reordered keys"
+        )
+    expected_manifest_environment = (
+        "        env:\n"
+        "          RELEASE_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}\n"
+        "          RELEASE_ENVIRONMENT: ${{ inputs.environment }}\n"
+        "          RELEASE_APP_VERSION: ${{ steps.release.outputs.version_name }}\n"
+        "          RELEASE_ANDROID_VERSION_NAME: ${{ steps.release.outputs.android_version_name }}\n"
+        "          RELEASE_BUILD_NUMBER: ${{ steps.release.outputs.build_number }}\n"
+        "          RELEASE_APPLICATION_ID: ${{ steps.release.outputs.bundle_id }}\n"
+        "          RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}\n"
+        "          RELEASE_REPOSITORY: ${{ github.repository }}\n"
+        "          RELEASE_JOB: ${{ github.job }}\n"
+        "          RELEASE_RUN_ID: ${{ github.run_id }}\n"
+        "          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}\n"
+    )
+    environment_start = manifest_step.index("        env:\n")
+    run_start = manifest_step.index("        run: |\n")
+    if manifest_step[environment_start:run_start] != expected_manifest_environment:
+        raise RuntimeError("signed candidate manifest environment bindings changed")
+    _require_fragments(
+        manifest_step,
+        (
+            'artifact(".aab")',
+            'artifact(".apk")',
+            'artifact(".ipa")',
+            'identity_file("android-upload-identity.txt")',
+            'identity_file("android-retained-digests.txt")',
+            'identity_file("apple-installed-identity.txt")',
+            'android_identity.get("android_upload_sha256", "")',
+            'ios_identity.get("apple_signer_sha256", "")',
+            '"stage": "artifacts_verified"',
+            '"workflow_sha": workflow_sha',
+            '"repository": repository',
+            'android_artifact_digests["android_aab_artifact_sha256"] != aab_sha256',
+            'ios_identity.get("apple_ipa_sha256") != ipa_sha256',
+            '"aab_sha256": aab_sha256',
+            '"apk_sha256": apk_sha256',
+            '"ipa_sha256": ipa_sha256',
+            'provenance_id = "sha256:" + hashlib.sha256(provenance_bytes).hexdigest()',
+            '"provenance_id": provenance_id',
+            'candidate_id = "sha256:" + hashlib.sha256(candidate_bytes).hexdigest()',
+            '("mobile-release-provenance.json", provenance_bytes)',
+            '("mobile-candidate.json", candidate_bytes)',
+            "allow_nan=False",
+            'separators=(",", ":")',
+            "sort_keys=True",
+            "for name, release_root in release_roots.items():",
+            "if not stat.S_ISDIR(metadata.st_mode):",
+            "if observed_release_digests != set(expected_release_digests):",
+        ),
+        "canonical signed-candidate provenance",
+    )
+    provenance_write = manifest_step.index(
+        '("mobile-release-provenance.json", provenance_bytes)'
+    )
+    candidate_write = manifest_step.index('("mobile-candidate.json", candidate_bytes)')
+    recursive_hashes = manifest_step.index(
+        "for name, release_root in release_roots.items():"
+    )
+    if not provenance_write < candidate_write < recursive_hashes:
+        raise RuntimeError(
+            "canonical candidate manifests must be emitted before release evidence hashing"
+        )
+
     upload_step = _step_block(
         source,
         "Retain signed candidates, symbols, SBOM, and release evidence",
         "signed mobile workflow",
     )
+    if (
+        hashlib.sha256(upload_step.encode("utf-8")).hexdigest()
+        != EXPECTED_EVIDENCE_UPLOAD_STEP_SHA256
+    ):
+        raise RuntimeError("signed mobile evidence upload step changed")
     _require_fragments(
         upload_step,
         (
@@ -407,6 +525,47 @@ def validate(
             "retention-days: 90",
         ),
         "signed mobile evidence upload",
+    )
+    post_upload_revalidation = _step_block(
+        source,
+        "Revalidate retained release evidence after upload",
+        "signed mobile workflow",
+    )
+    if (
+        hashlib.sha256(post_upload_revalidation.encode("utf-8")).hexdigest()
+        != EXPECTED_POST_UPLOAD_REVALIDATION_STEP_SHA256
+    ):
+        raise RuntimeError("post-upload release evidence revalidation changed")
+    if (
+        not evidence_upload
+        < source.index("- name: Revalidate retained release evidence after upload")
+        < source.index("- name: Upload Android candidate to Google Play internal track")
+    ):
+        raise RuntimeError(
+            "retained evidence must be revalidated after upload and before store delivery"
+        )
+
+    ios_verifier_source = ios_verifier.read_text(encoding="utf-8")
+    if (
+        hashlib.sha256(ios_verifier_source.encode("utf-8")).hexdigest()
+        != EXPECTED_IOS_VERIFIER_SHA256
+    ):
+        raise RuntimeError("signed iOS artifact verifier changed")
+    _require_fragments(
+        ios_verifier_source,
+        (
+            'codesign -d --extract-certificates "$certificate_prefix" "$app"',
+            'leaf_certificate="${certificate_prefix}0"',
+            'verified_ipa="$temporary_dir/candidate.ipa"',
+            'unzip -q "$verified_ipa"',
+            'flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)',
+            'developer_certificates = profile.get("DeveloperCertificates")',
+            "if sys.argv[8] not in authorized_signer_digests:",
+            '[[ "$apple_signer_sha256" =~ ^[a-f0-9]{64}$ ]]',
+            "printf 'apple_signer_sha256=%s\\n' \"$apple_signer_sha256\"",
+            "printf 'apple_ipa_sha256=%s\\n' \"$apple_ipa_sha256\"",
+        ),
+        "observed signed IPA certificate identity",
     )
 
     security = security_workflow.read_text(encoding="utf-8")

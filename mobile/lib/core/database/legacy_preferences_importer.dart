@@ -4,6 +4,7 @@ import 'dart:developer' as developer;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../cache/feed_cache_persistence.dart';
+import '../cache/feed_prefetch_config.dart';
 import '../content_policy.dart';
 import '../models/chat.dart';
 import '../models/connections.dart';
@@ -120,6 +121,7 @@ class LegacySharedPreferencesImporter {
     required this.preferences,
     required this.database,
     required this.fulltextPolicy,
+    this.cachePolicy = const FeedPrefetchConfig(),
     Future<void> Function()? beforeMarkComplete,
     DateTime Function()? clock,
   }) : _beforeMarkComplete = beforeMarkComplete,
@@ -129,9 +131,15 @@ class LegacySharedPreferencesImporter {
          preferences,
          'pakperk.restoration.v2',
        ),
-       _papers = PaperCacheDao(database),
-       _feeds = FeedCacheDao(database, PaperCacheDao(database)),
-       _derived = DerivedCacheDao(database, PaperCacheDao(database));
+       _papers = PaperCacheDao(database, metadataTtl: cachePolicy.metadataTtl),
+       _feeds = FeedCacheDao(
+         database,
+         PaperCacheDao(database, metadataTtl: cachePolicy.metadataTtl),
+       ),
+       _derived = DerivedCacheDao(
+         database,
+         PaperCacheDao(database, metadataTtl: cachePolicy.metadataTtl),
+       );
 
   static const feedKey = 'pakperk.feed.v1';
   static const bulkPrefixes = <String>[
@@ -145,6 +153,7 @@ class LegacySharedPreferencesImporter {
   final SharedPreferences preferences;
   final PakPerkDatabase database;
   final ClientFulltextPolicy fulltextPolicy;
+  final FeedPrefetchConfig cachePolicy;
   final Future<void> Function()? _beforeMarkComplete;
   final DateTime Function() _clock;
   final String? _preMigrationSessionId;
@@ -210,7 +219,7 @@ class LegacySharedPreferencesImporter {
             ),
           );
           await _feeds.persistPage(
-            queryKey: feedQueryKey(),
+            queryKey: feedQueryKey(limit: cachePolicy.remotePageSize),
             page: masked,
             replace: true,
             refreshedAt: now,
@@ -493,7 +502,9 @@ class LegacySharedPreferencesImporter {
       }
     }
     if (expectedFeed != null) {
-      final feed = await _feeds.loadPage(feedQueryKey());
+      final feed = await _feeds.loadPage(
+        feedQueryKey(limit: cachePolicy.remotePageSize),
+      );
       if (feed == null || !_feedMatches(feed, expectedFeed)) {
         throw StateError('Legacy feed cache verification failed');
       }

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../cache/feed_prefetch_config.dart';
 import '../models/chat.dart';
 import '../models/connections.dart';
 import '../models/introduction.dart';
@@ -62,7 +63,7 @@ class ApiClient {
   Future<FeedPage> getFeed({
     String? category,
     String? cursor,
-    int limit = 20,
+    int limit = FeedPrefetchConfig.defaultRemotePageSize,
     RequestCancellation? cancellation,
   }) async {
     final result = await getFeedConditional(
@@ -89,7 +90,7 @@ class ApiClient {
   Future<FeedHttpResult> getFeedConditional({
     String? category,
     String? cursor,
-    int limit = 20,
+    int limit = FeedPrefetchConfig.defaultRemotePageSize,
     String? ifNoneMatch,
     RequestCancellation? cancellation,
   }) async {

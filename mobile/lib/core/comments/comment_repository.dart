@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../account/account_data_write_barrier.dart';
 import '../api/api_exception.dart';
+import '../cache/feed_prefetch_config.dart';
 import '../database/comment_cache_dao.dart';
 import '../database/comments_dao.dart';
 import 'comment_models.dart';
@@ -35,12 +36,14 @@ final class CommentRepository {
     required CommentsDao local,
     required CommentsRemoteDataSource remote,
     required AccountDataWriteBarrier accountWrites,
+    required FeedPrefetchConfig cachePolicy,
     required CommentSessionScopeReader sessionScope,
     required VerifiedCommentScopeReader verifiedScope,
   }) : _cache = cache,
        _local = local,
        _remote = remote,
        _accountWrites = accountWrites,
+       _cachePolicy = cachePolicy,
        _sessionScope = sessionScope,
        _verifiedScope = verifiedScope;
 
@@ -48,6 +51,7 @@ final class CommentRepository {
   final CommentsDao _local;
   final CommentsRemoteDataSource _remote;
   final AccountDataWriteBarrier _accountWrites;
+  final FeedPrefetchConfig _cachePolicy;
   final CommentSessionScopeReader _sessionScope;
   final VerifiedCommentScopeReader _verifiedScope;
 
@@ -106,6 +110,7 @@ final class CommentRepository {
     );
     if (!guard()) throw const CommentScopeChanged();
     _validatePaperPage(page, paperId, viewer.accountId);
+    final fetchedAt = DateTime.now().toUtc();
     final cached = await _writeForViewer(
       viewer,
       guard,
@@ -120,8 +125,8 @@ final class CommentRepository {
           viewerAccountId: viewer.accountId,
           cursor: cursor,
           payload: page.toJson(),
-          fetchedAt: DateTime.now().toUtc(),
-          expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 5)),
+          fetchedAt: fetchedAt,
+          expiresAt: fetchedAt.add(_cachePolicy.firstCommentsPageTtl),
         ),
       ),
     );
@@ -140,6 +145,7 @@ final class CommentRepository {
     _validatePaperPage(page, paperId, viewer.accountId);
     final guard = viewerGuard(viewer);
     if (!guard()) return;
+    final fetchedAt = DateTime.now().toUtc();
     await _writeForViewer(
       viewer,
       guard,
@@ -152,8 +158,8 @@ final class CommentRepository {
           paperId: paperId,
           viewerAccountId: viewer.accountId,
           payload: page.toJson(),
-          fetchedAt: DateTime.now().toUtc(),
-          expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 5)),
+          fetchedAt: fetchedAt,
+          expiresAt: fetchedAt.add(_cachePolicy.firstCommentsPageTtl),
         ),
       ),
     );

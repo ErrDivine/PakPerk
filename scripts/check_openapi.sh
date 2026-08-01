@@ -3,8 +3,12 @@ set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 generated_contract="$(mktemp "${TMPDIR:-/tmp}/pakperk-openapi-generated.XXXXXX")"
-base_contract="$(mktemp "${TMPDIR:-/tmp}/pakperk-openapi-base.XXXXXX")"
-trap 'rm -f "$generated_contract" "$base_contract"' EXIT
+trap 'rm -f "$generated_contract"' EXIT
+
+if [[ "${CI:-}" == "true" && -z "${OPENAPI_BASE_REF:-}" ]]; then
+  echo "CI must supply OPENAPI_BASE_REF; compatibility was not checked." >&2
+  exit 2
+fi
 
 python3 -B "$project_dir/scripts/test_openapi_compatibility.py"
 "$project_dir/scripts/generate_openapi.sh" >"$generated_contract"
@@ -16,14 +20,11 @@ if ! cmp -s "$project_dir/docs/openapi-v1.json" "$generated_contract"; then
   exit 1
 fi
 
-# CI supplies the pull-request base (or previous pushed commit). The first
-# checked-in contract has no historical artifact, so absence is intentionally
-# non-fatal; every later change is checked when the ref contains the artifact.
-if [[ -n "${OPENAPI_BASE_REF:-}" ]] && \
-  git -C "$project_dir" cat-file -e \
-    "${OPENAPI_BASE_REF}:docs/openapi-v1.json" 2>/dev/null; then
-  git -C "$project_dir" show \
-    "${OPENAPI_BASE_REF}:docs/openapi-v1.json" >"$base_contract"
+# CI supplies the pull-request base (or previous pushed commit). Once supplied,
+# the base revision and its contract are mandatory: a missing/shallow/zero base
+# must fail instead of silently skipping compatibility verification.
+if [[ -n "${OPENAPI_BASE_REF:-}" ]]; then
   python3 "$project_dir/scripts/check_openapi_compatibility.py" \
-    "$base_contract" "$project_dir/docs/openapi-v1.json"
+    --git-base "$project_dir" "$OPENAPI_BASE_REF" docs/openapi-v1.json \
+    "$project_dir/docs/openapi-v1.json"
 fi

@@ -13,6 +13,9 @@ Changes to either location must preserve this relationship; do not summarize,
 silently narrow, or selectively supersede requirements from the canonical
 plan.
 
+The current repository-versus-release evidence status is maintained in the
+[Production v0.0 completion audit](production-v0.0-completion-audit.md).
+
 ## What the plan governs
 
 Production v0.0 evolves the existing modular Rust monolith and Flutter reader
@@ -127,15 +130,18 @@ promotion, security/source/native SBOM workflows with reviewed runtime-graph
 completeness, and locked native/mobile release tools including MRI Ruby 3.4.10
 and RubyGems 4.0.17 plus Flutter 3.44.8/framework
 `058e0af2c2b57e369d905a03ac9748b0ebf543c6`/Dart 3.12.2, signed mobile
-candidate automation, policy/support hosting,
-and release,
+candidate automation with content-addressed artifact/signing provenance, a
+protected four-device acceptance lane, policy/support hosting, and release,
 incident, moderation, deletion, observability, load, and backup/restore
 runbooks. The repository also contains an opt-in disposable Keycloak deletion
 acceptance workflow, a protected exact-SHA staging backend load gate, a manual
 exact-main public-edge verification/evidence lane for the configured dark
-deployment, and mobile startup/accessibility hardening for concurrent local/
-session work, retry/repair ownership, reduced motion, settled haptics, 200%
-text, contrast, and canonical arXiv actions. Repository and mobile evidence is
+deployment, and a closed two-phase restore harness bound to a protected
+attestation and content-addressed evidence. Mobile startup/cache/accessibility
+hardening covers one shared cache policy, stale-content-first rendering, an
+accessible cache-miss skeleton, shared paper actions, concurrent local/session
+work, retry/repair ownership, reduced motion, settled haptics, 200% text,
+contrast, and canonical arXiv actions. Repository and mobile evidence is
 recorded in the
 [Phase 6 report](phase-reports/phase-6.md) and
 [mobile Phase 6 report](phase-reports/phase-6-mobile.md).
@@ -149,8 +155,12 @@ authenticated handoffs, bounded safety-intent recovery after authenticated
 comment reload, hid comment totals until a network-backed page is known
 complete, and bound policy acceptance to the exact documents in each signed
 build. CI now parses every shell script independently rather than relying on
-Bash's multi-argument behavior. Final Flutter analysis and all 537 locked tests
-passed. These are repository hardening changes; they do not alter the external
+Bash's multi-argument behavior, and the OpenAPI compatibility gate rejects
+directional schema, response, callback, webhook, and serialization regressions.
+The final canonical check passed Flutter analysis, all 544 locked tests, every
+Android debug flavor, every iOS simulator flavor, strict artifact inspection,
+the Rust workspace, 31 browser/site tests, Helm, SBOM, and release-contract
+validators. These are repository checks; they do not alter the external
 release-gate status below.
 
 Phase 6 is not accepted as a public/store release from source evidence alone.

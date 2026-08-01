@@ -86,6 +86,9 @@ jobs:
           python3 scripts/validate_mobile_release_workflow.py
           python3 scripts/test_validate_mobile_device_workflow.py
           python3 scripts/validate_mobile_device_workflow.py
+          python3 scripts/test_validate_mobile_acceptance_evidence.py
+          python3 scripts/test_validate_mobile_acceptance_workflow.py
+          python3 scripts/validate_mobile_acceptance_workflow.py
           python3 scripts/test_validate_live_account_deletion_workflow.py
           python3 scripts/validate_live_account_deletion_workflow.py
           python3 scripts/test_live_comments_evidence.py

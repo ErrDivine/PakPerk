@@ -13,13 +13,12 @@ import '../../core/widgets/paper_stage_indicator.dart';
 import '../../core/widgets/status_widgets.dart';
 import '../../design_system/motion.dart';
 import '../chat/chat_controller.dart';
-import '../comments/paper_comments_control.dart';
 import '../connections/connections_controller.dart';
 import '../connections/connections_view.dart';
 import '../introduction/introduction_controller.dart';
 import '../introduction/introduction_view.dart';
-import '../library/paper_save_control.dart';
 import 'abstract_view.dart';
+import 'paper_action_bar.dart';
 import 'paper_processing_controller.dart';
 import 'reader_navigation_controller.dart';
 
@@ -133,6 +132,7 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
     );
     final capabilities =
         processing.processing?.capabilities ?? widget.paper.capabilities;
+    final features = ref.watch(featureFlagsProvider);
     final repositoryOffline = ref.read(paperRepositoryProvider).isOffline;
     final offline = ref
         .watch(networkOfflineProvider)
@@ -253,12 +253,8 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
               onSelected: _goToStage,
             ),
             const Divider(height: 1),
-            if (ref.watch(featureFlagsProvider).library) ...[
-              PaperSaveControl(paper: widget.paper),
-              const Divider(height: 1),
-            ],
-            if (ref.watch(featureFlagsProvider).comments) ...[
-              PaperCommentsControl(paper: widget.paper),
+            if (features.library || features.comments) ...[
+              PaperActionBar(paper: widget.paper),
               const Divider(height: 1),
             ],
             Expanded(

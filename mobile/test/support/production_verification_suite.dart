@@ -13,6 +13,7 @@ import 'package:pakperk/core/account/account_data_write_barrier.dart';
 import 'package:pakperk/core/api/request_cancellation.dart';
 import 'package:pakperk/core/cache/drift_local_store.dart';
 import 'package:pakperk/core/cache/feed_cache_persistence.dart';
+import 'package:pakperk/core/cache/feed_prefetch_config.dart';
 import 'package:pakperk/core/comments/comment_controllers.dart';
 import 'package:pakperk/core/comments/comment_models.dart';
 import 'package:pakperk/core/comments/comment_repository.dart';
@@ -132,7 +133,7 @@ void registerProductionVerificationTests({bool physicalDevice = false}) {
     expect(generatedFlingCount, _generatedGestureCount ~/ 2);
     expect(controllerCommitCount, papers.length - 1 - _generatedGestureCount);
     expect(repository.requestedCursors, _expectedVerificationCursors);
-    expect(repository.requestedLimits, everyElement(defaultFeedPageLimit));
+    expect(repository.requestedLimits, everyElement(_verificationPageSize));
     expect(repository.feedCalls, 1 + _expectedVerificationCursors.length);
     expect(feedCache.persistedPages, hasLength(6));
     expect(feedCache.paperIds, hasLength(200));
@@ -373,6 +374,7 @@ void registerProductionVerificationTests({bool physicalDevice = false}) {
       local: CommentsDao(database),
       remote: remote,
       accountWrites: AccountDataWriteBarrier(),
+      cachePolicy: const FeedPrefetchConfig(),
       sessionScope: () => (accountId: null, authEpoch: 0),
       verifiedScope: () => null,
     );
@@ -493,7 +495,7 @@ void registerProductionVerificationTests({bool physicalDevice = false}) {
   });
 }
 
-const _verificationPageSize = defaultFeedPageLimit;
+const _verificationPageSize = FeedPrefetchConfig.defaultRemotePageSize;
 const _generatedGestureCount = 20;
 const _expectedVerificationCursors = [
   'cursor-30',
@@ -568,7 +570,7 @@ final class _PagedStalledPaperDataSource extends FakePaperDataSource {
   Future<RepositoryValue<FeedPage>> getFeed({
     String? category,
     String? cursor,
-    int limit = 20,
+    int limit = FeedPrefetchConfig.defaultRemotePageSize,
     RequestCancellation? cancellation,
   }) {
     feedCalls += 1;

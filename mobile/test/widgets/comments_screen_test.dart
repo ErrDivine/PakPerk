@@ -11,6 +11,7 @@ import 'package:pakperk/app/router.dart';
 import 'package:pakperk/core/account/account_data_write_barrier.dart';
 import 'package:pakperk/core/api/api_exception.dart';
 import 'package:pakperk/core/auth/auth.dart';
+import 'package:pakperk/core/cache/feed_prefetch_config.dart';
 import 'package:pakperk/core/comments/comment_controllers.dart';
 import 'package:pakperk/core/comments/comment_models.dart';
 import 'package:pakperk/core/comments/comment_repository.dart';
@@ -627,6 +628,7 @@ _fixture({
     local: CommentsDao(database),
     remote: remote,
     accountWrites: AccountDataWriteBarrier(),
+    cachePolicy: const FeedPrefetchConfig(),
     sessionScope: () => (
       accountId: viewerAccountId,
       authEpoch: viewerAccountId == null ? 0 : 1,

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/app/application_bootstrap.dart';
 import 'package:pakperk/core/cache/drift_local_store.dart';
 import 'package:pakperk/core/cache/feed_cache_persistence.dart';
+import 'package:pakperk/core/cache/feed_prefetch_config.dart';
 import 'package:pakperk/core/cache/restoration_persistence.dart';
 import 'package:pakperk/core/cache/versioned_derived_cache.dart';
 import 'package:pakperk/core/content_policy.dart';
@@ -75,6 +76,56 @@ void main() {
       );
     }
   });
+
+  test(
+    'non-default cache policy reaches startup feed keys and metadata expiry',
+    () async {
+      const cachePolicy = FeedPrefetchConfig(
+        remotePageSize: 7,
+        metadataTtl: Duration(hours: 2),
+      );
+      SharedPreferences.setMockInitialValues(const {});
+      final database = _memoryDatabase();
+      final store = DriftLocalStore(
+        preferences: await SharedPreferences.getInstance(),
+        database: database,
+        cachePolicy: cachePolicy,
+      );
+      addTearDown(store.close);
+      await store.saveFeed(FeedPage(items: [samplePaper]));
+
+      expect(
+        await store.loadFeedPage(
+          feedQueryKey(limit: cachePolicy.remotePageSize),
+        ),
+        isNotNull,
+      );
+      expect(
+        await store.loadFeedPage(
+          feedQueryKey(limit: FeedPrefetchConfig.defaultRemotePageSize),
+        ),
+        isNull,
+      );
+      final cachedPaper = await database
+          .select(database.cachedPapers)
+          .getSingle();
+      expect(
+        cachedPaper.expiresAt.difference(cachedPaper.lastAccessedAt),
+        cachePolicy.metadataTtl,
+      );
+
+      final bootstrapper = ApplicationStartupBootstrapper(
+        storeFactory: () async => store,
+        cachePolicy: cachePolicy,
+        bundledFeedLoader: () async => const FeedPage(items: []),
+      );
+      await bootstrapper.hydrateLocalState();
+      expect(
+        bootstrapper.data?.preloadedFeed.page.items.single.paperId,
+        samplePaper.paperId,
+      );
+    },
+  );
 
   test(
     'complete v1 migration preserves durable data and drops unbound derived',
@@ -1149,6 +1200,7 @@ void main() {
   test(
     'startup imports a valid offline feed before choosing bundled content',
     () async {
+      const cachePolicy = FeedPrefetchConfig(remotePageSize: 7);
       final staleFeedPaper = PaperSummary.fromJson(
         samplePaper.toJson()
           ..['arxiv_id'] = '${samplePaper.arxivBaseId}v6'
@@ -1166,11 +1218,13 @@ void main() {
       final store = DriftLocalStore(
         preferences: await SharedPreferences.getInstance(),
         database: database,
+        cachePolicy: cachePolicy,
       );
       addTearDown(store.close);
       var bundledLoads = 0;
       final bootstrapper = ApplicationStartupBootstrapper(
         storeFactory: () async => store,
+        cachePolicy: cachePolicy,
         bundledFeedLoader: () async {
           bundledLoads += 1;
           return const FeedPage(items: []);

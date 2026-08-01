@@ -2,15 +2,18 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 
+import '../cache/feed_prefetch_config.dart';
 import '../models/paper.dart';
 import 'app_database.dart';
 
 class PaperCacheDao {
-  PaperCacheDao(this.database);
-
-  static const metadataTtl = Duration(days: 7);
+  PaperCacheDao(
+    this.database, {
+    this.metadataTtl = FeedPrefetchConfig.defaultMetadataTtl,
+  });
 
   final PakPerkDatabase database;
+  final Duration metadataTtl;
 
   Future<PaperSummary?> load(String paperId, {bool touch = true}) async {
     final row = await (database.select(

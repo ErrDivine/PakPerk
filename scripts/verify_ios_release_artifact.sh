@@ -39,14 +39,68 @@ if [[ ! -f "$source_privacy_manifest" || -L "$source_privacy_manifest" || ! -s "
   exit 1
 fi
 
-python3 - "$ipa" <<'PY'
+temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/pakperk-ios-release.XXXXXX")"
+cleanup() {
+  rm -rf "$temporary_dir"
+}
+trap cleanup EXIT INT TERM
+verified_ipa="$temporary_dir/candidate.ipa"
+apple_ipa_sha256="$(python3 - "$ipa" "$verified_ipa" <<'PY'
+import hashlib
+import os
 import pathlib
 import re
 import stat
 import sys
 import zipfile
 
-artifact = pathlib.Path(sys.argv[1])
+source = pathlib.Path(sys.argv[1])
+artifact = pathlib.Path(sys.argv[2])
+metadata = os.lstat(source)
+if (
+    not stat.S_ISREG(metadata.st_mode)
+    or metadata.st_nlink != 1
+    or metadata.st_size <= 0
+    or metadata.st_size > 8 * 1024**3
+):
+    raise SystemExit("IPA must be one bounded regular file")
+source_descriptor = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+destination_descriptor = os.open(
+    artifact,
+    os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+    0o400,
+)
+digest = hashlib.sha256()
+try:
+    before = os.fstat(source_descriptor)
+    while True:
+        chunk = os.read(source_descriptor, 1024 * 1024)
+        if not chunk:
+            break
+        digest.update(chunk)
+        remaining = memoryview(chunk)
+        while remaining:
+            written = os.write(destination_descriptor, remaining)
+            if written <= 0:
+                raise SystemExit("IPA snapshot write did not make progress")
+            remaining = remaining[written:]
+    os.fsync(destination_descriptor)
+    after = os.fstat(source_descriptor)
+    retained = os.fstat(destination_descriptor)
+finally:
+    os.close(destination_descriptor)
+    os.close(source_descriptor)
+identity = lambda value: (
+    value.st_dev,
+    value.st_ino,
+    value.st_size,
+    value.st_mtime_ns,
+    value.st_ctime_ns,
+)
+if identity(metadata) != identity(before) or identity(before) != identity(after):
+    raise SystemExit("IPA changed while its verification snapshot was created")
+if not stat.S_ISREG(retained.st_mode) or retained.st_nlink != 1 or retained.st_size != before.st_size:
+    raise SystemExit("IPA verification snapshot is incomplete")
 try:
     with zipfile.ZipFile(artifact) as archive:
         entries = archive.infolist()
@@ -80,14 +134,14 @@ if len(manifests) != 1:
 mode = manifests[0].external_attr >> 16
 if manifests[0].file_size == 0 or stat.S_ISLNK(mode):
     raise SystemExit("IPA app privacy manifest must be non-empty and not a symlink")
+print(digest.hexdigest())
 PY
-
-temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/pakperk-ios-release.XXXXXX")"
-cleanup() {
-  rm -rf "$temporary_dir"
-}
-trap cleanup EXIT INT TERM
-unzip -q "$ipa" -d "$temporary_dir/unpacked"
+)"
+if ! [[ "$apple_ipa_sha256" =~ ^[a-f0-9]{64}$ ]]; then
+  echo "Could not derive the verified IPA SHA-256 digest." >&2
+  exit 1
+fi
+unzip -q "$verified_ipa" -d "$temporary_dir/unpacked"
 
 apps=("$temporary_dir"/unpacked/Payload/*.app)
 if [[ ${#apps[@]} -ne 1 || ! -d "${apps[0]}" ]]; then
@@ -107,6 +161,56 @@ fi
 plutil -lint "$privacy_manifest" >/dev/null
 
 codesign --verify --deep --strict --verbose=2 "$app"
+certificate_prefix="$temporary_dir/signing-certificate-"
+codesign -d --extract-certificates "$certificate_prefix" "$app"
+leaf_certificate="${certificate_prefix}0"
+apple_signer_sha256="$(python3 - "$leaf_certificate" <<'PY'
+import hashlib
+import os
+import pathlib
+import stat
+import sys
+
+path = pathlib.Path(sys.argv[1])
+metadata = os.lstat(path)
+if (
+    not stat.S_ISREG(metadata.st_mode)
+    or metadata.st_nlink != 1
+    or metadata.st_size <= 0
+    or metadata.st_size > 1024 * 1024
+):
+    raise SystemExit("codesign did not emit one bounded leaf certificate")
+flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+descriptor = os.open(path, flags)
+try:
+    before = os.fstat(descriptor)
+    data = bytearray()
+    while True:
+        chunk = os.read(descriptor, 64 * 1024)
+        if not chunk:
+            break
+        data.extend(chunk)
+        if len(data) > 1024 * 1024:
+            raise SystemExit("codesign leaf certificate exceeded its read budget")
+    after = os.fstat(descriptor)
+finally:
+    os.close(descriptor)
+identity = lambda value: (
+    value.st_dev,
+    value.st_ino,
+    value.st_size,
+    value.st_mtime_ns,
+    value.st_ctime_ns,
+)
+if identity(metadata) != identity(before) or identity(before) != identity(after):
+    raise SystemExit("codesign leaf certificate changed while it was read")
+print(hashlib.sha256(data).hexdigest())
+PY
+)"
+if ! [[ "$apple_signer_sha256" =~ ^[a-f0-9]{64}$ ]]; then
+  echo "Could not derive the signed IPA leaf-certificate SHA-256 fingerprint." >&2
+  exit 1
+fi
 bundle_id="$($plist_buddy -c 'Print :CFBundleIdentifier' "$info_plist")"
 version="$($plist_buddy -c 'Print :CFBundleShortVersionString' "$info_plist")"
 build="$($plist_buddy -c 'Print :CFBundleVersion' "$info_plist")"
@@ -137,9 +241,11 @@ if [[ "$signed_app_id" != "$team_id.$bundle_id" || "$signed_team_id" != "$team_i
   exit 1
 fi
 python3 - "$info_plist" "$temporary_dir/entitlements.plist" "$temporary_dir/profile.plist" \
-  "$privacy_manifest" "$source_privacy_manifest" "$expected_oidc_scheme" "$expected_app_link_host" <<'PY'
+  "$privacy_manifest" "$source_privacy_manifest" "$expected_oidc_scheme" \
+  "$expected_app_link_host" "$apple_signer_sha256" <<'PY'
 import datetime
 import fnmatch
+import hashlib
 import pathlib
 import plistlib
 import re
@@ -192,6 +298,25 @@ if entitlements.get("get-task-allow", False) is not False:
     raise SystemExit("signed app enables get-task-allow")
 if profile.get("ProvisionsAllDevices") is True or profile.get("ProvisionedDevices"):
     raise SystemExit("signed IPA must use an App Store provisioning profile")
+developer_certificates = profile.get("DeveloperCertificates")
+if (
+    not isinstance(developer_certificates, list)
+    or not 1 <= len(developer_certificates) <= 32
+    or any(
+        not isinstance(certificate, bytes)
+        or not 1 <= len(certificate) <= 1024 * 1024
+        for certificate in developer_certificates
+    )
+):
+    raise SystemExit("provisioning profile has no bounded authorized certificates")
+authorized_signer_digests = {
+    hashlib.sha256(certificate).hexdigest()
+    for certificate in developer_certificates
+}
+if sys.argv[8] not in authorized_signer_digests:
+    raise SystemExit(
+        "signed IPA leaf certificate is not authorized by the provisioning profile"
+    )
 for application_id in (
     profile_entitlements.get("application-identifier", ""),
     entitlements.get("application-identifier", ""),
@@ -300,6 +425,8 @@ if ! codesign -d --verbose=4 "$app" 2>&1 | grep -Eq '^Authority=(Apple Distribut
 fi
 
 printf 'apple_team_id=%s\n' "$team_id"
+printf 'apple_signer_sha256=%s\n' "$apple_signer_sha256"
+printf 'apple_ipa_sha256=%s\n' "$apple_ipa_sha256"
 printf 'apple_profile_kind=app-store\n'
 printf 'apple_bundle_id=%s\n' "$bundle_id"
 printf 'apple_version=%s\n' "$version"

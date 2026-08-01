@@ -14,6 +14,7 @@ import 'core/content_policy.dart';
 import 'core/providers.dart';
 import 'core/telemetry/global_error_capture.dart';
 import 'core/telemetry/telemetry.dart';
+import 'features/feed/feed_prefetch_config.dart';
 
 void main() {
   GlobalErrorCapture? errors;
@@ -26,10 +27,12 @@ void main() {
       final exporter = createTelemetryExporter(buildConfig);
       final telemetry = RedactingTelemetrySink(exporter);
       errors = GlobalErrorCapture(telemetry: telemetry)..install();
+      const cachePolicy = FeedPrefetchConfig();
       final bootstrapper = ApplicationStartupBootstrapper(
         fulltextPolicy: ClientFulltextPolicy.fromWire(
           buildConfig.fulltextPolicy,
         ),
+        cachePolicy: cachePolicy,
       );
       final launchMode = startupLaunchModeForInitialRoute(
         binding.platformDispatcher.defaultRouteName,
@@ -40,6 +43,7 @@ void main() {
           overrides: [
             appBuildConfigProvider.overrideWithValue(buildConfig),
             telemetryExporterProvider.overrideWithValue(exporter),
+            feedPrefetchConfigProvider.overrideWithValue(cachePolicy),
             startupLaunchModeProvider.overrideWithValue(launchMode),
             ...applicationStartupDataOverrides(bootstrapper),
             ...accountApplicationOverrides(bootstrapper),

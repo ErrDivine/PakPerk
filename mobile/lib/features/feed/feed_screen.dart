@@ -12,6 +12,7 @@ import '../../core/telemetry/telemetry.dart';
 import '../../core/widgets/responsive_reader_frame.dart';
 import '../../core/widgets/status_widgets.dart';
 import '../../design_system/motion.dart';
+import '../../design_system/skeleton.dart';
 import '../paper_reader/paper_reader.dart';
 import '../paper_reader/reader_navigation_controller.dart';
 import 'feed_controller.dart';
@@ -54,11 +55,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     if (feed.loadingInitial && feed.items.isEmpty) {
       return Scaffold(
         body: SafeArea(
-          child: Center(
-            child: Semantics(
-              liveRegion: true,
-              label: 'Loading the paper feed',
-              child: const CircularProgressIndicator(),
+          child: ResponsiveReaderFrame(
+            child: const PaperCardSkeleton(
+              key: ValueKey('feed-cache-miss-skeleton'),
             ),
           ),
         ),

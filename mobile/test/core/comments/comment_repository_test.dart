@@ -4,6 +4,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/core/account/account_data_write_barrier.dart';
 import 'package:pakperk/core/api/api_exception.dart';
+import 'package:pakperk/core/cache/feed_prefetch_config.dart';
 import 'package:pakperk/core/comments/comment_models.dart';
 import 'package:pakperk/core/comments/comment_repository.dart';
 import 'package:pakperk/core/comments/comments_api.dart';
@@ -172,6 +173,31 @@ void main() {
       );
     },
   );
+
+  test('comment cache expiry follows the injected cache policy', () async {
+    const cachePolicy = FeedPrefetchConfig(
+      firstCommentsPageTtl: Duration(seconds: 37),
+    );
+    final fixture = await _fixture(
+      viewerAccountId: null,
+      page: const CommentPage(items: [], nextCursor: null),
+      cachePolicy: cachePolicy,
+    );
+    addTearDown(fixture.database.close);
+
+    await fixture.repository.loadPage(
+      paperId: samplePaper.paperId,
+      viewer: const CommentViewerScope.guest(),
+    );
+
+    final cached = await fixture.database
+        .select(fixture.database.cachedCommentPages)
+        .getSingle();
+    expect(
+      cached.expiresAt.difference(cached.fetchedAt),
+      cachePolicy.firstCommentsPageTtl,
+    );
+  });
 }
 
 Future<
@@ -187,6 +213,7 @@ _fixture({
   required String? viewerAccountId,
   required CommentPage page,
   _Remote? remote,
+  FeedPrefetchConfig cachePolicy = const FeedPrefetchConfig(),
   CommentCacheDao Function(PakPerkDatabase database)? cacheFactory,
 }) async {
   final database = PakPerkDatabase(NativeDatabase.memory());
@@ -199,6 +226,7 @@ _fixture({
     local: local,
     remote: remote ?? _Remote(page: page),
     accountWrites: barrier,
+    cachePolicy: cachePolicy,
     sessionScope: () =>
         (accountId: scope.accountId, authEpoch: scope.authEpoch),
     verifiedScope: () => scope.accountId == null

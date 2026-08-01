@@ -1,0 +1,664 @@
+name: protected mobile acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Reviewed full lowercase commit SHA that exactly matches the selected main revision
+        required: true
+        type: string
+      candidate_id:
+        description: Installed signed-candidate manifest content ID in exact sha256 lowercase digest form
+        required: true
+        type: string
+      provenance_id:
+        description: Signed-release provenance manifest content ID in exact sha256 lowercase digest form
+        required: true
+        type: string
+      confirmation:
+        description: Type RUN_PROTECTED_MOBILE_ACCEPTANCE to exercise disposable staging accounts and physical devices
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: protected-mobile-acceptance
+  cancel-in-progress: false
+
+jobs:
+  protected-acceptance:
+    runs-on: [self-hosted, macOS, pakperk-mobile-acceptance]
+    environment: mobile-device-verification
+    timeout-minutes: 360
+    env:
+      REQUESTED_REVISION: ${{ inputs.source_revision }}
+      CANDIDATE_ID: ${{ inputs.candidate_id }}
+      PROVENANCE_ID: ${{ inputs.provenance_id }}
+      DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+      RUNNER_SESSION_ID: ${{ vars.PAKPERK_MOBILE_RUNNER_SESSION_ID }}
+      DRIVER_SHA256: ${{ vars.PAKPERK_MOBILE_ACCEPTANCE_DRIVER_SHA256 }}
+      ANDROID_SIGNER_SHA256: ${{ vars.PAKPERK_ANDROID_SIGNER_SHA256 }}
+      IOS_TEAM_ID: ${{ vars.PAKPERK_IOS_TEAM_ID }}
+      IOS_SIGNER_SHA256: ${{ vars.PAKPERK_IOS_SIGNER_SHA256 }}
+      PATH: /usr/bin:/bin
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_revision }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact reviewed main source and protected coordinates
+        shell: bash
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+          DISPATCH_REVISION: ${{ github.sha }}
+        run: |
+          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then
+            echo "Protected mobile acceptance must be dispatched from main." >&2
+            exit 2
+          fi
+          if [[ "$DISPATCH_CONFIRMATION" != "RUN_PROTECTED_MOBILE_ACCEPTANCE" ]]; then
+            echo "Dispatch confirmation did not match the required phrase." >&2
+            exit 2
+          fi
+          if ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_revision must be a full lowercase Git commit SHA." >&2
+            exit 2
+          fi
+          if ! [[ "$CANDIDATE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "candidate_id must be an exact lowercase sha256 content ID." >&2
+            exit 2
+          fi
+          if ! [[ "$PROVENANCE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "provenance_id must be an exact lowercase sha256 content ID." >&2
+            exit 2
+          fi
+          if ! [[ "$RUNNER_SESSION_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "The protected runner-session attestation ID is unavailable or invalid." >&2
+            exit 2
+          fi
+          if ! [[ "$DRIVER_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "The protected mobile acceptance driver digest is unavailable or invalid." >&2
+            exit 2
+          fi
+          if [[ "$REQUESTED_REVISION" != "$DISPATCH_REVISION" ]]; then
+            echo "source_revision must exactly match the selected main revision." >&2
+            exit 2
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$REQUESTED_REVISION" ]]; then
+            echo "Checkout did not resolve the exact requested revision." >&2
+            exit 2
+          fi
+          if [[ "$(git rev-parse refs/remotes/origin/main)" != "$REQUESTED_REVISION" ]]; then
+            echo "The requested revision is not the fetched origin/main tip." >&2
+            exit 2
+          fi
+          python3 -I - mobile/config/staging.json "$GITHUB_ENV" <<'PY'
+          import json
+          import os
+          import pathlib
+          import re
+          import stat
+          import sys
+          import urllib.parse
+
+          def reject_duplicate_pairs(pairs):
+              value = {}
+              for key, child in pairs:
+                  if key in value:
+                      raise SystemExit("mobile/config/staging.json contains a duplicate key")
+                  value[key] = child
+              return value
+
+          def reject_nonfinite_constant(_value):
+              raise SystemExit("mobile/config/staging.json contains a non-finite number")
+
+          source, destination = map(pathlib.Path, sys.argv[1:])
+          metadata = os.lstat(source)
+          if (
+              not stat.S_ISREG(metadata.st_mode)
+              or metadata.st_nlink != 1
+              or metadata.st_size <= 0
+              or metadata.st_size > 32 * 1024
+          ):
+              raise SystemExit("mobile/config/staging.json is not one bounded regular file")
+          flags = os.O_RDONLY
+          if hasattr(os, "O_NOFOLLOW"):
+              flags |= os.O_NOFOLLOW
+          descriptor = os.open(source, flags)
+          try:
+              before = os.fstat(descriptor)
+              chunks = []
+              remaining = 32 * 1024 + 1
+              while remaining > 0:
+                  chunk = os.read(descriptor, min(64 * 1024, remaining))
+                  if not chunk:
+                      break
+                  chunks.append(chunk)
+                  remaining -= len(chunk)
+              data = b"".join(chunks)
+              after = os.fstat(descriptor)
+          finally:
+              os.close(descriptor)
+          current = os.lstat(source)
+          identity = lambda value: (
+              value.st_dev,
+              value.st_ino,
+              value.st_size,
+              value.st_mtime_ns,
+              value.st_ctime_ns,
+          )
+          if (
+              identity(metadata) != identity(before)
+              or identity(before) != identity(after)
+              or identity(after) != identity(current)
+              or len(data) != before.st_size
+          ):
+              raise SystemExit("mobile/config/staging.json changed while it was read")
+          config = json.loads(
+              data.decode("utf-8"),
+              object_pairs_hook=reject_duplicate_pairs,
+              parse_constant=reject_nonfinite_constant,
+          )
+          if config.get("PAKPERK_ENV") != "staging":
+              raise SystemExit("mobile/config/staging.json must identify staging")
+          if config.get("PAKPERK_FULLTEXT_POLICY") != "strict":
+              raise SystemExit("staging mobile config must use strict full-text policy")
+          api_origin = config.get("PAKPERK_API_BASE_URL")
+          issuer = config.get("PAKPERK_OIDC_ISSUER_URL")
+          client_id = config.get("PAKPERK_OIDC_CLIENT_ID")
+          for label, value, allow_path in (
+              ("staging API origin", api_origin, False),
+              ("staging OIDC issuer", issuer, True),
+          ):
+              if not isinstance(value, str):
+                  raise SystemExit(f"{label} is unavailable")
+              parsed = urllib.parse.urlsplit(value)
+              try:
+                  port = parsed.port
+              except ValueError as error:
+                  raise SystemExit(f"{label} has an invalid port") from error
+              if (
+                  parsed.scheme != "https"
+                  or not parsed.hostname
+                  or parsed.username is not None
+                  or parsed.password is not None
+                  or parsed.query
+                  or parsed.fragment
+                  or (port is not None and not 1 <= port <= 65535)
+                  or (not allow_path and parsed.path not in {"", "/"})
+              ):
+                  raise SystemExit(f"{label} is not an exact safe HTTPS coordinate")
+          if not isinstance(client_id, str) or re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", client_id) is None:
+              raise SystemExit("staging OIDC client ID is unavailable or invalid")
+          with destination.open("a", encoding="utf-8") as output:
+              output.write(f"STAGING_API_ORIGIN={api_origin}\n")
+              output.write(f"STAGING_OIDC_ISSUER={issuer}\n")
+              output.write(f"STAGING_OIDC_CLIENT_ID={client_id}\n")
+          PY
+          python3 -I - mobile/pubspec.yaml "$GITHUB_ENV" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          source, destination = map(pathlib.Path, sys.argv[1:])
+          matches = [
+              re.fullmatch(
+                  r"version: ((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]{1,32})?)\+([1-9][0-9]{0,9})",
+                  line,
+              )
+              for line in source.read_text(encoding="utf-8").splitlines()
+              if line.startswith("version:")
+          ]
+          if len(matches) != 1 or matches[0] is None:
+              raise SystemExit("mobile/pubspec.yaml must contain one bounded release version")
+          match = matches[0]
+          assert match is not None
+          with destination.open("a", encoding="utf-8") as output:
+              output.write(f"PAKPERK_APP_VERSION={match.group(1)}\n")
+              output.write(f"PAKPERK_BUILD_NUMBER={match.group(2)}\n")
+          PY
+
+      - name: Verify protected macOS runner and signed candidate manifest
+        id: candidate
+        shell: bash
+        run: |
+          if [[ "$(uname -s)" != "Darwin" ]]; then
+            echo "Protected mobile acceptance requires a macOS runner." >&2
+            exit 2
+          fi
+          for tool in python3 git xcrun; do
+            if [[ "$(command -v "$tool")" != "/usr/bin/$tool" ]]; then
+              echo "A required protected-runner tool did not resolve to /usr/bin." >&2
+              exit 2
+            fi
+          done
+          python3 -I - <<'PY'
+          import sys
+
+          if sys.version_info < (3, 9):
+              raise SystemExit("protected mobile acceptance requires Python 3.9 or newer")
+          PY
+          candidate_digest="${CANDIDATE_ID#sha256:}"
+          provenance_digest="${PROVENANCE_ID#sha256:}"
+          runner_session_digest="${RUNNER_SESSION_ID#sha256:}"
+          candidate_manifest="/opt/pakperk/mobile-candidates/$candidate_digest.json"
+          provenance_manifest="/opt/pakperk/mobile-release-provenance/$provenance_digest.json"
+          runner_session_manifest="/opt/pakperk/mobile-runner-sessions/$runner_session_digest.json"
+          binding_dir="$RUNNER_TEMP/pakperk-mobile-candidate-binding"
+          candidate_binding="$binding_dir/candidate-binding.json"
+          runner_session_binding="$binding_dir/runner-session-binding.json"
+          umask 077
+          mkdir "$binding_dir"
+          python3 -I scripts/validate_mobile_acceptance_evidence.py validate-candidate \
+            --candidate-manifest "$candidate_manifest" \
+            --provenance-manifest "$provenance_manifest" \
+            --runner-session-manifest "$runner_session_manifest" \
+            --source-revision "$REQUESTED_REVISION" \
+            --candidate-id "$CANDIDATE_ID" \
+            --provenance-id "$PROVENANCE_ID" \
+            --runner-session-id "$RUNNER_SESSION_ID" \
+            --app-version "$PAKPERK_APP_VERSION" \
+            --build-number "$PAKPERK_BUILD_NUMBER" \
+            --android-signer-sha256 "$ANDROID_SIGNER_SHA256" \
+            --ios-team-id "$IOS_TEAM_ID" \
+            --ios-signer-sha256 "$IOS_SIGNER_SHA256" \
+            --binding-output "$candidate_binding" \
+            --session-binding-output "$runner_session_binding"
+          python3 -I - \
+            "$GITHUB_OUTPUT" \
+            "$candidate_manifest" \
+            "$provenance_manifest" \
+            "$runner_session_manifest" \
+            "$candidate_binding" \
+            "$runner_session_binding" <<'PY'
+          import datetime as dt
+          import pathlib
+          import secrets
+          import sys
+
+          destination = pathlib.Path(sys.argv[1])
+          not_before = (
+              dt.datetime.now(dt.timezone.utc)
+              .replace(microsecond=0)
+              .isoformat()
+              .replace("+00:00", "Z")
+          )
+          with destination.open("a", encoding="utf-8") as output:
+              output.write(f"manifest={sys.argv[2]}\n")
+              output.write(f"provenance_manifest={sys.argv[3]}\n")
+              output.write(f"runner_session_manifest={sys.argv[4]}\n")
+              output.write(f"binding={sys.argv[5]}\n")
+              output.write(f"runner_session_binding={sys.argv[6]}\n")
+              output.write(f"challenge={secrets.token_hex(32)}\n")
+              output.write(f"not_before={not_before}\n")
+          PY
+
+      - name: Verify the pinned protected driver and device set
+        shell: bash
+        env:
+          ANDROID_GESTURE_DEVICE: ${{ secrets.PAKPERK_ANDROID_GESTURE_DEVICE_ID }}
+          ANDROID_THREE_BUTTON_DEVICE: ${{ secrets.PAKPERK_ANDROID_THREE_BUTTON_DEVICE_ID }}
+          IOS_HOME_INDICATOR_DEVICE: ${{ secrets.PAKPERK_IOS_HOME_INDICATOR_DEVICE_ID }}
+          IPAD_KEYBOARD_SECONDARY_SYNC_DEVICE: ${{ secrets.PAKPERK_IPAD_KEYBOARD_SECONDARY_SYNC_DEVICE_ID }}
+        run: |
+          driver=/opt/pakperk/bin/pakperk-mobile-acceptance-driver
+          python3 -I - "$driver" "$DRIVER_SHA256" <<'PY'
+          import hashlib
+          import os
+          import pathlib
+          import stat
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          expected = sys.argv[2]
+          for directory in (
+              pathlib.Path("/"),
+              pathlib.Path("/opt"),
+              pathlib.Path("/opt/pakperk"),
+              pathlib.Path("/opt/pakperk/bin"),
+          ):
+              metadata = os.lstat(directory)
+              if (
+                  not stat.S_ISDIR(metadata.st_mode)
+                  or metadata.st_uid != 0
+                  or metadata.st_mode & 0o022
+              ):
+                  raise SystemExit("a protected driver path parent is not immutable and root-owned")
+          flags = os.O_RDONLY
+          if hasattr(os, "O_CLOEXEC"):
+              flags |= os.O_CLOEXEC
+          if hasattr(os, "O_NOFOLLOW"):
+              flags |= os.O_NOFOLLOW
+          descriptor = os.open(path, flags)
+          try:
+              before = os.fstat(descriptor)
+              if (
+                  not stat.S_ISREG(before.st_mode)
+                  or before.st_uid != 0
+                  or before.st_mode & 0o022
+                  or before.st_nlink != 1
+                  or before.st_mode & 0o111 == 0
+              ):
+                  raise SystemExit("protected mobile acceptance driver is not an immutable root-owned executable")
+              digest_state = hashlib.sha256()
+              while True:
+                  chunk = os.read(descriptor, 64 * 1024)
+                  if not chunk:
+                      break
+                  digest_state.update(chunk)
+              after = os.fstat(descriptor)
+          finally:
+              os.close(descriptor)
+          current = os.lstat(path)
+          identity = lambda value: (
+              value.st_dev,
+              value.st_ino,
+              value.st_size,
+              value.st_mtime_ns,
+              value.st_ctime_ns,
+          )
+          if identity(before) != identity(after) or identity(after) != identity(current):
+              raise SystemExit("protected mobile acceptance driver changed while being verified")
+          digest = digest_state.hexdigest()
+          if digest != expected:
+              raise SystemExit("protected mobile acceptance driver digest mismatch")
+          PY
+          python3 -I - <<'PY'
+          import os
+          import re
+
+          names = (
+              "ANDROID_GESTURE_DEVICE",
+              "ANDROID_THREE_BUTTON_DEVICE",
+              "IOS_HOME_INDICATOR_DEVICE",
+              "IPAD_KEYBOARD_SECONDARY_SYNC_DEVICE",
+          )
+          values = []
+          for name in names:
+              value = os.environ.get(name, "")
+              if re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", value) is None:
+                  raise SystemExit("a protected physical-device ID is unavailable or invalid")
+              values.append(value)
+          if len(set(values)) != len(values):
+              raise SystemExit("protected physical-device IDs must be distinct")
+          PY
+
+      - name: Run complete protected physical-device acceptance
+        id: acceptance
+        continue-on-error: true
+        shell: bash
+        env:
+          CANDIDATE_MANIFEST: ${{ steps.candidate.outputs.manifest }}
+          PROVENANCE_MANIFEST: ${{ steps.candidate.outputs.provenance_manifest }}
+          RUNNER_SESSION_MANIFEST: ${{ steps.candidate.outputs.runner_session_manifest }}
+          CANDIDATE_BINDING: ${{ steps.candidate.outputs.binding }}
+          RUNNER_SESSION_BINDING: ${{ steps.candidate.outputs.runner_session_binding }}
+          RUN_CHALLENGE: ${{ steps.candidate.outputs.challenge }}
+          RUN_NOT_BEFORE: ${{ steps.candidate.outputs.not_before }}
+          RUN_ID_BINDING: ${{ github.run_id }}
+          RUN_ATTEMPT_BINDING: ${{ github.run_attempt }}
+          PAKPERK_ANDROID_GESTURE_DEVICE_ID: ${{ secrets.PAKPERK_ANDROID_GESTURE_DEVICE_ID }}
+          PAKPERK_ANDROID_THREE_BUTTON_DEVICE_ID: ${{ secrets.PAKPERK_ANDROID_THREE_BUTTON_DEVICE_ID }}
+          PAKPERK_IOS_HOME_INDICATOR_DEVICE_ID: ${{ secrets.PAKPERK_IOS_HOME_INDICATOR_DEVICE_ID }}
+          PAKPERK_IPAD_KEYBOARD_SECONDARY_SYNC_DEVICE_ID: ${{ secrets.PAKPERK_IPAD_KEYBOARD_SECONDARY_SYNC_DEVICE_ID }}
+          PAKPERK_PRIMARY_TEST_ACCOUNT: ${{ secrets.PAKPERK_PRIMARY_TEST_ACCOUNT }}
+          PAKPERK_PRIMARY_TEST_PASSWORD: ${{ secrets.PAKPERK_PRIMARY_TEST_PASSWORD }}
+          PAKPERK_SECONDARY_TEST_ACCOUNT: ${{ secrets.PAKPERK_SECONDARY_TEST_ACCOUNT }}
+          PAKPERK_SECONDARY_TEST_PASSWORD: ${{ secrets.PAKPERK_SECONDARY_TEST_PASSWORD }}
+          PAKPERK_REPORT_TARGET_ACCOUNT: ${{ secrets.PAKPERK_REPORT_TARGET_ACCOUNT }}
+        run: |
+          evidence_dir="$RUNNER_TEMP/pakperk-mobile-acceptance-evidence"
+          request="$RUNNER_TEMP/pakperk-mobile-acceptance-request.json"
+          evidence="$evidence_dir/mobile-acceptance-evidence.json"
+          private_dir="$RUNNER_TEMP/pakperk-mobile-acceptance-private"
+          driver_log="$private_dir/driver.log"
+          umask 077
+          if [[ -e "$request" || -L "$request" || -e "$private_dir" || -L "$private_dir" ]]; then
+            echo "Protected mobile acceptance temporary paths are not fresh." >&2
+            exit 1
+          fi
+          mkdir "$evidence_dir"
+          mkdir "$private_dir"
+          python3 -I - "$request" "$CANDIDATE_BINDING" "$RUNNER_SESSION_BINDING" <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
+
+          candidate_binding = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
+          runner_session_binding = json.loads(pathlib.Path(sys.argv[3]).read_text(encoding="utf-8"))
+          request = {
+              "schema": 2,
+              "source_revision": os.environ["REQUESTED_REVISION"],
+              "candidate_id": os.environ["CANDIDATE_ID"],
+              "candidate": candidate_binding,
+              "runner_session": runner_session_binding,
+              "app_version": os.environ["PAKPERK_APP_VERSION"],
+              "build_number": os.environ["PAKPERK_BUILD_NUMBER"],
+              "environment": "staging",
+              "api_origin": os.environ["STAGING_API_ORIGIN"],
+              "oidc_issuer": os.environ["STAGING_OIDC_ISSUER"],
+              "oidc_client_id": os.environ["STAGING_OIDC_CLIENT_ID"],
+              "run": {
+                  "github_run_id": os.environ["RUN_ID_BINDING"],
+                  "github_run_attempt": os.environ["RUN_ATTEMPT_BINDING"],
+                  "challenge": os.environ["RUN_CHALLENGE"],
+                  "not_before": os.environ["RUN_NOT_BEFORE"],
+              },
+              "device_identity_hash_contract": {
+                  "algorithm": "HMAC-SHA256",
+                  "key_source": "root-owned-runner-device-identity-key",
+                  "root_attestation_field": "physical_identities",
+                  "challenge": os.environ["RUN_CHALLENGE"],
+                  "distinct_across_roles": True,
+                  "retain_raw_device_identifiers": False,
+              },
+              "device_roles": [
+                  "android_gesture",
+                  "android_three_button",
+                  "ios_home_indicator",
+                  "ipad_keyboard_secondary_sync",
+              ],
+              "scenarios": [
+                  "cold_cache_launch",
+                  "vertical_20_papers_latency",
+                  "introduction_intent_only",
+                  "branch_state_restoration",
+                  "oidc_pkce_sign_in",
+                  "library_save_relaunch_sync",
+                  "two_device_library_sync",
+                  "comment_create_edit_delete",
+                  "report_and_block",
+                  "expired_token_refresh",
+                  "account_deletion_reauthentication",
+                  "offline_outbox_process_death_recovery",
+                  "reduced_motion_startup",
+                  "strict_full_text_policy",
+                  "root_navigation_safe_area",
+                  "hardware_keyboard_navigation",
+              ],
+          }
+          serialized = json.dumps(
+              request,
+              allow_nan=False,
+              ensure_ascii=True,
+              separators=(",", ":"),
+              sort_keys=True,
+          )
+          pathlib.Path(sys.argv[1]).write_text(serialized + "\n", encoding="ascii")
+          PY
+          : >"$driver_log"
+          chmod 0600 "$driver_log"
+          cleanup_driver_log() {
+            if [[ -e "$driver_log" || -L "$driver_log" ]]; then
+              rm -f "$driver_log"
+            fi
+            rmdir "$private_dir"
+          }
+          trap cleanup_driver_log EXIT
+          trap 'exit 130' HUP INT TERM
+          if ! (
+            ulimit -f 2048
+            unset GITHUB_ENV GITHUB_OUTPUT GITHUB_PATH GITHUB_STEP_SUMMARY RUNNER_TEMP
+            exec /opt/pakperk/bin/pakperk-mobile-acceptance-driver run \
+              --request "$request" \
+              --candidate-manifest "$CANDIDATE_MANIFEST" \
+              --provenance-manifest "$PROVENANCE_MANIFEST" \
+              --runner-session-manifest "$RUNNER_SESSION_MANIFEST" \
+              --evidence "$evidence"
+          ) >"$driver_log" 2>&1; then
+            echo "Protected mobile acceptance driver failed; its private log was discarded." >&2
+            exit 1
+          fi
+          echo "Protected physical-device acceptance completed."
+
+      - name: Validate and atomically package sanitized acceptance evidence
+        id: evidence-package
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          ACCEPTANCE_OUTCOME: ${{ steps.acceptance.outcome }}
+          CANDIDATE_MANIFEST: ${{ steps.candidate.outputs.manifest }}
+          PROVENANCE_MANIFEST: ${{ steps.candidate.outputs.provenance_manifest }}
+          RUNNER_SESSION_MANIFEST: ${{ steps.candidate.outputs.runner_session_manifest }}
+          RUN_CHALLENGE: ${{ steps.candidate.outputs.challenge }}
+          RUN_NOT_BEFORE: ${{ steps.candidate.outputs.not_before }}
+          RUN_ID_BINDING: ${{ github.run_id }}
+          RUN_ATTEMPT_BINDING: ${{ github.run_attempt }}
+        run: |
+          evidence_dir="$RUNNER_TEMP/pakperk-mobile-acceptance-evidence"
+          evidence="$evidence_dir/mobile-acceptance-evidence.json"
+          archive="$RUNNER_TEMP/pakperk-mobile-acceptance-$REQUESTED_REVISION.tar"
+          umask 077
+          if [[ "$ACCEPTANCE_OUTCOME" != "success" ]]; then
+            echo "The protected mobile acceptance driver did not complete successfully." >&2
+            exit 1
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$REQUESTED_REVISION" || "$(git rev-parse refs/remotes/origin/main)" != "$REQUESTED_REVISION" ]]; then
+            echo "The reviewed source identity changed before evidence validation." >&2
+            exit 1
+          fi
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo "Tracked source changed before evidence validation." >&2
+            exit 1
+          fi
+          workspace_state="$(git status --porcelain=v1 --untracked-files=all --ignored=matching)"
+          if [[ -n "$workspace_state" ]]; then
+            echo "The protected checkout contains untracked or ignored files." >&2
+            exit 1
+          fi
+          if [[ -e "$archive" || -L "$archive" ]]; then
+            echo "Mobile acceptance evidence archive path is not fresh." >&2
+            exit 1
+          fi
+          python3 -I - "$evidence_dir" "$evidence" <<'PY'
+          import os
+          import pathlib
+          import stat
+          import sys
+
+          evidence_dir = pathlib.Path(sys.argv[1])
+          evidence = pathlib.Path(sys.argv[2])
+          directory_metadata = os.lstat(evidence_dir)
+          if (
+              not stat.S_ISDIR(directory_metadata.st_mode)
+              or directory_metadata.st_uid != os.getuid()
+              or directory_metadata.st_mode & 0o077
+          ):
+              raise SystemExit("the evidence directory is not owner-only")
+          entries = list(os.scandir(evidence_dir))
+          if len(entries) != 1 or pathlib.Path(entries[0].path) != evidence:
+              raise SystemExit("the evidence directory contains data outside the closed artifact")
+          metadata = os.lstat(evidence)
+          if (
+              not stat.S_ISREG(metadata.st_mode)
+              or metadata.st_uid != os.getuid()
+              or metadata.st_mode & 0o077
+              or metadata.st_nlink != 1
+          ):
+              raise SystemExit("the evidence artifact is not one owner-only regular file")
+          PY
+          python3 -I scripts/validate_mobile_acceptance_evidence.py validate-and-package \
+            "$evidence" "$archive" \
+            --candidate-manifest "$CANDIDATE_MANIFEST" \
+            --provenance-manifest "$PROVENANCE_MANIFEST" \
+            --runner-session-manifest "$RUNNER_SESSION_MANIFEST" \
+            --source-revision "$REQUESTED_REVISION" \
+            --candidate-id "$CANDIDATE_ID" \
+            --provenance-id "$PROVENANCE_ID" \
+            --runner-session-id "$RUNNER_SESSION_ID" \
+            --driver-sha256 "$DRIVER_SHA256" \
+            --app-version "$PAKPERK_APP_VERSION" \
+            --build-number "$PAKPERK_BUILD_NUMBER" \
+            --api-origin "$STAGING_API_ORIGIN" \
+            --oidc-issuer "$STAGING_OIDC_ISSUER" \
+            --oidc-client-id "$STAGING_OIDC_CLIENT_ID" \
+            --android-signer-sha256 "$ANDROID_SIGNER_SHA256" \
+            --ios-team-id "$IOS_TEAM_ID" \
+            --ios-signer-sha256 "$IOS_SIGNER_SHA256" \
+            --run-id "$RUN_ID_BINDING" \
+            --run-attempt "$RUN_ATTEMPT_BINDING" \
+            --run-challenge "$RUN_CHALLENGE" \
+            --not-before "$RUN_NOT_BEFORE" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Verify packaged archive immediately before upload
+        id: archive-verify
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          PACKAGE_OUTCOME: ${{ steps.evidence-package.outcome }}
+          ARCHIVE_SHA256: ${{ steps.evidence-package.outputs.archive_sha256 }}
+        run: |
+          archive="$RUNNER_TEMP/pakperk-mobile-acceptance-$REQUESTED_REVISION.tar"
+          if [[ "$PACKAGE_OUTCOME" != "success" ]]; then
+            echo "The acceptance archive was not packaged successfully." >&2
+            exit 1
+          fi
+          if ! [[ "$ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "The packaged acceptance archive digest is unavailable or invalid." >&2
+            exit 1
+          fi
+          python3 -I scripts/validate_mobile_acceptance_evidence.py verify-archive \
+            "$archive" \
+            --expected-sha256 "$ARCHIVE_SHA256"
+
+      - name: Upload exact-source protected mobile acceptance evidence
+        id: evidence-upload
+        if: steps.evidence-package.outcome == 'success' && steps.archive-verify.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: protected-mobile-acceptance-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.evidence-package.outputs.archive_sha256 }}
+          path: ${{ runner.temp }}/pakperk-mobile-acceptance-${{ github.sha }}.tar
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Enforce protected mobile acceptance result
+        if: always()
+        shell: bash
+        env:
+          ACCEPTANCE_OUTCOME: ${{ steps.acceptance.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.evidence-package.outcome }}
+          ARCHIVE_VERIFY_OUTCOME: ${{ steps.archive-verify.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.evidence-upload.outcome }}
+          ARCHIVE_SHA256: ${{ steps.evidence-package.outputs.archive_sha256 }}
+          UPLOADED_ARTIFACT_DIGEST: ${{ steps.evidence-upload.outputs.artifact-digest }}
+        run: |
+          if [[ "$ACCEPTANCE_OUTCOME" != "success" || "$PACKAGE_OUTCOME" != "success" || "$ARCHIVE_VERIFY_OUTCOME" != "success" || "$UPLOAD_OUTCOME" != "success" ]]; then
+            echo "Protected mobile acceptance or its exact-source evidence failed." >&2
+            exit 1
+          fi
+          if ! [[ "$ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ && "$UPLOADED_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Protected mobile acceptance archive digest binding is incomplete." >&2
+            exit 1
+          fi
+          echo "Validated protected acceptance archive SHA-256: $ARCHIVE_SHA256"
+          echo "Uploaded artifact container SHA-256: $UPLOADED_ARTIFACT_DIGEST"

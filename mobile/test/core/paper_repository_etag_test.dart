@@ -5,6 +5,7 @@ import 'package:pakperk/core/api/feed_http_result.dart';
 import 'package:pakperk/core/api/request_cancellation.dart';
 import 'package:pakperk/core/cache/demo_asset_store.dart';
 import 'package:pakperk/core/cache/feed_cache_persistence.dart';
+import 'package:pakperk/core/cache/feed_prefetch_config.dart';
 import 'package:pakperk/core/content_policy.dart';
 import 'package:pakperk/core/models/connections.dart';
 import 'package:pakperk/core/models/introduction.dart';
@@ -329,7 +330,7 @@ class _ConditionalApiClient extends ApiClient {
   Future<FeedHttpResult> getFeedConditional({
     String? category,
     String? cursor,
-    int limit = 20,
+    int limit = FeedPrefetchConfig.defaultRemotePageSize,
     String? ifNoneMatch,
     RequestCancellation? cancellation,
   }) async {
@@ -342,7 +343,7 @@ class _ConditionalApiClient extends ApiClient {
   Future<FeedPage> getFeed({
     String? category,
     String? cursor,
-    int limit = 20,
+    int limit = FeedPrefetchConfig.defaultRemotePageSize,
     RequestCancellation? cancellation,
   }) => throw StateError('Conditional cache must use conditional transport.');
 }

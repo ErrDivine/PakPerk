@@ -1,7 +1,8 @@
 import 'dart:async';
 
-import 'package:pakperk/core/cache/local_store.dart';
 import 'package:pakperk/core/api/request_cancellation.dart';
+import 'package:pakperk/core/cache/feed_prefetch_config.dart';
+import 'package:pakperk/core/cache/local_store.dart';
 import 'package:pakperk/core/models/arxiv_identifier.dart';
 import 'package:pakperk/core/models/chat.dart';
 import 'package:pakperk/core/models/connections.dart';
@@ -255,12 +256,15 @@ class FakePaperDataSource implements PaperDataSource {
   bool offline = false;
   DataOrigin contentOrigin = DataOrigin.network;
   Completer<RepositoryValue<FeedPage>>? networkFeedCompleter;
+  Completer<RepositoryValue<FeedPage>>? cachedFeedCompleter;
   Completer<RepositoryValue<PaperSummary>>? paperByArxivCompleter;
   Completer<void>? cacheFeedCompleter;
   FeedPage? cachedFeed;
   FeedPage? networkFeed;
   final List<FeedPage> cachedFeedWrites = [];
   final List<bool> cachedFeedReplaceFlags = [];
+  final List<int> cachedFeedLimits = [];
+  final List<int> feedLimits = [];
   RequestCancellation? lastFeedCancellation;
   RequestCancellation? lastPaperCancellation;
   RequestCancellation? lastPaperByArxivCancellation;
@@ -285,21 +289,29 @@ class FakePaperDataSource implements PaperDataSource {
   }
 
   @override
-  Future<RepositoryValue<FeedPage>> getCachedFeed({String? category}) async =>
-      RepositoryValue(
-        value: cachedFeed ?? FeedPage(items: [paper ?? samplePaper]),
-        origin: DataOrigin.deviceCache,
-        offline: offline,
-      );
+  Future<RepositoryValue<FeedPage>> getCachedFeed({
+    String? category,
+    int limit = FeedPrefetchConfig.defaultRemotePageSize,
+  }) async {
+    cachedFeedLimits.add(limit);
+    final pending = cachedFeedCompleter;
+    if (pending != null) return pending.future;
+    return RepositoryValue(
+      value: cachedFeed ?? FeedPage(items: [paper ?? samplePaper]),
+      origin: DataOrigin.deviceCache,
+      offline: offline,
+    );
+  }
 
   @override
   Future<RepositoryValue<FeedPage>> getFeed({
     String? category,
     String? cursor,
-    int limit = 20,
+    int limit = FeedPrefetchConfig.defaultRemotePageSize,
     RequestCancellation? cancellation,
   }) async {
     feedCalls += 1;
+    feedLimits.add(limit);
     lastFeedCancellation = cancellation;
     if (networkFeedCompleter != null) {
       return networkFeedCompleter!.future;

@@ -138,9 +138,26 @@ headless suite. The manually dispatched `mobile-device-integration` workflow
 does the same on a protected self-hosted runner, reads the exact device ID only
 from the protected `PAKPERK_MOBILE_DEVICE_ID` environment secret, rejects
 emulators, and retains closed platform/version, frame, file-backed database,
-and verification-scope evidence. It explicitly records the
+and verification-scope evidence. Its dispatch is bound to an explicit reviewed
+`main`-tip source revision and confirmation phrase. It explicitly records the
 live OIDC, two-device, staging, account-deletion, store, and operational paths
 that it did not execute. Its generated `WidgetTester` pointer sequences cover
 Flutter's gesture and pagination paths but are not operator gestures or a
-representative performance window. The required manual/staging lane is
-documented in [`../docs/mobile-release.md`](../docs/mobile-release.md).
+representative performance window. The separate `protected mobile acceptance`
+workflow orchestrates those live paths through a SHA-256-pinned runner driver,
+a root-owned content-addressed signed-candidate manifest, a content-addressed
+signed-release provenance manifest, and a short-lived root-owned dedicated/
+ephemeral runner-session attestation. It takes staging coordinates from
+`config/staging.json`, requires the exact staging Android/iOS application ID,
+and covers four distinct physical installations: Android gesture, Android
+three-button, iPhone home-indicator, and physical-keyboard iPad/second sync. Its
+canonical schema-v2 artifact binds the run challenge, actual APK/IPA hashes,
+release-workflow identity, runner session, and challenge-keyed physical-device
+identity hashes recomputed from root-attested commitments to 16 ordered
+scenarios, exact assertion IDs, and closed integer metrics without retaining raw
+device serials or stable commitments. Packaging creates the final tar
+exclusively, binds its digest, and verifies it again immediately before upload.
+Its actual protected run, root-side manifest/session provisioning, staging
+tenant, test accounts, devices, and approval remain external release evidence.
+Both lanes are documented in
+[`../docs/mobile-release.md`](../docs/mobile-release.md).

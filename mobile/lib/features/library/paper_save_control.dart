@@ -17,9 +17,14 @@ import '../../core/telemetry/telemetry.dart';
 /// Connected control used once above the reader's stage PageView, so Abstract,
 /// Introduction, and Connections always observe the same Drift projection.
 class PaperSaveControl extends ConsumerStatefulWidget {
-  const PaperSaveControl({required this.paper, super.key});
+  const PaperSaveControl({
+    required this.paper,
+    this.compact = false,
+    super.key,
+  });
 
   final PaperSummary paper;
+  final bool compact;
 
   @override
   ConsumerState<PaperSaveControl> createState() => _PaperSaveControlState();
@@ -38,6 +43,7 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
     return PaperSaveControlView(
       state: state,
       busy: _committing || value.isLoading,
+      compact: widget.compact,
       onPressed: () => unawaited(_toggle(state)),
     );
   }
@@ -217,89 +223,131 @@ class PaperSaveControlView extends StatelessWidget {
     required this.state,
     required this.onPressed,
     this.busy = false,
+    this.compact = false,
     super.key,
   });
 
   final LibrarySavedState state;
   final VoidCallback? onPressed;
   final bool busy;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final saved = state.saved;
     final actionLabel = saved ? 'Remove from To Read' : 'Save to To Read';
     final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: colorScheme.surfaceContainerLow,
-      child: Semantics(
-        container: true,
-        excludeSemantics: true,
-        button: true,
-        enabled: onPressed != null && !busy,
-        label: actionLabel,
-        value: state.syncPending
-            ? 'Waiting to sync'
-            : state.issue?.message ?? (saved ? 'Saved' : 'Not saved'),
+    final icon = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 160),
+      child: busy || state.syncPending
+          ? SizedBox.square(
+              key: const ValueKey('save-sync-pending'),
+              dimension: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: colorScheme.primary,
+              ),
+            )
+          : Icon(
+              saved ? Icons.bookmark : Icons.bookmark_outline,
+              key: ValueKey(saved ? 'saved' : 'not-saved'),
+              size: 22,
+              color: state.issue == null
+                  ? colorScheme.primary
+                  : colorScheme.error,
+            ),
+    );
+    final action = Semantics(
+      container: true,
+      excludeSemantics: true,
+      button: true,
+      enabled: onPressed != null && !busy,
+      label: actionLabel,
+      value: state.syncPending
+          ? 'Waiting to sync'
+          : state.issue?.message ?? (saved ? 'Saved' : 'Not saved'),
+      child: Tooltip(
+        message: actionLabel,
+        excludeFromSemantics: true,
         child: InkWell(
           key: const ValueKey('paper-save-control'),
           onTap: busy ? null : onPressed,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 48),
+            constraints: BoxConstraints(minHeight: compact ? 56 : 48),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 160),
-                    child: busy || state.syncPending
-                        ? SizedBox.square(
-                            key: const ValueKey('save-sync-pending'),
-                            dimension: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: colorScheme.primary,
-                            ),
-                          )
-                        : Icon(
-                            saved ? Icons.bookmark : Icons.bookmark_outline,
-                            key: ValueKey(saved ? 'saved' : 'not-saved'),
-                            size: 22,
-                            color: state.issue == null
-                                ? colorScheme.primary
-                                : colorScheme.error,
-                          ),
-                  ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      saved ? 'Saved to To Read' : 'Save to To Read',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: state.issue == null
-                            ? colorScheme.onSurface
-                            : colorScheme.error,
-                      ),
-                    ),
-                  ),
-                  if (state.issue != null) ...[
-                    const SizedBox(width: 8),
-                    Tooltip(
-                      message: state.issue!.message,
-                      child: Icon(
-                        Icons.error_outline,
-                        size: 20,
-                        color: colorScheme.error,
-                      ),
-                    ),
-                  ],
-                ],
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 4 : 16,
+                vertical: compact ? 8 : 6,
               ),
+              child: compact
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            icon,
+                            if (state.issue != null) ...[
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.error_outline,
+                                size: 20,
+                                color: colorScheme.error,
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          saved ? 'Saved' : 'Save',
+                          key: const ValueKey('paper-save-label'),
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                color: state.issue == null
+                                    ? colorScheme.onSurface
+                                    : colorScheme.error,
+                              ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        icon,
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            saved ? 'Saved to To Read' : 'Save to To Read',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(
+                                  color: state.issue == null
+                                      ? colorScheme.onSurface
+                                      : colorScheme.error,
+                                ),
+                          ),
+                        ),
+                        if (state.issue != null) ...[
+                          const SizedBox(width: 8),
+                          Tooltip(
+                            message: state.issue!.message,
+                            child: Icon(
+                              Icons.error_outline,
+                              size: 20,
+                              color: colorScheme.error,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
             ),
           ),
         ),
       ),
     );
+    if (compact) return action;
+    return Material(color: colorScheme.surfaceContainerLow, child: action);
   }
 }

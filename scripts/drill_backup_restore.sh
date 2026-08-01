@@ -1,29 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
-ledger_record_count_matches() {
-  local expected="$1"
-  jq -e --argjson expected "$expected" '.verified_records == $expected'
-}
+project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+helper="$project_dir/scripts/restore_drill_evidence.py"
 
 run_self_test() {
-  command -v jq >/dev/null 2>&1 || {
-    echo "Restore drill self-test requires jq." >&2
-    return 2
-  }
-  printf '%s\n' '{"verified_records":0}' | ledger_record_count_matches 0 >/dev/null
-  printf '%s\n' '{"verified_records":7}' | ledger_record_count_matches 7 >/dev/null
-  if printf '%s\n' '{"verified_records":0}' | \
-    ledger_record_count_matches 1 >/dev/null 2>&1; then
-    echo "Empty ledger unexpectedly matched a nonzero inventory." >&2
-    return 1
-  fi
-  if printf '%s\n' '{"verified_records":7}' | \
-    ledger_record_count_matches 0 >/dev/null 2>&1; then
-    echo "Nonempty ledger unexpectedly matched a zero inventory." >&2
-    return 1
-  fi
-  echo "Restore drill ledger-count regressions passed."
+  PYTHONDONTWRITEBYTECODE=1 python3 -I -B \
+    "$project_dir/scripts/test_drill_backup_restore.py"
 }
 
 if [[ "${1:-}" == "--self-test" ]]; then
@@ -39,7 +23,7 @@ if [[ $# -ne 0 ]]; then
   exit 2
 fi
 
-required_commands=(jq psql python3 shasum)
+required_commands=(git psql python3)
 for command_name in "${required_commands[@]}"; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "Restore drill requires $command_name." >&2
@@ -52,18 +36,29 @@ done
 : "${PAKPERK_RESTORE_DRILL_DATABASE:?Set the exact restored database name.}"
 : "${PAKPERK_RESTORE_DRILL_MARKER:?Set the expiring guard marker installed in the restored database.}"
 : "${PAKPERK_RESTORE_DRILL_EVIDENCE_DIR:?Set a new absolute evidence directory.}"
-: "${PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_RECORDS:?Set the exact record count from the immutable pre-restore ledger inventory.}"
+: "${PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_RECORDS:?Set the exact record count from the protected pre-restore ledger inventory.}"
 : "${PAKPERK_RESTORE_DRILL_CONFIRM:?Explicit non-production confirmation is required.}"
+: "${PAKPERK_RESTORE_DRILL_SOURCE_REVISION:?Set the reviewed full source revision.}"
+: "${PAKPERK_RESTORE_DRILL_WORKER_SHA256:?Set the reviewed deletion-worker sha256 digest.}"
+: "${PAKPERK_RESTORE_DRILL_BACKUP_ID:?Set the protected source backup identifier.}"
+: "${PAKPERK_RESTORE_DRILL_RECOVERY_POINT:?Set the restored recovery point as RFC 3339 UTC.}"
+: "${PAKPERK_RESTORE_DRILL_RPO_SECONDS:?Set the attested recovery-point result in seconds.}"
+: "${PAKPERK_RESTORE_DRILL_RTO_SECONDS:?Set the attested recovery-time result in seconds.}"
+: "${PAKPERK_RESTORE_DRILL_ATTESTATION:?Set the absolute protected restore-attestation path.}"
+: "${PAKPERK_RESTORE_DRILL_ATTESTATION_SHA256:?Set the separately recorded restore-attestation digest.}"
 
 phase="${PAKPERK_RESTORE_DRILL_PHASE:-reapply}"
 environment="${APP_ENV:-}"
 ledger_environment="${ACCOUNT_DELETION_LEDGER_ENVIRONMENT_ID:-}"
 expected_migration="${PAKPERK_RESTORE_DRILL_EXPECTED_MIGRATION:-10}"
 expected_ledger_records="$PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_RECORDS"
-worker_bin="$PAKPERK_DELETION_WORKER_BIN"
 database_name="$PAKPERK_RESTORE_DRILL_DATABASE"
 marker="$PAKPERK_RESTORE_DRILL_MARKER"
 evidence_dir="$PAKPERK_RESTORE_DRILL_EVIDENCE_DIR"
+source_revision="$PAKPERK_RESTORE_DRILL_SOURCE_REVISION"
+expected_worker_sha256="$PAKPERK_RESTORE_DRILL_WORKER_SHA256"
+attestation_path="$PAKPERK_RESTORE_DRILL_ATTESTATION"
+attestation_sha256="$PAKPERK_RESTORE_DRILL_ATTESTATION_SHA256"
 
 if [[ "$PAKPERK_RESTORE_DRILL_CONFIRM" != "isolated-nonproduction-restore" ]]; then
   echo "PAKPERK_RESTORE_DRILL_CONFIRM must equal isolated-nonproduction-restore." >&2
@@ -81,10 +76,6 @@ if [[ "$phase" != reapply && "$phase" != finalize ]]; then
   echo "PAKPERK_RESTORE_DRILL_PHASE must be reapply or finalize." >&2
   exit 2
 fi
-if [[ "$worker_bin" != /* || ! -x "$worker_bin" ]]; then
-  echo "PAKPERK_DELETION_WORKER_BIN must be an executable absolute path." >&2
-  exit 2
-fi
 if ! [[ "$database_name" =~ ^[A-Za-z0-9_-]{1,63}$ ]] || \
    ! [[ "$marker" =~ ^[A-Za-z0-9._:-]{8,128}$ ]] || \
    ! [[ "$expected_migration" =~ ^[1-9][0-9]*$ ]]; then
@@ -96,59 +87,117 @@ if ! [[ "$expected_ledger_records" =~ ^(0|[1-9][0-9]{0,15})$ ]] || \
   echo "Expected ledger records must be a non-negative JSON-safe integer." >&2
   exit 2
 fi
-if [[ "$evidence_dir" != /* || -e "$evidence_dir" || -L "$evidence_dir" ]]; then
-  echo "Evidence path must be a new, absolute, non-symlink path." >&2
+if ! [[ "$source_revision" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "PAKPERK_RESTORE_DRILL_SOURCE_REVISION must be a full lowercase Git SHA." >&2
   exit 2
 fi
-install -d -m 0700 "$evidence_dir"
+if ! [[ "$expected_worker_sha256" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+   ! [[ "$attestation_sha256" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+  echo "Restore drill artifact digests must use sha256:<lowercase-hex>." >&2
+  exit 2
+fi
+if [[ "$attestation_path" != /* || "$evidence_dir" != /* || -e "$evidence_dir" || -L "$evidence_dir" ]]; then
+  echo "Attestation and fresh evidence paths must be absolute; evidence must not exist." >&2
+  exit 2
+fi
+if [[ "$phase" == finalize ]]; then
+  prior_reapply_content_id="${PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_CONTENT_ID:-}"
+  if ! [[ "$prior_reapply_content_id" =~ ^pakperk-restore-evidence-v1:sha256:[0-9a-f]{64}$ ]]; then
+    echo "Finalize requires the externally anchored reapply evidence content ID." >&2
+    exit 2
+  fi
+elif [[ -n "${PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_CONTENT_ID:-}" ]]; then
+  echo "The prior reapply content ID is valid only during finalize." >&2
+  exit 2
+fi
+
+staging_dir=""
+package_published=0
+drill_succeeded=0
+cleanup_stage() {
+  if [[ -n "$staging_dir" ]]; then
+    python3 -I -B "$helper" cleanup "$staging_dir" >/dev/null 2>&1 || true
+  fi
+  if [[ "$package_published" == 1 && "$drill_succeeded" != 1 ]]; then
+    python3 -I -B "$helper" remove-package "$evidence_dir" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup_stage EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
+
+if ! python3 -I -B "$helper" check-source "$project_dir"; then
+  echo "Restore drill source verification failed." >&2
+  exit 1
+fi
+if ! staging_dir="$(python3 -I -B "$helper" prepare)" || [[ -z "$staging_dir" ]]; then
+  echo "Restore drill protected-input verification failed." >&2
+  exit 1
+fi
 
 export PGAPPNAME="pakperk-restore-drill-$phase"
+export PGOPTIONS="-c search_path=pg_catalog,public"
 psql_value() {
-  psql "$DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 \
-    --tuples-only --no-align --command "$1"
+  psql --dbname="$DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 \
+    --tuples-only --no-align --command "$1" 2>/dev/null
+}
+database_failure() {
+  echo "Restore drill database verification failed." >&2
+  exit 1
 }
 
-actual_database="$(psql_value 'SELECT current_database()')"
+actual_database="$(psql_value 'SELECT pg_catalog.current_database()')" || database_failure
 if [[ "$actual_database" != "$database_name" ]]; then
-  echo "Connected database does not match PAKPERK_RESTORE_DRILL_DATABASE." >&2
-  exit 1
+  database_failure
 fi
 
-# Operators install this one-row guard only after restoring into an isolated
-# target. Its short expiry prevents a stale database from becoming a future
-# drill target by accident.
-guard_count="$(psql_value "
-  SELECT count(*)
-  FROM public.pakperk_restore_drill_guard
-  WHERE marker = '$marker'
-    AND expires_at > statement_timestamp()
-    AND expires_at <= statement_timestamp() + interval '24 hours'
-")"
-if [[ "$guard_count" != 1 ]]; then
-  echo "The isolated restore guard is absent, duplicate, stale, or too long-lived." >&2
-  exit 1
+if ! psql_value "
+  SELECT pg_catalog.json_build_object(
+    'database', pg_catalog.current_database(),
+    'marker', guard.marker,
+    'backup_id', guard.backup_id,
+    'recovery_point', pg_catalog.to_char(
+      guard.recovery_point AT TIME ZONE 'UTC',
+      'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'
+    ),
+    'restore_attestation_sha256', guard.restore_attestation_sha256
+  )::text
+  FROM public.pakperk_restore_drill_guard AS guard
+  WHERE guard.marker = '$marker'
+    AND guard.expires_at > pg_catalog.statement_timestamp()
+    AND guard.expires_at <= pg_catalog.statement_timestamp() + interval '24 hours'
+" | python3 -I -B "$helper" capture-raw "$staging_dir" "restore-guard.raw"; then
+  database_failure
+fi
+if ! python3 -I -B "$helper" validate-guard "$staging_dir" "restore-guard.raw"; then
+  database_failure
 fi
 
-other_sessions="$(psql_value "
-  SELECT count(*)
-  FROM pg_stat_activity
-  WHERE datname = current_database()
-    AND pid <> pg_backend_pid()
-    AND application_name NOT LIKE 'pakperk-restore-drill-%'
-")"
-if [[ "$other_sessions" != 0 ]]; then
-  echo "The restored database has non-drill sessions; isolate it before continuing." >&2
-  exit 1
+check_sessions() {
+  local other_sessions
+  other_sessions="$(psql_value "
+    SELECT pg_catalog.count(*)
+    FROM pg_catalog.pg_stat_activity
+    WHERE datname = pg_catalog.current_database()
+      AND pid <> pg_catalog.pg_backend_pid()
+  ")" || return 1
+  [[ "$other_sessions" == 0 ]]
+}
+if ! check_sessions; then
+  database_failure
 fi
 
-migration="$(psql_value 'SELECT COALESCE(max(version), 0) FROM _sqlx_migrations WHERE success')"
+migration="$(psql_value '
+  SELECT pg_catalog.coalesce(pg_catalog.max(version), 0)
+  FROM public._sqlx_migrations
+  WHERE success
+')" || database_failure
 if [[ "$migration" != "$expected_migration" ]]; then
-  echo "Restored schema migration does not match the reviewed release." >&2
-  exit 1
+  database_failure
 fi
 
 missing_required_tables="$(psql_value "
-  SELECT count(*)
+  SELECT pg_catalog.count(*)
   FROM (VALUES
     ('public.users'),
     ('public.papers'),
@@ -162,126 +211,114 @@ missing_required_tables="$(psql_value "
     ('public.account_deletion_ledger'),
     ('public.account_deletion_jobs')
   ) AS required(table_name)
-  WHERE to_regclass(required.table_name) IS NULL
-")"
+  WHERE pg_catalog.to_regclass(required.table_name) IS NULL
+")" || database_failure
 if [[ "$missing_required_tables" != 0 ]]; then
-  echo "The restore is missing one or more required application data classes." >&2
-  exit 1
+  database_failure
 fi
 
 database_snapshot() {
   psql_value "
-    SELECT json_build_object(
-      'migration', (SELECT COALESCE(max(version), 0) FROM _sqlx_migrations WHERE success),
-      'users', (SELECT count(*) FROM users),
-      'papers', (SELECT count(*) FROM papers),
-      'core_jobs', (SELECT count(*) FROM jobs),
-      'library_items', (SELECT count(*) FROM user_paper_library),
-      'library_operations', (SELECT count(*) FROM library_operations),
-      'paper_comments', (SELECT count(*) FROM paper_comments),
-      'comment_reports', (SELECT count(*) FROM comment_reports),
-      'user_reports', (SELECT count(*) FROM user_reports),
-      'user_blocks', (SELECT count(*) FROM user_blocks),
-      'ledger_records', (SELECT count(*) FROM account_deletion_ledger),
-      'deletion_jobs', (SELECT count(*) FROM account_deletion_jobs),
+    SELECT pg_catalog.json_build_object(
+      'migration', (SELECT pg_catalog.coalesce(pg_catalog.max(version), 0) FROM public._sqlx_migrations WHERE success),
+      'users', (SELECT pg_catalog.count(*) FROM public.users),
+      'papers', (SELECT pg_catalog.count(*) FROM public.papers),
+      'core_jobs', (SELECT pg_catalog.count(*) FROM public.jobs),
+      'library_items', (SELECT pg_catalog.count(*) FROM public.user_paper_library),
+      'library_operations', (SELECT pg_catalog.count(*) FROM public.library_operations),
+      'paper_comments', (SELECT pg_catalog.count(*) FROM public.paper_comments),
+      'comment_reports', (SELECT pg_catalog.count(*) FROM public.comment_reports),
+      'user_reports', (SELECT pg_catalog.count(*) FROM public.user_reports),
+      'user_blocks', (SELECT pg_catalog.count(*) FROM public.user_blocks),
+      'ledger_records', (SELECT pg_catalog.count(*) FROM public.account_deletion_ledger),
+      'deletion_jobs', (SELECT pg_catalog.count(*) FROM public.account_deletion_jobs),
       'unfinished_jobs', (
-        SELECT count(*) FROM account_deletion_jobs WHERE state <> 'completed'
+        SELECT pg_catalog.count(*) FROM public.account_deletion_jobs WHERE state <> 'completed'
       ),
       'terminal_jobs', (
-        SELECT count(*) FROM account_deletion_jobs WHERE state = 'failed_terminal'
+        SELECT pg_catalog.count(*) FROM public.account_deletion_jobs WHERE state = 'failed_terminal'
       ),
       'unsafe_restored_users', (
-        SELECT count(*)
-        FROM users AS u
-        JOIN account_deletion_ledger AS l
-          ON l.identity_fingerprint_key_id = u.identity_fingerprint_key_id
-         AND l.identity_fingerprint = u.identity_fingerprint
-        WHERE u.status <> 'deletion_pending'
+        SELECT pg_catalog.count(*)
+        FROM public.users AS users
+        JOIN public.account_deletion_ledger AS ledger
+          ON ledger.identity_fingerprint_key_id = users.identity_fingerprint_key_id
+         AND ledger.identity_fingerprint = users.identity_fingerprint
+        WHERE users.status <> 'deletion_pending'
       ),
       'missing_jobs', (
-        SELECT count(*)
-        FROM account_deletion_ledger AS l
-        LEFT JOIN account_deletion_jobs AS j USING (operation_id)
-        WHERE j.operation_id IS NULL
+        SELECT pg_catalog.count(*)
+        FROM public.account_deletion_ledger AS ledger
+        LEFT JOIN public.account_deletion_jobs AS jobs USING (operation_id)
+        WHERE jobs.operation_id IS NULL
       )
     )::text
   "
 }
 
-database_snapshot >"$evidence_dir/database-before.json"
-"$worker_bin" verify-ledger >"$evidence_dir/ledger-verification.json"
-if ! ledger_record_count_matches "$expected_ledger_records" \
-  <"$evidence_dir/ledger-verification.json" >/dev/null; then
-  echo "Verified ledger record count does not match the immutable inventory." >&2
+if ! database_snapshot | python3 -I -B "$helper" capture-raw \
+  "$staging_dir" "database-before.raw"; then
+  database_failure
+fi
+if ! python3 -I -B "$helper" validate-snapshot \
+  "$staging_dir" "database-before.raw" "database-before.json" before; then
+  database_failure
+fi
+
+if ! python3 -I -B "$helper" run-worker "$staging_dir" "$phase"; then
+  echo "Restore drill ledger verification failed." >&2
   exit 1
+fi
+if ! check_sessions; then
+  database_failure
 fi
 
 if [[ "$phase" == reapply ]]; then
-  PAKPERK_ADMIN_ACTOR="restore-drill:$marker" \
-    "$worker_bin" reapply-ledger >"$evidence_dir/ledger-reapply.json"
-  if ! ledger_record_count_matches "$expected_ledger_records" \
-    <"$evidence_dir/ledger-reapply.json" >/dev/null; then
-    echo "Reapplied ledger record count does not match the immutable inventory." >&2
-    exit 1
-  fi
-  jq -e '(.unchanged + .restored_and_queued + .requeued_resurrected_data +
-     .requeued_provider_reconciliation == .verified_records)' \
-    "$evidence_dir/ledger-reapply.json" >/dev/null
-  database_snapshot >"$evidence_dir/database-after-reapply.json"
-  jq -e \
-    --slurpfile before "$evidence_dir/database-before.json" \
-    --slurpfile verification "$evidence_dir/ledger-verification.json" '
-    .unsafe_restored_users == 0 and
-    .missing_jobs == 0 and
-    .ledger_records >= $verification[0].verified_records and
-    .papers == $before[0].papers and
-    .core_jobs == $before[0].core_jobs
-  ' "$evidence_dir/database-after-reapply.json" >/dev/null
+  final_raw_name="database-after-reapply.raw"
+  final_json_name="database-after-reapply.json"
+  final_position="after"
 else
-  database_snapshot >"$evidence_dir/database-final.json"
-  jq -e --slurpfile before "$evidence_dir/database-before.json" '
-    .unsafe_restored_users == 0 and
-    .missing_jobs == 0 and
-    .unfinished_jobs == 0 and
-    .terminal_jobs == 0 and
-    .papers == $before[0].papers and
-    .core_jobs == $before[0].core_jobs
-  ' "$evidence_dir/database-final.json" >/dev/null
+  final_raw_name="database-final.raw"
+  final_json_name="database-final.json"
+  final_position="final"
+fi
+if ! database_snapshot | python3 -I -B "$helper" capture-raw \
+  "$staging_dir" "$final_raw_name"; then
+  database_failure
+fi
+if ! python3 -I -B "$helper" validate-snapshot \
+  "$staging_dir" "$final_raw_name" "$final_json_name" "$final_position"; then
+  database_failure
 fi
 
-python3 - "$evidence_dir/drill-context.json" <<'PY'
-import datetime
-import json
-import os
-import pathlib
-import sys
+if ! python3 -I -B "$helper" check-source "$project_dir"; then
+  echo "Restore drill source verification failed." >&2
+  exit 1
+fi
+if ! python3 -I -B "$helper" build-context "$staging_dir" "$phase"; then
+  echo "Restore drill evidence context verification failed." >&2
+  exit 1
+fi
 
-pathlib.Path(sys.argv[1]).write_text(
-    json.dumps(
-        {
-            "database": os.environ["PAKPERK_RESTORE_DRILL_DATABASE"],
-            "environment": os.environ["APP_ENV"],
-            "ledger_environment": os.environ["ACCOUNT_DELETION_LEDGER_ENVIRONMENT_ID"],
-            "expected_ledger_records": int(
-                os.environ["PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_RECORDS"]
-            ),
-            "marker": os.environ["PAKPERK_RESTORE_DRILL_MARKER"],
-            "phase": os.environ.get("PAKPERK_RESTORE_DRILL_PHASE", "reapply"),
-            "recorded_at": datetime.datetime.now(datetime.timezone.utc)
-            .replace(microsecond=0)
-            .isoformat(),
-        },
-        indent=2,
-        sort_keys=True,
-    )
-    + "\n",
-    encoding="utf-8",
-)
-PY
+content_id="$(python3 -I -B "$helper" publish "$staging_dir" "$evidence_dir" "$phase")" || {
+  echo "Restore drill evidence publication failed." >&2
+  exit 1
+}
+package_published=1
+verified_content_id="$(python3 -I -B "$helper" verify-package "$evidence_dir")" || {
+  echo "Restore drill evidence re-verification failed." >&2
+  exit 1
+}
+if [[ "$verified_content_id" != "$content_id" ]]; then
+  echo "Restore drill evidence re-verification failed." >&2
+  exit 1
+fi
+if ! python3 -I -B "$helper" check-source "$project_dir"; then
+  echo "Restore drill source verification failed." >&2
+  exit 1
+fi
+drill_succeeded=1
 
-(
-  cd "$evidence_dir"
-  shasum -a 256 ./*.json >SHA256SUMS
-)
-chmod 0400 "$evidence_dir"/*.json "$evidence_dir/SHA256SUMS"
-echo "Restore drill $phase phase passed; immutable evidence is in $evidence_dir."
+printf '%s\n' "Restore drill $phase phase passed."
+printf '%s\n' "Evidence content ID: $content_id"
+printf '%s\n' "Anchor this content ID in the protected external release record."

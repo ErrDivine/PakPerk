@@ -1,0 +1,234 @@
+# Production v0.0 completion audit
+
+**Status:** repository implementation audited; public/store release not accepted
+
+**Audit date:** 2026-08-02
+
+**Authority:** the [canonical implementation plan](../pakperk_production_v0_0_implementation_plan.md)
+remains normative
+
+This document maps the canonical phase exit criteria, cross-phase acceptance
+scenarios, and Production Definition of Done to the evidence that exists in the
+repository and to the evidence that must still be produced outside it. It is an
+evidence index, not a replacement for the canonical plan, a release approval,
+or permission to enable production feature flags.
+
+## Classification and release boundary
+
+- **R — repository-proven:** the implementation and deterministic, integration,
+  contract, or reference-stack evidence exist in the repository.
+- **P — protected/external:** completion requires credentials, deployed systems,
+  protected environments, signed artifacts, physical devices, representative
+  traffic, or an immutable result that source control cannot manufacture.
+- **H — human approval:** completion requires accountable operator, legal,
+  privacy, content, security, UX, or store judgment.
+
+`R/P` means that the source implementation is present while the protected gate
+is still open. It never means that the canonical requirement passed in
+production. Checked-in workflow YAML, validators, fixtures, simulator runs,
+reference Keycloak/PostgreSQL exercises, and a workflow dispatch without its
+retrievable passing artifact are **R**, not **P**. A human statement, ticket
+number, mutable URL, or hash of an assertion is not **H** evidence.
+
+Phases 0–5 are accepted repository milestones under their scoped reports.
+Phase 6 has a dark-launch repository implementation, but its production and
+store exit criteria remain open. Consequently, Production v0.0 is **not
+complete** and public account/comment flags and store release must remain
+blocked until every applicable **P** and **H** item below has immutable evidence.
+This audit found no further locally implementable product-code or release-
+orchestration gap in the mapped criteria; that finding does not reduce or
+replace any protected execution or human approval.
+
+## Phase exit-criteria map
+
+The phase reports establish historical phase acceptance only. Later production
+gates do not retroactively reopen those repository milestones, and an accepted
+phase does not satisfy Sections 22 or 23 by itself.
+
+| Phase | Canonical exit criteria | Audit classification | Evidence boundary |
+| --- | --- | --- | --- |
+| 0 — baseline | Demo behavior and API fixtures unchanged; `scripts/check.sh` passes; OpenAPI covers existing routes; no account surface is public at the phase boundary | R | Accepted in the [Phase 0 report](phase-reports/phase-0.md). Current exact-source CI/security evidence is separately required for a release. |
+| 1 — shell/startup | Read/You and reader state restore; connection back navigation works; navigation does not overlap chat; cold/warm/reduced-motion paths pass; no false account capability | R, with P/H production UX confirmation | Accepted in the [Phase 1 report](phase-reports/phase-1.md). Signed physical launch, safe-area, motion, and usability evidence remains in the mobile gates below. |
+| 2 — Drift/prefetch | Migrated cache opens offline; sequential cache hits meet the target; rapid swipes share a request; bounds and saved-paper pin are enforced; prefetch never prepares | R, with P performance confirmation | Accepted in the [Phase 2 report](phase-reports/phase-2.md). The shared cache policy and accessible cache-miss skeleton are now covered by current mobile tests; signed-device measurements remain external. |
+| 3 — accounts | Guest reading survives IdP outage; reference user registration/sign-in works; tokens avoid general storage/logs; one refresh; invalid refresh preserves public cache; profile versioning; coherent feature disable | R/P | Accepted at the reference/repository boundary in the [Phase 3 report](phase-reports/phase-3.md). Release-tenant registration, redirects, callbacks, signing, and installed-device behavior remain protected. |
+| 4 — To Read | Immediate save/unsave; two clients converge; offline save drains; duplicate writes collapse; library never prepares; saved metadata survives eviction | R/P | Accepted at the deterministic/reference two-client boundary in the [Phase 4 report](phase-reports/phase-4.md). Two independently installed devices against protected staging remain required. |
+| 5 — comments | Safety controls precede enablement; blocking is immediate/persistent; reports are idempotent; suspended users cannot post; UGC is absent from telemetry; audited moderator action; creation kill preserves reads | R/P/H | Accepted as a default-off repository capability in the [Phase 5 report](phase-reports/phase-5.md). Target moderation infrastructure, staffing, canaries, and Trust & Safety approval remain required. |
+| 6 — release | Deletion completes and is monitored; restore reapplies deletion; no P0 issue remains; migration/rollback is exercised; startup/cache/crash targets pass; disclosures match reality; independent kill switches preserve reading | R/P/H — release exit not accepted | Repository implementation is recorded in the [Phase 6 report](phase-reports/phase-6.md) and [mobile Phase 6 report](phase-reports/phase-6-mobile.md). Every live, physical, signing, restore, policy, and store item is governed by the immutable-evidence inventory below. |
+
+## Section 22 cross-phase acceptance matrix
+
+No scenario is declared production-passed by this audit. The **R** column
+identifies behavior that can be trusted from the repository; the final column
+identifies what still prevents canonical acceptance.
+
+| Scenario | Repository-proven behavior | Classification and remaining evidence |
+| --- | --- | --- |
+| 22.1 Guest reader | Cached anonymous feed; stale cached abstract remains visible during revalidation; accessible paper-shaped cache-miss skeleton; 200-record bounded traversal with zero blank cards; Introduction prepares only after committed intent; exact Read/You reader restoration; guest comment reads; canonical arXiv action; offline Drift cache | R/P/H — fresh signed install, native launch continuity, controlled-latency physical traversal, OS-browser handoff, process-death offline relaunch, and visual-polish approval |
+| 22.2 Save from guest | Sign-in rationale; credential-free pending intent; exactly-once handoff; AppAuth/JIT provisioning boundary; optimistic star; To Read projection; idempotent duplicate callback/retry | R/P — release IdP and exact installed-candidate guest-to-auth-to-save flow |
+| 22.3 Cross-device library | Two logical clients converge through revision changes and tombstones; durable offline outbox and retry behavior | R/P — two distinct installed devices against the protected staging account |
+| 22.4 Comment lifecycle | Guest/auth/onboarding/rules gates; stable client request ID; exact replay; optimistic-version edit and stale conflict; repeat-safe delete and public disappearance; mobile, service, PostgreSQL, and disposable reference-stack evidence | R/P — exact signed candidate, release tenant, and target staging service |
+| 22.5 Safety | Separate comment report, user report, and block; repeat-safe report; immediate and durable filtering; audited hide/suspend/restore; creation kill preserves reads and safety actions | R/P/H — target moderator audience/allowlist, adapter credentials, live queues, alert/ticket canaries, staffed response targets, escalation exercise, and Trust & Safety approval |
+| 22.6 Credential expiry | One safe 401 refresh/replay; proactive and concurrent single-flight; invalid refresh returns to guest; public cache/reader state remains; account-owned data is cleared or detached | R/P — real release-IdP expiry and invalidation on the installed candidate |
+| 22.7 Account deletion | Consequence/recent-auth UI; immediate disablement; session/provider adapter; retry-safe worker and data purge; local cleanup; reference-provider E2E; independent ledger verification/reapply; fail-closed two-phase restore harness | R/P/H — real secret manager/provider, independent ledger, alert route, backup inventory, isolated PITR restore/replay, and privacy/recovery approvals |
+| 22.8 Strict content policy | Metadata/save/comments/canonical arXiv remain; prototype-derived caches and offline fallbacks are masked in mobile and backend tests | R/P/H — exact signed strict candidate and deployed backend plus qualified content-rights approval |
+
+The protected mobile workflow requires an exact `main` revision, root-imported
+content-addressed candidate and signed-release provenance manifests, a pinned
+external driver, a short-lived root-owned dedicated/ephemeral runner-session
+attestation, and four exact physical roles: Android gesture, Android
+three-button, iPhone home-indicator, and physical-keyboard iPad/second sync. Its
+schema-v2 artifact requires all 16 ordered scenarios with their exact role
+assignments, 70 ordered assertion IDs, 37 closed integer metrics, exact platform
+artifact/application/signer/team bindings, four challenge-keyed physical-
+identity hashes recomputed from distinct root-attested commitments, and a fresh
+run challenge/ID/attempt/time window. Its orchestration and validators are
+repository evidence. Only authenticated root-side provenance/session import and
+a passing protected artifact for the installed candidate, together with the
+environment approval, can satisfy the corresponding **P** rows. See the
+[mobile release runbook](mobile-release.md).
+
+## Section 23 Production Definition of Done
+
+### Product
+
+| Requirement | Audit classification | Open evidence |
+| --- | --- | --- |
+| Read/You shell is stable and intuitive | R/P/H | Signed-device navigation/restoration and accountable usability judgment |
+| Anonymous reading remains first-class | R/P | Deployed outage and installed offline paths |
+| Opening motion is polished, bounded, and accessible | R/P/H | Physical timing/continuity, reduced-motion checks, and visual approval |
+| Save/To Read works online, offline, and across devices | R/P | Protected two-device installed flow |
+| Public comments include complete safety controls | R/P/H | Protected moderation-readiness matrix and Trust & Safety approval |
+| Account page includes sign-out and deletion | R/P | Real-provider installed deletion flow |
+| Empty/loading/error/offline states are designed | R/P/H | Physical accessibility/visual review; repository feed skeleton closes the prior source gap |
+| No future communication feature is implied as available | R/H | Final product/store copy review; repository reviewer notes explicitly disclaim direct messaging/follows/presence |
+
+### Mobile engineering
+
+| Requirement | Audit classification | Open evidence |
+| --- | --- | --- |
+| Bulk cache is in Drift | R | None beyond exact-source CI |
+| Tokens are restricted to memory/platform secure storage | R/P | Signed-device platform storage and backup inspection |
+| OIDC uses system browser and PKCE | R/P | Release tenant, registered callback, and physical flow |
+| Auth refresh is single-flight | R | Protected expiry path remains part of Section 22.6 |
+| Prefetch never triggers preparation | R | None beyond exact-source CI |
+| Cache is bounded and saved papers are pinned | R/P | Signed-device size/cache-hit measurements |
+| Bottom navigation and contextual composers do not overlap | R/P | Android gesture/three-button and iOS home-indicator devices |
+| Light/dark/reduced-motion/text-scale paths pass | R/P/H | Physical matrix and visual/accessibility approval; compact Save/Comments/arXiv also has 320-pixel, 200% text, semantics, target-size, and keyboard-order tests |
+| Deep links and restoration pass | R/P | Deployed associations plus physical cold/warm links and callbacks |
+| Production flavors contain no secrets | R/P | Exact signed-artifact inspection and current secret/security scans |
+
+### Backend engineering
+
+| Requirement | Audit classification | Open evidence |
+| --- | --- | --- |
+| API is split into maintainable routes/middleware | R | None beyond exact-source CI/review |
+| OIDC JWT validation is strict | R/P | Release issuer/JWKS rotation and token-expiry exercise |
+| Authorization never trusts client user IDs | R | None beyond exact-source CI and protected abuse checks |
+| Library and comment writes are idempotent | R/P | Protected staging replay paths |
+| Shared rate limits work across instances | R/P | Deployed multi-replica/load evidence |
+| Comments are filtered, moderated, reportable, and blockable | R/P/H | Target moderation-readiness evidence |
+| Account deletion is idempotent and monitored | R/P/H | Target deletion E2E, live alerts, and privacy approval |
+| OpenAPI is generated and checked | R | Generated parity and base-compatibility gates must pass for the release revision |
+| Existing paper pipeline tests pass unchanged | R | Exact-source CI must remain green with no target-environment skip |
+| Full-text policy remains enforced | R/P/H | Signed/deployed strict candidate and qualified review |
+
+### Operations and security
+
+| Requirement | Audit classification | Open evidence |
+| --- | --- | --- |
+| Staging mirrors production auth and data flow | R/P | Actual deployed topology/config/image identities and end-to-end smoke evidence |
+| Migration job and expand/contract process exist | R/P | Source/process exists; staging execution and rollback result remain protected |
+| Backup and restore drill passed | R/P/H | Real isolated restore, RPO/RTO, deletion replay, and approvals |
+| Deletion ledger survives restore | R/P/H | Current-ledger inventory, reapply/finalize evidence, and privacy approval |
+| OTLP telemetry is live and redacted | R/P | Live sink, retention, redaction, replay, and receiver canaries |
+| Security/dependency/container scans pass | R/P/H | Current exact-source/image scans and approved disposition of every finding |
+| SBOM and license inventory exist | R/P | Generators/notices exist; exact protected image/mobile artifacts and checksums remain required |
+| Feature kill switches are tested | R/P | Repository behavior exists; dark-deployed independent switch exercise remains required |
+| Incident, moderation, and deletion runbooks exist | R/H | Runbooks exist; named staffed ownership and exercise approvals remain human |
+
+### Store and policy
+
+| Requirement | Audit classification | Open evidence |
+| --- | --- | --- |
+| Privacy policy is accurate | R/P/H | Exact deployed data/processors/retention, published version, and privacy/legal approval |
+| Terms and Community Guidelines are published | R/P/H | Public HTTPS responses, exact versions, and legal approval |
+| Support contact is published | R/P/H | Public route and monitored reachable contact with owner |
+| In-app report and block are functional | R/P | Exact signed candidate against staging |
+| In-app account deletion is functional | R/P | Exact signed candidate through real provider completion |
+| Web deletion request is functional | R/P | Public-edge route and real-provider completion/status path |
+| Data Safety/App Privacy disclosures match actual SDKs | R/P/H | Signed archive inventories, deployed processors, current questionnaires, and approvers |
+| Reviewer account/instructions are prepared | R/P/H | Sanitized exact-candidate notes and protected disposable-account lifecycle |
+| Full-text display/retention received appropriate review | R/P/H | Qualified approval bound to exact policy and candidate |
+| Package/build versions increase monotonically | R/P/H | Checked-in version gate plus both stores' private history and upload receipts |
+
+## Required immutable evidence for every open P/H gate
+
+Every protected evidence object must be stored in the approved immutable release
+system and be retrievable by its content ID. Unless a stricter closed workflow
+schema applies, its canonical manifest must include:
+
+- SHA-256 content ID of the manifest bytes and SHA-256 digests of every attached
+  artifact;
+- exact 40-character source revision, app version/build, Helm chart/app version,
+  and every deployed or candidate image/artifact digest in scope;
+- target environment and sanitized exact service/issuer/application identities;
+- UTC start/end window, result, measured assertions or sample counts, and explicit
+  failures or limitations;
+- tool, scanner, driver, policy, configuration, and workflow identities/digests;
+- accountable owner and approver roles, approval timestamp, and a protected
+  environment/store audit record bound to the manifest digest;
+- an explicit statement that credentials, tokens, cookies, device serials,
+  personal data, raw UGC, and unbounded logs are absent.
+
+An approval is valid only when the approver can retrieve and verify the exact
+manifest and artifacts. The following inventory is exhaustive for the remaining
+release gates identified by this audit.
+
+| Gate | Exact immutable evidence required | Owner/approval and reference |
+| --- | --- | --- |
+| Current CI and security | Exact revision; all required CI job outcomes; target-environment database/integration bodies with no unexplained skip; scanner names/versions and advisory-database timestamps; findings, exceptions, expiry, and artifact checksums | Release/security owners; [release runbook](runbooks/release.md) |
+| Protected image publication, SBOM, and licenses | Exact source; protected workflow approval; backend/site image repositories and OCI digests; scan results; CycloneDX and notices digests; provenance; verified `promotion-handoff.json` and `SHA256SUMS`; registry publication outcome | Release/security owners; [release runbook](runbooks/release.md) |
+| Dark deployment and staging/production parity | Rendered release-binding ConfigMap and values digest; actual Pod `imageID` values; chart/version; auth, database-role, NetworkPolicy, feature-map, retention, and secret-version identifiers; protected staging smoke results; platform approval | Platform/service/database owners; [release runbook](runbooks/release.md) |
+| Public edge and associations | Passing exact-source `public-edge-sha256:` artifact; target environment; promotion-handoff candidate ID; public-site source marker; HTTPS/TLS/HSTS/header/document/runtime/readiness results; deployed Android/Apple association identities; workflow approval; separate comparison of Pod image IDs to promotion handoff | Platform/release owners; [release runbook](runbooks/release.md#public-edge-technical-evidence) and [app-links runbook](mobile-app-links.md) |
+| Migration and rollback exercise | Source and migration-image digest; backup evidence ID; starting/ending schema and app versions; migration Job status/log digest; DDL-role proof; expand/compatibility/rollback-or-forward sequence; data-integrity checks; feature-switch states; UTC window and database/release approvals | Database and release owners; [release runbook](runbooks/release.md#expandcontract-deployment) |
+| Protected staging load | Closed aggregate JSON and checksum; exact source and deployment topology; scenario/sample counts; p50/p95/p99/error rates; configured thresholds/fault profile; database saturation/telemetry references; synthetic-fixture and cleanup result; protected workflow approval | Service/database/release owners, plus privacy/safety when authenticated; [load runbook](runbooks/backend-load-testing.md) |
+| Live telemetry, retention, and alerts | Collector/gateway/adapter image and config/policy digests; enabled rule IDs; receiver ownership; valid/hostile mobile probes; safe canary present and protected sentinels absent; live sink query; 30-day expiry test; agent restart replay/coverage; successful page/ticket canaries and UTC window | Platform/observability/privacy owners; [observability runbook](runbooks/observability.md) |
+| Account deletion E2E | Valid production-form `accountDeletionE2eId`; exact candidate/deployment/provider identities; recent-auth rejection then acceptance; request/operation ID in sanitized form; immediate disablement; session revocation; provider absence; application-data purge/pseudonymization counts; one signed external-ledger record/job; retry result; alert canary; real secret-manager/ledger/backup-inventory references | Privacy/on-call owner approval; [account-deletion runbook](runbooks/account-deletion.md) |
+| Backup/PITR and deletion replay | Valid externally anchored `restoreDrillId`; canonical protected attestation and digest; backup ID, recovery/latest-recoverable/observation timestamps; exact database guard; PostgreSQL/Keycloak/storage inventory; exact current ledger count; source and worker digest; schema version; content-addressed reapply and finalize packages with prior-content-ID binding; zero unfinished/terminal jobs and resurrected users; retained public-data counts; computed RPO/RTO; operator/change record | Database recovery and privacy approvals; [backup/restore runbook](runbooks/backup-restore.md) |
+| Moderation readiness | Valid `moderationReadinessId`; exact deployed candidate; operator issuer/audience/recent-auth/allowlist and rejection matrix; live comment/user-report/comment-report/block queues; inspect/hide/restore/resolve/suspend/reinstate audit UUIDs; kill-switch and high-risk/outage fallback; guest reads; alert/ticket canaries; staffed response targets and escalation result | Trust & Safety approval; [moderation runbook](runbooks/moderation.md#acceptance-and-production-readiness-evidence) |
+| Signed mobile candidate, IdP, and links | Protected Android AAB/APK and Apple IPA digests; signing/profile identities and expiry; upload-key and Play app-signing fingerprints; bundle/package/version/build; toolchain versions; SDK/minimum OS/API/alignment/entitlement/privacy-manifest results; native SBOM/notices/symbol/checksum digests; protected feature map; release OIDC registrations/redirects; deployed association checks | Mobile signing, identity, platform, and release approvals; [mobile release runbook](mobile-release.md) |
+| Protected physical mobile acceptance | Passing canonical schema-v2 `mobile-acceptance-evidence.json` and checksum for the exact root-imported candidate/provenance manifests and source; protected environment approval; short-lived root-owned runner-session attestation; pinned driver digest; fresh run challenge/ID/attempt/time binding; four distinct installation hashes and four challenge-keyed physical-identity hashes derived from distinct root-attested commitments for Android gesture, Android three-button, iPhone home-indicator, and physical-keyboard iPad/second-sync roles; all 16 ordered scenarios with exact role assignments, 70 assertion IDs, and 37 closed integer metric rules; exact platform artifact/application/signer/team and staging API/issuer/client bindings; sanitized-data markers | Mobile QA/release approval; [mobile release runbook](mobile-release.md) |
+| Mobile performance and crash window | Exact signed build and device/OS matrix; cold/warm first-readable-frame samples; opening duration; sequential cache-hit and blank-card counts; frame sample/window; aggregate privacy-reviewed crash denominator and source query/store report; at least 99.5% crash-free sessions; observation window and approver | Mobile QA/release/privacy owners; [mobile release runbook](mobile-release.md#telemetry-and-release-candidate-gates) |
+| Legal, privacy, support, and publication | Valid `legalReviewId`; exact published Privacy/Terms/Guidelines/Support versions and direct HTTPS checks; monitored support-contact result; actual enabled features, SDKs/processors, collection, retention, deletion/backup behavior, jurisdictions/contracts, and public URLs; reviewer identity/role, approval timestamp, and manifest digest | Privacy/legal owner; [privacy worksheet](store/mobile-privacy-review.md) and [release runbook](runbooks/release.md#release-evidence-binding-scope) |
+| Strict content rights | Valid `strictContentReviewId`; exact strict backend/mobile configuration and candidate; metadata/save/comments/arXiv availability; displayed/retained Introduction behavior; cache/offline masking results; actual retention/display policy; qualified reviewer decision, scope, date, and approval | Legal/content owner; [content policy](content-policy.md) and [UGC review](store/ugc-content-review.md) |
+| Reviewer flow | Valid `reviewerFlowId`; exact signed candidate; disposable verified-email account lifecycle and expiry owner without credentials in evidence; completed sanitized guest/sign-in/save/comment/report/block/deletion/web-deletion/strict-content steps; physical acceptance, deletion, SBOM, and policy evidence references; store-ready notes | Store release owner; [reviewer-notes template](store/reviewer-notes-template.md) |
+| Store submission and approval | App Store Connect/TestFlight and Play closed-track upload receipts; exact artifact digest/version/build; highest prior store versions and monotonic comparison; signed-archive SDK/privacy reports; completed current App Privacy, Data Safety, age-rating, deletion-URL, developer-identity, package/signing registrations; reviewer notes/account reference; review outcome and owner approvals | Store, privacy/legal, and mobile signing owners; [privacy worksheet](store/mobile-privacy-review.md), [UGC review](store/ugc-content-review.md), and [mobile release runbook](mobile-release.md#external-release-blockers) |
+
+The disposable `live comments acceptance` and `live account deletion` workflows
+remain valuable reference-stack evidence, but their classifications explicitly
+exclude target protected staging and they cannot supply
+`moderationReadinessId` or `accountDeletionE2eId`. Likewise, the restore harness
+proves a fail-closed mechanism, not that a provider backup was restored.
+
+## Evidence references
+
+- [Phase 0](phase-reports/phase-0.md), [Phase 1](phase-reports/phase-1.md),
+  [Phase 2](phase-reports/phase-2.md), [Phase 3](phase-reports/phase-3.md),
+  [Phase 4](phase-reports/phase-4.md), and [Phase 5](phase-reports/phase-5.md)
+  repository reports
+- [Phase 6 implementation/release-gate report](phase-reports/phase-6.md) and
+  [mobile Phase 6 evidence](phase-reports/phase-6-mobile.md)
+- [Release](runbooks/release.md), [account deletion](runbooks/account-deletion.md),
+  [backup/restore](runbooks/backup-restore.md),
+  [moderation](runbooks/moderation.md),
+  [observability](runbooks/observability.md),
+  [backend load](runbooks/backend-load-testing.md), and
+  [incident response](runbooks/incident-response.md) runbooks
+- [Mobile release](mobile-release.md), [mobile app links](mobile-app-links.md),
+  [content policy](content-policy.md), [privacy worksheet](store/mobile-privacy-review.md),
+  [UGC review](store/ugc-content-review.md), and
+  [reviewer-notes template](store/reviewer-notes-template.md)
+
+Until all applicable protected artifacts and approvals above are retrievable and
+bound to one exact release candidate, the authoritative outcome remains:
+**repository implementation present; public/store release not accepted**.

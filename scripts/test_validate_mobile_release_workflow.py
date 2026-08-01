@@ -3,15 +3,33 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 import pathlib
 import tempfile
+import textwrap
 import unittest
+from unittest import mock
 
 import validate_mobile_release_workflow as validator
 
 
 MOBILE_SOURCE = validator.WORKFLOW.read_text(encoding="utf-8")
 SECURITY_SOURCE = validator.SECURITY_WORKFLOW.read_text(encoding="utf-8")
+IOS_VERIFIER_SOURCE = validator.IOS_VERIFIER.read_text(encoding="utf-8")
+
+
+def _embedded_manifest_python() -> str:
+    step = validator._step_block(
+        MOBILE_SOURCE,
+        "Generate SBOM, notices, and immutable evidence hashes",
+        "test workflow",
+    )
+    marker = "          python3 - <<'PY'\n"
+    start = step.index(marker) + len(marker)
+    end = step.index("\n          PY", start)
+    return textwrap.dedent(step[start:end]) + "\n"
 
 
 def _move_step_after(source: str, moving_name: str, anchor_name: str) -> str:
@@ -35,15 +53,20 @@ def _move_step_after(source: str, moving_name: str, anchor_name: str) -> str:
 
 class MobileReleaseWorkflowValidationTests(unittest.TestCase):
     def _validate(
-        self, mobile: str = MOBILE_SOURCE, security: str = SECURITY_SOURCE
+        self,
+        mobile: str = MOBILE_SOURCE,
+        security: str = SECURITY_SOURCE,
+        ios_verifier: str = IOS_VERIFIER_SOURCE,
     ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
             mobile_path = root / "mobile-release.yml"
             security_path = root / "security.yml"
+            ios_verifier_path = root / "verify_ios_release_artifact.sh"
             mobile_path.write_text(mobile, encoding="utf-8")
             security_path.write_text(security, encoding="utf-8")
-            validator.validate(mobile_path, security_path)
+            ios_verifier_path.write_text(ios_verifier, encoding="utf-8")
+            validator.validate(mobile_path, security_path, ios_verifier_path)
 
     def _assert_mobile_tamper_rejected(self, original: str, replacement: str) -> None:
         self.assertIn(original, MOBILE_SOURCE)
@@ -55,8 +78,167 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self._validate(security=SECURITY_SOURCE.replace(original, replacement, 1))
 
+    def _assert_ios_verifier_tamper_rejected(
+        self, original: str, replacement: str
+    ) -> None:
+        self.assertIn(original, IOS_VERIFIER_SOURCE)
+        with self.assertRaises(RuntimeError):
+            self._validate(
+                ios_verifier=IOS_VERIFIER_SOURCE.replace(original, replacement, 1)
+            )
+
     def test_checked_in_contract_passes(self) -> None:
         self._validate()
+
+    def test_embedded_generator_emits_content_addressed_actual_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            artifacts = root / "artifacts"
+            evidence = root / "evidence"
+            artifacts.mkdir()
+            evidence.mkdir()
+            root.joinpath("symbols").mkdir()
+            root.joinpath("native-symbols").mkdir()
+            artifact_bytes = {
+                "candidate.aab": b"signed aab fixture",
+                "candidate.apk": b"signed apk fixture",
+                "candidate.ipa": b"signed ipa fixture",
+            }
+            for name, data in artifact_bytes.items():
+                artifacts.joinpath(name).write_bytes(data)
+            evidence.joinpath("android-upload-identity.txt").write_text(
+                "android_package=app.pakperk.pakperk.staging\n"
+                "android_version_name=0.2.0-staging\n"
+                "android_version_code=2\n"
+                f"android_upload_sha256={':'.join(['AA'] * 32)}\n",
+                encoding="utf-8",
+            )
+            evidence.joinpath("android-retained-digests.txt").write_text(
+                "android_aab_artifact_sha256="
+                + hashlib.sha256(artifact_bytes["candidate.aab"]).hexdigest()
+                + "\nandroid_apk_artifact_sha256="
+                + hashlib.sha256(artifact_bytes["candidate.apk"]).hexdigest()
+                + "\n",
+                encoding="utf-8",
+            )
+            evidence.joinpath("apple-installed-identity.txt").write_text(
+                "apple_bundle_id=app.pakperk.pakperk.staging\n"
+                "apple_version=0.2.0\n"
+                "apple_build=2\n"
+                "apple_team_id=PAKPERK001\n"
+                f"apple_signer_sha256={'b' * 64}\n"
+                "apple_ipa_sha256="
+                + hashlib.sha256(artifact_bytes["candidate.ipa"]).hexdigest()
+                + "\n",
+                encoding="utf-8",
+            )
+            config = root / "mobile-release-config.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "PAKPERK_ENV": "staging",
+                        "PAKPERK_FULLTEXT_POLICY": "strict",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            output = root / "github-output.txt"
+            summary = root / "github-summary.md"
+            environment = {
+                "RUNNER_TEMP": str(root),
+                "PAKPERK_MOBILE_RELEASE_CONFIG": str(config),
+                "RELEASE_SOURCE_REVISION": "a" * 40,
+                "RELEASE_ENVIRONMENT": "staging",
+                "RELEASE_APP_VERSION": "0.2.0",
+                "RELEASE_ANDROID_VERSION_NAME": "0.2.0-staging",
+                "RELEASE_BUILD_NUMBER": "2",
+                "RELEASE_APPLICATION_ID": "app.pakperk.pakperk.staging",
+                "RELEASE_WORKFLOW_SHA": "a" * 40,
+                "RELEASE_REPOSITORY": "ErrDivine/PakPerk",
+                "RELEASE_JOB": "signed-candidate",
+                "RELEASE_RUN_ID": "123456789",
+                "RELEASE_RUN_ATTEMPT": "2",
+                "GITHUB_OUTPUT": str(output),
+                "GITHUB_STEP_SUMMARY": str(summary),
+            }
+            with mock.patch.dict(os.environ, environment, clear=False):
+                exec(
+                    compile(
+                        _embedded_manifest_python(),
+                        "mobile-release-manifest-generator",
+                        "exec",
+                    ),
+                    {"__name__": "__main__"},
+                )
+
+            provenance_bytes = evidence.joinpath(
+                "mobile-release-provenance.json"
+            ).read_bytes()
+            candidate_bytes = evidence.joinpath("mobile-candidate.json").read_bytes()
+            provenance = json.loads(provenance_bytes)
+            candidate = json.loads(candidate_bytes)
+            self.assertEqual(
+                provenance_bytes,
+                (
+                    json.dumps(provenance, sort_keys=True, separators=(",", ":")) + "\n"
+                ).encode("ascii"),
+            )
+            self.assertEqual(
+                candidate_bytes,
+                (
+                    json.dumps(candidate, sort_keys=True, separators=(",", ":")) + "\n"
+                ).encode("ascii"),
+            )
+            self.assertEqual(
+                provenance["android"]["aab_sha256"],
+                hashlib.sha256(artifact_bytes["candidate.aab"]).hexdigest(),
+            )
+            self.assertEqual(
+                provenance["android"]["apk_sha256"],
+                hashlib.sha256(artifact_bytes["candidate.apk"]).hexdigest(),
+            )
+            self.assertEqual(
+                provenance["ios"]["ipa_sha256"],
+                hashlib.sha256(artifact_bytes["candidate.ipa"]).hexdigest(),
+            )
+            self.assertEqual(provenance["android"]["signer_sha256"], "a" * 64)
+            self.assertEqual(provenance["ios"]["signer_sha256"], "b" * 64)
+            self.assertEqual(provenance["workflow"]["stage"], "artifacts_verified")
+            self.assertEqual(candidate["android"], provenance["android"])
+            self.assertEqual(candidate["ios"], provenance["ios"])
+            provenance_id = "sha256:" + hashlib.sha256(provenance_bytes).hexdigest()
+            candidate_id = "sha256:" + hashlib.sha256(candidate_bytes).hexdigest()
+            self.assertEqual(candidate["provenance_id"], provenance_id)
+            output_lines = output.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(
+                output_lines,
+                [f"provenance_id={provenance_id}", f"candidate_id={candidate_id}"],
+            )
+            checksums = root.joinpath("release-sha256.txt").read_text(encoding="utf-8")
+            for path in (
+                "artifacts/candidate.aab",
+                "artifacts/candidate.apk",
+                "artifacts/candidate.ipa",
+                "evidence/mobile-release-provenance.json",
+                "evidence/mobile-candidate.json",
+            ):
+                self.assertIn(f"  {path}\n", checksums)
+
+            artifacts.joinpath("candidate.ipa").write_bytes(
+                b"post-verification replacement"
+            )
+            with mock.patch.dict(os.environ, environment, clear=False):
+                with self.assertRaisesRegex(
+                    SystemExit, "retained signed artifact changed after verification"
+                ):
+                    exec(
+                        compile(
+                            _embedded_manifest_python(),
+                            "mobile-release-manifest-generator",
+                            "exec",
+                        ),
+                        {"__name__": "__main__"},
+                    )
 
     def test_automatic_trigger_is_rejected(self) -> None:
         self._assert_mobile_tamper_rejected(
@@ -266,10 +448,82 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
             "if-no-files-found: error", "if-no-files-found: warn"
         )
 
+    def test_mobile_evidence_upload_cannot_continue_on_error(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "      - name: Retain signed candidates, symbols, SBOM, and release evidence\n"
+            "        uses:",
+            "      - name: Retain signed candidates, symbols, SBOM, and release evidence\n"
+            "        continue-on-error: true\n"
+            "        uses:",
+        )
+
     def test_mobile_evidence_hash_removal_is_rejected(self) -> None:
         self._assert_mobile_tamper_rejected(
-            'root.joinpath("release-sha256.txt").write_text',
-            'root.joinpath("release-files.txt").write_text',
+            'checksum_path = root / "release-sha256.txt"',
+            'checksum_path = root / "release-files.txt"',
+        )
+
+    def test_candidate_artifact_hash_tamper_is_rejected(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            '"aab_sha256": aab_sha256',
+            '"aab_sha256": "0" * 64',
+        )
+
+    def test_android_identity_must_be_observed_from_retained_artifacts(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            '            "$retained_aab" "$retained_apk" "${{ steps.release.outputs.bundle_id }}"',
+            '            "$aab" "$apk" "${{ steps.release.outputs.bundle_id }}"',
+        )
+
+    def test_ios_identity_must_be_observed_from_retained_artifact(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            '            "$retained_ipa" "${{ steps.release.outputs.bundle_id }}"',
+            '            "$ipa" "${{ steps.release.outputs.bundle_id }}"',
+        )
+
+    def test_retained_evidence_must_be_revalidated_after_upload(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "        run: /usr/bin/shasum -a 256 --check release-sha256.txt",
+            "        run: /usr/bin/true",
+        )
+
+    def test_candidate_workflow_run_binding_tamper_is_rejected(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}\n",
+            "          RELEASE_RUN_ATTEMPT: 1\n",
+        )
+
+    def test_candidate_canonical_json_contract_tamper_is_rejected(self) -> None:
+        self._assert_mobile_tamper_rejected("                      sort_keys=True,", "")
+
+    def test_candidate_provenance_binding_tamper_is_rejected(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            '              "provenance_id": provenance_id,',
+            '              "provenance_id": "sha256:" + "0" * 64,',
+        )
+
+    def test_candidate_stage_cannot_claim_whole_job_success(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            '                  "stage": "artifacts_verified",',
+            '                  "conclusion": "success",',
+        )
+
+    def test_ios_leaf_certificate_extraction_tamper_is_rejected(self) -> None:
+        self._assert_ios_verifier_tamper_rejected(
+            'codesign -d --extract-certificates "$certificate_prefix" "$app"',
+            "true # signer certificate not observed",
+        )
+
+    def test_ios_signer_fingerprint_evidence_tamper_is_rejected(self) -> None:
+        self._assert_ios_verifier_tamper_rejected(
+            "printf 'apple_signer_sha256=%s\\n' \"$apple_signer_sha256\"",
+            "printf 'apple_signer_sha256=%s\\n' \"$IOS_SIGNER_SHA256\"",
+        )
+
+    def test_ios_profile_certificate_authorization_tamper_is_rejected(self) -> None:
+        self._assert_ios_verifier_tamper_rejected(
+            'developer_certificates = profile.get("DeveloperCertificates")',
+            'developer_certificates = [b"unbound"]',
         )
 
     def test_mobile_evidence_cannot_be_hashed_before_ios_verification(self) -> None:

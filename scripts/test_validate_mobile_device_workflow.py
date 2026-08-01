@@ -60,6 +60,36 @@ class MobileDeviceWorkflowValidationTests(unittest.TestCase):
             "  FLUTTER_VERSION: 3.44.8", "  FLUTTER_VERSION: 3.44.9"
         )
 
+    def test_source_checkout_binding_removal_is_rejected(self) -> None:
+        self._assert_tamper_rejected(
+            "          ref: ${{ inputs.source_revision }}\n",
+            "          ref: ${{ github.ref }}\n",
+        )
+
+    def test_non_main_source_acceptance_is_rejected(self) -> None:
+        self._assert_tamper_rejected(
+            '[[ "$DISPATCH_REF" != "refs/heads/main" ]]',
+            '[[ -z "$DISPATCH_REF" ]]',
+        )
+
+    def test_dispatch_revision_binding_removal_is_rejected(self) -> None:
+        self._assert_tamper_rejected(
+            '[[ "$REQUESTED_REVISION" != "$DISPATCH_REVISION" ]]',
+            '[[ -z "$REQUESTED_REVISION" ]]',
+        )
+
+    def test_origin_main_tip_binding_removal_is_rejected(self) -> None:
+        self._assert_tamper_rejected(
+            '[[ "$(git rev-parse refs/remotes/origin/main)" != "$REQUESTED_REVISION" ]]',
+            '[[ "$(git rev-parse HEAD)" != "$REQUESTED_REVISION" ]]',
+        )
+
+    def test_confirmation_gate_tamper_is_rejected(self) -> None:
+        self._assert_tamper_rejected(
+            '[[ "$DISPATCH_CONFIRMATION" != "RUN_DETERMINISTIC_DEVICE_PROBE" ]]',
+            '[[ -z "$DISPATCH_CONFIRMATION" ]]',
+        )
+
     def test_flutter_identity_gate_removal_is_rejected(self) -> None:
         self._assert_tamper_rejected(
             "python3 scripts/validate_flutter_toolchain.py",

@@ -92,8 +92,10 @@
   account-deletion route.
 - Release, incident, moderation, deletion, observability, and backup/PITR/
   restore-replay runbooks plus an executable, fail-closed two-phase drill
-  harness bound to an immutable expected ledger-record count, including an
-  explicit zero-count case, so an empty or wrong ledger mount cannot pass.
+  harness bound to a canonical protected restore attestation, exact database
+  guard, reviewed worker digest, computed RPO/RTO, immutable ledger-record
+  count, and content-addressed owner-only evidence. It includes an explicit
+  zero-count case, so an empty or wrong ledger mount cannot pass.
 
 Migration `0009_account_deletion.sql` adds deletion ledger/jobs/events/purge
 audit and moderation-retention pseudonyms. Follow-on additive migration
@@ -134,7 +136,7 @@ that exact expected schema version.
   Acceptance UI is disabled when server policy versions differ from the exact
   bundled Terms or Community Guidelines marker, and signed staging/production
   evidence binds both markers to the protected public-document version. Legal
-  document loads are stable across rebuilds. Full Flutter analysis and all 537
+  document loads are stable across rebuilds. Full Flutter analysis and all 544
   locked tests passed on the final tree.
 - The public deletion page now retains signed deletion authority through both
   the 400-day minimum and the no-recoverable-backup condition. The environment-
@@ -146,9 +148,10 @@ that exact expected schema version.
   symlinked, or syntactically invalid input set. The validator's four
   regressions and the complete shell set passed.
 - The full production Helm contract passed with the official checksum-verified
-  Helm 3.18.6 binary. The regenerated OpenAPI contract and the 39 signed-mobile
-  workflow validation regressions also passed. All nine bounded backend-load
-  contract tests passed against their local content-redacted mock server.
+  Helm 3.18.6 binary. The regenerated OpenAPI contract, its 21 compatibility
+  regressions, and the 52 signed-mobile workflow validation regressions also
+  passed. All nine bounded backend-load contract tests passed against their
+  local content-redacted mock server.
 
 - Trusted-proxy client-origin unit tests passed, including right-to-left chain,
   spoof resistance, malformed fallback, canonical CIDRs, and keyed address
@@ -223,7 +226,7 @@ that exact expected schema version.
   mobile, security, and release-image workflows validate and retain that
   machine-readable identity before resolving Pub dependencies.
 - The image-publication workflow's 29 validation tests and the signed-mobile
-  workflow's 37 validation tests passed. In this reviewed workflow revision, both
+  workflow's 52 validation tests passed. In this reviewed workflow revision, both
   jobs run an executable source gate instead of using a job-level branch
   condition, so a non-`main` or tag dispatch fails rather than completing as a
   skipped green job. Their validators
@@ -234,6 +237,19 @@ that exact expected schema version.
   signed candidate is inferred. GitHub deployment-branch/environment protection
   is still required to prevent dispatching historical refs that contain an
   older copy of either workflow.
+- The protected physical-mobile acceptance lane passed 37 closed-evidence and
+  53 workflow-tamper regressions. It requires exact staging coordinates from the
+  reviewed config, content-addressed signed-release provenance, a short-lived
+  root-owned dedicated/ephemeral runner attestation, four distinct
+  challenge-keyed physical identities, direct exclusive archive publication,
+  pre-upload verification, and a digest-bound upload. No protected runner,
+  staging account, or physical device was exercised locally.
+- The restore harness passed 12 hermetic adversarial regressions for canonical
+  attestation and guard bindings, exact ledger counts, private bounded worker
+  output, source-concealment flags, atomic cleanup, finalize/reapply binding,
+  and content-addressed evidence tamper detection. A real provider backup,
+  independent ledger set, isolated database, and external content-ID anchor
+  remain protected evidence.
 - All nine deterministic loopback backend-load contract tests passed, including
   response-identity binding, token/content redaction, mutation serialization
   and cleanup, threshold failures, and request caps. A new structural validator
@@ -272,7 +288,7 @@ that exact expected schema version.
   and warning-denying targeted Clippy passed. This prevents a stale
   intermediary readiness success while keeping mobile telemetry best-effort
   and Collector/export/sink proof in its separate live-canary gate.
-- All 21 internal Rust packages are explicitly private (`publish = false`).
+- All 23 internal Rust packages are explicitly private (`publish = false`).
   `cargo-deny 0.20.2` passed the bans, licenses, and sources checks with private
   path dependencies allowed; intentional duplicate-version diagnostics remain
   warnings.
@@ -285,18 +301,15 @@ that exact expected schema version.
   router bodies intentionally skip without their explicit database URL, and
   the readiness test remains ignored; a green database-backed CI lane is still
   the evidence for those bodies.
-- Final direct Dart formatting and analysis passed on the settled mobile source
-  tree. The complete locked Flutter/widget and physical-device matrices remain
-  unexecuted for those latest changes, as detailed in the companion report.
-- Curated-site static security tests passed. CI and `scripts/check.sh` now feed
-  an actual staging Helm render into the CSP/runtime-config assertion instead
-  of accepting its no-manifest skip; the targeted local run passed the
-  then-current five static assertions. A sixth assertion now checks that the
-  published safety pages keep Report comment, Report user, and Block user
-  distinct and state that reporting neither hides content nor creates a block;
-  its browser-backed execution remains pending. Browser-backed and container
-  security checks must be run in an allowed environment; any skip/failure
-  remains a release blocker.
+- The settled mobile source passed direct Dart formatting, Flutter analysis,
+  all 544 locked tests, all Android debug flavors, all iOS simulator flavors,
+  and strict staging/production artifact inspection. The physical-device matrix
+  remains unexecuted, as detailed in the companion report.
+- Curated-site static and browser security tests passed all 31 cases against an
+  actual staging Helm render, including the CSP/runtime-config assertion and
+  distinct report-user/report-comment/block copy. The opt-in Collector
+  container E2E was not run by the canonical local check and remains separate
+  from live sink/retention evidence.
 
 The security workflow uses CVSS-4-capable scanner versions. The reachable
 `quick-xml` advisory found during final audit was remediated by upgrading to

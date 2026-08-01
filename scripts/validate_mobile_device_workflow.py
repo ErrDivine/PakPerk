@@ -65,6 +65,14 @@ def validate(workflow: pathlib.Path = WORKFLOW) -> None:
         r"(?m)^  (?:pull_request|push|schedule|workflow_run):", trigger
     ):
         raise RuntimeError("mobile device evidence must be manual-dispatch only")
+    for fragment in (
+        "      source_revision:\n",
+        "        required: true\n",
+        "        type: string\n",
+        "      confirmation:\n",
+        "Type RUN_DETERMINISTIC_DEVICE_PROBE",
+    ):
+        _require(trigger, fragment, "manual device dispatch contract")
 
     permissions_end = source.index("\nconcurrency:", trigger_end)
     permissions = source[trigger_end + 1 : permissions_end].strip()
@@ -82,6 +90,18 @@ def validate(workflow: pathlib.Path = WORKFLOW) -> None:
         "runs-on: [self-hosted, pakperk-mobile-device]",
         "environment: mobile-device-verification",
         "persist-credentials: false",
+        "ref: ${{ inputs.source_revision }}",
+        "fetch-depth: 0",
+        "Verify exact reviewed main source",
+        'DISPATCH_REF: ${{ github.ref }}',
+        'DISPATCH_REVISION: ${{ github.sha }}',
+        'REQUESTED_REVISION: ${{ inputs.source_revision }}',
+        'DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}',
+        '"$DISPATCH_REF" != "refs/heads/main"',
+        '"$DISPATCH_CONFIRMATION" != "RUN_DETERMINISTIC_DEVICE_PROBE"',
+        '"$REQUESTED_REVISION" != "$DISPATCH_REVISION"',
+        'git rev-parse refs/remotes/origin/main',
+        'PAKPERK_SOURCE_REVISION: ${{ inputs.source_revision }}',
         "Verify and record the exact reviewed Flutter SDK",
         'flutter --version --machine >"$RUNNER_TEMP/flutter-toolchain.json"',
         "python3 scripts/validate_flutter_toolchain.py",
@@ -116,6 +136,22 @@ def validate(workflow: pathlib.Path = WORKFLOW) -> None:
     ):
         _require(toolchain_step, fragment, "Flutter identity step")
 
+    source_gate = _step_block(source, "Verify exact reviewed main source")
+    for fragment in (
+        'DISPATCH_REF: ${{ github.ref }}',
+        'DISPATCH_REVISION: ${{ github.sha }}',
+        'REQUESTED_REVISION: ${{ inputs.source_revision }}',
+        'DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}',
+        '[[ "$DISPATCH_REF" != "refs/heads/main" ]]',
+        '[[ "$DISPATCH_CONFIRMATION" != "RUN_DETERMINISTIC_DEVICE_PROBE" ]]',
+        '[[ "$REQUESTED_REVISION" != "$DISPATCH_REVISION" ]]',
+        '[[ "$(git rev-parse HEAD)" != "$REQUESTED_REVISION" ]]',
+        '[[ "$(git rev-parse refs/remotes/origin/main)" != "$REQUESTED_REVISION" ]]',
+    ):
+        _require(source_gate, fragment, "reviewed source gate")
+
+    checkout_position = source.index("uses: actions/checkout@")
+    source_gate_position = source.index("- name: Verify exact reviewed main source")
     setup_position = source.index("uses: subosito/flutter-action@")
     toolchain_position = source.index(
         "- name: Verify and record the exact reviewed Flutter SDK"
@@ -124,9 +160,16 @@ def validate(workflow: pathlib.Path = WORKFLOW) -> None:
     device_test_position = source.index(
         "- name: Run deterministic production contract in profile mode"
     )
-    if not setup_position < toolchain_position < dependencies_position < device_test_position:
+    if not (
+        checkout_position
+        < source_gate_position
+        < setup_position
+        < toolchain_position
+        < dependencies_position
+        < device_test_position
+    ):
         raise RuntimeError(
-            "the exact Flutter identity must be verified after setup and before dependencies or tests"
+            "source and Flutter identities must be verified before dependencies or tests"
         )
 
     boundary_step = _step_block(source, "Record the exact verification boundary")

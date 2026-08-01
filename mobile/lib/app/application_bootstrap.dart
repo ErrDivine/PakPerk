@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/cache/demo_asset_store.dart';
 import '../core/cache/drift_local_store.dart';
+import '../core/cache/feed_cache_persistence.dart';
+import '../core/cache/feed_prefetch_config.dart';
 import '../core/cache/local_store.dart';
 import '../core/content_policy.dart';
 import '../core/models/paper.dart';
@@ -75,13 +77,18 @@ class ApplicationStartupBootstrapper
     Future<void> Function()? repairLocalData,
     Future<FeedPage> Function()? bundledFeedLoader,
     this.fulltextPolicy = ClientFulltextPolicy.prototype,
+    this.cachePolicy = const FeedPrefetchConfig(),
   }) : storeFactory =
            storeFactory ??
-           (() => DriftLocalStore.create(fulltextPolicy: fulltextPolicy)),
+           (() => DriftLocalStore.create(
+             fulltextPolicy: fulltextPolicy,
+             cachePolicy: cachePolicy,
+           )),
        repairLocalData =
            repairLocalData ??
            (() => DriftLocalStore.repairPublicCache(
              fulltextPolicy: fulltextPolicy,
+             cachePolicy: cachePolicy,
            )),
        bundledFeedLoader =
            bundledFeedLoader ?? BundleDemoContentStore().loadFallbackFeed;
@@ -90,6 +97,7 @@ class ApplicationStartupBootstrapper
   final Future<void> Function() repairLocalData;
   final Future<FeedPage> Function() bundledFeedLoader;
   final ClientFulltextPolicy fulltextPolicy;
+  final FeedPrefetchConfig cachePolicy;
 
   ApplicationStartupData? _data;
   Future<LocalStore>? _storeReady;
@@ -264,7 +272,11 @@ class ApplicationStartupBootstrapper
     // makes a valid legacy offline feed eligible for the first readable frame
     // without allowing a malformed payload to fail startup.
     if (store is DriftLocalStore) await store.startLegacyImportWork();
-    final cached = await store.loadFeed();
+    final cached = store is FeedCachePersistence
+        ? await (store as FeedCachePersistence).loadFeedPage(
+            feedQueryKey(limit: cachePolicy.remotePageSize),
+          )
+        : await store.loadFeed();
     final hasDeviceCache = cached != null && cached.items.isNotEmpty;
     final source = hasDeviceCache ? cached : await bundledFeedLoader();
     return PreloadedFeedSnapshot(

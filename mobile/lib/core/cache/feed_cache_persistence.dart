@@ -1,16 +1,18 @@
 import 'dart:convert';
 
+import 'feed_prefetch_config.dart';
 import '../models/paper.dart';
 import '../models/reader_state.dart';
-
-const defaultFeedPageLimit = 30;
 
 /// Produces the opaque, versioned identity shared by feed persistence,
 /// conditional requests, and prefetch coordination.
 ///
 /// Category values are bounded before encoding so user-controlled text never
 /// leaks into database keys or telemetry dimensions.
-String feedQueryKey({String? category, int limit = defaultFeedPageLimit}) {
+String feedQueryKey({
+  String? category,
+  int limit = FeedPrefetchConfig.defaultRemotePageSize,
+}) {
   // arXiv subject identifiers are case-sensitive on the wire (`cs.AI` is not
   // interchangeable with `cs.ai`), so canonicalization may trim but must not
   // fold case.
@@ -130,7 +132,7 @@ class CacheCompactionResult {
 abstract interface class CacheCompactionPersistence {
   Future<CacheCompactionResult> compactCacheIfNeeded({
     required bool lifecycleSafe,
-    int maxDatabaseBytes = 64 * 1024 * 1024,
+    int maxDatabaseBytes = FeedPrefetchConfig.defaultMaxDatabaseBytes,
   });
 }
 
@@ -169,9 +171,9 @@ abstract interface class FeedCachePersistence {
   Future<CacheEvictionResult> evictCache({
     required String activeQueryKey,
     required Set<String> protectedPaperIds,
-    int maxMetadataPapers = 500,
-    int maxDatabaseBytes = 64 * 1024 * 1024,
-    Duration metadataTtl = const Duration(days: 7),
+    int maxMetadataPapers = FeedPrefetchConfig.defaultMaxCachedMetadataPapers,
+    int maxDatabaseBytes = FeedPrefetchConfig.defaultMaxDatabaseBytes,
+    Duration metadataTtl = FeedPrefetchConfig.defaultMetadataTtl,
     DateTime? now,
   });
 }

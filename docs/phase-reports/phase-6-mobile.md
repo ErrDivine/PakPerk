@@ -37,6 +37,11 @@
   AA text contrast. External arXiv actions are derived from a normalized arXiv
   identifier and exact canonical HTTPS host/path rather than supplied model
   URLs.
+- Startup, feed pagination, repositories, Drift eviction, metadata expiry, and
+  first-page comment expiry consume one shared cache policy. A cache miss shows
+  an accessible paper-shaped skeleton, while valid stale abstracts remain
+  visible during revalidation. Save, Comments, and canonical arXiv actions use
+  one shared reader action row across enabled stages.
 - Dev/staging/prod native identities, callbacks, schemes, associated domains,
   ATS/network policies, backup controls, privacy manifest, and strict artifact
   asset policy are configured independently.
@@ -67,8 +72,8 @@ support links, build-bound Terms/Community Guidelines acceptance, post-`401`
 response provenance, and bounded safety-intent recovery after authenticated
 thread rehydration. Legal-document futures are cached by loader, kind, and
 policy version instead of being recreated during rebuilds. Final Flutter
-analysis and all 537 locked tests passed after these changes. No new device or
-signed artifact build was executed on this final tree.
+analysis and all 544 locked tests passed after these changes. No physical-device
+or protected signed-artifact run was executed on this final tree.
 
 At the Phase 6 implementation checkpoint, the full Flutter analyzer and 437
 tests, the focused account-deletion/auth/error-mapper/telemetry/config suites,
@@ -93,7 +98,7 @@ made save/removal outbox draining plus Undo independent of widget disposal or
 haptic and semantics platform failures. Direct Dart format and analysis passed
 on that resulting tree. Focused widget coverage passed for the shared
 save-control Undo path before the final widget-lifecycle hardening; those later
-Settings, lifecycle, and haptic regressions are included in the final 537-test
+Settings, lifecycle, and haptic regressions are included in the final 544-test
 run recorded above. This report does not infer a final-tree device run.
 
 The subsequent startup/accessibility hardening described above is newer than
@@ -129,21 +134,28 @@ backup, packaged Apple privacy manifest, and no strict derived-content asset.
 Negative gates were also exercised: Android release fails immediately without
 all `PAKPERK_ANDROID_*` values; iOS production IPA resolution is manual Apple
 Distribution signing and produces no IPA without a protected team/profile.
-The complete Flutter/widget suite and iOS scheme/build/device matrix have not
-been rerun on the latest startup/accessibility tree. The next green CI and
-device runs must therefore reconfirm those checks; this report does not treat
-the earlier checkpoint as proof for the changed files.
+On the settled current tree, the canonical check passed Dart formatting,
+Flutter analysis, all 544 tests, all three Android debug flavors, all three iOS
+simulator flavors, and strict inspection of staging/production Android archives
+and the final production iOS simulator app. This is not physical-device or
+distribution-signing evidence.
 
-## Current-tree verification still required
+The signed-release workflow now derives content-addressed candidate and
+provenance manifests from the retained AAB/APK/IPA and observed signers, binds
+the iOS leaf certificate to the provisioning profile, and revalidates retained
+evidence after mandatory upload. Its 52 tamper regressions passed. The protected
+acceptance contract's 37 evidence tests and 53 workflow-tamper tests also
+passed; they bind exact staging coordinates, an ephemeral root-owned runner
+session, four challenge-keyed physical identities, 16 ordered scenarios, 70
+assertions, and 37 integer metrics without claiming that a live run occurred.
 
-- Run the complete locked Flutter unit/widget suite; direct Dart formatting and
-  analysis have already passed on the settled startup lifecycle patch.
-- Rebuild all Android debug flavors and all iOS simulator schemes, then rerun
-  strict asset/native-protection checks on artifacts built from the same source
-  revision.
+## Current-tree external verification still required
+
 - Exercise cold/warm/deep-link startup, timeout/retry/repair, runtime reduced-
   motion changes, 200% text, settled haptics, and canonical arXiv actions on
   representative physical devices.
+- Run the protected signed-candidate workflow and protected four-device
+  acceptance lane for the exact reviewed source and imported provenance.
 
 ## Release-blocking external evidence
 

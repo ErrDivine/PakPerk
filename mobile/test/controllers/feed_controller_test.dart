@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/core/cache/feed_cache_persistence.dart';
+import 'package:pakperk/core/cache/feed_prefetch_config.dart';
 import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/repository/paper_repository.dart';
 import 'package:pakperk/features/feed/feed_controller.dart';
@@ -244,6 +245,45 @@ void main() {
       expect(controller.state.nextCursor, isNull);
       expect(repository.feedCalls, 1);
       expect(repository.prepareCalls, 0);
+      controller.dispose();
+    },
+  );
+
+  test('non-default policy controls cached and network page sizes', () async {
+    const config = FeedPrefetchConfig(remotePageSize: 7);
+    final repository = FakePaperDataSource(paper: samplePaper);
+    final controller = FeedController(repository, config: config);
+
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(repository.cachedFeedLimits, [config.remotePageSize]);
+    expect(repository.feedLimits, [config.remotePageSize]);
+    controller.dispose();
+  });
+
+  test(
+    'non-default load trigger applies without a prefetch coordinator',
+    () async {
+      const config = FeedPrefetchConfig(remotePageSize: 7, loadTrigger: 0);
+      final papers = [_feedPaper(0), _feedPaper(1)];
+      final repository = FakePaperDataSource(paper: papers.first)
+        ..networkFeed = FeedPage(items: [_feedPaper(2)]);
+      final controller = FeedController(
+        repository,
+        config: config,
+        preloadedSnapshot: PreloadedFeedSnapshot(
+          page: FeedPage(items: papers, nextCursor: 'cursor-1'),
+          origin: DataOrigin.deviceCache,
+        ),
+      );
+
+      await controller.onCommittedPage(0);
+      expect(repository.feedCalls, 0);
+
+      await controller.onCommittedPage(1);
+      expect(repository.feedCalls, 1);
+      expect(repository.feedLimits, [config.remotePageSize]);
       controller.dispose();
     },
   );

@@ -436,20 +436,72 @@ jobs:
             --obfuscate --split-debug-info="$RUNNER_TEMP/symbols/android-apk"
           aab="build/app/outputs/bundle/${{ steps.release.outputs.flavor }}Release/app-${{ steps.release.outputs.flavor }}-release.aab"
           apk="build/app/outputs/flutter-apk/app-${{ steps.release.outputs.flavor }}-release.apk"
+          retained_aab="$RUNNER_TEMP/artifacts/${aab##*/}"
+          retained_apk="$RUNNER_TEMP/artifacts/${apk##*/}"
+          if [[ -e "$retained_aab" || -L "$retained_aab" || -e "$retained_apk" || -L "$retained_apk" ]]; then
+            echo "Retained Android artifact destinations must not pre-exist." >&2
+            exit 1
+          fi
+          cp "$aab" "$retained_aab"
+          cp "$apk" "$retained_apk"
+          chmod 0400 "$retained_aab" "$retained_apk"
           "$GITHUB_WORKSPACE/scripts/verify_android_release_artifacts.sh" \
-            "$aab" "$apk" "${{ steps.release.outputs.bundle_id }}" \
+            "$retained_aab" "$retained_apk" "${{ steps.release.outputs.bundle_id }}" \
             "${{ steps.release.outputs.android_version_name }}" "${{ steps.release.outputs.build_number }}" \
             "${{ steps.release.outputs.callback_scheme }}" \
             "${{ steps.release.outputs.android_app_link_host }}" \
             | tee "$RUNNER_TEMP/evidence/android-upload-identity.txt"
           if [[ "${{ inputs.environment }}" != development ]]; then
-            dart run tool/verify_strict_artifact_assets.dart "$aab"
-            dart run tool/verify_strict_artifact_assets.dart "$apk"
+            dart run tool/verify_strict_artifact_assets.dart "$retained_aab"
+            dart run tool/verify_strict_artifact_assets.dart "$retained_apk"
             printf 'android_play_app_signing_sha256=%s\n' "$ANDROID_APP_SIGNING_SHA256" \
               >"$RUNNER_TEMP/evidence/android-installed-identity.txt"
           fi
-          cp "$aab" "$RUNNER_TEMP/artifacts/"
-          cp "$apk" "$RUNNER_TEMP/artifacts/"
+          python3 - "$retained_aab" "$retained_apk" \
+            "$RUNNER_TEMP/evidence/android-retained-digests.txt" <<'PY'
+          import hashlib
+          import os
+          import pathlib
+          import stat
+          import sys
+
+          def digest(path):
+              metadata = os.lstat(path)
+              if (
+                  not stat.S_ISREG(metadata.st_mode)
+                  or metadata.st_nlink != 1
+                  or metadata.st_size <= 0
+                  or metadata.st_size > 8 * 1024**3
+              ):
+                  raise SystemExit("retained Android artifact is not one bounded regular file")
+              descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+              value = hashlib.sha256()
+              try:
+                  before = os.fstat(descriptor)
+                  while True:
+                      chunk = os.read(descriptor, 1024 * 1024)
+                      if not chunk:
+                          break
+                      value.update(chunk)
+                  after = os.fstat(descriptor)
+              finally:
+                  os.close(descriptor)
+              identity = lambda item: (
+                  item.st_dev,
+                  item.st_ino,
+                  item.st_size,
+                  item.st_mtime_ns,
+                  item.st_ctime_ns,
+              )
+              if identity(metadata) != identity(before) or identity(before) != identity(after):
+                  raise SystemExit("retained Android artifact changed while it was hashed")
+              return value.hexdigest()
+
+          output = pathlib.Path(sys.argv[3])
+          with output.open("x", encoding="ascii") as handle:
+              handle.write(f"android_aab_artifact_sha256={digest(sys.argv[1])}\n")
+              handle.write(f"android_apk_artifact_sha256={digest(sys.argv[2])}\n")
+          PY
 
       - name: Generate and validate the exact native Android runtime SBOM
         working-directory: mobile/android
@@ -552,15 +604,21 @@ jobs:
             exit 1
           fi
           ipa="${ipas[0]}"
+          retained_ipa="$RUNNER_TEMP/artifacts/${ipa##*/}"
+          if [[ -e "$retained_ipa" || -L "$retained_ipa" ]]; then
+            echo "Retained iOS artifact destination must not pre-exist." >&2
+            exit 1
+          fi
+          cp "$ipa" "$retained_ipa"
+          chmod 0400 "$retained_ipa"
           "$GITHUB_WORKSPACE/scripts/verify_ios_release_artifact.sh" \
-            "$ipa" "${{ steps.release.outputs.bundle_id }}" \
+            "$retained_ipa" "${{ steps.release.outputs.bundle_id }}" \
             "${{ steps.release.outputs.version_name }}" "${{ steps.release.outputs.build_number }}" \
             "${{ steps.release.outputs.callback_scheme }}" "${{ steps.release.outputs.app_link_host }}" \
             | tee "$RUNNER_TEMP/evidence/apple-installed-identity.txt"
           if [[ "${{ inputs.environment }}" != development ]]; then
-            dart run tool/verify_strict_artifact_assets.dart "$ipa"
+            dart run tool/verify_strict_artifact_assets.dart "$retained_ipa"
           fi
-          cp "$ipa" "$RUNNER_TEMP/artifacts/"
           find build/ios/archive -type d -name '*.dSYM' \
             -exec cp -R '{}' "$RUNNER_TEMP/native-symbols/" ';'
 
@@ -626,23 +684,392 @@ jobs:
           cp mobile/Gemfile.lock "$RUNNER_TEMP/evidence/fastlane-Gemfile.lock"
 
       - name: Generate SBOM, notices, and immutable evidence hashes
+        id: manifests
         shell: bash
+        env:
+          RELEASE_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
+          RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+          RELEASE_APP_VERSION: ${{ steps.release.outputs.version_name }}
+          RELEASE_ANDROID_VERSION_NAME: ${{ steps.release.outputs.android_version_name }}
+          RELEASE_BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+          RELEASE_APPLICATION_ID: ${{ steps.release.outputs.bundle_id }}
+          RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          RELEASE_JOB: ${{ github.job }}
+          RELEASE_RUN_ID: ${{ github.run_id }}
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
+          if [[ "$(git rev-parse HEAD)" != "$RELEASE_SOURCE_REVISION" ]] || \
+             ! git diff --quiet --ignore-submodules -- || \
+             ! git diff --cached --quiet --ignore-submodules --; then
+            echo "Tracked release source changed before candidate provenance generation." >&2
+            exit 1
+          fi
           source_epoch="$(git show -s --format=%ct HEAD)"
           SOURCE_REVISION="${{ steps.source.outputs.source_revision }}" SOURCE_DATE_EPOCH="$source_epoch" \
             ./scripts/generate_release_metadata.py \
               --flutter-sdk-version "$FLUTTER_VERSION" \
               --output-dir "$RUNNER_TEMP/evidence/release-metadata"
           python3 - <<'PY'
-          import hashlib, os, pathlib
+          import datetime as dt
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import re
+          import stat
+
           root = pathlib.Path(os.environ["RUNNER_TEMP"])
-          lines = []
+
+          def fail(message):
+              raise SystemExit(message)
+
+          release_roots = {}
           for name in ("artifacts", "symbols", "native-symbols", "evidence"):
-              for path in sorted(root.joinpath(name).rglob("*")):
-                  if path.is_file() and not path.is_symlink():
-                      digest = hashlib.sha256(path.read_bytes()).hexdigest()
-                      lines.append(f"{digest}  {path.relative_to(root)}")
-          root.joinpath("release-sha256.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+              path = root / name
+              metadata = os.lstat(path)
+              if not stat.S_ISDIR(metadata.st_mode):
+                  fail(f"release evidence root is not a real directory: {name}")
+              release_roots[name] = path
+
+          def artifact(suffix):
+              matches = sorted(root.joinpath("artifacts").glob(f"*{suffix}"))
+              if len(matches) != 1:
+                  fail(f"expected exactly one retained {suffix} artifact")
+              path = matches[0]
+              metadata = os.lstat(path)
+              if (
+                  not stat.S_ISREG(metadata.st_mode)
+                  or metadata.st_nlink != 1
+                  or metadata.st_size <= 0
+                  or metadata.st_size > 8 * 1024**3
+              ):
+                  fail(f"retained {suffix} artifact is not one bounded regular file")
+              digest = hashlib.sha256()
+              flags = os.O_RDONLY
+              if hasattr(os, "O_NOFOLLOW"):
+                  flags |= os.O_NOFOLLOW
+              descriptor = os.open(path, flags)
+              try:
+                  before = os.fstat(descriptor)
+                  while True:
+                      chunk = os.read(descriptor, 1024 * 1024)
+                      if not chunk:
+                          break
+                      digest.update(chunk)
+                  after = os.fstat(descriptor)
+              finally:
+                  os.close(descriptor)
+              identity = lambda value: (
+                  value.st_dev,
+                  value.st_ino,
+                  value.st_size,
+                  value.st_mtime_ns,
+                  value.st_ctime_ns,
+              )
+              if identity(before) != identity(after) or identity(metadata) != identity(before):
+                  fail(f"retained {suffix} artifact changed while it was hashed")
+              return digest.hexdigest()
+
+          def identity_file(name):
+              path = root / "evidence" / name
+              metadata = os.lstat(path)
+              if (
+                  not stat.S_ISREG(metadata.st_mode)
+                  or metadata.st_nlink != 1
+                  or metadata.st_size <= 0
+                  or metadata.st_size > 64 * 1024
+              ):
+                  fail("release identity evidence is not one bounded regular file")
+              descriptor = os.open(
+                  path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+              )
+              data = bytearray()
+              try:
+                  before = os.fstat(descriptor)
+                  while True:
+                      chunk = os.read(descriptor, 64 * 1024)
+                      if not chunk:
+                          break
+                      data.extend(chunk)
+                      if len(data) > 64 * 1024:
+                          fail("release identity evidence exceeded its read budget")
+                  after = os.fstat(descriptor)
+              finally:
+                  os.close(descriptor)
+              identity = lambda value: (
+                  value.st_dev,
+                  value.st_ino,
+                  value.st_size,
+                  value.st_mtime_ns,
+                  value.st_ctime_ns,
+              )
+              if identity(metadata) != identity(before) or identity(before) != identity(after):
+                  fail("release identity evidence changed while it was read")
+              try:
+                  text = data.decode("utf-8")
+              except UnicodeDecodeError:
+                  fail("release identity evidence is not UTF-8")
+              values = {}
+              for line in text.splitlines():
+                  key, separator, value = line.partition("=")
+                  if (
+                      separator != "="
+                      or re.fullmatch(r"[a-z][a-z0-9_]{0,63}", key) is None
+                      or not value
+                      or key in values
+                  ):
+                      fail("release identity evidence is malformed or duplicated")
+                  values[key] = value
+              return values
+
+          def exact_environment(name, pattern):
+              value = os.environ[name]
+              if re.fullmatch(pattern, value) is None:
+                  fail(f"{name} is outside its closed format")
+              return value
+
+          source_revision = exact_environment("RELEASE_SOURCE_REVISION", r"[0-9a-f]{40}")
+          environment = exact_environment(
+              "RELEASE_ENVIRONMENT", r"development|staging|production"
+          )
+          app_version = exact_environment(
+              "RELEASE_APP_VERSION",
+              r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]{1,32})?",
+          )
+          android_version_name = exact_environment(
+              "RELEASE_ANDROID_VERSION_NAME", r"[0-9A-Za-z][0-9A-Za-z._+-]{0,63}"
+          )
+          build_number = exact_environment("RELEASE_BUILD_NUMBER", r"[1-9][0-9]{0,9}")
+          application_id = exact_environment(
+              "RELEASE_APPLICATION_ID",
+              r"[A-Za-z][A-Za-z0-9_-]{0,62}(?:\.[A-Za-z][A-Za-z0-9_-]{0,62}){1,9}",
+          )
+          workflow_sha = exact_environment("RELEASE_WORKFLOW_SHA", r"[0-9a-f]{40}")
+          repository = exact_environment(
+              "RELEASE_REPOSITORY", r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}"
+          )
+          if os.environ["RELEASE_JOB"] != "signed-candidate":
+              fail("release provenance job identity is invalid")
+          run_id = exact_environment("RELEASE_RUN_ID", r"[1-9][0-9]{0,19}")
+          run_attempt = exact_environment("RELEASE_RUN_ATTEMPT", r"[1-9][0-9]{0,9}")
+
+          android_identity = identity_file("android-upload-identity.txt")
+          android_artifact_digests = identity_file("android-retained-digests.txt")
+          ios_identity = identity_file("apple-installed-identity.txt")
+          if (
+              android_identity.get("android_package") != application_id
+              or android_identity.get("android_version_name") != android_version_name
+              or android_identity.get("android_version_code") != build_number
+              or ios_identity.get("apple_bundle_id") != application_id
+              or ios_identity.get("apple_version") != app_version
+              or ios_identity.get("apple_build") != build_number
+          ):
+              fail("observed signed-artifact identity does not match the release")
+          android_upload_fingerprint = android_identity.get("android_upload_sha256", "")
+          if re.fullmatch(r"(?:[A-F0-9]{2}:){31}[A-F0-9]{2}", android_upload_fingerprint) is None:
+              fail("observed Android signer fingerprint is invalid")
+          android_signer_sha256 = android_upload_fingerprint.replace(":", "").lower()
+          ios_team_id = ios_identity.get("apple_team_id", "")
+          ios_signer_sha256 = ios_identity.get("apple_signer_sha256", "")
+          if re.fullmatch(r"[A-Z0-9]{10}", ios_team_id) is None or re.fullmatch(
+              r"[0-9a-f]{64}", ios_signer_sha256
+          ) is None:
+              fail("observed Apple signing identity is invalid")
+
+          aab_sha256 = artifact(".aab")
+          apk_sha256 = artifact(".apk")
+          ipa_sha256 = artifact(".ipa")
+          if set(android_artifact_digests) != {
+              "android_aab_artifact_sha256",
+              "android_apk_artifact_sha256",
+          }:
+              fail("retained Android digest evidence has an unexpected schema")
+          if (
+              android_artifact_digests["android_aab_artifact_sha256"] != aab_sha256
+              or android_artifact_digests["android_apk_artifact_sha256"] != apk_sha256
+              or ios_identity.get("apple_ipa_sha256") != ipa_sha256
+          ):
+              fail("retained signed artifact changed after verification")
+
+          config_path = pathlib.Path(os.environ["PAKPERK_MOBILE_RELEASE_CONFIG"])
+          config = json.loads(config_path.read_text(encoding="utf-8"))
+          if config.get("PAKPERK_ENV") != environment:
+              fail("materialized mobile config environment does not match the release")
+          strict_full_text = config.get("PAKPERK_FULLTEXT_POLICY") == "strict"
+          android = {
+              "aab_sha256": aab_sha256,
+              "apk_sha256": apk_sha256,
+              "application_id": application_id,
+              "signer_sha256": android_signer_sha256,
+          }
+          ios = {
+              "application_id": application_id,
+              "ipa_sha256": ipa_sha256,
+              "signer_sha256": ios_signer_sha256,
+              "team_id": ios_team_id,
+          }
+          now = (
+              dt.datetime.now(dt.timezone.utc)
+              .replace(microsecond=0)
+              .isoformat()
+              .replace("+00:00", "Z")
+          )
+          provenance = {
+              "android": android,
+              "app_version": app_version,
+              "build_number": build_number,
+              "classification": "protected signed mobile release provenance",
+              "created_at": now,
+              "environment": environment,
+              "ios": ios,
+              "schema": 1,
+              "source_revision": source_revision,
+              "workflow": {
+                  "github_run_attempt": run_attempt,
+                  "github_run_id": run_id,
+                  "job": "signed-candidate",
+                  "path": ".github/workflows/mobile-release.yml",
+                  "repository": repository,
+                  "stage": "artifacts_verified",
+                  "workflow_sha": workflow_sha,
+              },
+          }
+
+          def canonical_json_bytes(value):
+              return (
+                  json.dumps(
+                      value,
+                      allow_nan=False,
+                      ensure_ascii=True,
+                      separators=(",", ":"),
+                      sort_keys=True,
+                  )
+                  + "\n"
+              ).encode("ascii")
+
+          evidence_root = root / "evidence"
+          provenance_bytes = canonical_json_bytes(provenance)
+          provenance_id = "sha256:" + hashlib.sha256(provenance_bytes).hexdigest()
+          candidate = {
+              "android": android,
+              "app_version": app_version,
+              "build_number": build_number,
+              "classification": "protected signed mobile candidate",
+              "environment": environment,
+              "ios": ios,
+              "provenance_id": provenance_id,
+              "schema": 1,
+              "source_revision": source_revision,
+              "strict_full_text": strict_full_text,
+          }
+          candidate_bytes = canonical_json_bytes(candidate)
+          candidate_id = "sha256:" + hashlib.sha256(candidate_bytes).hexdigest()
+          for name, data in (
+              ("mobile-release-provenance.json", provenance_bytes),
+              ("mobile-candidate.json", candidate_bytes),
+          ):
+              path = evidence_root / name
+              descriptor = os.open(
+                  path,
+                  os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                  0o600,
+              )
+              try:
+                  remaining = memoryview(data)
+                  while remaining:
+                      written = os.write(descriptor, remaining)
+                      if written <= 0:
+                          fail("canonical manifest write did not make progress")
+                      remaining = remaining[written:]
+                  os.fsync(descriptor)
+              finally:
+                  os.close(descriptor)
+
+          with pathlib.Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"provenance_id={provenance_id}\n")
+              output.write(f"candidate_id={candidate_id}\n")
+          with pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as summary:
+              summary.write("## Signed mobile candidate\n\n")
+              summary.write(f"- Candidate ID: `{candidate_id}`\n")
+              summary.write(f"- Provenance ID: `{provenance_id}`\n")
+
+          expected_release_digests = {
+              ".aab": aab_sha256,
+              ".apk": apk_sha256,
+              ".ipa": ipa_sha256,
+              "evidence/mobile-release-provenance.json": provenance_id[7:],
+              "evidence/mobile-candidate.json": candidate_id[7:],
+          }
+          observed_release_digests = set()
+          lines = []
+          for name, release_root in release_roots.items():
+              for path in sorted(release_root.rglob("*")):
+                  if path.is_symlink():
+                      fail("release evidence must not contain symbolic links")
+                  if path.is_dir():
+                      continue
+                  metadata = os.lstat(path)
+                  if (
+                      not stat.S_ISREG(metadata.st_mode)
+                      or metadata.st_nlink != 1
+                      or metadata.st_size > 8 * 1024**3
+                  ):
+                      fail("release evidence contains an unbounded non-regular file")
+                  descriptor = os.open(
+                      path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+                  )
+                  digest = hashlib.sha256()
+                  try:
+                      before = os.fstat(descriptor)
+                      while True:
+                          chunk = os.read(descriptor, 1024 * 1024)
+                          if not chunk:
+                              break
+                          digest.update(chunk)
+                      after = os.fstat(descriptor)
+                  finally:
+                      os.close(descriptor)
+                  identity = lambda value: (
+                      value.st_dev,
+                      value.st_ino,
+                      value.st_size,
+                      value.st_mtime_ns,
+                      value.st_ctime_ns,
+                  )
+                  if identity(metadata) != identity(before) or identity(before) != identity(after):
+                      fail("release evidence changed while it was hashed")
+                  relative = path.relative_to(root).as_posix()
+                  if "\n" in relative or "\r" in relative:
+                      fail("release evidence path contains a line break")
+                  observed_digest = digest.hexdigest()
+                  expected_key = path.suffix if name == "artifacts" else relative
+                  if name == "artifacts" and expected_key not in {".aab", ".apk", ".ipa"}:
+                      fail("release evidence contains an unexpected retained artifact")
+                  if expected_key in expected_release_digests:
+                      if observed_digest != expected_release_digests[expected_key]:
+                          fail("release evidence no longer matches its content identity")
+                      observed_release_digests.add(expected_key)
+                  lines.append(f"{observed_digest}  {relative}")
+          if observed_release_digests != set(expected_release_digests):
+              fail("release evidence is missing a content-addressed artifact or manifest")
+          checksum_bytes = ("\n".join(lines) + "\n").encode("utf-8")
+          checksum_path = root / "release-sha256.txt"
+          descriptor = os.open(
+              checksum_path,
+              os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+              0o600,
+          )
+          try:
+              remaining = memoryview(checksum_bytes)
+              while remaining:
+                  written = os.write(descriptor, remaining)
+                  if written <= 0:
+                      fail("release checksum write did not make progress")
+                  remaining = remaining[written:]
+              os.fsync(descriptor)
+          finally:
+              os.close(descriptor)
           PY
 
       - name: Retain signed candidates, symbols, SBOM, and release evidence
@@ -657,6 +1084,11 @@ jobs:
             ${{ runner.temp }}/release-sha256.txt
           if-no-files-found: error
           retention-days: 90
+
+      - name: Revalidate retained release evidence after upload
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: /usr/bin/shasum -a 256 --check release-sha256.txt
 
       - name: Upload Android candidate to Google Play internal track
         if: inputs.upload_to_stores

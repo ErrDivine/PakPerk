@@ -65,6 +65,7 @@ final feedControllerProvider = StateNotifierProvider<FeedController, FeedState>(
     final config = ref.watch(feedPrefetchConfigProvider);
     return FeedController(
       repository,
+      config: config,
       preloadedSnapshot: ref.watch(preloadedFeedSnapshotProvider),
       prefetchCoordinator: cache == null
           ? null
@@ -78,10 +79,6 @@ final feedControllerProvider = StateNotifierProvider<FeedController, FeedState>(
   },
 );
 
-final feedPrefetchConfigProvider = Provider<FeedPrefetchConfig>(
-  (ref) => const FeedPrefetchConfig(),
-);
-
 final feedPrefetchTelemetryProvider = Provider<FeedPrefetchTelemetry>(
   (ref) => PakPerkFeedPrefetchTelemetry(sink: ref.watch(telemetrySinkProvider)),
 );
@@ -89,9 +86,12 @@ final feedPrefetchTelemetryProvider = Provider<FeedPrefetchTelemetry>(
 class FeedController extends StateNotifier<FeedState> {
   FeedController(
     this._repository, {
+    FeedPrefetchConfig? config,
     PreloadedFeedSnapshot? preloadedSnapshot,
     FeedPrefetchCoordinator? prefetchCoordinator,
-  }) : _startedWithPreload = preloadedSnapshot != null,
+  }) : _config =
+           config ?? prefetchCoordinator?.config ?? const FeedPrefetchConfig(),
+       _startedWithPreload = preloadedSnapshot != null,
        _prefetchCoordinator = prefetchCoordinator,
        super(
          preloadedSnapshot == null
@@ -119,6 +119,7 @@ class FeedController extends StateNotifier<FeedState> {
   }
 
   final PaperDataSource _repository;
+  final FeedPrefetchConfig _config;
   final bool _startedWithPreload;
   final FeedPrefetchCoordinator? _prefetchCoordinator;
   StreamSubscription<bool>? _offlineSubscription;
@@ -159,7 +160,10 @@ class FeedController extends StateNotifier<FeedState> {
       clearError: true,
     );
     try {
-      final cached = await _repository.getCachedFeed(category: category);
+      final cached = await _repository.getCachedFeed(
+        category: category,
+        limit: _config.remotePageSize,
+      );
       if (!_isCurrentQuery(generation)) return;
       state = state.copyWith(
         items: cached.value.items,
@@ -193,8 +197,7 @@ class FeedController extends StateNotifier<FeedState> {
     try {
       final refreshed = await _repository.getFeed(
         category: category,
-        limit:
-            _prefetchCoordinator?.config.remotePageSize ?? defaultFeedPageLimit,
+        limit: _config.remotePageSize,
         cancellation: cancellation,
       );
       if (!_isCurrentQuery(generation)) return;
@@ -256,8 +259,7 @@ class FeedController extends StateNotifier<FeedState> {
       final result = await _repository.getFeed(
         category: category,
         cursor: cursor,
-        limit:
-            _prefetchCoordinator?.config.remotePageSize ?? defaultFeedPageLimit,
+        limit: _config.remotePageSize,
         cancellation: request,
       );
       if (!_isCurrentQuery(generation) || state.category != category) return;
@@ -299,8 +301,7 @@ class FeedController extends StateNotifier<FeedState> {
     }
     final coordinator = _prefetchCoordinator;
     if (coordinator == null) {
-      if (state.items.length - index - 1 <=
-          const FeedPrefetchConfig().loadTrigger) {
+      if (state.items.length - index - 1 <= _config.loadTrigger) {
         await loadMore();
       }
       return;
@@ -320,7 +321,7 @@ class FeedController extends StateNotifier<FeedState> {
         update.queryKey !=
             feedQueryKey(
               category: state.category,
-              limit: coordinator.config.remotePageSize,
+              limit: _config.remotePageSize,
             )) {
       return;
     }

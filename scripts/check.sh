@@ -81,6 +81,9 @@ python3 "$project_dir/scripts/test_validate_mobile_release_workflow.py"
 python3 "$project_dir/scripts/validate_mobile_release_workflow.py"
 python3 "$project_dir/scripts/test_validate_mobile_device_workflow.py"
 python3 "$project_dir/scripts/validate_mobile_device_workflow.py"
+python3 "$project_dir/scripts/test_validate_mobile_acceptance_evidence.py"
+python3 "$project_dir/scripts/test_validate_mobile_acceptance_workflow.py"
+python3 "$project_dir/scripts/validate_mobile_acceptance_workflow.py"
 python3 "$project_dir/scripts/test_validate_live_account_deletion_workflow.py"
 python3 "$project_dir/scripts/validate_live_account_deletion_workflow.py"
 python3 "$project_dir/scripts/test_live_comments_evidence.py"
@@ -139,6 +142,8 @@ if command -v flutter >/dev/null 2>&1; then
           flutter build ios --simulator --debug --flavor "$flavor" \
             --dart-define-from-file="config/$flavor.json"
         done
+        dart run tool/verify_strict_artifact_assets.dart \
+          build/ios/iphonesimulator/Runner.app
       else
         echo "iOS simulator flavor builds skipped: they require macOS and Xcode." >&2
       fi
