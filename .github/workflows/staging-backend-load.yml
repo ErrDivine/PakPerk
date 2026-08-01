@@ -225,7 +225,7 @@ jobs:
         with:
           name: staging-backend-load-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pakperk-backend-load-evidence.tar
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 90
 
       - name: Enforce staging load result

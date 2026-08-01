@@ -28,6 +28,46 @@ crash evidence.
 - An approved strict-content review and the external evidence listed under
   [mobile release blockers](../mobile-release.md#external-release-blockers).
 
+## Release-evidence binding scope
+
+The chart's six `releaseEvidence` values are content IDs for protected,
+canonical evidence manifests, not change numbers, workflow run IDs, ticket
+URLs, or hashes of an operator's assertion. Each manifest must identify its
+owner and approver, UTC verification window, target environment, exact source
+revision and deployed/candidate build identities, evidence-artifact digests,
+outcome, and approval timestamp. A digest has no evidentiary value unless the
+protected release system can retrieve and verify those bytes.
+
+| Chart value | Required scope | Owner |
+| --- | --- | --- |
+| `legalReviewId` | Exact published legal/support versions, actual enabled data/processors and retention, public URL checks, and approval | privacy/legal owner |
+| `reviewerFlowId` | Disposable reviewer-account lifecycle and sanitized exact-candidate reviewer steps for guest, account, safety, and deletion paths | store release owner |
+| `strictContentReviewId` | Exact strict backend/mobile policy, displayed and retained introduction behavior, metadata-only behavior, and qualified content-rights approval | legal/content owner |
+| `moderationReadinessId` | Protected live comment/user-report/comment-report/block/admin and kill-switch flow; dedicated operator audience/allowlist rejection matrix; moderation fallback; sanitized output; staffed response targets; support/deletion/retention dependencies; and alert/ticket canary | Trust & Safety owner |
+| `accountDeletionE2eId` | Protected staging recent-auth request through provider/session/app-data completion using the real secret manager, independent ledger, and alert route | privacy/on-call owner |
+| `restoreDrillId` | Isolated PostgreSQL/Keycloak restore, exact current-ledger count, reapply/finalize results, RPO/RTO, and recovery/privacy approvals | database and privacy owners |
+
+These bindings cover server deployment obligations whose applicability follows
+the production feature map. They deliberately do **not** turn Helm into the
+release ledger for image publication/security scans, public-edge checks,
+staging load, migration/rollback exercise, live telemetry retention/alert
+routing, signed mobile candidates, physical-device performance/crash windows,
+or store submission/review. Those gates bind to an exact candidate in the
+protected release record and in their named workflow/store evidence. A dark
+Helm rollout does not satisfy them, and their absence still blocks public/store
+release even when `helm template` succeeds.
+
+The manual `live comments acceptance` workflow is a disposable reference-stack
+regression lane, not protected staging. Its evidence has a closed safety schema
+and the non-assertive environment classification
+`manual_ci_disposable_reference`; it does not attest GitHub environment
+protection. Its domain-separated `reference-sha256:` ID is intentionally
+invalid for production `moderationReadinessId`; do not copy its artifact
+checksum or Actions run ID into that field. The target-environment record must
+satisfy the complete
+[moderation readiness matrix](moderation.md#acceptance-and-production-readiness-evidence)
+for the exact deployed candidate before comment creation can be enabled.
+
 ## Pre-deploy gates
 
 1. Freeze the revision and attach CI/security results. Verify every GitHub

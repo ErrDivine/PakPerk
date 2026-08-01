@@ -150,6 +150,19 @@ captured API logs contained none of the UGC, protected-header, full bearer, or
 token-signature sentinels. All disposable provider/local users, comments,
 reports, blocks, moderation events, rate buckets, and paper data were removed.
 
+After that recorded run, the repository acceptance boundary was strengthened
+with a dedicated public PKCE `pakperk-admin-dev` client/audience and a manual,
+environment-gated, exact-`main` workflow. The updated harness requires separate
+negative checks for a valid mobile/API-audience token and a valid but
+non-allowlisted admin-audience identity before using an allowlisted operator.
+It emits only closed-schema, sanitized, disposable-reference evidence and tears
+down a unique Compose project with its volumes. The updated workflow and Docker
+flow were not run for this report; validator success proves the repository
+contract only. Its `manual_ci_disposable_reference` classification does not
+attest hosted environment protection, and its `reference-sha256:` ID cannot
+satisfy production Helm `moderationReadinessId`, which still requires protected
+staging evidence.
+
 ## Remaining Phase 6 launch gates
 
 - In-app and web account deletion, provider identity erasure, recent-auth,

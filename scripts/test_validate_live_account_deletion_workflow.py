@@ -57,6 +57,46 @@ class LiveDeletionWorkflowTests(unittest.TestCase):
                 validator.DEFAULT_REQUIREMENTS.read_text(encoding="utf-8"), workflow
             )
 
+    def test_release_evidence_misclassification_fails(self) -> None:
+        workflow = validator.DEFAULT_WORKFLOW.read_text(encoding="utf-8").replace(
+            "not protected staging or production release evidence",
+            "protected staging deletion release evidence",
+            1,
+        )
+        with self.assertRaisesRegex(RuntimeError, "missing: not protected staging"):
+            self._validate(
+                validator.DEFAULT_REQUIREMENTS.read_text(encoding="utf-8"), workflow
+            )
+
+    def test_non_manual_trigger_fails(self) -> None:
+        workflow = validator.DEFAULT_WORKFLOW.read_text(encoding="utf-8").replace(
+            "  workflow_dispatch:\n", "  workflow_dispatch:\n  push:\n", 1
+        )
+        with self.assertRaisesRegex(RuntimeError, "manual-dispatch only"):
+            self._validate(
+                validator.DEFAULT_REQUIREMENTS.read_text(encoding="utf-8"), workflow
+            )
+
+    def test_protected_environment_implication_fails(self) -> None:
+        workflow = validator.DEFAULT_WORKFLOW.read_text(encoding="utf-8").replace(
+            "    runs-on: ubuntu-24.04\n",
+            "    runs-on: ubuntu-24.04\n    environment: staging\n",
+            1,
+        )
+        with self.assertRaisesRegex(RuntimeError, "must not imply a protected"):
+            self._validate(
+                validator.DEFAULT_REQUIREMENTS.read_text(encoding="utf-8"), workflow
+            )
+
+    def test_missing_scope_artifact_fails(self) -> None:
+        workflow = validator.DEFAULT_WORKFLOW.read_text(encoding="utf-8").replace(
+            "if-no-files-found: error", "if-no-files-found: warn", 1
+        )
+        with self.assertRaisesRegex(RuntimeError, "missing: if-no-files-found: error"):
+            self._validate(
+                validator.DEFAULT_REQUIREMENTS.read_text(encoding="utf-8"), workflow
+            )
+
     def test_mutable_compose_image_fails(self) -> None:
         compose = validator.DEFAULT_COMPOSE.read_text(encoding="utf-8").replace(
             validator.EXPECTED_COMPOSE_IMAGES["mailpit"],

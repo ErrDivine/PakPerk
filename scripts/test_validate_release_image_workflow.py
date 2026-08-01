@@ -109,6 +109,22 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "local.*bypass|trust/publication bypass"):
             self._validate_source(source)
 
+    def test_missing_publication_artifact_is_not_a_warning(self) -> None:
+        source = validator.WORKFLOW.read_text(encoding="utf-8").replace(
+            "if-no-files-found: error", "if-no-files-found: warn", 1
+        )
+        with self.assertRaisesRegex(RuntimeError, "missing: if-no-files-found: error"):
+            self._validate_source(source)
+
+    def test_publication_evidence_checksum_removal_fails(self) -> None:
+        source = validator.WORKFLOW.read_text(encoding="utf-8").replace(
+            "(cd release/image-publication && sha256sum -- * >SHA256SUMS)",
+            "touch release/image-publication/SHA256SUMS",
+            1,
+        )
+        with self.assertRaisesRegex(RuntimeError, "missing: .*sha256sum"):
+            self._validate_source(source)
+
 
 if __name__ == "__main__":
     unittest.main()

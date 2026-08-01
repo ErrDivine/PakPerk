@@ -73,7 +73,10 @@ def validate(path: pathlib.Path = WORKFLOW) -> None:
             '"image": {"repository": backend_repository, "digest": backend_digest}',
             '"siteImage": {"repository": site_repository, "digest": site_digest}',
             "release/image-publication/flutter-toolchain.json",
+            "(cd release/image-publication && sha256sum -- * >SHA256SUMS)",
+            "name: release-images-${{ inputs.environment }}-${{ steps.release.outputs.source_revision }}",
             "if-no-files-found: error",
+            "retention-days: 90",
     ):
         require(source, fragment)
     for forbidden in (
@@ -83,6 +86,7 @@ def validate(path: pathlib.Path = WORKFLOW) -> None:
         "docker push $SITE_REPOSITORY\n",
         "docker image inspect",
         ".RepoDigests",
+        "if-no-files-found: warn",
     ):
         if forbidden in source:
             raise RuntimeError(f"release image workflow contains a trust/publication bypass: {forbidden}")

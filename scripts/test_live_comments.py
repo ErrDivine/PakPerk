@@ -17,6 +17,7 @@ import ipaddress
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import subprocess
 import sys
@@ -27,6 +28,18 @@ import uuid
 
 import requests
 from bs4 import BeautifulSoup
+
+from live_comments_evidence import (
+    CLEANUP_SCENARIO_ID,
+    DATABASE_MIGRATION_VERSION,
+    RUNTIME_SCENARIO_IDS,
+    SCENARIO_IDS,
+    STATE_SCHEMA_VERSION,
+    EvidenceError,
+    build_evidence,
+    initial_scenario_state,
+    write_evidence,
+)
 
 
 class AcceptanceError(RuntimeError):
@@ -53,6 +66,13 @@ OIDC_CLIENT_ID = os.environ.get(
 OIDC_REDIRECT_URI = os.environ.get(
     "LIVE_COMMENTS_OIDC_REDIRECT_URI", "pakperk-auth-dev://oauth/callback"
 )
+ADMIN_OIDC_CLIENT_ID = os.environ.get(
+    "LIVE_COMMENTS_ADMIN_OIDC_CLIENT_ID", "pakperk-admin-dev"
+)
+ADMIN_OIDC_REDIRECT_URI = os.environ.get(
+    "LIVE_COMMENTS_ADMIN_OIDC_REDIRECT_URI",
+    "pakperk-admin-dev://oauth/callback",
+)
 ADMIN_OIDC_AUDIENCE = required_env("LIVE_COMMENTS_ADMIN_OIDC_AUDIENCE")
 ADMIN_USERNAME = required_env("LIVE_COMMENTS_KEYCLOAK_ADMIN_USERNAME")
 ADMIN_PASSWORD = required_env("LIVE_COMMENTS_KEYCLOAK_ADMIN_PASSWORD")
@@ -70,6 +90,18 @@ ADMIN_ACCESS_TOKEN_FILE = Path(
 UNAUTHORIZED_ADMIN_ACCESS_TOKEN_FILE = Path(
     required_env("LIVE_COMMENTS_ADMIN_UNAUTHORIZED_ACCESS_TOKEN_FILE")
 )
+EVIDENCE_FILE = Path(os.environ["LIVE_COMMENTS_EVIDENCE_FILE"]) if os.environ.get(
+    "LIVE_COMMENTS_EVIDENCE_FILE"
+) else None
+EVIDENCE_SOURCE_REVISION = os.environ.get(
+    "LIVE_COMMENTS_SOURCE_REVISION", ""
+).strip()
+EVIDENCE_ENVIRONMENT = os.environ.get(
+    "LIVE_COMMENTS_EVIDENCE_ENVIRONMENT", ""
+).strip()
+EVIDENCE_EXPECTED_OUTCOME = os.environ.get(
+    "LIVE_COMMENTS_EVIDENCE_EXPECTED_OUTCOME", ""
+).strip()
 CURRENT_TERMS_VERSION = os.environ.get(
     "LIVE_COMMENTS_CURRENT_TERMS_VERSION", "2026-07-31"
 )
@@ -91,6 +123,7 @@ LOCAL_HTTP = requests.Session()
 # service. Ambient developer/CI proxy variables must never intercept bearer
 # tokens, Keycloak sessions, or localhost acceptance traffic.
 LOCAL_HTTP.trust_env = False
+SAFE_ERROR_CODE = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}")
 
 
 def safe_response_error(response: requests.Response) -> str:
@@ -100,9 +133,13 @@ def safe_response_error(response: requests.Response) -> str:
         return "non-JSON response"
     if isinstance(payload, dict):
         error = payload.get("error")
-        if isinstance(error, dict) and isinstance(error.get("code"), str):
+        if (
+            isinstance(error, dict)
+            and isinstance(error.get("code"), str)
+            and SAFE_ERROR_CODE.fullmatch(error["code"])
+        ):
             return error["code"]
-        if isinstance(error, str):
+        if isinstance(error, str) and SAFE_ERROR_CODE.fullmatch(error):
             return error
     return "unexpected response envelope"
 
@@ -167,7 +204,7 @@ def api_request(
             timeout=15,
         )
     except requests.RequestException as error:
-        raise AcceptanceError(f"{method} {path} could not reach the API") from error
+        raise AcceptanceError("configured API request could not reach the endpoint") from error
 
 
 def admin_access_token() -> str:
@@ -240,7 +277,16 @@ def jwt_payload(token: str) -> dict[str, Any]:
     return value
 
 
-def authorization_code_pkce(username: str, password: str, expected_sub: str) -> str:
+def authorization_code_pkce(
+    username: str,
+    password: str,
+    expected_sub: str,
+    *,
+    client_id: str,
+    redirect_uri: str,
+    expected_audience: str,
+    forbidden_audiences: tuple[str, ...] = (),
+) -> str:
     verifier = b64url(secrets.token_bytes(48))
     challenge = b64url(hashlib.sha256(verifier.encode("ascii")).digest())
     state_value = secrets.token_urlsafe(24)
@@ -250,8 +296,8 @@ def authorization_code_pkce(username: str, password: str, expected_sub: str) -> 
     response = session.get(
         AUTHORIZE_URL,
         params={
-            "client_id": OIDC_CLIENT_ID,
-            "redirect_uri": OIDC_REDIRECT_URI,
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
             "response_type": "code",
             "scope": "openid profile",
             "state": state_value,
@@ -301,7 +347,7 @@ def authorization_code_pkce(username: str, password: str, expected_sub: str) -> 
     )
     expect_status(login, (302, 303), "Keycloak login form submission")
     location = login.headers.get("Location", "")
-    if not location.startswith(OIDC_REDIRECT_URI):
+    if not location.startswith(redirect_uri):
         target = urlparse(location)
         safe_target = f"{target.scheme}://{target.hostname or ''}{target.path}"
         raise AcceptanceError(
@@ -317,8 +363,8 @@ def authorization_code_pkce(username: str, password: str, expected_sub: str) -> 
         TOKEN_URL,
         data={
             "grant_type": "authorization_code",
-            "client_id": OIDC_CLIENT_ID,
-            "redirect_uri": OIDC_REDIRECT_URI,
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
             "code": code,
             "code_verifier": verifier,
         },
@@ -336,11 +382,14 @@ def authorization_code_pkce(username: str, password: str, expected_sub: str) -> 
     if (
         claims.get("iss") != ISSUER
         or claims.get("sub") != expected_sub
-        or "pakperk-api" not in audiences
-        or ADMIN_OIDC_AUDIENCE not in audiences
+        or claims.get("azp") != client_id
+        or expected_audience not in audiences
+        or any(audience in audiences for audience in forbidden_audiences)
         or not isinstance(claims.get("auth_time"), int)
     ):
-        raise AcceptanceError("Authorization Code + PKCE token claims are not API-bound")
+        raise AcceptanceError(
+            "Authorization Code + PKCE token claims are not bound to the expected client/audience"
+        )
     return token
 
 
@@ -381,12 +430,14 @@ def write_private_access_token(path: Path, token: str) -> None:
         raise AcceptanceError("admin access-token file is not owner-only")
 
 
-def assert_user_direct_grant_disabled(username: str, password: str) -> None:
+def assert_user_direct_grant_disabled(
+    username: str, password: str, client_id: str
+) -> None:
     response = LOCAL_HTTP.post(
         TOKEN_URL,
         data={
             "grant_type": "password",
-            "client_id": OIDC_CLIENT_ID,
+            "client_id": client_id,
             "username": username,
             "password": password,
         },
@@ -517,6 +568,71 @@ def save_state(state: dict[str, Any]) -> None:
     temporary.replace(STATE_FILE)
 
 
+def record_scenario_pass(state: dict[str, Any], scenario_id: str) -> None:
+    scenarios = state.get("scenarios")
+    if not isinstance(scenarios, dict) or set(scenarios) != set(SCENARIO_IDS):
+        raise AcceptanceError("live-comments scenario state is malformed")
+    if scenario_id == CLEANUP_SCENARIO_ID:
+        runtime_outcomes = [scenarios[item] for item in RUNTIME_SCENARIO_IDS]
+        if state.get("acceptance_outcome") == "passed":
+            valid_runtime = all(outcome == "passed" for outcome in runtime_outcomes)
+        elif state.get("acceptance_outcome") == "failed":
+            valid_runtime = runtime_outcomes.count("failed") == 1
+            if valid_runtime:
+                failure_index = runtime_outcomes.index("failed")
+                valid_runtime = all(
+                    outcome == "passed" for outcome in runtime_outcomes[:failure_index]
+                ) and all(
+                    outcome == "not_run"
+                    for outcome in runtime_outcomes[failure_index + 1 :]
+                )
+        else:
+            valid_runtime = False
+        if not valid_runtime:
+            raise AcceptanceError("cleanup cannot complete before a valid scenario outcome")
+    else:
+        try:
+            scenario_index = RUNTIME_SCENARIO_IDS.index(scenario_id)
+        except ValueError as error:
+            raise AcceptanceError("live-comments scenario identity is invalid") from error
+        if any(
+            scenarios[item] != "passed"
+            for item in RUNTIME_SCENARIO_IDS[:scenario_index]
+        ):
+            raise AcceptanceError("live-comments scenarios completed out of order")
+    if scenarios[scenario_id] not in {"not_run", "passed"}:
+        raise AcceptanceError("a failed live-comments scenario cannot later pass")
+    scenarios[scenario_id] = "passed"
+    save_state(state)
+
+
+def mark_acceptance_failed(state: dict[str, Any]) -> None:
+    scenarios = state.get("scenarios")
+    if not isinstance(scenarios, dict) or set(scenarios) != set(SCENARIO_IDS):
+        raise AcceptanceError("live-comments scenario state is malformed")
+    failed = [
+        scenario_id
+        for scenario_id in RUNTIME_SCENARIO_IDS
+        if scenarios[scenario_id] == "failed"
+    ]
+    if len(failed) > 1:
+        raise AcceptanceError("multiple live-comments scenarios are marked failed")
+    if not failed:
+        first_incomplete = next(
+            (
+                scenario_id
+                for scenario_id in RUNTIME_SCENARIO_IDS
+                if scenarios[scenario_id] != "passed"
+            ),
+            None,
+        )
+        if first_incomplete is None:
+            raise AcceptanceError("a completed scenario matrix cannot be marked failed")
+        scenarios[first_incomplete] = "failed"
+    state["acceptance_outcome"] = "failed"
+    save_state(state)
+
+
 def load_state() -> dict[str, Any] | None:
     if not STATE_FILE.exists():
         return None
@@ -527,6 +643,15 @@ def load_state() -> dict[str, Any] | None:
     if not isinstance(state, dict):
         raise AcceptanceError("live-comments cleanup state is malformed")
     return state
+
+
+def assert_database_migration_version() -> None:
+    applied = psql(
+        "SELECT COALESCE(max(version), 0) FROM _sqlx_migrations WHERE success = TRUE;"
+    )
+    failed = psql("SELECT count(*) FROM _sqlx_migrations WHERE success = FALSE;")
+    if applied != str(DATABASE_MIGRATION_VERSION) or failed != "0":
+        raise AcceptanceError("database is not at the exact successful release migration")
 
 
 def onboard(token: str, handle: str, state: dict[str, Any]) -> str:
@@ -653,12 +778,17 @@ def admin_command(
     return payload, result.stdout
 
 
-def assert_unallowlisted_admin_fails(
-    reader_token: str, operator_user_id: str
+def assert_admin_token_fails(
+    rejected_token: str,
+    operator_user_id: str,
+    *,
+    boundary: str,
 ) -> None:
     if UNAUTHORIZED_ADMIN_ACCESS_TOKEN_FILE == ADMIN_ACCESS_TOKEN_FILE:
         raise AcceptanceError("admin acceptance token fixtures must use separate files")
-    write_private_access_token(UNAUTHORIZED_ADMIN_ACCESS_TOKEN_FILE, reader_token)
+    if boundary not in {"mobile_audience", "nonallowlisted_identity"}:
+        raise AcceptanceError("admin rejection boundary is invalid")
+    write_private_access_token(UNAUTHORIZED_ADMIN_ACCESS_TOKEN_FILE, rejected_token)
     try:
         result = run_admin_process(
             operator_user_id,
@@ -679,11 +809,11 @@ def assert_unallowlisted_admin_fails(
             ) from error
 
     if result.returncode == 0:
-        raise AcceptanceError("a valid non-allowlisted user gained admin access")
+        raise AcceptanceError("a token outside the admin boundary gained admin access")
     captured = result.stdout + result.stderr
     forbidden = (
-        reader_token,
-        reader_token[-32:],
+        rejected_token,
+        rejected_token[-32:],
         UGC_SENTINEL,
         TOKEN_SENTINEL,
         '"body"',
@@ -963,6 +1093,9 @@ def run_http_matrix(
         )
     ) != 1:
         raise AcceptanceError("create idempotency persisted more than one row")
+    record_scenario_pass(
+        state, "comment_create_exact_replay_and_mismatch_conflict"
+    )
     results.append("durable exact create replay and mismatch conflict")
 
     edited_response = expect_status(
@@ -995,6 +1128,9 @@ def run_http_matrix(
     expect_status(stale, 409, "stale comment edit")
     if error_code(stale) != "COMMENT_EDIT_CONFLICT":
         raise AcceptanceError("stale edit used the wrong stable error code")
+    record_scenario_pass(
+        state, "comment_edit_optimistic_version_and_stale_conflict"
+    )
     results.append("optimistic edit and stale-write rejection")
 
     first_report_response = expect_status(
@@ -1031,6 +1167,7 @@ def run_http_matrix(
         or first_report.get("reason") != "other"
     ):
         raise AcceptanceError("report replay did not preserve its canonical first reason")
+    record_scenario_pass(state, "comment_report_canonical_replay")
     results.append("canonical report replay despite a different replayed reason")
 
     first_user_report_response = expect_status(
@@ -1080,6 +1217,9 @@ def run_http_matrix(
         )
     ) != 0:
         raise AcceptanceError("submitting a user report unexpectedly created a block")
+    record_scenario_pass(
+        state, "user_report_canonical_replay_without_implicit_block"
+    )
     results.append("canonical user report remains independent from user block")
 
     block_response = expect_status(
@@ -1147,6 +1287,7 @@ def run_http_matrix(
     )
     if comment_id not in comment_ids(visible.get("items")):
         raise AcceptanceError("unblocked author's published comment did not return")
+    record_scenario_pass(state, "user_block_cross_process_filter_and_unblock")
     results.append("durable cross-process block/filter/unblock persistence")
 
     risky_request_id = str(uuid.uuid4())
@@ -1196,6 +1337,7 @@ def run_http_matrix(
     }
     if risky_id not in own or own[risky_id].get("status") != "pending_review":
         raise AcceptanceError("author could not see the private pending-review projection")
+    record_scenario_pass(state, "high_risk_comment_private_pending_review")
     results.append("deterministic high-risk content remains private pending review")
 
     report_id = checked_uuid(str(first_report.get("id", "")))
@@ -1212,6 +1354,9 @@ def run_http_matrix(
     )
     results.append(
         "content-free admin queues, explicit inspect, hide/restore, report resolution, suspend/reinstate, and audit"
+    )
+    record_scenario_pass(
+        state, "admin_queues_inspection_actions_and_attributable_audit"
     )
 
     disabled_request_id = str(uuid.uuid4())
@@ -1366,6 +1511,9 @@ def run_http_matrix(
     results.append(
         "creation kill switch disables only create; reads, safety, edit/delete, and paper reading remain"
     )
+    record_scenario_pass(
+        state, "creation_kill_switch_preserves_reads_safety_edit_and_delete"
+    )
 
     unavailable_auth = api_request(
         "GET", UNAVAILABLE_API, "/v1/me", token=author_token
@@ -1388,11 +1536,16 @@ def run_http_matrix(
         200,
         "guest paper GET with unavailable Keycloak",
     )
+    record_scenario_pass(
+        state, "unavailable_oidc_preserves_guest_reads_and_fails_auth_closed"
+    )
     results.append("guest comment/paper GET survives unavailable Keycloak while auth fails closed")
     return results
 
 
-def audit_logs(tokens: list[str]) -> None:
+def audit_logs(
+    tokens: list[str], oidc_subjects: list[str], usernames: list[str]
+) -> None:
     forbidden: list[tuple[str, str]] = [
         (UGC_SENTINEL, "UGC sentinel"),
         (TOKEN_SENTINEL, "token-header sentinel"),
@@ -1400,6 +1553,10 @@ def audit_logs(tokens: list[str]) -> None:
     for token in tokens:
         forbidden.append((token, "complete bearer token"))
         forbidden.append((token[-32:], "bearer-token signature fingerprint"))
+    for subject in oidc_subjects:
+        forbidden.append((subject, "OIDC subject"))
+    for username in usernames:
+        forbidden.append((f"{username}@pakperk.test", "email address"))
     for path in API_LOGS:
         try:
             captured = path.read_text(encoding="utf-8", errors="replace")
@@ -1423,7 +1580,9 @@ def cleanup_database(state: dict[str, Any]) -> None:
     for user_id in local_user_ids:
         rate_predicates.append(f"scope_key = {sql_literal(f'user:{user_id}')}")
     if isinstance(origin_scope, str) and origin_scope:
-        rate_predicates.append(f"scope_key = {sql_literal(origin_scope)}")
+        rate_predicates.append(
+            f"scope_key = {sql_literal(f'origin:{origin_scope}')}"
+        )
     explicit_comments = [checked_uuid(value) for value in state.get("comment_ids", [])]
     for comment_id in explicit_comments:
         rate_predicates.append(f"scope_key = {sql_literal(f'comment:{comment_id}')}")
@@ -1466,6 +1625,12 @@ def cleanup_database(state: dict[str, Any]) -> None:
         )
         if remaining != 0:
             raise AcceptanceError("disposable paper/comment data was not removed")
+    remaining_rate_buckets = int(
+        psql(f"SELECT count(*) FROM shared_rate_limit_buckets WHERE {rate_where};")
+        or "0"
+    )
+    if remaining_rate_buckets != 0:
+        raise AcceptanceError("disposable shared rate-limit state was not removed")
 
 
 def cleanup_keycloak(state: dict[str, Any]) -> None:
@@ -1489,6 +1654,7 @@ def cleanup_keycloak(state: dict[str, Any]) -> None:
 def cleanup_state(state: dict[str, Any]) -> None:
     cleanup_database(state)
     cleanup_keycloak(state)
+    record_scenario_pass(state, CLEANUP_SCENARIO_ID)
     state["cleaned"] = True
     save_state(state)
 
@@ -1504,13 +1670,15 @@ def new_state() -> dict[str, Any]:
         secret.encode("utf-8"), message, hashlib.sha256
     ).hexdigest()
     state: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": STATE_SCHEMA_VERSION,
         "run_id": RUN_ID,
         "keycloak_user_ids": [],
         "local_user_ids": [],
         "comment_ids": [],
         "paper_id": None,
         "origin_scope": origin_scope,
+        "acceptance_outcome": "running",
+        "scenarios": initial_scenario_state(),
         "cleaned": False,
     }
     save_state(state)
@@ -1518,12 +1686,23 @@ def new_state() -> dict[str, Any]:
 
 
 def run_acceptance() -> None:
+    if (
+        ADMIN_OIDC_CLIENT_ID == OIDC_CLIENT_ID
+        or ADMIN_OIDC_REDIRECT_URI == OIDC_REDIRECT_URI
+        or ADMIN_OIDC_AUDIENCE == "pakperk-api"
+    ):
+        raise AcceptanceError(
+            "admin OIDC client, redirect, and audience must be dedicated"
+        )
     state = new_state()
     try:
         discovery = LOCAL_HTTP.get(
             f"{ISSUER}/.well-known/openid-configuration", timeout=15
         )
         expect_status(discovery, 200, "Keycloak realm discovery")
+        assert_database_migration_version()
+        record_scenario_pass(state, "database_migration_version_10")
+        print(f"PASS database is at exact migration {DATABASE_MIGRATION_VERSION}")
         paper_id = seed_paper(state)
         before_preparation = preparation_snapshot(paper_id)
 
@@ -1537,40 +1716,123 @@ def run_acceptance() -> None:
             create_keycloak_user(username, password, state)
             for username, password in zip(usernames, passwords, strict=True)
         ]
-        tokens = [
-            authorization_code_pkce(username, password, user_id)
+        mobile_tokens = [
+            authorization_code_pkce(
+                username,
+                password,
+                user_id,
+                client_id=OIDC_CLIENT_ID,
+                redirect_uri=OIDC_REDIRECT_URI,
+                expected_audience="pakperk-api",
+                forbidden_audiences=(ADMIN_OIDC_AUDIENCE,),
+            )
             for username, password, user_id in zip(
                 usernames, passwords, keycloak_ids, strict=True
             )
         ]
-        assert_user_direct_grant_disabled(usernames[0], passwords[0])
+        assert_user_direct_grant_disabled(
+            usernames[0], passwords[0], OIDC_CLIENT_ID
+        )
+        record_scenario_pass(
+            state,
+            "mobile_oidc_authorization_code_pkce_and_password_grant_rejection",
+        )
         print("PASS three disposable users authenticated only through Authorization Code + PKCE")
+
+        admin_tokens = [
+            authorization_code_pkce(
+                usernames[index],
+                passwords[index],
+                keycloak_ids[index],
+                client_id=ADMIN_OIDC_CLIENT_ID,
+                redirect_uri=ADMIN_OIDC_REDIRECT_URI,
+                expected_audience=ADMIN_OIDC_AUDIENCE,
+                forbidden_audiences=("pakperk-api",),
+            )
+            for index in (1, 2)
+        ]
+        assert_user_direct_grant_disabled(
+            usernames[2], passwords[2], ADMIN_OIDC_CLIENT_ID
+        )
+        admin_token_at_api = api_request(
+            "GET", WRITE_API, "/v1/me", token=admin_tokens[1]
+        )
+        expect_status(
+            admin_token_at_api,
+            401,
+            "API route with dedicated admin-audience token",
+        )
+        if error_code(admin_token_at_api) != "UNAUTHENTICATED":
+            raise AcceptanceError(
+                "admin-audience token did not fail the API audience boundary closed"
+            )
+        record_scenario_pass(
+            state,
+            "admin_oidc_pkce_dedicated_audience_rejected_by_api",
+        )
+        print(
+            "PASS dedicated admin-audience PKCE token was rejected by the API audience"
+        )
 
         local_ids = [
             onboard(token, f"lc{RUN_ID[:10]}{suffix}", state)
-            for token, suffix in zip(tokens, ("a", "b", "o"), strict=True)
+            for token, suffix in zip(mobile_tokens, ("a", "b", "o"), strict=True)
         ]
         if len(set(local_ids)) != len(local_ids):
             raise AcceptanceError("distinct OIDC subjects resolved to the same local account")
+        record_scenario_pass(state, "account_terms_and_guidelines_onboarding")
         print("PASS handle, Terms, and Community Guidelines onboarding for all users")
 
         # Keep the bearer token out of argv, shell history, logs, and persisted
         # harness state. A dedicated third account is the operator so moderation
         # never grants privileged authority to the author or reporting reader,
         # and suspending the author cannot lock out later CLI invocations.
-        assert_unallowlisted_admin_fails(tokens[1], local_ids[2])
-        print("PASS valid non-allowlisted identity failed admin authorization closed")
-        write_private_access_token(ADMIN_ACCESS_TOKEN_FILE, tokens[2])
-        print("PASS provisioned operator token installed in an owner-only file")
+        assert_admin_token_fails(
+            mobile_tokens[2], local_ids[2], boundary="mobile_audience"
+        )
+        record_scenario_pass(state, "admin_rejects_mobile_audience_token")
+        print("PASS mobile/API-audience token failed admin authorization closed")
+        assert_admin_token_fails(
+            admin_tokens[0],
+            local_ids[2],
+            boundary="nonallowlisted_identity",
+        )
+        record_scenario_pass(
+            state, "admin_rejects_nonallowlisted_admin_audience_identity"
+        )
+        print("PASS valid non-allowlisted admin identity failed authorization closed")
+        write_private_access_token(ADMIN_ACCESS_TOKEN_FILE, admin_tokens[1])
+        operator_preflight, operator_preflight_raw = admin_command(
+            local_ids[2], "comments", "list", "--status", "open", "--limit", "1"
+        )
+        if not isinstance(operator_preflight.get("items"), list) or any(
+            protected in operator_preflight_raw
+            for protected in (UGC_SENTINEL, '"body"', '"detail"')
+        ):
+            raise AcceptanceError(
+                "allowlisted admin preflight did not return a content-free queue"
+            )
+        record_scenario_pass(
+            state, "admin_accepts_allowlisted_operator_with_owner_only_token_file"
+        )
+        print("PASS allowlisted operator used an owner-only dedicated-audience token file")
 
         for result in run_http_matrix(
-            tokens[0], tokens[1], local_ids[0], local_ids[2], paper_id, state
+            mobile_tokens[0],
+            mobile_tokens[1],
+            local_ids[0],
+            local_ids[2],
+            paper_id,
+            state,
         ):
             print(f"PASS {result}")
 
         after_preparation = preparation_snapshot(paper_id)
         if after_preparation != before_preparation:
             raise AcceptanceError("comment actions changed paper preparation or job state")
+        record_scenario_pass(
+            state, "comment_actions_do_not_change_paper_preparation_or_jobs"
+        )
         print("PASS comment actions made no paper_processing or jobs changes")
 
         if int(
@@ -1581,10 +1843,23 @@ def run_acceptance() -> None:
             )
         ) != 0:
             raise AcceptanceError("final unblock did not persist")
-        audit_logs(tokens)
-        print("PASS captured API logs contain no UGC, token-header, or bearer-token sentinel")
+        audit_logs(
+            [*mobile_tokens, *admin_tokens],
+            keycloak_ids,
+            usernames,
+        )
+        record_scenario_pass(
+            state,
+            "captured_api_logs_exclude_ugc_headers_tokens_subjects_and_emails",
+        )
+        print(
+            "PASS captured API logs contain no UGC, token, OIDC-subject, or email sentinel"
+        )
+        state["acceptance_outcome"] = "passed"
+        save_state(state)
     except Exception:
         try:
+            mark_acceptance_failed(state)
             cleanup_state(state)
         except Exception as cleanup_error:  # noqa: BLE001 - preserve primary failure.
             print(
@@ -1600,12 +1875,78 @@ def run_acceptance() -> None:
 def cleanup_only() -> None:
     state = load_state()
     if state is not None:
+        if state.get("acceptance_outcome") == "running":
+            mark_acceptance_failed(state)
         cleanup_state(state)
+
+
+def assert_evidence_source_unchanged() -> None:
+    try:
+        revision = subprocess.run(
+            ["git", "-C", str(PROJECT_DIR), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        source_status = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(PROJECT_DIR),
+                "status",
+                "--porcelain",
+                "--untracked-files=normal",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise AcceptanceError(
+            "could not re-verify the evidence source tree"
+        ) from error
+    if (
+        revision.returncode != 0
+        or revision.stdout.strip() != EVIDENCE_SOURCE_REVISION
+        or source_status.returncode != 0
+        or source_status.stdout
+    ):
+        raise AcceptanceError(
+            "evidence source changed before the retained statement was built"
+        )
+
+
+def emit_evidence() -> None:
+    if EVIDENCE_FILE is None:
+        raise AcceptanceError("LIVE_COMMENTS_EVIDENCE_FILE is required")
+    if not EVIDENCE_SOURCE_REVISION or not EVIDENCE_ENVIRONMENT:
+        raise AcceptanceError(
+            "live-comments source revision and evidence environment are required"
+        )
+    state = load_state()
+    if state is None:
+        raise AcceptanceError("live-comments cleanup state is unavailable")
+    if EVIDENCE_EXPECTED_OUTCOME not in {"passed", "failed"}:
+        raise AcceptanceError("live-comments expected evidence outcome is required")
+    assert_evidence_source_unchanged()
+    evidence = build_evidence(
+        state,
+        source_revision=EVIDENCE_SOURCE_REVISION,
+        environment=EVIDENCE_ENVIRONMENT,
+        expected_outcome=EVIDENCE_EXPECTED_OUTCOME,
+    )
+    write_evidence(EVIDENCE_FILE, evidence)
+    print(
+        "PASS sanitized live-comments evidence emitted after verified cleanup "
+        f"({evidence['content_id']})"
+    )
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("run", "cleanup"))
+    parser.add_argument("command", choices=("run", "cleanup", "evidence"))
     return parser.parse_args()
 
 
@@ -1614,8 +1955,13 @@ def main() -> int:
     try:
         if args.command == "run":
             run_acceptance()
-        else:
+        elif args.command == "cleanup":
             cleanup_only()
+        else:
+            emit_evidence()
+    except EvidenceError as error:
+        print(f"FAIL evidence contract: {error}", file=sys.stderr)
+        return 1
     except AcceptanceError as error:
         print(f"FAIL {error}", file=sys.stderr)
         return 1

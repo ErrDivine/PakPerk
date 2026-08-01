@@ -1,0 +1,189 @@
+name: live comments acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Reviewed full commit SHA that exactly matches the selected main revision
+        required: true
+        type: string
+      confirmation:
+        description: Type RUN_DISPOSABLE_LIVE_COMMENTS to run the disposable acceptance suite
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-comments-acceptance
+  cancel-in-progress: false
+
+jobs:
+  disposable-comments:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: live-comments-acceptance
+    timeout-minutes: 45
+    env:
+      RUST_TOOLCHAIN: 1.91.1
+      REQUESTED_REVISION: ${{ inputs.source_revision }}
+      DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+      COMPOSE_PROJECT_NAME: pakperk-live-comments-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_revision }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact reviewed main source
+        shell: bash
+        env:
+          DISPATCH_REVISION: ${{ github.sha }}
+        run: |
+          if [[ "$DISPATCH_CONFIRMATION" != "RUN_DISPOSABLE_LIVE_COMMENTS" ]]; then
+            echo "Dispatch confirmation did not match the required phrase." >&2
+            exit 2
+          fi
+          if ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_revision must be a full lowercase Git commit SHA." >&2
+            exit 2
+          fi
+          if [[ "$REQUESTED_REVISION" != "$DISPATCH_REVISION" ]]; then
+            echo "source_revision must exactly match the selected protected main revision." >&2
+            exit 2
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$REQUESTED_REVISION" ]]; then
+            echo "Checkout did not resolve the exact requested revision." >&2
+            exit 2
+          fi
+          if [[ "$(git rev-parse refs/remotes/origin/main)" != "$REQUESTED_REVISION" ]]; then
+            echo "The requested revision is not the fetched origin/main tip." >&2
+            exit 2
+          fi
+
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup override set "$RUST_TOOLCHAIN"
+
+      - name: Install bounded live-driver dependencies
+        shell: bash
+        run: |
+          python3 -c 'import sys; raise SystemExit(sys.version_info[:2] != (3, 12))'
+          python3 -m venv "$RUNNER_TEMP/pakperk-live-comments-venv"
+          "$RUNNER_TEMP/pakperk-live-comments-venv/bin/python" -m pip install \
+            --disable-pip-version-check \
+            --require-hashes \
+            --only-binary=:all: \
+            --requirement scripts/requirements/live-comments.txt
+          echo "$RUNNER_TEMP/pakperk-live-comments-venv/bin" >>"$GITHUB_PATH"
+
+      - name: Run disposable live-comments acceptance
+        id: live-comments
+        continue-on-error: true
+        shell: bash
+        env:
+          LIVE_COMMENTS_MANAGE_COMPOSE: "1"
+          LIVE_COMMENTS_EVIDENCE_FILE: ${{ runner.temp }}/pakperk-live-comments-evidence/live-comments-evidence.json
+          LIVE_COMMENTS_SOURCE_REVISION: ${{ inputs.source_revision }}
+          LIVE_COMMENTS_EVIDENCE_ENVIRONMENT: manual_ci_disposable_reference
+          LIVE_COMMENTS_ADMIN_OIDC_CLIENT_ID: pakperk-admin-dev
+          LIVE_COMMENTS_ADMIN_OIDC_REDIRECT_URI: pakperk-admin-dev://oauth/callback
+          LIVE_COMMENTS_ADMIN_OIDC_AUDIENCE: pakperk-admin-dev
+        run: |
+          evidence_dir="$RUNNER_TEMP/pakperk-live-comments-evidence"
+          umask 077
+          mkdir "$evidence_dir"
+          ./scripts/test_live_comments.sh
+
+      - name: Tear down disposable services
+        id: compose-cleanup
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: docker compose --profile accounts down --volumes --remove-orphans
+
+      - name: Validate and package sanitized disposable evidence
+        if: always()
+        shell: bash
+        env:
+          LIVE_COMMENTS_OUTCOME: ${{ steps.live-comments.outcome }}
+          COMPOSE_CLEANUP_OUTCOME: ${{ steps.compose-cleanup.outcome }}
+          LIVE_COMMENTS_EVIDENCE_FILE: ${{ runner.temp }}/pakperk-live-comments-evidence/live-comments-evidence.json
+        run: |
+          umask 077
+          evidence_dir="$RUNNER_TEMP/pakperk-live-comments-evidence"
+          evidence_file="$evidence_dir/live-comments-evidence.json"
+          archive="$RUNNER_TEMP/pakperk-live-comments-evidence.tar"
+          temporary_archive="$RUNNER_TEMP/.pakperk-live-comments-evidence.tar.partial"
+          if [[ "$COMPOSE_CLEANUP_OUTCOME" != "success" ]]; then
+            echo "Disposable Compose services or volumes were not removed." >&2
+            exit 1
+          fi
+          if [[ -e "$archive" || -L "$archive" || -e "$temporary_archive" || -L "$temporary_archive" ]]; then
+            echo "Live-comments evidence archive path is not fresh." >&2
+            exit 1
+          fi
+          case "$LIVE_COMMENTS_OUTCOME" in
+            success) evidence_outcome=passed ;;
+            failure) evidence_outcome=failed ;;
+            *)
+              echo "Live-comments action outcome is not evidence-compatible." >&2
+              exit 1
+              ;;
+          esac
+          python3 scripts/validate_live_comments_evidence.py "$LIVE_COMMENTS_EVIDENCE_FILE" \
+            --source-revision "$REQUESTED_REVISION" \
+            --environment manual_ci_disposable_reference \
+            --expected-outcome "$evidence_outcome"
+          if [[ ! -s "$evidence_file" || -L "$evidence_file" ]]; then
+            echo "Canonical sanitized live-comments evidence is absent or unsafe." >&2
+            exit 1
+          fi
+          (
+            cd "$evidence_dir"
+            sha256sum live-comments-evidence.json >SHA256SUMS
+            chmod 0400 live-comments-evidence.json SHA256SUMS
+          )
+          tar \
+            --create \
+            --file "$temporary_archive" \
+            --directory "$evidence_dir" \
+            live-comments-evidence.json SHA256SUMS
+          chmod 0400 "$temporary_archive"
+          mv -- "$temporary_archive" "$archive"
+
+      - name: Record disposable evidence boundary
+        if: always()
+        shell: bash
+        run: |
+          cat >>"$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## Live-comments acceptance boundary
+
+          This is sanitized disposable reference-stack evidence. It is not
+          staging, production, public-comment enablement, store-review, or
+          signed-release-candidate approval.
+          EOF
+
+      - name: Upload sanitized disposable evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: live-comments-acceptance-${{ inputs.source_revision }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pakperk-live-comments-evidence.tar
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce live-comments acceptance result
+        if: always()
+        env:
+          LIVE_COMMENTS_OUTCOME: ${{ steps.live-comments.outcome }}
+          COMPOSE_CLEANUP_OUTCOME: ${{ steps.compose-cleanup.outcome }}
+        run: |
+          if [[ "$LIVE_COMMENTS_OUTCOME" != "success" || "$COMPOSE_CLEANUP_OUTCOME" != "success" ]]; then
+            echo "The disposable live-comments acceptance or teardown did not pass." >&2
+            exit 1
+          fi

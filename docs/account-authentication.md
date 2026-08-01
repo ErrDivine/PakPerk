@@ -34,6 +34,8 @@ API audience:            pakperk-api
 native client:           pakperk-mobile-dev
 redirect URI:            pakperk-auth-dev://oauth/callback
 post-logout redirect:    pakperk-auth-dev://oauth/logout
+operator client/audience: pakperk-admin-dev
+operator redirect URI:   pakperk-admin-dev://oauth/callback
 browser deletion client: pakperk-web-deletion-dev
 browser redirect URI:    http://localhost:8082/account-deletion/
 deletion admin client:   pakperk-deletion-worker-dev (runtime-generated secret)
@@ -41,8 +43,10 @@ requested scopes:        openid profile
 verification inbox:      http://localhost:8025
 ```
 
-The public native client has no client secret and requires PKCE S256. The realm
-enables self-registration, email verification, password recovery, brute-force
+The public native and operator clients have no client secret and require PKCE
+S256. The operator client emits only the dedicated `pakperk-admin-dev` audience;
+an API-audience token is deliberately not an admin credential. The realm enables
+self-registration, email verification, password recovery, brute-force
 protection, short access-token lifetime, and refresh-token rotation. See the
 [realm runbook](../deploy/keycloak/README.md) for the development boundary.
 The realm export and Compose bootstrap defaults must not be reused as

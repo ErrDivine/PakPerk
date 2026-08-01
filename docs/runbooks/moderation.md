@@ -72,6 +72,54 @@ and identity credentials supplied outside shell history. Never pass the token,
 an email address, or a self-selected actor value as a command argument or
 environment value.
 
+## Acceptance and production-readiness evidence
+
+The manual `live comments acceptance` workflow is an environment-gated,
+`main`-tip-only exercise of disposable reference PostgreSQL and Keycloak
+services. A successful run exercises separate mobile and `pakperk-admin-dev`
+PKCE audiences, rejects an API-audience token at the admin boundary, rejects a
+valid admin-audience identity outside the local allowlist, attributes actions
+to the allowlisted operator, preserves kill-switch safety operations, and
+cleans its fixtures. Its closed artifact is classified as disposable reference
+evidence,
+not staging or public-enablement approval. Its domain-separated reference ID
+is deliberately not a valid production Helm
+`releaseEvidence.moderationReadinessId`. A green workflow is useful regression
+evidence but never authorizes public comments.
+
+Before dispatch, the repository administrator must verify in GitHub that the
+`live-comments-acceptance` environment has required reviewers and restricts
+deployment branches to `main`. The YAML environment declaration and job-level
+branch check do not create or attest those out-of-band protection settings. Do
+not treat a run from an unprotected or misconfigured environment as reviewed
+reference evidence.
+
+The retained artifact therefore always records
+`manual_ci_disposable_reference`, never a protected-environment claim. That
+classification remains manual even when administrators have correctly
+configured and approved the GitHub environment; reviewer and deployment-branch
+evidence belongs in GitHub's external run record, not this disposable payload.
+
+Protected staging moderation readiness must instead bind the exact candidate
+revision and deployed image digests to all of the following:
+
+- the target issuer's dedicated operator audience, recent-auth policy, current
+  allowlist, mobile/API-audience rejection, non-allowlisted operator rejection,
+  and attributable audit UUID;
+- live comment and user-report queues, explicit inspection, hide/restore,
+  report resolution, suspend/reinstate, creation kill switch, high-risk hold,
+  provider outage fallback, and guest-read availability;
+- target moderation adapter/credentials, queue-age and failure alerts routed to
+  the staffed on-call, the response targets above, and an exercised escalation;
+- target support, legal, deletion, retention, backup/restore, and incident
+  dependencies required before public UGC; and
+- sanitized logs/telemetry plus an owner, UTC window, environment, candidate,
+  immutable evidence location, and Trust & Safety approval.
+
+Only a content-addressed record covering that target-environment matrix may be
+entered as `moderationReadinessId`; missing, failed, reference-only, or
+partially exercised evidence keeps comment creation disabled.
+
 ## Emergency controls
 
 - Set `COMMENT_CREATION_ENABLED=false` to stop new posts while preserving

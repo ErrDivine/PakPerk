@@ -56,7 +56,19 @@
   for disposable local Keycloak/PostgreSQL services. It covers real PKCE,
   recent-auth rejection/acceptance, immediate disablement, worker/provider/data
   completion, refresh/session rejection, ledger verify/reapply, replay, and
-  secret-safe cleanup without claiming protected-environment evidence.
+  secret-safe cleanup. The workflow always retains a source-bound scope
+  artifact that classifies real staging provider, ledger, backup, alert, and
+  approval paths as unexecuted, so it cannot be presented as protected-
+  environment evidence.
+- An opt-in comments/moderation acceptance harness and environment-gated manual
+  workflow restricted to the exact selected `main` tip. It uses hash-locked
+  Python dependencies, digest-locked disposable services, separate mobile and
+  operator PKCE audiences, fail-closed cleanup, and a closed sanitized evidence
+  artifact. Its `manual_ci_disposable_reference` classification does not attest
+  hosted environment protection, and its domain-separated `reference-sha256:`
+  ID cannot populate production `moderationReadinessId`; target-environment operator,
+  safety-action, adapter, alert/staffing, support/deletion/retention, and
+  approval evidence remains separate.
 - A manual, `main`-only staging backend load gate for an exact reviewed commit.
   Its bounded runner validates a 200-record guest preflight, guest feed/metadata
   latency, optional authenticated library/comments reads, explicitly capped
@@ -161,8 +173,16 @@ that exact expected schema version.
   and cleanup, threshold failures, and request caps. No staging endpoint was
   called; the protected staging workflow result remains required evidence.
 - The reference deletion driver's five no-service contract tests and its
-  hash-locked workflow validator passed. The destructive Docker/Keycloak suite
-  and a protected staging/provider run were not executed in this verification.
+  hash-locked workflow validator passed. Eight workflow-validation tests also
+  enforce manual-only execution, least privilege, immutable scope upload, and
+  the non-release classification. The destructive Docker/Keycloak suite and a
+  protected staging/provider run were not executed in this verification.
+- The live-comments workflow validator and its tamper regressions cover manual
+  dispatch, exact-main source trust, least privilege, dependency/image pins,
+  dedicated operator audience, evidence-only upload, bounded retention, and
+  disposable cleanup. They do not invoke Docker. The updated live-comments
+  workflow and reference stack were not executed in this verification, and no
+  staging moderation-readiness approval is inferred.
 - All 21 internal Rust packages are explicitly private (`publish = false`).
   `cargo-deny 0.20.2` passed the bans, licenses, and sources checks with private
   path dependencies allowed; intentional duplicate-version diagnostics remain
@@ -208,12 +228,15 @@ pass from the repository validators.
   independent kill switches; migration and rollback procedure; telemetry
   validation/redaction topology; immutable alert/evidence contracts; bounded
   staging-load harness; security/source/native SBOM automation; exact-SHA image
-  publication and signed-candidate workflows; disclosure/runbook artifacts.
+  publication and signed-candidate workflows; disposable comments/moderation
+  workflow and sanitized evidence contract; disclosure/runbook artifacts.
 - **Not yet proved externally:** protected staging deletion against the target
   provider with its real secret manager, ledger, alert route, and backup
   inventory; a real backup/PITR restore and deletion replay; live migration/
   rollback exercise; live OTLP retention, adapter, receivers, and canary pages;
-  an actual protected staging load result; current advisory/container scans;
+  an actual protected staging load result; complete protected staging
+  moderation readiness for the target operator/adapter/alerts/staffing matrix;
+  current advisory/container scans;
   protected image publication/digest promotion and production mobile signing;
   measured startup/cache/crash targets; physical-device QA; legal/content
   review; reviewer account/notes; current store forms; TestFlight/closed Play

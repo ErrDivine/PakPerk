@@ -13,6 +13,9 @@ keycloak_admin_username="${KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME:-admin}"
 keycloak_admin_password="${KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD:-pakperk-admin-dev}"
 current_terms_version="${CURRENT_TERMS_VERSION:-2026-07-31}"
 current_guidelines_version="${CURRENT_COMMUNITY_GUIDELINES_VERSION:-2026-07-31}"
+evidence_file="${LIVE_COMMENTS_EVIDENCE_FILE:-}"
+evidence_source_revision="${LIVE_COMMENTS_SOURCE_REVISION:-}"
+evidence_environment="${LIVE_COMMENTS_EVIDENCE_ENVIRONMENT:-}"
 api_binary="$project_dir/backend/target/debug/pakperk-api"
 admin_binary="$project_dir/backend/target/debug/pakperk-admin"
 api_pids=()
@@ -22,7 +25,28 @@ stop_mailpit=0
 stop_keycloak=0
 acceptance_succeeded=0
 
-for command in cargo curl docker openssl python3; do
+verify_evidence_source() {
+  local current_revision
+  local source_status
+  if ! current_revision="$(git -C "$project_dir" rev-parse HEAD)"; then
+    echo "Live-comments evidence could not resolve the checked-out revision." >&2
+    return 1
+  fi
+  if [[ "$current_revision" != "$evidence_source_revision" ]]; then
+    echo "Live-comments evidence must bind the exact checked-out revision." >&2
+    return 1
+  fi
+  if ! source_status="$(git -C "$project_dir" status --porcelain --untracked-files=normal)"; then
+    echo "Live-comments evidence could not inspect the source tree." >&2
+    return 1
+  fi
+  if [[ -n "$source_status" ]]; then
+    echo "Live-comments evidence requires a clean source tree." >&2
+    return 1
+  fi
+}
+
+for command in cargo curl docker git openssl python3; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "test_live_comments.sh requires $command." >&2
     exit 2
@@ -44,6 +68,26 @@ if [[ "$manage_compose" != 0 && "$manage_compose" != 1 ]]; then
 fi
 if [[ "$skip_build" != 0 && "$skip_build" != 1 ]]; then
   echo "LIVE_COMMENTS_SKIP_BUILD must be 0 or 1." >&2
+  exit 2
+fi
+if [[ -n "$evidence_file" ]]; then
+  if [[ "$evidence_file" != /* || -e "$evidence_file" || -L "$evidence_file" ]]; then
+    echo "LIVE_COMMENTS_EVIDENCE_FILE must be a new absolute path." >&2
+    exit 2
+  fi
+  if [[ ! "$evidence_source_revision" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "LIVE_COMMENTS_SOURCE_REVISION must be a full lowercase Git commit SHA." >&2
+    exit 2
+  fi
+  if [[ "$evidence_environment" != manual_ci_disposable_reference && "$evidence_environment" != local_disposable_reference ]]; then
+    echo "LIVE_COMMENTS_EVIDENCE_ENVIRONMENT is not a supported classification." >&2
+    exit 2
+  fi
+  if ! verify_evidence_source; then
+    exit 2
+  fi
+elif [[ -n "$evidence_source_revision" || -n "$evidence_environment" ]]; then
+  echo "LIVE_COMMENTS_EVIDENCE_FILE is required when evidence metadata is set." >&2
   exit 2
 fi
 
@@ -72,7 +116,9 @@ export LIVE_COMMENTS_KEYCLOAK_BASE_URL="$keycloak_base"
 export LIVE_COMMENTS_KEYCLOAK_REALM="${LIVE_COMMENTS_KEYCLOAK_REALM:-pakperk}"
 export LIVE_COMMENTS_OIDC_CLIENT_ID="${LIVE_COMMENTS_OIDC_CLIENT_ID:-pakperk-mobile-dev}"
 export LIVE_COMMENTS_OIDC_REDIRECT_URI="${LIVE_COMMENTS_OIDC_REDIRECT_URI:-pakperk-auth-dev://oauth/callback}"
-export LIVE_COMMENTS_ADMIN_OIDC_AUDIENCE="${LIVE_COMMENTS_ADMIN_OIDC_AUDIENCE:-pakperk-api}"
+export LIVE_COMMENTS_ADMIN_OIDC_CLIENT_ID="${LIVE_COMMENTS_ADMIN_OIDC_CLIENT_ID:-pakperk-admin-dev}"
+export LIVE_COMMENTS_ADMIN_OIDC_REDIRECT_URI="${LIVE_COMMENTS_ADMIN_OIDC_REDIRECT_URI:-pakperk-admin-dev://oauth/callback}"
+export LIVE_COMMENTS_ADMIN_OIDC_AUDIENCE="${LIVE_COMMENTS_ADMIN_OIDC_AUDIENCE:-pakperk-admin-dev}"
 export LIVE_COMMENTS_KEYCLOAK_ADMIN_USERNAME="$keycloak_admin_username"
 export LIVE_COMMENTS_KEYCLOAK_ADMIN_PASSWORD="$keycloak_admin_password"
 export LIVE_COMMENTS_POSTGRES_USER="${LIVE_COMMENTS_POSTGRES_USER:-pakperk}"
@@ -125,29 +171,66 @@ scan_static_sentinels() {
 
 cleanup() {
   local status="$?"
+  local harness_outcome=passed
+  local cleanup_succeeded=1
+  [[ "$status" != 0 ]] && harness_outcome=failed
   trap - EXIT INT TERM
   stop_api_processes
   if ! scan_static_sentinels; then
     status=1
+    cleanup_succeeded=0
   fi
   if [[ -f "$state_file" ]]; then
     if ! python3 "$project_dir/scripts/test_live_comments.py" cleanup; then
       echo "Live-comments cleanup helper could not fully clean disposable data." >&2
       status=1
+      cleanup_succeeded=0
     fi
   fi
   if [[ "$manage_compose" == 1 ]]; then
     if [[ "$stop_keycloak" == 1 ]]; then
-      docker compose --project-directory "$project_dir" --profile accounts stop keycloak >/dev/null || status=1
+      docker compose --project-directory "$project_dir" --profile accounts stop keycloak >/dev/null || {
+        status=1
+        cleanup_succeeded=0
+      }
     fi
     if [[ "$stop_mailpit" == 1 ]]; then
-      docker compose --project-directory "$project_dir" --profile accounts stop mailpit >/dev/null || status=1
+      docker compose --project-directory "$project_dir" --profile accounts stop mailpit >/dev/null || {
+        status=1
+        cleanup_succeeded=0
+      }
     fi
     if [[ "$stop_keycloak_postgres" == 1 ]]; then
-      docker compose --project-directory "$project_dir" --profile accounts stop keycloak-postgres >/dev/null || status=1
+      docker compose --project-directory "$project_dir" --profile accounts stop keycloak-postgres >/dev/null || {
+        status=1
+        cleanup_succeeded=0
+      }
     fi
     if [[ "$stop_postgres" == 1 ]]; then
-      docker compose --project-directory "$project_dir" stop postgres >/dev/null || status=1
+      docker compose --project-directory "$project_dir" stop postgres >/dev/null || {
+        status=1
+        cleanup_succeeded=0
+      }
+    fi
+  fi
+  if ! rm -f \
+    "$comment_secret" \
+    "$identity_fingerprint_keys" \
+    "$admin_access_token" \
+    "$unauthorized_admin_access_token"; then
+    echo "Live-comments private fixtures could not be removed." >&2
+    status=1
+    cleanup_succeeded=0
+  fi
+  if [[ -n "$evidence_file" && "$cleanup_succeeded" == 1 && -f "$state_file" ]]; then
+    if ! verify_evidence_source; then
+      echo "Sanitized evidence was withheld because the source changed during acceptance." >&2
+      status=1
+      cleanup_succeeded=0
+    elif ! LIVE_COMMENTS_EVIDENCE_EXPECTED_OUTCOME="$harness_outcome" \
+      python3 "$project_dir/scripts/test_live_comments.py" evidence; then
+      echo "Sanitized live-comments evidence could not be emitted." >&2
+      status=1
     fi
   fi
   rm -rf "$work_dir"
@@ -192,7 +275,7 @@ if [[ "$keycloak_ready" != 1 ]]; then
 fi
 
 if [[ "$skip_build" == 0 ]]; then
-  cargo build --manifest-path "$project_dir/backend/Cargo.toml" \
+  cargo build --locked --manifest-path "$project_dir/backend/Cargo.toml" \
     --package pakperk-api --package pakperk-admin
 fi
 if [[ ! -x "$api_binary" ]]; then

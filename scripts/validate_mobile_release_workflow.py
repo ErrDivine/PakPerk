@@ -105,6 +105,12 @@ def validate(
             "validate_fastlane_lock.py",
             "validate_gradle_verification.py",
             "android-native.cdx.json",
+            "Generate SBOM, notices, and immutable evidence hashes",
+            'root.joinpath("release-sha256.txt").write_text',
+            "Retain signed candidates, symbols, SBOM, and release evidence",
+            "pakperk-${{ inputs.environment }}-${{ steps.release.outputs.version_name }}-${{ steps.release.outputs.build_number }}-${{ steps.source.outputs.source_revision }}",
+            "if-no-files-found: error",
+            "retention-days: 90",
         ),
         "signed mobile workflow",
     )
@@ -117,6 +123,7 @@ def validate(
         "actions/setup-java",
         "flutter-version: stable",
         "JAVA_HOME_17_X64",
+        "if-no-files-found: warn",
     ):
         if forbidden in source:
             raise RuntimeError(f"signed mobile workflow contains a floating tool: {forbidden}")
@@ -163,6 +170,43 @@ def validate(
             "reviewed Flutter and Ruby must be gated after source trust and before dependencies or Bundler"
         )
 
+    evidence_hashes = source.index(
+        "- name: Generate SBOM, notices, and immutable evidence hashes"
+    )
+    evidence_upload = source.index(
+        "- name: Retain signed candidates, symbols, SBOM, and release evidence"
+    )
+    for required_predecessor in (
+        "Build and inspect signed Android artifacts",
+        "Generate and validate the exact native Android runtime SBOM",
+        "Build and inspect signed iOS artifact",
+    ):
+        if source.index(required_predecessor) >= evidence_hashes:
+            raise RuntimeError(
+                "signed artifacts and native SBOM must be verified before evidence hashing"
+            )
+    if evidence_hashes >= evidence_upload:
+        raise RuntimeError("signed evidence must be hashed before mandatory upload")
+
+    upload_step = _step_block(
+        source,
+        "Retain signed candidates, symbols, SBOM, and release evidence",
+        "signed mobile workflow",
+    )
+    _require_fragments(
+        upload_step,
+        (
+            "${{ runner.temp }}/artifacts",
+            "${{ runner.temp }}/symbols",
+            "${{ runner.temp }}/native-symbols",
+            "${{ runner.temp }}/evidence",
+            "${{ runner.temp }}/release-sha256.txt",
+            "if-no-files-found: error",
+            "retention-days: 90",
+        ),
+        "signed mobile evidence upload",
+    )
+
     security = security_workflow.read_text(encoding="utf-8")
     _require_exact_scalar(
         security, "FLUTTER_VERSION", "3.44.8", "security workflow"
@@ -184,6 +228,10 @@ def validate(
             "flutter --version --machine >release/metadata/flutter-toolchain.json",
             "python3 scripts/validate_flutter_toolchain.py",
             "release/metadata/android-native-toolchain.txt",
+            "release-security-evidence-${{ github.sha }}",
+            "path: release/metadata",
+            "if-no-files-found: error",
+            "retention-days: 90",
         ),
         "security workflow",
     )
@@ -191,6 +239,8 @@ def validate(
         raise RuntimeError("security workflow contains a floating setup-java path")
     if "JAVA_HOME_17_arm64" in security:
         raise RuntimeError("security workflow must use the Ubuntu x64 JDK contract")
+    if "if-no-files-found: warn" in security:
+        raise RuntimeError("security evidence upload must fail when artifacts are absent")
     security_flutter_gate = security.index(
         "Verify and record the exact reviewed Flutter SDK"
     )

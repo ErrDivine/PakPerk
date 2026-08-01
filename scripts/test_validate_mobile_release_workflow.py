@@ -141,6 +141,31 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
             "git merge-base --is-ancestor", "git merge-base --is-descendant"
         )
 
+    def test_mobile_missing_evidence_is_not_a_warning(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "if-no-files-found: error", "if-no-files-found: warn"
+        )
+
+    def test_mobile_evidence_hash_removal_is_rejected(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            'root.joinpath("release-sha256.txt").write_text',
+            'root.joinpath("release-files.txt").write_text',
+        )
+
+    def test_mobile_evidence_cannot_be_hashed_before_ios_verification(self) -> None:
+        tampered = _move_step_after(
+            MOBILE_SOURCE,
+            "Generate SBOM, notices, and immutable evidence hashes",
+            "Build and inspect signed Android artifacts",
+        )
+        with self.assertRaisesRegex(RuntimeError, "must be verified before"):
+            self._validate(mobile=tampered)
+
+    def test_security_missing_evidence_is_not_a_warning(self) -> None:
+        self._assert_security_tamper_rejected(
+            "if-no-files-found: error", "if-no-files-found: warn"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

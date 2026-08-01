@@ -47,6 +47,56 @@ jobs:
             --requirement scripts/requirements/live-account-deletion.txt
           echo "$RUNNER_TEMP/pakperk-live-account-deletion-venv/bin" >> "$GITHUB_PATH"
       - name: Run disposable Keycloak account deletion
+        id: acceptance
         env:
           LIVE_ACCOUNT_DELETION_CONFIRM: RUN_DISPOSABLE_KEYCLOAK_DELETION
         run: ./scripts/test_live_account_deletion.sh
+      - name: Record the disposable verification boundary
+        if: always()
+        shell: bash
+        env:
+          PAKPERK_ACCEPTANCE_OUTCOME: ${{ steps.acceptance.outcome }}
+        run: |
+          umask 077
+          python3 - "$RUNNER_TEMP/live-account-deletion-scope.json" <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
+
+          outcome = os.environ.get("PAKPERK_ACCEPTANCE_OUTCOME", "unknown")
+          if outcome not in {"success", "failure", "cancelled", "skipped"}:
+              outcome = "unknown"
+          payload = {
+              "schema": 1,
+              "classification": (
+                  "disposable development reference-provider exercise; "
+                  "not protected staging or production release evidence"
+              ),
+              "source_revision": os.environ["GITHUB_SHA"],
+              "acceptance_outcome": outcome,
+              "external_paths_not_executed": [
+                  "protected staging identity provider and secret manager",
+                  "persistent independently backed deletion ledger",
+                  "real backup inventory and restore target",
+                  "deployed alert route and privacy-owner approval",
+              ],
+              "does_not_attest_external_paths": True,
+          }
+          pathlib.Path(sys.argv[1]).write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+      - name: Require the scoped reference evidence
+        if: always()
+        shell: bash
+        run: test -s "$RUNNER_TEMP/live-account-deletion-scope.json"
+      - name: Retain scoped reference-provider evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: live-account-deletion-reference-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/live-account-deletion-scope.json
+          if-no-files-found: error
+          retention-days: 30

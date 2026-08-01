@@ -257,6 +257,13 @@ full-text policy identities. Changing any one produces a different ConfigMap.
 Helm can validate the ID shape and gate binding, not the truth of an external
 approval or drill.
 
+The minimum protected-manifest contents and the intentional boundary between
+these six server-feature bindings and candidate/store gates are specified in
+the [release runbook](../../../docs/runbooks/release.md#release-evidence-binding-scope).
+Do not populate a value with a workflow run ID, mutable ticket URL, or a digest
+of approval prose that cannot be retrieved and verified by the protected
+release system.
+
 The production-only, provider-neutral alert contract is packaged from
 `files/alerts/pakperk-production-alert-policy.json`. `alerting.policySha256`
 must equal its exact SHA-256 digest, and production cannot disable the rendered

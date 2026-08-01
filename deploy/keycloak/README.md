@@ -15,6 +15,8 @@ docker compose --profile accounts up -d postgres keycloak
 - Native client: `pakperk-mobile-dev`
 - Redirect: `pakperk-auth-dev://oauth/callback`
 - Post-logout redirect: `pakperk-auth-dev://oauth/logout`
+- Moderation operator client/audience: `pakperk-admin-dev`
+- Moderation operator callback: `pakperk-admin-dev://oauth/callback`
 - Browser deletion client: `pakperk-web-deletion-dev`
 - Browser callback: `http://localhost:8082/account-deletion/`
 - Deletion service account: `pakperk-deletion-worker-dev`
@@ -67,7 +69,10 @@ equivalent Helm init-copy contract.
 
 Self-registration, email verification, password recovery, refresh-token
 rotation, brute-force protection, exact redirect URIs, and PKCE S256 are
-enabled. The deletion worker is a confidential service account with only
+enabled. The public moderation operator client has its own audience, has no
+secret or refresh token, and cannot be substituted with the mobile/API
+audience. Production must use a separately registered, HTTPS-backed operator
+client and issuer policy. The deletion worker is a confidential service account with only
 `manage-users`. Runtime deletion addresses a previously verified subject UUID
 directly and never lists or searches users. The startup probe additionally
 runs one ID-prefixed, one-result query for the reserved nil UUID; `manage-users`
@@ -129,3 +134,32 @@ checkout. GitHub's `live account deletion` workflow exposes the same suite as
 a manual dispatch requiring the exact confirmation phrase. It is development
 acceptance evidence, not a substitute for the protected staging deletion and
 restore evidence required by a production Helm release.
+
+## Disposable comments/moderation acceptance
+
+The manual `live comments acceptance` workflow runs
+`scripts/test_live_comments.sh` only from an exact reviewed `main` tip and
+declares the `live-comments-acceptance` GitHub environment gate. It creates
+a unique Compose project, uses the reference PostgreSQL/Keycloak/Mailpit images
+by reviewed digest, obtains mobile and dedicated-operator tokens through
+Authorization Code + PKCE, and removes the complete Compose project and volumes
+afterward. Dispatch requires the exact source SHA and
+`RUN_DISPOSABLE_LIVE_COMMENTS` confirmation. No repository or environment
+secret is consumed.
+
+Before the first dispatch, a repository administrator must configure the
+out-of-band `live-comments-acceptance` GitHub environment with required
+reviewers and a deployment-branch restriction that permits only `main`.
+Reconfirm those settings before release-bound regression runs. The checked-in
+`environment:` and job `if:` declarations fail closed on source selection but
+cannot prove that the GitHub-hosted reviewer and deployment-branch rules exist.
+
+The retained tar contains only a closed-schema, owner-only JSON statement and
+its checksum. It excludes UGC, email addresses, subjects, bearer tokens, and
+dynamic database/provider identifiers. Its classification and domain-separated
+reference content ID make it disposable reference evidence only. The retained
+environment value is always `manual_ci_disposable_reference`; it does not claim
+that GitHub's required reviewers or deployment-branch restriction were
+configured or applied. The artifact cannot be used as Helm
+`releaseEvidence.moderationReadinessId`. The checked-in workflow and evidence
+validators do not mean the Docker acceptance was run.

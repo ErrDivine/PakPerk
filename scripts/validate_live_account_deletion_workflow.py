@@ -84,15 +84,48 @@ def validate(
         raise RuntimeError("live deletion Python dependency graph changed without review")
 
     source = workflow.read_text(encoding="utf-8")
+    trigger_end = source.index("\npermissions:")
+    trigger = source[:trigger_end]
+    if "workflow_dispatch:" not in trigger or re.search(
+        r"(?m)^  (?:pull_request|push|schedule|workflow_run):", trigger
+    ):
+        raise RuntimeError("live deletion reference exercise must be manual-dispatch only")
+    permissions_end = source.index("\nconcurrency:", trigger_end)
+    permissions = source[trigger_end + 1 : permissions_end].strip()
+    if permissions != "permissions:\n  contents: read":
+        raise RuntimeError("live deletion workflow permissions are not least privilege")
     for fragment in (
         "runs-on: ubuntu-24.04",
+        "persist-credentials: false",
         "sys.version_info[:2] != (3, 12)",
         "--require-hashes",
         "--only-binary=:all:",
         "--requirement scripts/requirements/live-account-deletion.txt",
+        "id: acceptance",
+        "Record the disposable verification boundary",
+        'PAKPERK_ACCEPTANCE_OUTCOME: ${{ steps.acceptance.outcome }}',
+        '"source_revision": os.environ["GITHUB_SHA"]',
+        "not protected staging or production release evidence",
+        '"does_not_attest_external_paths": True',
+        "Require the scoped reference evidence",
+        'test -s "$RUNNER_TEMP/live-account-deletion-scope.json"',
+        "Retain scoped reference-provider evidence",
+        "live-account-deletion-reference-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
+        "if-no-files-found: error",
+        "retention-days: 30",
     ):
         if fragment not in source:
             raise RuntimeError(f"live deletion workflow is missing: {fragment}")
+    if source.count("if: always()") != 3:
+        raise RuntimeError(
+            "live deletion scope creation, requirement, and upload must always run"
+        )
+    if "if-no-files-found: warn" in source:
+        raise RuntimeError("live deletion scope upload must fail closed")
+    if re.search(r"(?m)^    environment:", source):
+        raise RuntimeError(
+            "disposable development deletion must not imply a protected target environment"
+        )
     for forbidden in ("requests==", "beautifulsoup4=="):
         if forbidden in source:
             raise RuntimeError(

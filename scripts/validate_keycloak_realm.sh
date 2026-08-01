@@ -18,6 +18,35 @@ jq -e '
     .attributes["pkce.code.challenge.method"] == "S256"
   )] | length == 1) and
   ([.clients[] | select(
+    .clientId == "pakperk-admin-dev" and
+    .publicClient == true and .standardFlowEnabled == true and
+    .implicitFlowEnabled == false and .directAccessGrantsEnabled == false and
+    .serviceAccountsEnabled == false and
+    .redirectUris == ["pakperk-admin-dev://oauth/callback"] and
+    .webOrigins == [] and
+    .attributes == {
+      "pkce.code.challenge.method": "S256",
+      "post.logout.redirect.uris": "pakperk-admin-dev://oauth/logout",
+      "oauth2.device.authorization.grant.enabled": "false",
+      "oidc.ciba.grant.enabled": "false",
+      "backchannel.logout.session.required": "true",
+      "backchannel.logout.revoke.offline.tokens": "true",
+      "use.refresh.tokens": "false"
+    } and
+    .defaultClientScopes == ["web-origins", "acr", "profile", "roles", "basic"] and
+    .optionalClientScopes == [] and
+    ([.protocolMappers[] | select(
+      .protocol == "openid-connect" and
+      .protocolMapper == "oidc-audience-mapper" and
+      .config["included.custom.audience"] == "pakperk-admin-dev" and
+      .config["access.token.claim"] == "true" and
+      .config["id.token.claim"] == "false"
+    )] | length == 1) and
+    ([.protocolMappers[] | select(
+      .config["included.custom.audience"] == "pakperk-api"
+    )] | length == 0)
+  )] | length == 1) and
+  ([.clients[] | select(
     .clientId == "pakperk-web-deletion-dev" and
     .publicClient == true and .standardFlowEnabled == true and
     .implicitFlowEnabled == false and .directAccessGrantsEnabled == false and

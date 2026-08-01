@@ -234,6 +234,11 @@ suite must show all of these bounded checkpoints:
    sentinels, and scoped fixtures are removed without deleting Compose volumes.
 
 This local/manual workflow exercises the checked-in development realm and
-ephemeral keys. Production enablement still requires an immutable evidence ID
-from the protected staging environment using its real secret manager, external
-ledger storage, alert route, backup inventory, and privacy-owner approval.
+ephemeral keys. Its retained `live-account-deletion-scope.json` binds the run
+to the checked-out source revision and explicitly classifies every real
+provider, ledger, backup, alert, and approval path as unexecuted. The artifact
+is reference-test evidence only and cannot supply the production chart's
+account-deletion evidence ID. Production enablement still requires an immutable
+evidence ID from the protected staging environment using its real secret
+manager, external ledger storage, alert route, backup inventory, and
+privacy-owner approval.

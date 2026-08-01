@@ -490,6 +490,8 @@ class BackendLoadContractTest(unittest.TestCase):
         self.assertIn(
             'chmod 0400 "$RUNNER_TEMP/pakperk-backend-load-evidence.tar"', workflow
         )
+        self.assertIn("if-no-files-found: error", workflow)
+        self.assertNotIn("if-no-files-found: warn", workflow)
 
         ci = (PROJECT_DIRECTORY / ".github/workflows/ci.yml").read_text(
             encoding="utf-8"
