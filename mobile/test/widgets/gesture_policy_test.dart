@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/app/app.dart';
 import 'package:pakperk/core/cache/feed_cache_persistence.dart';
 import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/models/reader_state.dart';
 import 'package:pakperk/core/providers.dart';
+import 'package:pakperk/features/feed/feed_screen.dart';
 import 'package:pakperk/features/paper_reader/reader_navigation_controller.dart';
 
 import '../support/fakes.dart';
@@ -138,6 +140,114 @@ void main() {
     );
     expect(container.read(appRestorationControllerProvider).feedIndex, 2);
   });
+
+  testWidgets('settled vertical commit emits one haptic, never during drag', (
+    tester,
+  ) async {
+    final papers = _papers();
+    var hapticCalls = 0;
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'HapticFeedback.vibrate') hapticCalls += 1;
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    await _pumpDirectFeed(tester, _repositoryFor(papers));
+    expect(hapticCalls, 0, reason: 'initial positioning is not a commit');
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('stage-abstractView'))),
+    );
+    await gesture.moveBy(const Offset(0, -520));
+    await tester.pump();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FeedScreen)),
+    );
+    expect(
+      container.read(appRestorationControllerProvider).feedIndex,
+      1,
+      reason: 'the drag crossed the page threshold before it settled',
+    );
+    expect(hapticCalls, 0, reason: 'drag updates must remain silent');
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(hapticCalls, 1);
+  });
+
+  testWidgets('reduced-motion explicit paper jump is instant and silent', (
+    tester,
+  ) async {
+    final papers = _papers();
+    var hapticCalls = 0;
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'HapticFeedback.vibrate') hapticCalls += 1;
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    await _pumpDirectFeed(tester, _repositoryFor(papers), reducedMotion: true);
+    final firstReader = find.byKey(
+      ValueKey('feed-paper-${feedReaderKey(papers.first)}'),
+    );
+    final abstractScroll = find.descendant(
+      of: firstReader,
+      matching: find.byKey(const PageStorageKey('abstract-scroll')),
+    );
+    final nextPaper = find.descendant(
+      of: firstReader,
+      matching: find.text('Next paper'),
+    );
+    await tester.dragUntilVisible(
+      nextPaper,
+      abstractScroll,
+      const Offset(0, -240),
+    );
+    await tester.tap(nextPaper);
+    await tester.pump();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FeedScreen)),
+    );
+    expect(container.read(appRestorationControllerProvider).feedIndex, 1);
+    expect(hapticCalls, 0);
+  });
+
+  testWidgets('unavailable haptics never fail a settled page commit', (
+    tester,
+  ) async {
+    final papers = _papers();
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'HapticFeedback.vibrate') {
+        throw PlatformException(code: 'feedback-unavailable');
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    await _pumpDirectFeed(tester, _repositoryFor(papers));
+    await tester.fling(
+      find.byKey(const ValueKey('stage-abstractView')),
+      const Offset(0, -520),
+      1200,
+    );
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FeedScreen)),
+    );
+    expect(container.read(appRestorationControllerProvider).feedIndex, 1);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 List<PaperSummary> _papers([int count = 3]) => List.generate(count, (index) {
@@ -179,6 +289,31 @@ Future<void> _pumpFeed(
         ),
       ],
       child: const PakPerkApp(),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _pumpDirectFeed(
+  WidgetTester tester,
+  FakePaperDataSource repository, {
+  bool reducedMotion = false,
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        paperRepositoryProvider.overrideWithValue(repository),
+        localStoreProvider.overrideWithValue(MemoryLocalStore()),
+        initialRestorationProvider.overrideWithValue(
+          const AppRestorationState(),
+        ),
+      ],
+      child: MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(disableAnimations: reducedMotion),
+          child: const FeedScreen(),
+        ),
+      ),
     ),
   );
   await tester.pumpAndSettle();

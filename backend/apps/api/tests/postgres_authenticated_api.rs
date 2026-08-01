@@ -1,9 +1,10 @@
 use std::{
+    fmt::Write as _,
     fs,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -31,8 +32,8 @@ use axum::{
 use chrono::{TimeDelta, Utc};
 use db::Database;
 use domain::{
-    ArxivIdentifier, Author, CommunityGuidelinesVersion, FulltextPolicy, PaperMetadata,
-    TermsVersion,
+    ArxivIdentifier, Author, CommunityGuidelinesVersion, FulltextPolicy, IntroductionDetection,
+    PaperMetadata, ParsedPaper, ParsedParagraph, ParsedSection, SectionKind, TermsVersion,
 };
 use jsonwebtoken::{Algorithm, EncodingKey, Header as JwtHeader, encode};
 use pakperk_api::{
@@ -41,6 +42,7 @@ use pakperk_api::{
     initialize_auth_runtime,
 };
 use serde_json::{Value, json};
+use sha2::{Digest as _, Sha256};
 use tempfile::TempDir;
 use tokio::{net::TcpListener, task::JoinHandle};
 use tower::ServiceExt as _;
@@ -49,8 +51,10 @@ use uuid::Uuid;
 
 const AUDIENCE: &str = "pakperk-api";
 const KEY_ID: &str = "integration-current";
+const REPLACEMENT_KEY_ID: &str = "integration-replacement";
 const PUBLIC_ED25519_X: &str = "2-Jj2UvNCvQiUPNYRgSi0cJSPiJI6Rs6D0UTeEpQVj8";
 const IDENTITY_KEY: &str = "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=";
+const COMMENT_ORIGIN: Ipv4Addr = Ipv4Addr::new(198, 51, 100, 42);
 
 // RFC 8410 PKCS#8 Ed25519 fixture. It is test-only and has no deployment use.
 const PRIVATE_ED25519_KEY: &[u8] = &[
@@ -73,7 +77,9 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
     let oidc = DeterministicOidcServer::start().await;
     let unique = Uuid::now_v7().simple().to_string();
     let subject = format!("api-subject-{unique}");
+    let second_subject = format!("api-second-subject-{unique}");
     let expired_subject = format!("expired-subject-{unique}");
+    let revoked_subject = format!("revoked-subject-{unique}");
     let ledger_directory = owner_only_tempdir();
     let config = api_config(
         database_url,
@@ -98,8 +104,10 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
     );
     let now = Utc::now().timestamp();
     let recent_token = token(&oidc.issuer, &subject, now + 600, now - 30);
+    let second_token = token(&oidc.issuer, &second_subject, now + 600, now - 30);
     let stale_auth_token = token(&oidc.issuer, &subject, now + 600, now - 600);
     let expired_token = token(&oidc.issuer, &expired_subject, now - 120, now - 600);
+    let revoked_token = token(&oidc.issuer, &revoked_subject, now + 600, now - 30);
 
     let missing = first
         .clone()
@@ -196,6 +204,37 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
     assert_eq!(profile["account"]["community_guidelines_current"], true);
     assert_eq!(profile["account"]["comment_profile_complete"], true);
 
+    let second_me = second
+        .clone()
+        .oneshot(authorized_get("/v1/me", &second_token))
+        .await
+        .unwrap();
+    assert_eq!(second_me.status(), StatusCode::OK);
+    let second_profile_etag = second_me.headers()[ETAG].clone();
+    let second_user_id = Uuid::parse_str(
+        response_json(second_me).await["account"]["id"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_ne!(second_user_id, user_id);
+    let second_handle = format!("safety_{}", &unique[..12]);
+    let second_profile = second
+        .clone()
+        .oneshot(profile_patch_request(
+            &second_token,
+            second_profile_etag,
+            &second_handle,
+            "Safety Reader",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(second_profile.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(second_profile).await["account"]["handle"],
+        second_handle
+    );
+
     let paper = database
         .papers()
         .upsert_metadata(&metadata(&unique))
@@ -223,6 +262,7 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
         saved["item"]["last_operation_id"],
         library_operation.to_string()
     );
+    let saved_revision = saved["item"]["revision"].as_i64().unwrap();
 
     let library = second
         .clone()
@@ -238,6 +278,108 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
     assert_eq!(
         library["items"][0]["item"]["paper_id"],
         paper.id.to_string()
+    );
+
+    let mut library_writes_disabled_config = config.clone();
+    library_writes_disabled_config.features.library_writes = false;
+    let library_writes_disabled = build_router(
+        AppState::new_with_auth(
+            database.clone(),
+            &library_writes_disabled_config,
+            auth.clone(),
+        )
+        .unwrap(),
+        &library_writes_disabled_config,
+    );
+    let denied_library_write = library_writes_disabled
+        .clone()
+        .oneshot(library_save_request(
+            paper.id,
+            &recent_token,
+            Uuid::now_v7(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        denied_library_write.status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(
+        response_json(denied_library_write).await["error"]["code"],
+        "FEATURE_DISABLED"
+    );
+    let preserved_library_read = library_writes_disabled
+        .oneshot(authorized_get(
+            "/v1/me/library?state=to_read&limit=10",
+            &recent_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(preserved_library_read.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(preserved_library_read).await["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    // Device B removes the item through an independent router. Device A then
+    // advances from its saved revision and receives the durable tombstone.
+    let remove_operation = Uuid::now_v7();
+    let removed = second
+        .clone()
+        .oneshot(library_remove_request(
+            paper.id,
+            &recent_token,
+            remove_operation,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(removed.status(), StatusCode::OK);
+    let removed = response_json(removed).await;
+    assert_eq!(removed["item"]["removed"], true);
+    assert!(removed["item"]["removed_at"].is_string());
+    assert_eq!(
+        removed["item"]["last_operation_id"],
+        remove_operation.to_string()
+    );
+    let removed_revision = removed["item"]["revision"].as_i64().unwrap();
+    assert!(removed_revision > saved_revision);
+
+    let changes = first
+        .clone()
+        .oneshot(authorized_get(
+            &format!("/v1/me/library/changes?after_revision={saved_revision}&limit=10"),
+            &recent_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(changes.status(), StatusCode::OK);
+    let changes = response_json(changes).await;
+    assert_eq!(changes["items"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        changes["items"][0]["item"]["paper_id"],
+        paper.id.to_string()
+    );
+    assert_eq!(changes["items"][0]["item"]["removed"], true);
+    assert_eq!(changes["items"][0]["item"]["revision"], removed_revision);
+    assert_eq!(changes["next_after_revision"], removed_revision);
+
+    let converged_library = first
+        .clone()
+        .oneshot(authorized_get(
+            "/v1/me/library?state=to_read&limit=10",
+            &recent_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(converged_library.status(), StatusCode::OK);
+    assert!(
+        response_json(converged_library).await["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
     );
 
     let comment_request_id = Uuid::now_v7();
@@ -256,6 +398,54 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
     let comment_id = Uuid::parse_str(comment["comment"]["id"].as_str().unwrap()).unwrap();
     assert_eq!(comment["comment"]["status"], "published");
     assert_eq!(comment["comment"]["author"]["id"], user_id.to_string());
+    assert_eq!(comment["comment"]["version"], 1);
+
+    let comment_replay = second
+        .clone()
+        .oneshot(comment_request(
+            paper.id,
+            &recent_token,
+            comment_request_id,
+            "The evaluation setup makes the comparison especially clear.",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(comment_replay.status(), StatusCode::OK);
+    let comment_replay = response_json(comment_replay).await;
+    assert_eq!(comment_replay["comment"]["id"], comment_id.to_string());
+    assert_eq!(comment_replay["comment"]["version"], 1);
+
+    let edited_body = "The revised evaluation setup makes the comparison especially clear.";
+    let edited = second
+        .clone()
+        .oneshot(comment_edit_request(
+            comment_id,
+            &recent_token,
+            1,
+            edited_body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(edited.status(), StatusCode::OK);
+    let edited = response_json(edited).await;
+    assert_eq!(edited["comment"]["body"], edited_body);
+    assert_eq!(edited["comment"]["version"], 2);
+
+    let stale_edit = first
+        .clone()
+        .oneshot(comment_edit_request(
+            comment_id,
+            &recent_token,
+            1,
+            "A stale replacement must not win.",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(stale_edit.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        response_json(stale_edit).await["error"]["code"],
+        "COMMENT_EDIT_CONFLICT"
+    );
 
     let public_comments = second
         .clone()
@@ -270,6 +460,110 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
     assert_eq!(
         response_json(public_comments).await["items"][0]["id"],
         comment_id.to_string()
+    );
+
+    let report = first
+        .clone()
+        .oneshot(comment_report_request(comment_id, &second_token))
+        .await
+        .unwrap();
+    assert_eq!(report.status(), StatusCode::OK);
+    let report = response_json(report).await;
+    let report_id = report["report"]["id"].as_str().unwrap().to_owned();
+    assert_eq!(report["report"]["comment_id"], comment_id.to_string());
+    assert_eq!(report["report"]["reason"], "harassment");
+
+    let report_replay = second
+        .clone()
+        .oneshot(comment_report_request(comment_id, &second_token))
+        .await
+        .unwrap();
+    assert_eq!(report_replay.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(report_replay).await["report"]["id"],
+        report_id
+    );
+
+    let blocked = second
+        .clone()
+        .oneshot(authorized_empty_request(
+            Method::PUT,
+            &format!("/v1/me/blocked-users/{user_id}"),
+            &second_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(blocked.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(blocked).await["blocked_user"]["user"]["id"],
+        user_id.to_string()
+    );
+
+    let filtered_comments = first
+        .clone()
+        .oneshot(authorized_get(
+            &format!("/v1/papers/{}/comments?limit=10", paper.id),
+            &second_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(filtered_comments.status(), StatusCode::OK);
+    assert!(
+        response_json(filtered_comments).await["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let guest_still_sees_comment = second
+        .clone()
+        .oneshot(
+            Request::get(format!("/v1/papers/{}/comments?limit=10", paper.id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(guest_still_sees_comment.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(guest_still_sees_comment).await["items"][0]["body"],
+        edited_body
+    );
+
+    let deleted_comment = second
+        .clone()
+        .oneshot(authorized_empty_request(
+            Method::DELETE,
+            &format!("/v1/comments/{comment_id}"),
+            &recent_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(deleted_comment.status(), StatusCode::NO_CONTENT);
+    let delete_replay = first
+        .clone()
+        .oneshot(authorized_empty_request(
+            Method::DELETE,
+            &format!("/v1/comments/{comment_id}"),
+            &recent_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(delete_replay.status(), StatusCode::NO_CONTENT);
+    let comments_after_delete = first
+        .clone()
+        .oneshot(
+            Request::get(format!("/v1/papers/{}/comments?limit=10", paper.id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(comments_after_delete.status(), StatusCode::OK);
+    assert!(
+        response_json(comments_after_delete).await["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
     );
 
     let mut creation_disabled_config = config.clone();
@@ -303,6 +597,267 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
         .await
         .unwrap();
     assert_eq!(still_readable.status(), StatusCode::OK);
+
+    let mut library_disabled_config = config.clone();
+    library_disabled_config.features.library = false;
+    library_disabled_config.features.library_writes = false;
+    library_disabled_config.library = None;
+    let library_disabled = build_router(
+        AppState::new_with_auth(database.clone(), &library_disabled_config, auth.clone()).unwrap(),
+        &library_disabled_config,
+    );
+    assert_eq!(
+        library_disabled
+            .clone()
+            .oneshot(authorized_get(
+                "/v1/me/library?state=to_read&limit=10",
+                &recent_token,
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        library_disabled
+            .oneshot(authorized_get("/v1/me", &recent_token))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    let mut comments_disabled_config = config.clone();
+    comments_disabled_config.features.comments = false;
+    comments_disabled_config.features.comment_creation = false;
+    comments_disabled_config.comments = None;
+    let comments_disabled = build_router(
+        AppState::new_with_auth(database.clone(), &comments_disabled_config, auth.clone()).unwrap(),
+        &comments_disabled_config,
+    );
+    assert_eq!(
+        comments_disabled
+            .clone()
+            .oneshot(
+                Request::get(format!("/v1/papers/{}/comments?limit=10", paper.id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        comments_disabled
+            .oneshot(
+                Request::get(format!("/v1/papers/{}", paper.id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    let mut accounts_disabled_config = config.clone();
+    accounts_disabled_config.features = FeatureFlags::default();
+    accounts_disabled_config.accounts = None;
+    accounts_disabled_config.library = None;
+    accounts_disabled_config.comments = None;
+    accounts_disabled_config.account_deletion = None;
+    let accounts_disabled = build_router(
+        AppState::new(database.clone(), &accounts_disabled_config).unwrap(),
+        &accounts_disabled_config,
+    );
+    assert_eq!(
+        accounts_disabled
+            .clone()
+            .oneshot(Request::get("/v1/me").body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        accounts_disabled
+            .oneshot(
+                Request::get(format!("/v1/papers/{}", paper.id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    let mut strict_metadata = metadata(&format!("strict.{unique}"));
+    strict_metadata.title = "Strict policy account integration fixture".to_owned();
+    strict_metadata.abstract_text =
+        "Metadata, library state, and discussion must survive strict policy.".to_owned();
+    strict_metadata.license_uri = None;
+    let strict_paper = database
+        .papers()
+        .upsert_metadata(&strict_metadata)
+        .await
+        .unwrap();
+    database
+        .papers()
+        .persist_parsed_document(
+            strict_paper.id,
+            1,
+            &ParsedPaper {
+                title: Some(strict_metadata.title.clone()),
+                sections: vec![ParsedSection {
+                    source_id: "introduction".to_owned(),
+                    ordinal: 0,
+                    parent_source_id: None,
+                    kind: SectionKind::Introduction,
+                    heading: Some("1 Introduction".to_owned()),
+                    paragraphs: vec![ParsedParagraph {
+                        ordinal: 0,
+                        text: "Prototype-derived text must never cross a strict boundary."
+                            .to_owned(),
+                        citations: Vec::new(),
+                        page_start: Some(1),
+                        page_end: Some(1),
+                    }],
+                    page_start: Some(1),
+                    page_end: Some(1),
+                }],
+                references: Vec::new(),
+                citation_contexts: Vec::new(),
+            },
+            &["introduction".to_owned()],
+            IntroductionDetection {
+                confidence: 0.99,
+                used_fallback: false,
+            },
+            "prototype-parser",
+        )
+        .await
+        .unwrap();
+
+    let mut strict_config = config.clone();
+    strict_config.fulltext_policy = FulltextPolicy::Strict;
+    let strict = build_router(
+        AppState::new_with_auth(database.clone(), &strict_config, auth.clone()).unwrap(),
+        &strict_config,
+    );
+    let strict_metadata_response = strict
+        .clone()
+        .oneshot(
+            Request::get(format!("/v1/papers/{}", strict_paper.id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(strict_metadata_response.status(), StatusCode::OK);
+    let strict_metadata_response = response_json(strict_metadata_response).await;
+    assert_eq!(
+        strict_metadata_response["abstract"],
+        strict_metadata.abstract_text
+    );
+    assert_eq!(
+        strict_metadata_response["abs_url"],
+        strict_metadata.abs_url.as_str()
+    );
+    assert_eq!(
+        strict_metadata_response["capabilities"]["introduction"],
+        false
+    );
+    assert_eq!(strict_metadata_response["capabilities"]["chat"], false);
+    assert_eq!(
+        strict_metadata_response["capabilities"]["connections"],
+        false
+    );
+
+    let strict_introduction = strict
+        .clone()
+        .oneshot(
+            Request::get(format!("/v1/papers/{}/introduction", strict_paper.id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(strict_introduction.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        response_json(strict_introduction).await["error"]["code"],
+        "FULLTEXT_POLICY_DENIED"
+    );
+
+    let strict_library_operation = Uuid::now_v7();
+    let strict_saved = strict
+        .clone()
+        .oneshot(library_save_request(
+            strict_paper.id,
+            &recent_token,
+            strict_library_operation,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(strict_saved.status(), StatusCode::OK);
+    let strict_library = strict
+        .clone()
+        .oneshot(authorized_get(
+            "/v1/me/library?state=to_read&limit=10",
+            &recent_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(strict_library.status(), StatusCode::OK);
+    let strict_library = response_json(strict_library).await;
+    let strict_library_entry = strict_library["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["item"]["paper_id"] == strict_paper.id.to_string())
+        .expect("strict metadata-only paper must remain in the account library");
+    assert_eq!(
+        strict_library_entry["paper"]["abstract"],
+        strict_metadata.abstract_text
+    );
+    assert_eq!(
+        strict_library_entry["paper"]["capabilities"]["introduction"],
+        false
+    );
+
+    let strict_comment_request_id = Uuid::now_v7();
+    let strict_comment = strict
+        .clone()
+        .oneshot(comment_request(
+            strict_paper.id,
+            &second_token,
+            strict_comment_request_id,
+            "Discussion remains available without granting access to derived full text.",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(strict_comment.status(), StatusCode::CREATED);
+    let strict_comment_id = Uuid::parse_str(
+        response_json(strict_comment).await["comment"]["id"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    let strict_comments = strict
+        .clone()
+        .oneshot(
+            Request::get(format!("/v1/papers/{}/comments?limit=10", strict_paper.id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(strict_comments.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(strict_comments).await["items"][0]["id"],
+        strict_comment_id.to_string()
+    );
 
     let preflight = first
         .clone()
@@ -395,13 +950,49 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
         "REAUTHENTICATION_REQUIRED"
     );
 
-    cleanup_fixture(&database, user_id, paper.id, comment_id, operation_id).await;
+    // Self-contained JWT access tokens have no per-token introspection call.
+    // This deterministic provider therefore models revocation as removal of
+    // the token's signing `kid` from JWKS. Once the bounded cache expires, the
+    // old token must fail before it can create a local JIT identity.
+    oidc.remove_current_signing_key();
+    tokio::time::sleep(Duration::from_millis(40)).await;
+    let revoked = first
+        .oneshot(authorized_get("/v1/me", &revoked_token))
+        .await
+        .unwrap();
+    assert_eq!(revoked.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(revoked.headers()[WWW_AUTHENTICATE], "Bearer");
+    assert_eq!(
+        response_json(revoked).await["error"]["code"],
+        "UNAUTHENTICATED"
+    );
+    assert!(oidc.jwks_calls.load(Ordering::SeqCst) >= 2);
+    let revoked_identity_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM users WHERE oidc_issuer = $1 AND oidc_subject = $2",
+    )
+    .bind(oidc.issuer.as_str())
+    .bind(&revoked_subject)
+    .fetch_one(database.pool())
+    .await
+    .unwrap();
+    assert_eq!(revoked_identity_count, 0);
+
+    cleanup_fixture(
+        &database,
+        &[user_id, second_user_id],
+        &[paper.id, strict_paper.id],
+        &[comment_id, strict_comment_id],
+        operation_id,
+        &comment_origin_scope(&unique),
+    )
+    .await;
 }
 
 struct DeterministicOidcServer {
     issuer: Url,
     discovery_calls: Arc<AtomicUsize>,
     jwks_calls: Arc<AtomicUsize>,
+    current_signing_key_removed: Arc<AtomicBool>,
     task: JoinHandle<()>,
 }
 
@@ -414,20 +1005,12 @@ impl DeterministicOidcServer {
             "issuer": issuer.as_str(),
             "jwks_uri": format!("{issuer}/jwks")
         });
-        let jwks = json!({
-            "keys": [{
-                "kty": "OKP",
-                "use": "sig",
-                "crv": "Ed25519",
-                "x": PUBLIC_ED25519_X,
-                "kid": KEY_ID,
-                "alg": "EdDSA"
-            }]
-        });
         let discovery_calls = Arc::new(AtomicUsize::new(0));
         let jwks_calls = Arc::new(AtomicUsize::new(0));
+        let current_signing_key_removed = Arc::new(AtomicBool::new(false));
         let discovery_route_calls = Arc::clone(&discovery_calls);
         let jwks_route_calls = Arc::clone(&jwks_calls);
+        let jwks_route_key_removed = Arc::clone(&current_signing_key_removed);
         let app = Router::new()
             .route(
                 "/realms/pakperk/.well-known/openid-configuration",
@@ -443,11 +1026,25 @@ impl DeterministicOidcServer {
             .route(
                 "/realms/pakperk/jwks",
                 get(move || {
-                    let body = jwks.clone();
                     let calls = Arc::clone(&jwks_route_calls);
+                    let key_removed = Arc::clone(&jwks_route_key_removed);
                     async move {
                         calls.fetch_add(1, Ordering::SeqCst);
-                        Json(body)
+                        let published_key_id = if key_removed.load(Ordering::SeqCst) {
+                            REPLACEMENT_KEY_ID
+                        } else {
+                            KEY_ID
+                        };
+                        Json(json!({
+                            "keys": [{
+                                "kty": "OKP",
+                                "use": "sig",
+                                "crv": "Ed25519",
+                                "x": PUBLIC_ED25519_X,
+                                "kid": published_key_id,
+                                "alg": "EdDSA"
+                            }]
+                        }))
                     }
                 }),
             );
@@ -458,6 +1055,7 @@ impl DeterministicOidcServer {
             issuer,
             discovery_calls,
             jwks_calls,
+            current_signing_key_removed,
             task,
         }
     }
@@ -468,7 +1066,14 @@ impl DeterministicOidcServer {
         config.allow_insecure_http = true;
         config.clock_skew = Duration::ZERO;
         config.discovery_timeout = Duration::from_secs(2);
+        config.jwks_cache_ttl = Duration::from_millis(20);
+        config.jwks_refresh_cooldown = Duration::from_millis(1);
         config
+    }
+
+    fn remove_current_signing_key(&self) {
+        self.current_signing_key_removed
+            .store(true, Ordering::SeqCst);
     }
 }
 
@@ -532,10 +1137,8 @@ fn api_config(
         }),
         comments: Some(CommentFeatureConfig::for_test().unwrap()),
         account_deletion: Some(deletion),
-        request_origin: RequestOriginConfig::for_local_development(&format!(
-            "authenticated-api-origin-{unique}-strong-secret"
-        ))
-        .unwrap(),
+        request_origin: RequestOriginConfig::for_local_development(&request_origin_secret(unique))
+            .unwrap(),
         bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
         database_url,
         database_pool_size: 16,
@@ -590,6 +1193,58 @@ fn authorized_get(uri: &str, token: &str) -> Request<Body> {
         .unwrap()
 }
 
+fn authorized_empty_request(method: Method, uri: &str, token: &str) -> Request<Body> {
+    Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(AUTHORIZATION, bearer(token))
+        .body(Body::empty())
+        .unwrap()
+}
+
+fn profile_patch_request(
+    token: &str,
+    etag: HeaderValue,
+    handle: &str,
+    display_name: &str,
+) -> Request<Body> {
+    Request::builder()
+        .method(Method::PATCH)
+        .uri("/v1/me")
+        .header(AUTHORIZATION, bearer(token))
+        .header(CONTENT_TYPE, "application/json")
+        .header(IF_MATCH, etag)
+        .body(Body::from(
+            json!({
+                "handle": handle,
+                "display_name": display_name,
+                "accept_terms_version": "2026-08-01",
+                "accept_community_guidelines_version": "2026-08-01"
+            })
+            .to_string(),
+        ))
+        .unwrap()
+}
+
+fn library_save_request(paper_id: Uuid, token: &str, operation_id: Uuid) -> Request<Body> {
+    Request::put(format!("/v1/me/library/{paper_id}"))
+        .header(AUTHORIZATION, bearer(token))
+        .header(CONTENT_TYPE, "application/json")
+        .header("idempotency-key", operation_id.to_string())
+        .body(Body::from(
+            json!({"operation_id": operation_id, "state": "to_read"}).to_string(),
+        ))
+        .unwrap()
+}
+
+fn library_remove_request(paper_id: Uuid, token: &str, operation_id: Uuid) -> Request<Body> {
+    Request::delete(format!("/v1/me/library/{paper_id}"))
+        .header(AUTHORIZATION, bearer(token))
+        .header("idempotency-key", operation_id.to_string())
+        .body(Body::empty())
+        .unwrap()
+}
+
 fn comment_request(
     paper_id: Uuid,
     token: &str,
@@ -604,8 +1259,44 @@ fn comment_request(
         ))
         .unwrap();
     request.extensions_mut().insert(ConnectInfo(SocketAddr::new(
-        IpAddr::V4(Ipv4Addr::new(198, 51, 100, 42)),
+        IpAddr::V4(COMMENT_ORIGIN),
         41_234,
+    )));
+    request
+}
+
+fn comment_edit_request(
+    comment_id: Uuid,
+    token: &str,
+    expected_version: i32,
+    body: &str,
+) -> Request<Body> {
+    Request::builder()
+        .method(Method::PATCH)
+        .uri(format!("/v1/comments/{comment_id}"))
+        .header(AUTHORIZATION, bearer(token))
+        .header(CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({"body": body, "expected_version": expected_version}).to_string(),
+        ))
+        .unwrap()
+}
+
+fn comment_report_request(comment_id: Uuid, token: &str) -> Request<Body> {
+    let mut request = Request::post(format!("/v1/comments/{comment_id}/reports"))
+        .header(AUTHORIZATION, bearer(token))
+        .header(CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({
+                "reason": "harassment",
+                "detail": "Repeated personal attacks in a paper discussion."
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    request.extensions_mut().insert(ConnectInfo(SocketAddr::new(
+        IpAddr::V4(COMMENT_ORIGIN),
+        41_235,
     )));
     request
 }
@@ -656,13 +1347,14 @@ fn metadata(unique: &str) -> PaperMetadata {
 
 async fn cleanup_fixture(
     database: &Database,
-    user_id: Uuid,
-    paper_id: Uuid,
-    comment_id: Uuid,
+    user_ids: &[Uuid],
+    paper_ids: &[Uuid],
+    comment_ids: &[Uuid],
     operation_id: Uuid,
+    comment_origin_scope: &str,
 ) {
-    sqlx::query("DELETE FROM comment_moderation_events WHERE comment_id = $1")
-        .bind(comment_id)
+    sqlx::query("DELETE FROM comment_moderation_events WHERE comment_id = ANY($1)")
+        .bind(comment_ids)
         .execute(database.pool())
         .await
         .unwrap();
@@ -681,21 +1373,78 @@ async fn cleanup_fixture(
         .execute(database.pool())
         .await
         .unwrap();
-    sqlx::query("DELETE FROM shared_rate_limit_buckets WHERE scope_key = $1")
-        .bind(format!("user:{user_id}"))
+    let user_scopes = user_ids
+        .iter()
+        .map(|user_id| format!("user:{user_id}"))
+        .collect::<Vec<_>>();
+    let comment_scopes = comment_ids
+        .iter()
+        .map(|comment_id| format!("comment:{comment_id}"))
+        .collect::<Vec<_>>();
+    sqlx::query(
+        "DELETE FROM shared_rate_limit_buckets \
+         WHERE scope_key = ANY($1) OR scope_key = ANY($2) OR scope_key = $3",
+    )
+    .bind(&user_scopes)
+    .bind(&comment_scopes)
+    .bind(comment_origin_scope)
+    .execute(database.pool())
+    .await
+    .unwrap();
+    sqlx::query("DELETE FROM users WHERE id = ANY($1)")
+        .bind(user_ids)
         .execute(database.pool())
         .await
         .unwrap();
-    sqlx::query("DELETE FROM users WHERE id = $1")
-        .bind(user_id)
+    sqlx::query("DELETE FROM papers WHERE id = ANY($1)")
+        .bind(paper_ids)
         .execute(database.pool())
         .await
         .unwrap();
-    sqlx::query("DELETE FROM papers WHERE id = $1")
-        .bind(paper_id)
-        .execute(database.pool())
-        .await
-        .unwrap();
+}
+
+fn request_origin_secret(unique: &str) -> String {
+    format!("authenticated-api-origin-{unique}-strong-secret")
+}
+
+fn comment_origin_scope(unique: &str) -> String {
+    let secret = request_origin_secret(unique);
+    let mut message = b"pakperk:request-origin:v1\0".to_vec();
+    message.push(4);
+    message.extend_from_slice(&COMMENT_ORIGIN.octets());
+    let digest = hmac_sha256(secret.as_bytes(), &message);
+    let mut scope = String::with_capacity(64);
+    for byte in digest {
+        write!(scope, "{byte:02x}").unwrap();
+    }
+    scope
+}
+
+fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
+    const BLOCK_SIZE: usize = 64;
+    let mut normalized = [0_u8; BLOCK_SIZE];
+    if key.len() > BLOCK_SIZE {
+        normalized[..32].copy_from_slice(&Sha256::digest(key));
+    } else {
+        normalized[..key.len()].copy_from_slice(key);
+    }
+    let mut inner_pad = [0x36_u8; BLOCK_SIZE];
+    let mut outer_pad = [0x5c_u8; BLOCK_SIZE];
+    for ((inner, outer), key) in inner_pad
+        .iter_mut()
+        .zip(outer_pad.iter_mut())
+        .zip(normalized)
+    {
+        *inner ^= key;
+        *outer ^= key;
+    }
+    let mut inner = Sha256::new();
+    inner.update(inner_pad);
+    inner.update(message);
+    let mut outer = Sha256::new();
+    outer.update(outer_pad);
+    outer.update(inner.finalize());
+    outer.finalize().into()
 }
 
 async fn response_json(response: Response) -> Value {

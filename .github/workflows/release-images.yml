@@ -1,0 +1,228 @@
+name: publish-release-images
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Reviewed full commit SHA reachable from main
+        required: true
+        type: string
+      environment:
+        description: Protected promotion environment
+        required: true
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-images-${{ inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  RUST_TOOLCHAIN: 1.91.1
+  FLUTTER_VERSION: 3.44.8
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_revision }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve reviewed source and immutable image names
+        id: release
+        shell: bash
+        env:
+          REQUESTED_REVISION: ${{ inputs.source_revision }}
+        run: |
+          if ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_revision must be a full lowercase Git commit SHA." >&2
+            exit 1
+          fi
+          source_revision="$(git rev-parse HEAD)"
+          if [[ "$source_revision" != "$REQUESTED_REVISION" ]]; then
+            echo "Checkout did not resolve the exact requested revision." >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$source_revision" origin/main; then
+            echo "The release revision is not reachable from origin/main." >&2
+            exit 1
+          fi
+          registry_owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          backend_repository="ghcr.io/$registry_owner/pakperk-backend"
+          site_repository="ghcr.io/$registry_owner/pakperk-site"
+          {
+            printf 'source_revision=%s\n' "$source_revision"
+            printf 'backend_repository=%s\n' "$backend_repository"
+            printf 'site_repository=%s\n' "$site_repository"
+            printf 'backend_tag=%s:sha-%s\n' "$backend_repository" "$source_revision"
+            printf 'site_tag=%s:sha-%s\n' "$site_repository" "$source_revision"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup override set "$RUST_TOOLCHAIN"
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Verify and record the exact reviewed Flutter SDK
+        run: |
+          mkdir -p release/metadata
+          flutter --version --machine >release/metadata/flutter-toolchain.json
+          python3 scripts/validate_flutter_toolchain.py \
+            release/metadata/flutter-toolchain.json
+
+      - name: Resolve locked Flutter dependencies
+        working-directory: mobile
+        run: flutter pub get --enforce-lockfile
+
+      - name: Generate exact-revision dependency evidence and curated site
+        env:
+          SOURCE_REVISION: ${{ steps.release.outputs.source_revision }}
+        run: |
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" \
+            ./scripts/generate_release_metadata.py --flutter-sdk-version "$FLUTTER_VERSION"
+          ./scripts/prepare_release_site.sh
+
+      - name: Build commit-addressed release images
+        env:
+          BACKEND_TAG: ${{ steps.release.outputs.backend_tag }}
+          SITE_TAG: ${{ steps.release.outputs.site_tag }}
+        run: |
+          docker build --file backend/Dockerfile --target runtime --tag "$BACKEND_TAG" .
+          docker build --file site/Dockerfile --tag "$SITE_TAG" .
+          mkdir -p release/image-publication
+
+      - name: Scan exact backend image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.release.outputs.backend_tag }}
+          format: sarif
+          output: release/image-publication/backend-trivy.sarif
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+
+      - name: Scan exact site image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.release.outputs.site_tag }}
+          format: sarif
+          output: release/image-publication/site-trivy.sarif
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+
+      - name: Generate exact backend image SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.release.outputs.backend_tag }}
+          format: cyclonedx
+          output: release/image-publication/backend-image.cdx.json
+          scanners: vuln
+
+      - name: Generate exact site image SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.release.outputs.site_tag }}
+          format: cyclonedx
+          output: release/image-publication/site-image.cdx.json
+          scanners: vuln
+
+      - name: Publish immutable images after successful scans
+        id: publish
+        shell: bash
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BACKEND_TAG: ${{ steps.release.outputs.backend_tag }}
+          SITE_TAG: ${{ steps.release.outputs.site_tag }}
+        run: |
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          backend_push_log="$RUNNER_TEMP/backend-push.log"
+          site_push_log="$RUNNER_TEMP/site-push.log"
+          # Docker's push contract reports the registry manifest digest. Parse
+          # that output instead of depending on mutable local-daemon metadata.
+          docker push "$BACKEND_TAG" 2>&1 | tee "$backend_push_log"
+          docker push "$SITE_TAG" 2>&1 | tee "$site_push_log"
+          python3 - "$backend_push_log" "$site_push_log" >>"$GITHUB_OUTPUT" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          digest_line = re.compile(
+              r"(?m)^[^:\s]+: digest: (sha256:[0-9a-f]{64}) size: [1-9][0-9]*\s*$"
+          )
+          for output_name, raw_path in zip(
+              ("backend_digest", "site_digest"), sys.argv[1:], strict=True
+          ):
+              matches = digest_line.findall(
+                  pathlib.Path(raw_path).read_text(encoding="utf-8", errors="strict")
+              )
+              if len(matches) != 1:
+                  raise SystemExit(
+                      f"docker push did not report exactly one registry digest for {output_name}"
+                  )
+              print(f"{output_name}={matches[0]}")
+          PY
+          docker logout ghcr.io
+          trap - EXIT
+
+      - name: Resolve published digests and create Helm promotion handoff
+        shell: bash
+        env:
+          RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+          SOURCE_REVISION: ${{ steps.release.outputs.source_revision }}
+          BACKEND_REPOSITORY: ${{ steps.release.outputs.backend_repository }}
+          SITE_REPOSITORY: ${{ steps.release.outputs.site_repository }}
+          BACKEND_DIGEST: ${{ steps.publish.outputs.backend_digest }}
+          SITE_DIGEST: ${{ steps.publish.outputs.site_digest }}
+        run: |
+          if ! [[ "$BACKEND_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+             ! [[ "$SITE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Published registry digests were not captured exactly." >&2
+            exit 1
+          fi
+          python3 - "$RELEASE_ENVIRONMENT" "$SOURCE_REVISION" \
+            "$BACKEND_REPOSITORY" "$BACKEND_DIGEST" "$SITE_REPOSITORY" "$SITE_DIGEST" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          environment, revision, backend_repository, backend_digest, site_repository, site_digest = sys.argv[1:]
+          payload = {
+              "schema": 1,
+              "environment": environment,
+              "source_revision": revision,
+              "helm_values": {
+                  "image": {"repository": backend_repository, "digest": backend_digest},
+                  "siteImage": {"repository": site_repository, "digest": site_digest},
+              },
+          }
+          destination = pathlib.Path("release/image-publication/promotion-handoff.json")
+          destination.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+          cp release/metadata/dependencies.cdx.json release/image-publication/source-dependencies.cdx.json
+          cp release/metadata/open-source-notices.txt release/image-publication/open-source-notices.txt
+          cp release/metadata/flutter-toolchain.json release/image-publication/flutter-toolchain.json
+          (cd release/image-publication && sha256sum -- * >SHA256SUMS)
+
+      - name: Upload immutable image publication evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-images-${{ inputs.environment }}-${{ steps.release.outputs.source_revision }}
+          path: release/image-publication
+          if-no-files-found: error
+          retention-days: 90

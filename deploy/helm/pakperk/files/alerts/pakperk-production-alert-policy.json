@@ -1,0 +1,493 @@
+{
+  "apiVersion": "alerts.pakperk.app/v1alpha1",
+  "kind": "AlertPolicy",
+  "metadata": {
+    "name": "pakperk-production",
+    "environment": "production",
+    "version": 1
+  },
+  "spec": {
+    "evaluationIntervalSeconds": 60,
+    "adapterContract": "A protected platform adapter must translate every rule without weakening its filters, threshold, window, missing-data behavior, owner, notification class, or runbook. The rendered ConfigMap and repository checks do not prove live routing.",
+    "filterSemantics": "A string is an exact match. An array is an exact any-of match. No filter value is a regular expression.",
+    "requiredInputs": [
+      {
+        "id": "application-otlp",
+        "kind": "otlp",
+        "contract": "Pakperk content-free application metrics with service.name and deployment.environment.name resources",
+        "liveAdapterEvidenceRequired": true
+      },
+      {
+        "id": "public-api-synthetic",
+        "kind": "synthetic_https",
+        "contract": "External TLS probe of the production API origin with redirects disabled",
+        "liveAdapterEvidenceRequired": true
+      },
+      {
+        "id": "database-observer",
+        "kind": "aggregate_database_metrics",
+        "contract": "Read-only aggregate pool and paper-job queue gauges; no statements, identifiers, titles, or content",
+        "liveAdapterEvidenceRequired": true
+      },
+      {
+        "id": "kubernetes-observer",
+        "kind": "aggregate_kubernetes_metrics",
+        "contract": "Desired/ready workload counts and deletion-ledger volume utilization for the Pakperk production release",
+        "liveAdapterEvidenceRequired": true
+      },
+      {
+        "id": "collector-observer",
+        "kind": "collector_self_telemetry",
+        "contract": "Collector accepted/refused/dropped/export-failed aggregate record counters observed outside the failing export path",
+        "liveAdapterEvidenceRequired": true
+      },
+      {
+        "id": "kubernetes-redacted-logs",
+        "kind": "static_message_logs",
+        "contract": "Platform observation of the chart-scoped static message and severity fields only; no attributes or raw JSON",
+        "liveAdapterEvidenceRequired": true
+      }
+    ],
+    "rules": [
+      {
+        "id": "api-readiness-unavailable",
+        "summary": "The production API readiness endpoint is unavailable.",
+        "severity": "critical",
+        "notification": "page",
+        "owner": "service-on-call",
+        "runbook": "docs/runbooks/incident-response.md",
+        "signal": {
+          "input": "public-api-synthetic",
+          "kind": "synthetic",
+          "name": "pakperk.api.readiness",
+          "aggregation": "consecutive_failures",
+          "filters": {
+            "http.method": "GET",
+            "http.path": "/health/ready",
+            "http.redirects": "disabled",
+            "tls.required": "true"
+          }
+        },
+        "condition": {
+          "operator": "greater_than_or_equal",
+          "threshold": 2,
+          "windowSeconds": 120,
+          "forSeconds": 60,
+          "missingData": "alert"
+        }
+      },
+      {
+        "id": "api-error-ratio-high",
+        "summary": "The production API 5xx response ratio is elevated.",
+        "severity": "critical",
+        "notification": "page",
+        "owner": "service-on-call",
+        "runbook": "docs/runbooks/incident-response.md",
+        "signal": {
+          "input": "application-otlp",
+          "kind": "metric",
+          "name": "http.server.request.count",
+          "aggregation": "ratio_rate",
+          "filters": {
+            "deployment.environment.name": "production",
+            "service.name": "pakperk-api-production"
+          },
+          "numeratorFilters": {
+            "http.response.status_class": "5xx"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 0.05,
+          "windowSeconds": 300,
+          "forSeconds": 300,
+          "missingData": "alert"
+        }
+      },
+      {
+        "id": "api-latency-high",
+        "summary": "The production API normalized-route p95 latency is above target.",
+        "severity": "warning",
+        "notification": "ticket",
+        "owner": "service-on-call",
+        "runbook": "docs/runbooks/incident-response.md",
+        "signal": {
+          "input": "application-otlp",
+          "kind": "metric",
+          "name": "http.server.request.duration",
+          "aggregation": "p95_by_http_route",
+          "filters": {
+            "deployment.environment.name": "production",
+            "service.name": "pakperk-api-production"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 0.5,
+          "windowSeconds": 300,
+          "forSeconds": 600,
+          "missingData": "alert"
+        }
+      },
+      {
+        "id": "database-pool-saturation",
+        "summary": "A production Pakperk database pool is saturated.",
+        "severity": "critical",
+        "notification": "page",
+        "owner": "database-on-call",
+        "runbook": "docs/runbooks/incident-response.md",
+        "signal": {
+          "input": "database-observer",
+          "kind": "metric",
+          "name": "pakperk.infrastructure.database.pool.utilization",
+          "aggregation": "maximum_by_service",
+          "filters": {
+            "deployment.environment.name": "production"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 0.85,
+          "windowSeconds": 300,
+          "forSeconds": 300,
+          "missingData": "alert"
+        }
+      },
+      {
+        "id": "paper-queue-age-high",
+        "summary": "The oldest production paper job has waited too long.",
+        "severity": "warning",
+        "notification": "ticket",
+        "owner": "paper-pipeline-on-call",
+        "runbook": "docs/runbooks/incident-response.md",
+        "signal": {
+          "input": "database-observer",
+          "kind": "metric",
+          "name": "pakperk.infrastructure.paper_queue.oldest_age",
+          "aggregation": "maximum",
+          "filters": {
+            "deployment.environment.name": "production",
+            "unit": "seconds"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 300,
+          "windowSeconds": 300,
+          "forSeconds": 300,
+          "missingData": "alert"
+        }
+      },
+      {
+        "id": "paper-terminal-failure-present",
+        "summary": "At least one production paper job is terminally failed.",
+        "severity": "warning",
+        "notification": "ticket",
+        "owner": "paper-pipeline-on-call",
+        "runbook": "docs/runbooks/incident-response.md",
+        "signal": {
+          "input": "database-observer",
+          "kind": "metric",
+          "name": "pakperk.infrastructure.paper_queue.terminal_failures",
+          "aggregation": "maximum",
+          "filters": {
+            "deployment.environment.name": "production"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 0,
+          "windowSeconds": 300,
+          "forSeconds": 60,
+          "missingData": "alert"
+        }
+      },
+      {
+        "id": "deletion-queue-age-high",
+        "summary": "An unfinished production deletion obligation exceeds the operational threshold.",
+        "severity": "critical",
+        "notification": "page",
+        "owner": "privacy-on-call",
+        "runbook": "docs/runbooks/account-deletion.md",
+        "signal": {
+          "input": "application-otlp",
+          "kind": "metric",
+          "name": "pakperk.backlog.oldest_age",
+          "aggregation": "maximum",
+          "filters": {
+            "backlog.class": "account_deletion",
+            "deployment.environment.name": "production",
+            "service.name": "pakperk-deletion-worker-production"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 900,
+          "windowSeconds": 300,
+          "forSeconds": 300,
+          "missingData": "alert"
+        }
+      },
+      {
+        "id": "deletion-terminal-failure",
+        "summary": "A production account deletion reached terminal failure.",
+        "severity": "critical",
+        "notification": "page",
+        "owner": "privacy-on-call",
+        "runbook": "docs/runbooks/account-deletion.md",
+        "signal": {
+          "input": "application-otlp",
+          "kind": "metric",
+          "name": "pakperk.account_deletion.state.count",
+          "aggregation": "sum_increase",
+          "filters": {
+            "account_deletion.state": "terminal_failure",
+            "deployment.environment.name": "production",
+            "service.name": "pakperk-deletion-worker-production"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 0,
+          "windowSeconds": 300,
+          "forSeconds": 60,
+          "missingData": "healthy"
+        }
+      },
+      {
+        "id": "moderation-report-triage-deadline",
+        "summary": "The oldest open moderation report is approaching the critical triage deadline.",
+        "severity": "critical",
+        "notification": "page",
+        "owner": "trust-safety-on-call",
+        "runbook": "docs/runbooks/moderation.md",
+        "signal": {
+          "input": "application-otlp",
+          "kind": "metric",
+          "name": "pakperk.backlog.oldest_age",
+          "aggregation": "maximum",
+          "filters": {
+            "backlog.class": "moderation_reports",
+            "deployment.environment.name": "production",
+            "service.name": "pakperk-api-production"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 2700,
+          "windowSeconds": 300,
+          "forSeconds": 60,
+          "missingData": "alert"
+        }
+      },
+      {
+        "id": "authentication-recovery-failure",
+        "summary": "OIDC discovery or signing-key recovery is repeatedly failing.",
+        "severity": "critical",
+        "notification": "page",
+        "owner": "identity-on-call",
+        "runbook": "docs/runbooks/incident-response.md",
+        "signal": {
+          "input": "application-otlp",
+          "kind": "metric",
+          "name": "pakperk.operation.count",
+          "aggregation": "sum_increase",
+          "filters": {
+            "deployment.environment.name": "production",
+            "operation.class": [
+              "oidc_discovery",
+              "oidc_jwks_refresh"
+            ],
+            "operation.outcome": [
+              "retryable_failure",
+              "terminal_failure"
+            ],
+            "service.name": "pakperk-api-production"
+          }
+        },
+        "condition": {
+          "operator": "greater_than_or_equal",
+          "threshold": 3,
+          "windowSeconds": 300,
+          "forSeconds": 300,
+          "missingData": "healthy"
+        }
+      },
+      {
+        "id": "collector-records-rejected",
+        "summary": "The production Collector is rejecting telemetry records.",
+        "severity": "warning",
+        "notification": "ticket",
+        "owner": "observability-on-call",
+        "runbook": "docs/runbooks/observability.md",
+        "signal": {
+          "input": "collector-observer",
+          "kind": "metric",
+          "name": "pakperk.infrastructure.collector.rejected_records",
+          "aggregation": "sum_increase",
+          "filters": {
+            "deployment.environment.name": "production"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 0,
+          "windowSeconds": 300,
+          "forSeconds": 60,
+          "missingData": "alert"
+        }
+      },
+      {
+        "id": "collector-records-dropped",
+        "summary": "The production Collector is dropping telemetry records.",
+        "severity": "critical",
+        "notification": "page",
+        "owner": "observability-on-call",
+        "runbook": "docs/runbooks/observability.md",
+        "signal": {
+          "input": "collector-observer",
+          "kind": "metric",
+          "name": "pakperk.infrastructure.collector.dropped_records",
+          "aggregation": "sum_increase",
+          "filters": {
+            "deployment.environment.name": "production"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 0,
+          "windowSeconds": 300,
+          "forSeconds": 60,
+          "missingData": "alert"
+        }
+      },
+      {
+        "id": "collector-export-failures",
+        "summary": "The production Collector cannot export telemetry.",
+        "severity": "critical",
+        "notification": "page",
+        "owner": "observability-on-call",
+        "runbook": "docs/runbooks/observability.md",
+        "signal": {
+          "input": "collector-observer",
+          "kind": "metric",
+          "name": "pakperk.infrastructure.collector.export_failed_records",
+          "aggregation": "sum_increase",
+          "filters": {
+            "deployment.environment.name": "production"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 0,
+          "windowSeconds": 300,
+          "forSeconds": 60,
+          "missingData": "alert"
+        }
+      },
+      {
+        "id": "collector-node-agent-coverage",
+        "summary": "Not every eligible production node has a ready Pakperk Collector agent.",
+        "severity": "critical",
+        "notification": "page",
+        "owner": "platform-on-call",
+        "runbook": "docs/runbooks/observability.md",
+        "signal": {
+          "input": "kubernetes-observer",
+          "kind": "metric",
+          "name": "pakperk.infrastructure.collector.node_agent_coverage_ratio",
+          "aggregation": "minimum",
+          "filters": {
+            "deployment.environment.name": "production",
+            "workload.kind": "DaemonSet"
+          }
+        },
+        "condition": {
+          "operator": "less_than",
+          "threshold": 1,
+          "windowSeconds": 300,
+          "forSeconds": 120,
+          "missingData": "alert"
+        }
+      },
+      {
+        "id": "telemetry-gateway-rejection-spike",
+        "summary": "The mobile telemetry gateway is rejecting an abnormal volume of payloads.",
+        "severity": "warning",
+        "notification": "ticket",
+        "owner": "observability-on-call",
+        "runbook": "docs/runbooks/observability.md",
+        "signal": {
+          "input": "application-otlp",
+          "kind": "metric",
+          "name": "pakperk.operation.count",
+          "aggregation": "sum_increase",
+          "filters": {
+            "deployment.environment.name": "production",
+            "operation.class": "mobile_telemetry_ingest",
+            "operation.outcome": "rejected",
+            "service.name": "pakperk-telemetry-gateway-production"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 100,
+          "windowSeconds": 300,
+          "forSeconds": 300,
+          "missingData": "healthy"
+        }
+      },
+      {
+        "id": "deletion-ledger-verification-failure",
+        "summary": "The production deletion ledger failed verification.",
+        "severity": "critical",
+        "notification": "page",
+        "owner": "privacy-on-call",
+        "runbook": "docs/runbooks/account-deletion.md",
+        "signal": {
+          "input": "kubernetes-redacted-logs",
+          "kind": "log",
+          "name": "pakperk.static_message.count",
+          "aggregation": "sum_increase",
+          "filters": {
+            "body": "external deletion ledger failed verification",
+            "deployment.environment.name": "production",
+            "log.severity_text": "ERROR",
+            "service.name": "pakperk-deletion-worker-production"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 0,
+          "windowSeconds": 300,
+          "forSeconds": 60,
+          "missingData": "healthy"
+        }
+      },
+      {
+        "id": "deletion-ledger-capacity-high",
+        "summary": "The production deletion-ledger volume is nearing capacity.",
+        "severity": "critical",
+        "notification": "page",
+        "owner": "privacy-on-call",
+        "runbook": "docs/runbooks/account-deletion.md",
+        "signal": {
+          "input": "kubernetes-observer",
+          "kind": "metric",
+          "name": "pakperk.infrastructure.deletion_ledger.volume.utilization",
+          "aggregation": "maximum",
+          "filters": {
+            "deployment.environment.name": "production"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 0.8,
+          "windowSeconds": 300,
+          "forSeconds": 300,
+          "missingData": "alert"
+        }
+      }
+    ]
+  }
+}

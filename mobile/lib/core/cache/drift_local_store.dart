@@ -32,6 +32,7 @@ class DriftLocalStore
     with WidgetsBindingObserver
     implements
         LocalStore,
+        CloseableLocalStore,
         FeedConditionalCache,
         FeedCachePersistence,
         CacheCompactionPersistence,
@@ -197,6 +198,7 @@ class DriftLocalStore
     }
   }
 
+  @override
   Future<void> close() async {
     _lifecycleBinding?.removeObserver(this);
     _lifecycleBinding = null;

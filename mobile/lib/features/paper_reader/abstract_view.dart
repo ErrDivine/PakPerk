@@ -72,7 +72,7 @@ class _AbstractViewState extends ConsumerState<AbstractView> {
                 runSpacing: 8,
                 children: [
                   OutlinedButton.icon(
-                    onPressed: () => _open(paper.absUrl),
+                    onPressed: () => _open(paper.canonicalAbsUri),
                     icon: const Icon(Icons.open_in_new),
                     label: const Text('Open on arXiv'),
                   ),
@@ -101,8 +101,7 @@ class _AbstractViewState extends ConsumerState<AbstractView> {
     );
   }
 
-  Future<void> _open(String value) async {
-    final uri = Uri.tryParse(value);
+  Future<void> _open(Uri? uri) async {
     final opened =
         uri != null && await ref.read(externalLinkOpenerProvider).open(uri);
     if (!opened && mounted) {

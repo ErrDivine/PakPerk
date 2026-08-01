@@ -93,6 +93,18 @@ allow-list of asymmetric signing algorithms. Provider metadata and JWKS reads
 are redirect-free, byte-bounded, timeout-bounded, and cached. An unknown
 signing-key ID triggers a single-flight refresh subject to a cooldown.
 
+Access tokens are self-contained JWTs; the API does not introspect each token
+with the provider. Normal session revocation therefore prevents refresh and
+relies on the required short access-token lifetime. Emergency signing-key
+revocation is represented by removing that `kid` from JWKS and takes effect on
+the first API verification after the bounded `OIDC_JWKS_CACHE_TTL_SECONDS`
+interval. The composed
+PostgreSQL/OIDC API test publishes a replacement-only JWKS, waits beyond its
+short test cache, and proves the old signed token is rejected before JIT
+provisioning. Local suspension or deletion-pending state is checked on every
+authenticated request and denies an otherwise cryptographically valid token
+without waiting for provider expiry.
+
 Enable the native client with matching build values:
 
 ```bash

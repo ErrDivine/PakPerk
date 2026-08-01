@@ -49,15 +49,17 @@ class _StartupGateState extends State<StartupGate> {
 
   @override
   Widget build(BuildContext context) {
-    return switch (widget.state.phase) {
-      StartupPhase.recoverableFailure => _StartupFailureSurface(
+    if (widget.state.phase == StartupPhase.recoverableFailure) {
+      return _StartupFailureSurface(
         failure: widget.state.failure,
         onRetry: widget.onRetry,
-        onRepairAndRetry: widget.onRepairAndRetry,
-      ),
-      StartupPhase.ready => _buildReady(),
-      _ => const _StartupLaunchSurface(),
-    };
+        onRepairAndRetry: widget.state.failure?.localStateUsable == true
+            ? null
+            : widget.onRepairAndRetry,
+      );
+    }
+    if (widget.state.hasUsableLocalState) return _buildReady();
+    return const _StartupLaunchSurface();
   }
 
   Widget _buildReady() {
@@ -131,24 +133,32 @@ class _StartupOpeningTransitionState extends State<StartupOpeningTransition>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_started) return;
+    final reducedMotion = _resolveReducedMotion(context);
+    if (_started) {
+      _updateMotionPreference(reducedMotion);
+      return;
+    }
+    _reducedMotion = reducedMotion;
     _started = true;
-    _reducedMotion = _resolveReducedMotion(context);
 
     if (widget.launchMode == StartupLaunchMode.warm) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _complete());
       return;
     }
 
-    _controller.duration = _reducedMotion
-        ? PakPerkMotion.crossFade
-        : widget.launchMode == StartupLaunchMode.deepLink
-        ? PakPerkMotion.deepLinkOpening
-        : PakPerkMotion.coldOpening;
+    _controller.duration = _transitionDuration(_reducedMotion);
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) _complete();
     });
     _controller.forward();
+  }
+
+  @override
+  void didUpdateWidget(covariant StartupOpeningTransition oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.reducedMotionPreference != widget.reducedMotionPreference) {
+      _updateMotionPreference(_resolveReducedMotion(context));
+    }
   }
 
   @override
@@ -243,10 +253,25 @@ class _StartupOpeningTransitionState extends State<StartupOpeningTransition>
     return switch (widget.reducedMotionPreference) {
       ReducedMotionPreference.reduce => true,
       ReducedMotionPreference.full => false,
-      ReducedMotionPreference.system =>
-        (MediaQuery.maybeOf(context)?.disableAnimations ?? false) ||
-            (MediaQuery.maybeOf(context)?.accessibleNavigation ?? false),
+      ReducedMotionPreference.system => platformPrefersReducedMotion(context),
     };
+  }
+
+  Duration _transitionDuration(bool reducedMotion) => reducedMotion
+      ? PakPerkMotion.crossFade
+      : widget.launchMode == StartupLaunchMode.deepLink
+      ? PakPerkMotion.deepLinkOpening
+      : PakPerkMotion.coldOpening;
+
+  void _updateMotionPreference(bool reducedMotion) {
+    if (_reducedMotion == reducedMotion) return;
+    _reducedMotion = reducedMotion;
+    if (!_controller.isAnimating) return;
+    final total = _transitionDuration(reducedMotion);
+    final remainingMicros = (total.inMicroseconds * (1 - _controller.value))
+        .round()
+        .clamp(1, total.inMicroseconds);
+    _controller.animateTo(1, duration: Duration(microseconds: remainingMicros));
   }
 
   void _complete() {
@@ -337,11 +362,14 @@ class _StartupFailureSurface extends StatelessWidget {
 
   final StartupFailure? failure;
   final VoidCallback onRetry;
-  final VoidCallback onRepairAndRetry;
+  final VoidCallback? onRepairAndRetry;
 
   @override
   Widget build(BuildContext context) {
-    final message = failure?.timedOut ?? false
+    final localStateUsable = failure?.localStateUsable ?? false;
+    final message = localStateUsable
+        ? 'Pakperk could not finish checking this device’s session.'
+        : failure?.timedOut ?? false
         ? 'Local startup took longer than expected.'
         : 'Pakperk could not open its local reading data.';
 
@@ -371,8 +399,11 @@ class _StartupFailureSurface extends StatelessWidget {
                     ),
                     const SizedBox(height: PakPerkSpacing.sm),
                     Text(
-                      '$message Retry, or rebuild only the local cache. '
-                      'Your sign-in credentials are kept.',
+                      localStateUsable
+                          ? '$message Your cached reading data is safe. Retry '
+                                'the local session check.'
+                          : '$message Retry, or rebuild only the local cache. '
+                                'Your sign-in credentials are kept.',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
@@ -384,14 +415,16 @@ class _StartupFailureSurface extends StatelessWidget {
                         child: const Text('Retry'),
                       ),
                     ),
-                    const SizedBox(height: PakPerkSpacing.xs),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: onRepairAndRetry,
-                        child: const Text('Rebuild local data'),
+                    if (onRepairAndRetry != null) ...[
+                      const SizedBox(height: PakPerkSpacing.xs),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: onRepairAndRetry,
+                          child: const Text('Rebuild local data'),
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),

@@ -83,6 +83,38 @@ void main() {
     expect(find.byKey(const ValueKey('startup-launch-surface')), findsNothing);
   });
 
+  testWidgets('system reduced-motion changes shorten an active opening', (
+    tester,
+  ) async {
+    var completed = 0;
+    Widget app(MediaQueryData media) => MaterialApp(
+      theme: PakPerkTheme.light(),
+      home: MediaQuery(
+        data: media,
+        child: StartupOpeningTransition(
+          launchMode: StartupLaunchMode.cold,
+          reducedMotionPreference: ReducedMotionPreference.system,
+          onComplete: () => completed += 1,
+          child: const ColoredBox(
+            key: ValueKey('usable-content'),
+            color: Colors.green,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(app(const MediaQueryData()));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(completed, 0);
+
+    await tester.pumpWidget(app(const MediaQueryData(disableAnimations: true)));
+    await tester.pump(PakPerkMotion.crossFade);
+    await tester.pump();
+
+    expect(completed, 1);
+    expect(find.byKey(const ValueKey('startup-launch-surface')), findsNothing);
+  });
+
   testWidgets('warm ready state shows content and does not replay opening', (
     tester,
   ) async {
@@ -117,6 +149,39 @@ void main() {
     expect(find.byKey(const ValueKey('startup-launch-surface')), findsNothing);
     expect(firstUsableFrames, 1);
     expect(openingCompletions, 0);
+  });
+
+  testWidgets('local-ready state exposes cached content before session check', (
+    tester,
+  ) async {
+    var firstUsableFrames = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: PakPerkTheme.light(),
+        home: StartupGate(
+          state: const StartupState(
+            phase: StartupPhase.localReady,
+            launchMode: StartupLaunchMode.warm,
+            attempt: 1,
+            openingCompleted: true,
+          ),
+          openingMotionEnabled: true,
+          onRetry: () {},
+          onRepairAndRetry: () {},
+          onFirstUsableFrame: () => firstUsableFrames += 1,
+          onOpeningComplete: () {},
+          child: const ColoredBox(
+            key: ValueKey('cached-usable-content'),
+            color: Colors.green,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('cached-usable-content')), findsOneWidget);
+    expect(find.byKey(const ValueKey('startup-launch-surface')), findsNothing);
+    expect(firstUsableFrames, 1);
   });
 
   testWidgets('startup failure offers retry and credential-preserving repair', (
@@ -157,6 +222,40 @@ void main() {
     await tester.tap(find.text('Rebuild local data'));
     expect(retries, 1);
     expect(repairs, 1);
+  });
+
+  testWidgets('post-local session failure does not offer destructive repair', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: PakPerkTheme.light(),
+        home: StartupGate(
+          state: StartupState(
+            phase: StartupPhase.recoverableFailure,
+            launchMode: StartupLaunchMode.cold,
+            attempt: 1,
+            openingCompleted: true,
+            failure: StartupFailure(
+              error: StateError('secure store unavailable'),
+              stackTrace: StackTrace.current,
+              timedOut: false,
+              localStateUsable: true,
+            ),
+          ),
+          openingMotionEnabled: true,
+          onRetry: () {},
+          onRepairAndRetry: () => fail('repair must not be exposed'),
+          onFirstUsableFrame: () {},
+          onOpeningComplete: () {},
+          child: const SizedBox(),
+        ),
+      ),
+    );
+
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('Rebuild local data'), findsNothing);
+    expect(find.textContaining('cached reading data is safe'), findsOneWidget);
   });
 }
 

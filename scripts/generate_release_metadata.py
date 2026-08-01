@@ -19,6 +19,23 @@ import uuid
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 LICENSE_NAMES = ("LICENSE", "LICENSE.txt", "LICENSE.md", "COPYING", "NOTICE")
 MAX_LICENSE_BYTES = 2 * 1024 * 1024
+SWIFTPM_LOCKFILES = (
+    pathlib.Path("mobile/ios/Runner.xcworkspace/xcshareddata/swiftpm/Package.resolved"),
+    pathlib.Path(
+        "mobile/ios/Runner.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+    ),
+)
+SWIFTPM_REVIEWED_PACKAGES = {
+    "appauth-ios": {
+        "location": "https://github.com/openid/AppAuth-iOS",
+        "version": "2.0.0",
+        "revision": "145104f5ea9d58ae21b60add007c33c1cc0c948e",
+        "license": "Apache-2.0",
+        "license_file": pathlib.Path(
+            "third_party/licenses/AppAuth-iOS-2.0.0-LICENSE.txt"
+        ),
+    }
+}
 
 
 def command_json(arguments: list[str], cwd: pathlib.Path) -> dict:
@@ -261,19 +278,91 @@ def dart_components(expected_flutter_sdk_version: str | None = None) -> list[dic
     return components
 
 
+def swiftpm_components() -> list[dict]:
+    """Return reviewed native iOS dependencies from both checked-in lockfiles."""
+
+    lock_paths = [ROOT / relative for relative in SWIFTPM_LOCKFILES]
+    payloads = []
+    for path in lock_paths:
+        if not path.is_file():
+            raise RuntimeError(f"SwiftPM lockfile is missing: {path.relative_to(ROOT)}")
+        payloads.append(path.read_bytes())
+    if any(payload != payloads[0] for payload in payloads[1:]):
+        raise RuntimeError("the workspace and Xcode project SwiftPM lockfiles disagree")
+
+    lock = json.loads(payloads[0])
+    if lock.get("version") != 2 or not isinstance(lock.get("pins"), list):
+        raise RuntimeError("SwiftPM lockfile has an unsupported schema")
+
+    components = []
+    seen_identities: set[str] = set()
+    for pin in lock["pins"]:
+        if not isinstance(pin, dict):
+            raise RuntimeError("SwiftPM lockfile contains a malformed pin")
+        identity = pin.get("identity")
+        if not isinstance(identity, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,127}", identity):
+            raise RuntimeError("SwiftPM lockfile contains an unsafe package identity")
+        if identity in seen_identities:
+            raise RuntimeError(f"SwiftPM lockfile repeats package identity: {identity}")
+        seen_identities.add(identity)
+
+        reviewed = SWIFTPM_REVIEWED_PACKAGES.get(identity)
+        if reviewed is None:
+            raise RuntimeError(f"SwiftPM package {identity} has no reviewed license mapping")
+        location = pin.get("location")
+        state = pin.get("state")
+        if pin.get("kind") != "remoteSourceControl" or location != reviewed["location"]:
+            raise RuntimeError(f"SwiftPM package {identity} does not match its reviewed source")
+        if not isinstance(state, dict):
+            raise RuntimeError(f"SwiftPM package {identity} has no pinned state")
+        version = safe_version(state.get("version"), f"SwiftPM package {identity}")
+        revision = state.get("revision")
+        if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
+            raise RuntimeError(f"SwiftPM package {identity} has no full pinned revision")
+        if version != reviewed["version"] or revision != reviewed["revision"]:
+            raise RuntimeError(
+                f"SwiftPM package {identity} version/revision changed without review"
+            )
+
+        license_path = ROOT / reviewed["license_file"]
+        if not license_path.is_file():
+            raise RuntimeError(f"SwiftPM package {identity} is missing its reviewed license text")
+        components.append(
+            {
+                "ecosystem": "swiftpm",
+                "name": identity,
+                "version": version,
+                "purl": (
+                    "pkg:github/openid/AppAuth-iOS@"
+                    f"{version}?commit={revision}"
+                ),
+                "declared_license": reviewed["license"],
+                "source": f"{location} revision {revision}",
+                "license_texts": [(license_path.name, read_license(license_path))],
+            }
+        )
+    if not components:
+        raise RuntimeError("SwiftPM lockfile does not contain any native dependencies")
+    return components
+
+
 def revision() -> str:
-    configured = os.environ.get("SOURCE_REVISION", "").strip()
-    if configured:
-        if not re.fullmatch(r"[0-9a-f]{40}", configured):
-            raise RuntimeError("SOURCE_REVISION must be a full lowercase Git commit")
-        return configured
-    return subprocess.run(
+    checked_out = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=ROOT,
         check=True,
         text=True,
         stdout=subprocess.PIPE,
     ).stdout.strip()
+    if not re.fullmatch(r"[0-9a-f]{40}", checked_out):
+        raise RuntimeError("the checked-out Git revision is not a full lowercase commit")
+    configured = os.environ.get("SOURCE_REVISION", "").strip()
+    if configured:
+        if not re.fullmatch(r"[0-9a-f]{40}", configured):
+            raise RuntimeError("SOURCE_REVISION must be a full lowercase Git commit")
+        if configured != checked_out:
+            raise RuntimeError("SOURCE_REVISION does not match the checked-out Git commit")
+    return checked_out
 
 
 def source_timestamp() -> str:
@@ -311,7 +400,7 @@ def write_outputs(output_dir: pathlib.Path, components: list[dict]) -> None:
         f"Generated at: {generated}",
         "",
         "This inventory is generated from backend/Cargo.lock, mobile/pubspec.lock,",
-        "and the resolved Flutter SDK's version/revision metadata.",
+        "the resolved Flutter SDK identity, and both checked-in SwiftPM lockfiles.",
         "It is release evidence for this exact source revision.",
     ]
     for component in components:
@@ -398,7 +487,9 @@ def main() -> int:
         )
         write_outputs(
             arguments.output_dir.resolve(),
-            rust_components() + dart_components(expected_flutter_sdk_version),
+            rust_components()
+            + dart_components(expected_flutter_sdk_version)
+            + swiftpm_components(),
         )
     except (OSError, RuntimeError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
         print(f"release metadata generation failed: {error}", file=sys.stderr)

@@ -142,7 +142,7 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
   }
 
   Future<void> _openPdf() async {
-    final uri = Uri.tryParse(widget.paper.pdfUrl);
+    final uri = widget.paper.canonicalPdfUri;
     final opened =
         uri != null && await ref.read(externalLinkOpenerProvider).open(uri);
     if (!opened && mounted) {

@@ -7,8 +7,7 @@ metadata:
     {{- include "pakperk.labels" . | nindent 4 }}
     app.kubernetes.io/component: metadata-sync
 data:
-  manifest.json: |
-    {{- .Values.metadataSync.manifestJson | nindent 4 }}
+  manifest.json: {{ .Values.metadataSync.manifestJson | toJson }}
 ---
 apiVersion: batch/v1
 kind: CronJob

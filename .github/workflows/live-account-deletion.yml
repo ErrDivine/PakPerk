@@ -1,0 +1,52 @@
+name: live account deletion
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type RUN_DISPOSABLE_KEYCLOAK_DELETION to run the destructive disposable suite
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-account-deletion-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  keycloak-deletion:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      RUST_TOOLCHAIN: 1.91.1
+      DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Confirm disposable destructive acceptance
+        run: |
+          if [[ "$DISPATCH_CONFIRMATION" != "RUN_DISPOSABLE_KEYCLOAK_DELETION" ]]; then
+            echo "Dispatch confirmation did not match the required phrase." >&2
+            exit 2
+          fi
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup override set "$RUST_TOOLCHAIN"
+      - name: Install bounded live-driver dependencies
+        run: |
+          python3 -c 'import sys; raise SystemExit(sys.version_info[:2] != (3, 12))'
+          python3 -m venv "$RUNNER_TEMP/pakperk-live-account-deletion-venv"
+          "$RUNNER_TEMP/pakperk-live-account-deletion-venv/bin/python" -m pip install \
+            --disable-pip-version-check \
+            --require-hashes \
+            --only-binary=:all: \
+            --requirement scripts/requirements/live-account-deletion.txt
+          echo "$RUNNER_TEMP/pakperk-live-account-deletion-venv/bin" >> "$GITHUB_PATH"
+      - name: Run disposable Keycloak account deletion
+        env:
+          LIVE_ACCOUNT_DELETION_CONFIRM: RUN_DISPOSABLE_KEYCLOAK_DELETION
+        run: ./scripts/test_live_account_deletion.sh

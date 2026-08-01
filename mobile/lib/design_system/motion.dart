@@ -1,4 +1,13 @@
-import 'package:flutter/animation.dart';
+import 'package:flutter/widgets.dart';
+
+/// One app-wide interpretation of the platform accessibility motion signals.
+/// Direct-manipulation gestures remain available; callers use this to remove
+/// decorative and programmatic travel.
+bool platformPrefersReducedMotion(BuildContext context) {
+  final media = MediaQuery.maybeOf(context);
+  return (media?.disableAnimations ?? false) ||
+      (media?.accessibleNavigation ?? false);
+}
 
 abstract final class PakPerkMotion {
   static const Duration instant = Duration.zero;

@@ -7,7 +7,7 @@ x-backend-build: &backend-build
 
 services:
   postgres:
-    image: pgvector/pgvector:0.8.2-pg16-bookworm
+    image: pgvector/pgvector:0.8.2-pg16-bookworm@sha256:00ba258a66dac104fd5171074a0084462a64a1369d8513f3d0a634e2f24d15bc
     environment:
       POSTGRES_DB: pakperk
       POSTGRES_USER: pakperk
@@ -25,7 +25,7 @@ services:
 
   keycloak-postgres:
     profiles: ["accounts"]
-    image: postgres:16.14-bookworm
+    image: postgres:16.14-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
@@ -41,7 +41,7 @@ services:
 
   mailpit:
     profiles: ["accounts"]
-    image: axllent/mailpit:v1.30.6
+    image: axllent/mailpit:v1.30.6@sha256:7f33095f80e901f6ad08028f06ca284aa58fe84942be5496008d041d3b9f4d4d
     environment:
       MP_MAX_MESSAGES: 500
       MP_MAX_AGE: 7d
@@ -76,7 +76,7 @@ services:
     restart: unless-stopped
 
   grobid:
-    image: grobid/grobid:0.9.0-crf
+    image: grobid/grobid:0.9.0-crf@sha256:24ba90eb1c959f65d812bcdb2cf79c677fa5fd7b95235de616b8bc9fa1317849
     init: true
     ulimits:
       core: 0

@@ -11,6 +11,16 @@ class ArxivIdentifier {
 
   String get queryId => version == null ? baseId : '${baseId}v$version';
   String get encodedRouteSegment => Uri.encodeComponent(queryId);
+  Uri get canonicalAbsUri => _canonicalUri('abs');
+  Uri get canonicalPdfUri => _canonicalUri('pdf');
+
+  Uri _canonicalUri(String resource) {
+    return Uri(
+      scheme: 'https',
+      host: 'arxiv.org',
+      pathSegments: [resource, ...queryId.split('/')],
+    );
+  }
 
   static ArxivIdentifier? tryParse(String value) {
     if (value.isEmpty || value.length > 64 || value != value.trim()) {

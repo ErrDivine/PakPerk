@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/models/reader_state.dart';
 import '../../core/providers.dart';
@@ -9,6 +11,7 @@ import '../../core/repository/paper_repository.dart';
 import '../../core/telemetry/telemetry.dart';
 import '../../core/widgets/responsive_reader_frame.dart';
 import '../../core/widgets/status_widgets.dart';
+import '../../design_system/motion.dart';
 import '../paper_reader/paper_reader.dart';
 import '../paper_reader/reader_navigation_controller.dart';
 import 'feed_controller.dart';
@@ -23,6 +26,7 @@ class FeedScreen extends ConsumerStatefulWidget {
 class _FeedScreenState extends ConsumerState<FeedScreen> {
   late final PageController _controller;
   late int _currentIndex;
+  int? _pendingCommittedIndex;
   String? _lastCommittedSignature;
 
   @override
@@ -110,40 +114,52 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               child: BundledDemoNotice(),
             ),
           Expanded(
-            child: PageView.builder(
-              key: const PageStorageKey('vertical-paper-feed'),
-              controller: _controller,
-              scrollDirection: Axis.vertical,
-              itemCount: feed.items.length,
-              onPageChanged: (index) {
-                setState(() => _currentIndex = index);
-                ref
-                    .read(appRestorationControllerProvider.notifier)
-                    .setFeedPosition(index, feed.items[index]);
-                _commitPage(feed, index);
+            child: NotificationListener<ScrollEndNotification>(
+              onNotification: (notification) {
+                if (notification.depth == 0 &&
+                    notification.metrics.axis == Axis.vertical) {
+                  _settleCommittedPage(feed);
+                }
+                return false;
               },
-              itemBuilder: (context, index) {
-                final paper = feed.items[index];
-                final readerKey = feedReaderKey(paper);
-                return ResponsiveReaderFrame(
-                  key: ValueKey('responsive-reader-$readerKey'),
-                  child: PaperReader(
-                    key: ValueKey('feed-paper-$readerKey'),
-                    paper: paper,
-                    readerKey: readerKey,
-                    isActive:
-                        readBranchActive &&
-                        index == _currentIndex &&
-                        routes.isEmpty,
-                    onPreviousPaper: index > 0
-                        ? () => _goToPaper(index - 1)
-                        : null,
-                    onNextPaper: index + 1 < feed.items.length
-                        ? () => _goToPaper(index + 1)
-                        : null,
-                  ),
-                );
-              },
+              child: PageView.builder(
+                key: const PageStorageKey('vertical-paper-feed'),
+                controller: _controller,
+                scrollDirection: Axis.vertical,
+                itemCount: feed.items.length,
+                onPageChanged: (index) {
+                  final changed = index != _currentIndex;
+                  setState(() {
+                    _currentIndex = index;
+                    if (changed) _pendingCommittedIndex = index;
+                  });
+                  ref
+                      .read(appRestorationControllerProvider.notifier)
+                      .setFeedPosition(index, feed.items[index]);
+                },
+                itemBuilder: (context, index) {
+                  final paper = feed.items[index];
+                  final readerKey = feedReaderKey(paper);
+                  return ResponsiveReaderFrame(
+                    key: ValueKey('responsive-reader-$readerKey'),
+                    child: PaperReader(
+                      key: ValueKey('feed-paper-$readerKey'),
+                      paper: paper,
+                      readerKey: readerKey,
+                      isActive:
+                          readBranchActive &&
+                          index == _currentIndex &&
+                          routes.isEmpty,
+                      onPreviousPaper: index > 0
+                          ? () => _goToPaper(index - 1)
+                          : null,
+                      onNextPaper: index + 1 < feed.items.length
+                          ? () => _goToPaper(index + 1)
+                          : null,
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ],
@@ -152,6 +168,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   }
 
   void _goToPaper(int index) {
+    if (platformPrefersReducedMotion(context)) {
+      _controller.jumpToPage(index);
+      return;
+    }
     _controller.animateToPage(
       index,
       duration: const Duration(milliseconds: 300),
@@ -160,6 +180,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   }
 
   void _scheduleCommittedPage(FeedState feed) {
+    if (_pendingCommittedIndex != null) return;
     if (_currentIndex < 0 || _currentIndex >= feed.items.length) return;
     final index = _currentIndex;
     final signature = _commitSignature(feed, index);
@@ -174,10 +195,29 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     });
   }
 
-  void _commitPage(FeedState feed, int index) {
-    _lastCommittedSignature = _commitSignature(feed, index);
+  void _settleCommittedPage(FeedState feed) {
+    final index = _pendingCommittedIndex;
+    _pendingCommittedIndex = null;
+    if (index == null || index < 0 || index >= feed.items.length) return;
+    if (_commitPage(feed, index)) unawaited(_provideCommitHaptic());
+  }
+
+  bool _commitPage(FeedState feed, int index) {
+    final signature = _commitSignature(feed, index);
+    if (_lastCommittedSignature == signature) return false;
+    _lastCommittedSignature = signature;
     _recordCommittedPage(feed, index);
     ref.read(feedControllerProvider.notifier).onCommittedPage(index);
+    return true;
+  }
+
+  Future<void> _provideCommitHaptic() async {
+    if (!mounted || platformPrefersReducedMotion(context)) return;
+    try {
+      await HapticFeedback.selectionClick();
+    } on Object {
+      // Haptics are optional platform affordances and never block navigation.
+    }
   }
 
   void _recordCommittedPage(FeedState feed, int index) {

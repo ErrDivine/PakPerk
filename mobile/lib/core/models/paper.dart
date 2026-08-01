@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'arxiv_identifier.dart';
+
 class PaperVersionKey {
   const PaperVersionKey({required this.paperId, required this.arxivId});
 
@@ -79,13 +81,23 @@ class PaperSummary {
   final PaperCapabilities capabilities;
 
   String get arxivBaseId => arxivId.replaceFirst(RegExp(r'v\d+$'), '');
+  ArxivIdentifier? get normalizedArxivIdentifier =>
+      ArxivIdentifier.tryParse(arxivId);
+  Uri? get canonicalAbsUri => normalizedArxivIdentifier?.canonicalAbsUri;
+  Uri? get canonicalPdfUri => normalizedArxivIdentifier?.canonicalPdfUri;
   PaperVersionKey get versionKey =>
       PaperVersionKey(paperId: paperId, arxivId: arxivId);
 
   factory PaperSummary.fromJson(Map<String, dynamic> json) {
+    final rawArxivId = _requiredString(json, 'arxiv_id');
+    final identifier = ArxivIdentifier.tryParse(rawArxivId);
+    if (identifier == null) {
+      throw FormatException('Invalid arXiv identifier: $rawArxivId');
+    }
+    final normalizedArxivId = identifier.queryId;
     return PaperSummary(
       paperId: _requiredString(json, 'paper_id'),
-      arxivId: _requiredString(json, 'arxiv_id'),
+      arxivId: normalizedArxivId,
       title: _requiredString(
         json,
         'title',
@@ -100,12 +112,10 @@ class PaperSummary {
       categories: _stringList(json['categories']),
       publishedAt: _date(json['published_at']),
       updatedAt: _date(json['updated_at'] ?? json['published_at']),
-      absUrl:
-          (json['abs_url'] ?? 'https://arxiv.org/abs/${json['arxiv_id'] ?? ''}')
-              .toString(),
-      pdfUrl:
-          (json['pdf_url'] ?? 'https://arxiv.org/pdf/${json['arxiv_id'] ?? ''}')
-              .toString(),
+      // Never persist or later launch an origin supplied by the API/cache.
+      // arXiv links are derived from the already validated exact identifier.
+      absUrl: identifier.canonicalAbsUri.toString(),
+      pdfUrl: identifier.canonicalPdfUri.toString(),
       capabilities: PaperCapabilities.fromJson(
         _mapOrNull(json['capabilities']),
       ),
@@ -122,8 +132,8 @@ class PaperSummary {
     'categories': categories,
     'published_at': publishedAt.toUtc().toIso8601String(),
     'updated_at': updatedAt.toUtc().toIso8601String(),
-    'abs_url': absUrl,
-    'pdf_url': pdfUrl,
+    'abs_url': canonicalAbsUri?.toString(),
+    'pdf_url': canonicalPdfUri?.toString(),
     'capabilities': capabilities.toJson(),
   };
 

@@ -1,0 +1,19 @@
+{{- if .Values.alerting.enabled }}
+{{- $policyBytes := .Files.Get "files/alerts/pakperk-production-alert-policy.json" -}}
+{{- $policyDigest := sha256sum $policyBytes -}}
+{{- $nameBase := include "pakperk.boundedNameBase" (dict "value" (include "pakperk.fullname" .) "maxLength" 37) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $nameBase }}-alert-policy-{{ trunc 12 $policyDigest }}
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: alert-policy
+  annotations:
+    pakperk.app/alert-policy-sha256: {{ printf "sha256:%s" $policyDigest | quote }}
+    pakperk.app/provider-adapter-required: "true"
+immutable: true
+data:
+  pakperk-production-alert-policy.json: |
+{{ $policyBytes | indent 4 }}
+{{- end }}

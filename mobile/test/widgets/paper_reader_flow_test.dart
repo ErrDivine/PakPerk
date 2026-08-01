@@ -9,6 +9,7 @@ import 'package:pakperk/core/models/processing.dart';
 import 'package:pakperk/core/models/reader_state.dart';
 import 'package:pakperk/core/providers.dart';
 import 'package:pakperk/features/paper_reader/paper_reader.dart';
+import 'package:pakperk/features/paper_reader/reader_navigation_controller.dart';
 
 import '../support/fakes.dart';
 
@@ -177,4 +178,129 @@ void main() {
       expect(find.bySemanticsLabel('Remove from To Read'), findsOneWidget);
     },
   );
+
+  testWidgets('reduced motion commits an explicit stage jump immediately', (
+    tester,
+  ) async {
+    final repository = FakePaperDataSource(
+      paper: samplePaper,
+      processing: sampleProcessing,
+      introduction: sampleIntroduction,
+    );
+    const readerKey = 'feed:reduced-motion-paper';
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          paperRepositoryProvider.overrideWithValue(repository),
+          localStoreProvider.overrideWithValue(MemoryLocalStore()),
+          initialRestorationProvider.overrideWithValue(
+            const AppRestorationState(),
+          ),
+        ],
+        child: MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(disableAnimations: true),
+            child: Scaffold(
+              body: PaperReader(
+                paper: samplePaper,
+                readerKey: readerKey,
+                isActive: true,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PaperReader)),
+    );
+    await tester.tap(find.byKey(const ValueKey('stage-introduction')));
+    await tester.pump();
+
+    expect(
+      container.read(readerNavigationStateProvider(readerKey)).stageIndex,
+      PaperStage.introduction.index,
+    );
+  });
+
+  testWidgets('arXiv actions ignore untrusted model URLs', (tester) async {
+    final paper = PaperSummary(
+      paperId: samplePaper.paperId,
+      arxivId: samplePaper.arxivId,
+      title: samplePaper.title,
+      abstractText: samplePaper.abstractText,
+      authors: samplePaper.authors,
+      primaryCategory: samplePaper.primaryCategory,
+      categories: samplePaper.categories,
+      publishedAt: samplePaper.publishedAt,
+      updatedAt: samplePaper.updatedAt,
+      absUrl: 'javascript:alert(1)',
+      pdfUrl: 'https://arxiv.org/pdf/9999.99999v1',
+      capabilities: samplePaper.capabilities,
+    );
+    final repository = FakePaperDataSource(
+      paper: paper,
+      processing: sampleProcessing,
+      introduction: sampleIntroduction,
+    );
+    final links = _RecordingLinks();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          externalLinkOpenerProvider.overrideWithValue(links),
+          paperRepositoryProvider.overrideWithValue(repository),
+          localStoreProvider.overrideWithValue(MemoryLocalStore()),
+          initialRestorationProvider.overrideWithValue(
+            const AppRestorationState(),
+          ),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: PaperReader(
+              paper: paper,
+              readerKey: 'feed:trusted-arxiv-links',
+              isActive: true,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final openRecord = find.text('Open on arXiv');
+    await tester.scrollUntilVisible(
+      openRecord,
+      280,
+      scrollable: find.byKey(const PageStorageKey('abstract-scroll')),
+    );
+    await tester.tap(openRecord);
+    await tester.pump();
+    expect(links.opened, [Uri.parse('https://arxiv.org/abs/1706.03762v7')]);
+
+    await tester.tap(find.byKey(const ValueKey('stage-introduction')));
+    await tester.pumpAndSettle();
+    final openPdf = find.text('Open original PDF on arXiv');
+    await tester.scrollUntilVisible(
+      openPdf,
+      280,
+      scrollable: find.byKey(const PageStorageKey('introduction-scroll')),
+    );
+    await tester.tap(openPdf);
+    await tester.pump();
+    expect(links.opened.last, Uri.parse('https://arxiv.org/pdf/1706.03762v7'));
+  });
+}
+
+final class _RecordingLinks implements ExternalLinkOpener {
+  final opened = <Uri>[];
+
+  @override
+  Future<bool> open(Uri uri) async {
+    opened.add(uri);
+    return true;
+  }
 }

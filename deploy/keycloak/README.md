@@ -93,3 +93,39 @@ The API remains independently startable when this profile is absent. If
 accounts are disabled, public reading never waits for OIDC. If accounts are
 enabled and discovery/JWKS are unavailable, authenticated routes fail closed
 while public reading remains available.
+
+## Disposable account-deletion acceptance
+
+The repository includes a deliberately opt-in, loopback-only end-to-end suite
+for the destructive provider path:
+
+```bash
+LIVE_ACCOUNT_DELETION_CONFIRM=RUN_DISPOSABLE_KEYCLOAK_DELETION \
+  ./scripts/test_live_account_deletion.sh
+```
+
+The wrapper starts only missing `postgres`/`accounts` Compose services, builds
+the API and deletion worker, creates one verified disposable Keycloak identity,
+retrieves the runtime-generated worker secret into an owner-only temporary
+file, and runs the Rust API on `127.0.0.1:18084`. It refuses non-loopback API,
+Keycloak, or PostgreSQL targets and refuses to share a host with an already
+ready deletion worker. It stops only services it started and never removes
+Compose volumes.
+
+The suite waits long enough to prove stale `auth_time` is rejected, performs a
+fresh Authorization Code + PKCE login, then verifies immediate local disable,
+the signed external tombstone, the database ledger/job/event binding, session
+revocation, provider identity deletion, application-data purge, completed
+request replay, and a signed-ledger provider reconciliation when the Keycloak
+identity is already absent. Credentials and tokens remain in an owner-only
+temporary directory, are checked against captured logs, and are removed with
+all scoped database/provider fixtures on exit. The suite takes at least the
+configured recent-auth window (30 seconds by default).
+
+Use `LIVE_ACCOUNT_DELETION_MANAGE_COMPOSE=0` only when the same local Compose
+services are already running. Use `LIVE_ACCOUNT_DELETION_SKIP_BUILD=1` only
+after building `pakperk-api` and `pakperk-deletion-worker` from the current
+checkout. GitHub's `live account deletion` workflow exposes the same suite as
+a manual dispatch requiring the exact confirmation phrase. It is development
+acceptance evidence, not a substitute for the protected staging deletion and
+restore evidence required by a production Helm release.

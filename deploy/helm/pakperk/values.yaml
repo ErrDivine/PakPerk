@@ -67,6 +67,29 @@ features:
   commentCreation: false
   accountDeletion: false
 
+# Content-addressed references to protected, immutable release evidence. The
+# rendered binding also covers every deployed image identity, the chart/app
+# version, enabled features, alert policy, and the exact legal/full-text policy
+# versions, so any release-contract change creates a new immutable ConfigMap.
+# The repository defaults stay empty so staging can exercise gates without
+# claiming that an external approval or live drill has happened. Production
+# validation requires the applicable sha256 IDs before a feature can ship.
+releaseEvidence:
+  legalReviewId: ""
+  moderationReadinessId: ""
+  accountDeletionE2eId: ""
+  restoreDrillId: ""
+  reviewerFlowId: ""
+  strictContentReviewId: ""
+
+alerting:
+  # The production-only provider-neutral policy is packaged as an immutable
+  # ConfigMap. Production must pin its exact bytes and import them into the
+  # platform alert engine; staging uses its own environment-bound adapter rules.
+  # Rendering either artifact is not proof of live routing.
+  enabled: false
+  policySha256: ""
+
 policy:
   fulltext: strict
   # The public legal document and both accepted policy versions are released
@@ -92,7 +115,7 @@ api:
   edgeRateLimitRps: 20
   edgeBurstMultiplier: 2
   edgeConnectionLimit: 40
-  terminationGracePeriodSeconds: 45
+  terminationGracePeriodSeconds: 80
   service:
     port: 8080
   pdb:

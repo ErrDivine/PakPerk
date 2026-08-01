@@ -29,6 +29,8 @@ for raw_path in sys.argv[1:]:
 PY
 python3 "$project_dir/scripts/validate_workflow_pins.py"
 python3 "$project_dir/scripts/test_validate_workflow_pins.py"
+python3 "$project_dir/scripts/test_validate_release_image_workflow.py"
+python3 "$project_dir/scripts/validate_release_image_workflow.py"
 python3 "$project_dir/scripts/validate_external_image_scan_pins.py"
 python3 "$project_dir/scripts/test_validate_external_image_scan_pins.py"
 python3 "$project_dir/scripts/validate_metadata_sync_boundary.py"
@@ -52,6 +54,8 @@ jq empty \
   "$project_dir/deploy/keycloak/pakperk-realm.json" \
   "$project_dir/deploy/helm/pakperk/values.schema.json"
 "$project_dir/scripts/validate_keycloak_realm.sh"
+"$project_dir/scripts/test_live_account_deletion.sh" --self-test
+python3 "$project_dir/scripts/test_backend_load.py"
 "$project_dir/scripts/verify_mobile_associations.sh" --help >/dev/null
 "$project_dir/scripts/verify_public_edge.sh" --help >/dev/null
 PAKPERK_USE_DOCKER=0 "$project_dir/scripts/validate_demo_content.sh"
@@ -66,11 +70,26 @@ cargo test --manifest-path "$project_dir/backend/Cargo.toml" \
 
 echo "== Release metadata regression =="
 python3 "$project_dir/scripts/test_generate_release_metadata.py"
+python3 "$project_dir/scripts/test_validate_android_native_sbom.py"
+python3 "$project_dir/scripts/test_validate_gradle_verification.py"
+python3 "$project_dir/scripts/validate_gradle_verification.py"
+python3 "$project_dir/scripts/test_validate_fastlane_lock.py"
+python3 "$project_dir/scripts/validate_fastlane_lock.py"
+python3 "$project_dir/scripts/test_validate_flutter_toolchain.py"
+python3 "$project_dir/scripts/test_validate_mobile_release_workflow.py"
+python3 "$project_dir/scripts/validate_mobile_release_workflow.py"
+python3 "$project_dir/scripts/test_validate_live_account_deletion_workflow.py"
+python3 "$project_dir/scripts/validate_live_account_deletion_workflow.py"
+python3 "$project_dir/scripts/test_validate_alert_policy.py"
+python3 "$project_dir/scripts/validate_alert_policy.py"
 
 if command -v flutter >/dev/null 2>&1; then
   echo "== Flutter =="
   (
     cd "$project_dir/mobile"
+    flutter --version --machine >"$temporary_dir/flutter-toolchain.json"
+    python3 "$project_dir/scripts/validate_flutter_toolchain.py" \
+      "$temporary_dir/flutter-toolchain.json"
     flutter pub get --enforce-lockfile
 
     echo "== Release metadata =="
@@ -78,9 +97,11 @@ if command -v flutter >/dev/null 2>&1; then
     source_epoch="$(git -C "$project_dir" show -s --format=%ct HEAD)"
     SOURCE_REVISION="$source_revision" SOURCE_DATE_EPOCH="$source_epoch" \
       "$project_dir/scripts/generate_release_metadata.py" \
+      --flutter-sdk-version 3.44.8 \
       --output-dir "$temporary_dir/metadata-a"
     SOURCE_REVISION="$source_revision" SOURCE_DATE_EPOCH="$source_epoch" \
       "$project_dir/scripts/generate_release_metadata.py" \
+      --flutter-sdk-version 3.44.8 \
       --output-dir "$temporary_dir/metadata-b"
     cmp "$temporary_dir/metadata-a/open-source-notices.txt" \
       "$temporary_dir/metadata-b/open-source-notices.txt"

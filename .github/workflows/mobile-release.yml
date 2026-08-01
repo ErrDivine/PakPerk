@@ -3,6 +3,10 @@ name: signed-mobile-release
 on:
   workflow_dispatch:
     inputs:
+      source_revision:
+        description: Reviewed full commit SHA reachable from main
+        required: true
+        type: string
       environment:
         description: Protected release environment
         required: true
@@ -33,23 +37,104 @@ concurrency:
 
 env:
   FLUTTER_VERSION: 3.44.8
+  PAKPERK_RUBY_ENGINE: ruby
+  PAKPERK_RUBY_VERSION: 3.4.10
+  PAKPERK_RUBYGEMS_VERSION: 4.0.17
+  BUNDLER_VERSION: 2.6.9
+  BUNDLER_SHA256: a25675ffbd055ae1186766cc1e120b4cf62588e88abb59b99c57e22b1c55c9eb
+  PAKPERK_JDK_RUNTIME_VERSION: 17.0.19+10
+  PAKPERK_JDK_VENDOR: Eclipse Adoptium
+  XCODE_VERSION: "26.6"
+  XCODE_BUILD: "17F113"
 
 jobs:
   signed-candidate:
+    if: github.ref == 'refs/heads/main'
     name: ${{ inputs.environment }} signed candidate
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 150
     environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.source_revision }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Resolve reviewed source revision
+        id: source
+        shell: bash
+        env:
+          REQUESTED_REVISION: ${{ inputs.source_revision }}
+        run: |
+          if ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_revision must be a full lowercase Git commit SHA." >&2
+            exit 1
+          fi
+          source_revision="$(git rev-parse HEAD)"
+          if [[ "$source_revision" != "$REQUESTED_REVISION" ]]; then
+            echo "Checkout did not resolve the exact requested revision." >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$source_revision" origin/main; then
+            echo "The mobile release revision is not reachable from origin/main." >&2
+            exit 1
+          fi
+          printf 'source_revision=%s\n' "$source_revision" >>"$GITHUB_OUTPUT"
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+
+      - name: Verify and record the exact reviewed Flutter SDK
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/evidence"
+          flutter --version --machine >"$RUNNER_TEMP/evidence/flutter-toolchain.json"
+          python3 scripts/validate_flutter_toolchain.py \
+            "$RUNNER_TEMP/evidence/flutter-toolchain.json"
+
+      - name: Select and verify the reviewed Android JDK
+        shell: bash
+        run: |
+          reviewed_java_home="${JAVA_HOME_17_arm64:-}"
+          if [[ -z "$reviewed_java_home" || ! -x "$reviewed_java_home/bin/java" ]]; then
+            echo "The arm64 macOS 26 runner does not expose JAVA_HOME_17_arm64." >&2
+            exit 1
+          fi
+          java_properties="$("$reviewed_java_home/bin/java" -XshowSettings:properties -version 2>&1)"
+          runtime_version="$(awk -F' = ' '$1 ~ /^[[:space:]]*java.runtime.version$/ { print $2; exit }' <<<"$java_properties")"
+          java_vendor="$(awk -F' = ' '$1 ~ /^[[:space:]]*java.vendor$/ { print $2; exit }' <<<"$java_properties")"
+          if [[ "$runtime_version" != "$PAKPERK_JDK_RUNTIME_VERSION" || "$java_vendor" != "$PAKPERK_JDK_VENDOR" ]]; then
+            echo "The runner JDK does not match reviewed Temurin $PAKPERK_JDK_RUNTIME_VERSION." >&2
+            exit 1
+          fi
+          printf 'JAVA_HOME=%s\n' "$reviewed_java_home" >>"$GITHUB_ENV"
+          printf '%s/bin\n' "$reviewed_java_home" >>"$GITHUB_PATH"
+
+      - name: Select, verify, and record the reviewed Ruby runtime
+        shell: bash
+        run: |
+          ruby_engine="$(ruby -e 'print RUBY_ENGINE')"
+          ruby_version="$(ruby -e 'print RUBY_VERSION')"
+          if [[ "$ruby_engine" != "$PAKPERK_RUBY_ENGINE" || \
+                "$ruby_version" != "$PAKPERK_RUBY_VERSION" ]]; then
+            echo "The runner Ruby runtime does not match reviewed MRI $PAKPERK_RUBY_VERSION." >&2
+            exit 1
+          fi
+          rubygems_version="$(gem --version)"
+          if [[ "$rubygems_version" != "$PAKPERK_RUBYGEMS_VERSION" ]]; then
+            echo "The runner RubyGems does not match reviewed version $PAKPERK_RUBYGEMS_VERSION." >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/evidence"
+          {
+            printf 'ruby_engine=%s\n' "$ruby_engine"
+            printf 'ruby_version=%s\n' "$ruby_version"
+            printf 'rubygems_version=%s\n' "$rubygems_version"
+            printf 'ruby_executable=%s\n' "$(command -v ruby)"
+            ruby --version
+          } >"$RUNNER_TEMP/evidence/ruby-toolchain.txt"
 
       - name: Resolve and cross-check release identity
         id: release
@@ -256,27 +341,26 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/evidence"
           python3 scripts/validate_gradle_wrapper.py
+          python3 scripts/validate_gradle_verification.py
+          xcode_developer_dir="/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer"
+          if [[ ! -d "$xcode_developer_dir" ]]; then
+            echo "Required Xcode $XCODE_VERSION is absent from the pinned runner image." >&2
+            exit 1
+          fi
+          sudo xcode-select --switch "$xcode_developer_dir"
           xcode_version="$(xcodebuild -version | awk '$1 == "Xcode" { print $2; exit }')"
+          xcode_build="$(xcodebuild -version | awk '$1 == "Build" && $2 == "version" { print $3; exit }')"
           iphoneos_sdk="$(xcrun --sdk iphoneos --show-sdk-version)"
           if ! [[ "$xcode_version" =~ ^[0-9]+([.][0-9]+)*$ ]] || \
              ! [[ "$iphoneos_sdk" =~ ^[0-9]+([.][0-9]+)*$ ]]; then
             echo "Could not parse the Xcode/iPhoneOS SDK versions." >&2
             exit 1
           fi
-          if (( ${xcode_version%%.*} < 26 || ${iphoneos_sdk%%.*} < 26 )); then
-            echo "App Store candidates require Xcode 26+ and the iOS 26+ SDK." >&2
+          if [[ "$xcode_version" != "$XCODE_VERSION" || "$xcode_build" != "$XCODE_BUILD" ]] || \
+             (( ${iphoneos_sdk%%.*} < 26 )); then
+            echo "App Store candidates require the reviewed Xcode build and iOS 26+ SDK." >&2
             exit 1
           fi
-          flutter --version --machine >"$RUNNER_TEMP/evidence/flutter-toolchain.json"
-          python3 - "$FLUTTER_VERSION" "$RUNNER_TEMP/evidence/flutter-toolchain.json" <<'PY'
-          import json, pathlib, re, sys
-          expected, path = sys.argv[1:]
-          value = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
-          if value.get("frameworkVersion") != expected:
-              raise SystemExit("Resolved Flutter SDK does not match FLUTTER_VERSION")
-          if not re.fullmatch(r"[0-9a-f]{40}", value.get("frameworkRevision", "")):
-              raise SystemExit("Resolved Flutter SDK revision is not immutable")
-          PY
           {
             printf 'github_runner_image=%s\n' "${ImageOS:-unknown}"
             printf 'github_runner_version=%s\n' "${ImageVersion:-unknown}"
@@ -339,6 +423,19 @@ jobs:
           fi
           cp "$aab" "$RUNNER_TEMP/artifacts/"
           cp "$apk" "$RUNNER_TEMP/artifacts/"
+
+      - name: Generate and validate the exact native Android runtime SBOM
+        working-directory: mobile/android
+        env:
+          PAKPERK_ANDROID_SBOM_FLAVOR: ${{ steps.release.outputs.flavor }}
+        run: |
+          ./gradlew :app:cyclonedxDirectBom \
+            --init-script ../../scripts/cyclonedx-gradle.init.gradle.kts \
+            --no-daemon
+          python3 ../../scripts/validate_android_native_sbom.py \
+            ../build/app/reports/cyclonedx-direct/bom.json
+          cp ../build/app/reports/cyclonedx-direct/bom.json \
+            "$RUNNER_TEMP/evidence/android-native.cdx.json"
 
       - name: Import protected Apple signing identity and profile
         id: apple_signing
@@ -475,17 +572,37 @@ jobs:
         env:
           FASTLANE_SKIP_UPDATE_CHECK: "1"
         run: |
-          gem install --user-install fastlane --version 2.235.0 --no-document
-          fastlane_bin="$(ruby -e 'print Gem.user_dir')/bin/fastlane"
-          echo "FASTLANE_BIN=$fastlane_bin" >>"$GITHUB_ENV"
-          "$fastlane_bin" --version >"$RUNNER_TEMP/evidence/fastlane.txt" 2>&1
-          gem list --local | LC_ALL=C sort >"$RUNNER_TEMP/evidence/ruby-gems.txt"
+          python3 scripts/validate_fastlane_lock.py
+          bundler_gem="$RUNNER_TEMP/bundler-$BUNDLER_VERSION.gem"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            --output "$bundler_gem" \
+            "https://rubygems.org/downloads/bundler-$BUNDLER_VERSION.gem"
+          printf '%s  %s\n' "$BUNDLER_SHA256" "$bundler_gem" | shasum -a 256 --check
+          gem install --user-install --local "$bundler_gem" --no-document
+          bundle_bin="$(ruby -e 'print Gem.user_dir')/bin/bundle"
+          export BUNDLE_GEMFILE="$GITHUB_WORKSPACE/mobile/Gemfile"
+          export BUNDLE_PATH="$RUNNER_TEMP/fastlane-bundle"
+          export BUNDLE_FROZEN=true
+          export BUNDLE_LOCKFILE_CHECKSUMS=true
+          "$bundle_bin" "_${BUNDLER_VERSION}_" install --jobs 4 --retry 3
+          {
+            printf 'PAKPERK_BUNDLE_BIN=%s\n' "$bundle_bin"
+            printf 'BUNDLE_GEMFILE=%s\n' "$BUNDLE_GEMFILE"
+            printf 'BUNDLE_PATH=%s\n' "$BUNDLE_PATH"
+            printf 'BUNDLE_FROZEN=true\n'
+            printf 'BUNDLE_LOCKFILE_CHECKSUMS=true\n'
+          } >>"$GITHUB_ENV"
+          "$bundle_bin" "_${BUNDLER_VERSION}_" exec fastlane --version \
+            >"$RUNNER_TEMP/evidence/fastlane.txt" 2>&1
+          "$bundle_bin" "_${BUNDLER_VERSION}_" list \
+            >"$RUNNER_TEMP/evidence/ruby-gems.txt"
+          cp mobile/Gemfile.lock "$RUNNER_TEMP/evidence/fastlane-Gemfile.lock"
 
       - name: Generate SBOM, notices, and immutable evidence hashes
         shell: bash
         run: |
           source_epoch="$(git show -s --format=%ct HEAD)"
-          SOURCE_REVISION="$GITHUB_SHA" SOURCE_DATE_EPOCH="$source_epoch" \
+          SOURCE_REVISION="${{ steps.source.outputs.source_revision }}" SOURCE_DATE_EPOCH="$source_epoch" \
             ./scripts/generate_release_metadata.py \
               --flutter-sdk-version "$FLUTTER_VERSION" \
               --output-dir "$RUNNER_TEMP/evidence/release-metadata"
@@ -504,7 +621,7 @@ jobs:
       - name: Retain signed candidates, symbols, SBOM, and release evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: pakperk-${{ inputs.environment }}-${{ steps.release.outputs.version_name }}-${{ steps.release.outputs.build_number }}-${{ github.sha }}
+          name: pakperk-${{ inputs.environment }}-${{ steps.release.outputs.version_name }}-${{ steps.release.outputs.build_number }}-${{ steps.source.outputs.source_revision }}
           path: |
             ${{ runner.temp }}/artifacts
             ${{ runner.temp }}/symbols
@@ -534,7 +651,7 @@ jobs:
             exit 1
           fi
           aab="${aabs[0]}"
-          "$FASTLANE_BIN" supply \
+          "$PAKPERK_BUNDLE_BIN" "_${BUNDLER_VERSION}_" exec fastlane supply \
             --aab "$aab" \
             --package_name "${{ steps.release.outputs.bundle_id }}" \
             --track internal \

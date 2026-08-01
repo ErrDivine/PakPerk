@@ -9,7 +9,7 @@ import '../support/fakes.dart';
 
 void main() {
   testWidgets(
-    'three-stage reader has no overflow on a small phone at 1.8x text',
+    'three-stage reader has no overflow on a small phone at 200% text',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(320, 568));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -37,7 +37,7 @@ void main() {
                 return MediaQuery(
                   data: MediaQuery.of(
                     context,
-                  ).copyWith(textScaler: const TextScaler.linear(1.8)),
+                  ).copyWith(textScaler: const TextScaler.linear(2)),
                   child: Scaffold(
                     body: PaperReader(
                       paper: samplePaper,
@@ -55,6 +55,9 @@ void main() {
       );
       await tester.pump();
       expect(tester.takeException(), isNull);
+      for (final stage in PaperStage.values) {
+        expect(find.byKey(ValueKey('stage-${stage.name}')), findsOneWidget);
+      }
 
       await tester.tap(find.byKey(const ValueKey('stage-introduction')));
       await tester.pumpAndSettle();

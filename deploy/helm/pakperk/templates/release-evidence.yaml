@@ -1,0 +1,49 @@
+{{- $imageIdentities := dict
+  "backend" (dict "repository" .Values.image.repository "digest" .Values.image.digest)
+  "site" (dict "repository" .Values.siteImage.repository "digest" .Values.siteImage.digest)
+  "grobid" (dict "repository" .Values.grobid.image.repository "digest" .Values.grobid.image.digest)
+  "otelCollector" (dict "repository" .Values.otelCollector.image.repository "digest" .Values.otelCollector.image.digest) -}}
+{{- $chartIdentity := dict "name" .Chart.Name "version" .Chart.Version "appVersion" .Chart.AppVersion -}}
+{{- $legalPolicy := dict
+  "documentVersion" .Values.public.documentVersion
+  "termsVersion" .Values.policy.termsVersion
+  "communityGuidelinesVersion" .Values.policy.communityGuidelinesVersion
+  "fulltext" .Values.policy.fulltext -}}
+{{- $releaseContract := dict
+  "schemaVersion" 1
+  "environment" .Values.environment
+  "features" .Values.features
+  "releaseEvidence" .Values.releaseEvidence
+  "alertPolicySha256" .Values.alerting.policySha256
+  "images" $imageIdentities
+  "chart" $chartIdentity
+  "legalPolicy" $legalPolicy -}}
+{{- $evidenceDigest := sha256sum (toJson .Values.releaseEvidence) -}}
+{{- $bindingDigest := sha256sum (toJson $releaseContract) -}}
+{{- $nameBase := include "pakperk.boundedNameBase" (dict "value" (include "pakperk.fullname" .) "maxLength" 33) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $nameBase }}-release-evidence-{{ trunc 12 $bindingDigest }}
+  labels:
+    {{- include "pakperk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: release-evidence
+  annotations:
+    pakperk.app/release-evidence-sha256: {{ printf "sha256:%s" $evidenceDigest | quote }}
+    pakperk.app/release-binding-sha256: {{ printf "sha256:%s" $bindingDigest | quote }}
+    pakperk.app/release-binding-schema: "1"
+immutable: true
+data:
+  environment: {{ .Values.environment | quote }}
+  enabledFeatures.json: {{ toJson .Values.features | quote }}
+  alertPolicySha256: {{ .Values.alerting.policySha256 | quote }}
+  imageIdentities.json: {{ toJson $imageIdentities | quote }}
+  chartIdentity.json: {{ toJson $chartIdentity | quote }}
+  legalPolicy.json: {{ toJson $legalPolicy | quote }}
+  releaseContract.json: {{ toJson $releaseContract | quote }}
+  legalReviewId: {{ .Values.releaseEvidence.legalReviewId | quote }}
+  moderationReadinessId: {{ .Values.releaseEvidence.moderationReadinessId | quote }}
+  accountDeletionE2eId: {{ .Values.releaseEvidence.accountDeletionE2eId | quote }}
+  restoreDrillId: {{ .Values.releaseEvidence.restoreDrillId | quote }}
+  reviewerFlowId: {{ .Values.releaseEvidence.reviewerFlowId | quote }}
+  strictContentReviewId: {{ .Values.releaseEvidence.strictContentReviewId | quote }}

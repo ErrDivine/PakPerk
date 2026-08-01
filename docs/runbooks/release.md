@@ -12,11 +12,15 @@ crash evidence.
 
 - A clean reviewed revision with `./scripts/check.sh` passing and every explicit
   skip resolved for the target environment.
+- A successful protected `publish-release-images` workflow for that exact full
+  revision. Promotion must consume `promotion-handoff.json`; copying a mutable
+  tag or manually substituting an unscanned digest is not release evidence.
 - Matching `0.2.0` Rust workspace, Helm `appVersion`, and mobile version name;
   the mobile build number must exceed both stores' highest uploaded value.
 - Immutable backend/site/GROBID/Collector image digests and successful
   vulnerability/license/secret scans, generated CycloneDX SBOMs, notices, and
-  checksums.
+  checksums. Mobile evidence must include the production-runtime Maven SBOM,
+  both matching SwiftPM locks, and the checksum-complete Gradle policy.
 - Exact HTTPS origins, OIDC realm/clients/redirects, support contact, legal
   version, Play app-signing fingerprint, Apple team/bundle ID, reviewed egress
   CIDRs, ingress proxy source CIDRs, database roles, deletion-ledger claim,
@@ -28,12 +32,22 @@ crash evidence.
 
 1. Freeze the revision and attach CI/security results. Verify every GitHub
    Action is pinned to a real reviewed commit, not only a mutable tag comment.
+   Run `publish-release-images` from `main` with the reviewed full commit SHA
+   and target protected environment. Require both vulnerability scans, both
+   image SBOMs, and the digest-only Helm handoff artifact before deployment.
 2. Verify the backup using [backup-restore.md](backup-restore.md). Put its
    evidence ID in `migration.confirmBackupId`.
 3. Render the exact protected values with `helm lint` and `helm template`; run
    `scripts/validate_helm_release.sh`. Compare rendered hosts, identities,
    grants, images, NetworkPolicies, retention, feature flags, and commands to
-   the change record. The repository staging fixture is never deployable.
+   the change record. Confirm no worker poll interval reaches its lease, the
+   deletion retry base is below its maximum, ledger retention covers security
+   retention, each termination grace budget covers its maximum request/lease,
+   and the trusted-proxy list contains at most 64 canonical ranges. Verify the
+   four tag-free, at-most-255-character OCI repositories, distinct lowercase
+   external FQDNs, Kubernetes names/labels/selectors, resources whose requests
+   do not exceed limits, and PDB values came from the protected release
+   manifest. The repository staging fixture is never deployable.
 4. Confirm the migration role alone can perform DDL; application roles cannot.
    Confirm worker, API, and synchronization roles use distinct Secret keys.
 5. Confirm the deletion worker's `manage-users`-only service account readiness,
@@ -55,19 +69,26 @@ crash evidence.
    code rollout that stops using a field.
 2. Run the chart migration Job once, with the reviewed image digest, distinct
    migration database role, `RUN_MIGRATIONS=false` everywhere else, expected
-   migration version, and backup evidence ID. Save Job logs/status without
-   secrets. A failed or timed-out migration blocks rollout.
+   embedded migration version `9`, and a bounded non-placeholder backup
+   evidence ID. The scheduled metadata manifest must be valid JSON containing
+   1 to 2,000 canonical arXiv IDs within the chart's 1,048,000-byte ConfigMap
+   boundary, and its bounded five-field Cron expression must render
+   successfully. Save Job logs/status without secrets. A failed or timed-out
+   migration blocks rollout.
 3. Roll out the deletion worker and verify readiness, then paper worker,
-   metadata sync, telemetry gateway/Collector, API, and site. Keep accounts,
-   library writes, comment creation, and deletion dark until their dependencies
-   and smoke checks pass.
+   metadata sync, telemetry gateway/Collector, API, and site. Keep the
+   account-backed surface (including deletion), library writes, and comment
+   creation dark until their dependencies and smoke checks pass. Production
+   account enablement requires deletion to be enabled at the same time.
 4. Exercise guest cached reading first, then authenticated profile/library,
    comments/report/block/moderation, deletion request/status/web callback, paper
    preparation, telemetry redaction/export, and association links. Capture
    aggregate status/latency only.
-5. Enable flags independently. `LIBRARY_WRITES_ENABLED=false` preserves reads;
-   `COMMENT_CREATION_ENABLED=false` preserves comment/safety reads/actions;
-   disabling accounts does not make guest reading depend on OIDC.
+5. Exercise the independent kill switches. `LIBRARY_WRITES_ENABLED=false`
+   preserves reads; `COMMENT_CREATION_ENABLED=false` preserves comment/safety
+   reads/actions; disabling accounts does not make guest reading depend on
+   OIDC. Account deletion remains enabled whenever production accounts are
+   enabled, including a comments-disabled library release.
 6. Observe error rate, readiness, database saturation, queue/backlog age,
    moderation SLA, deletion failures, OTLP drops, and ingress errors through the
    release observation window. Record the exact window and approver.
@@ -95,7 +116,17 @@ candidate.
 Run the manual environment-gated `signed-mobile-release` workflow. It validates
 flavor configuration, signing/profile identity, AAB/APK/IPA metadata,
 entitlements/links, strict bundled assets, symbols, notices, SBOM, and evidence
-hashes. The Android upload-key digest proves candidate custody; association
+hashes. The workflow is fixed to the macOS 26 runner contract, Xcode 26.6 build
+17F113, Flutter 3.44.8 framework revision
+`058e0af2c2b57e369d905a03ac9748b0ebf543c6` with Dart 3.12.2, Temurin
+17.0.19+10 from `JAVA_HOME_17_arm64`, MRI Ruby 3.4.10, RubyGems 4.0.17, and a
+frozen Bundler 2.6.9/Fastlane 2.235.0 graph with RubyGems checksums. The Ruby
+engine and exact runtime are verified and recorded before any gem installation
+or Bundler execution. Bundler itself is downloaded by exact version, SHA-256
+verified, and installed locally; absence of any exact toolchain fails the
+candidate. Dispatch from `main` with the reviewed full commit SHA;
+the workflow rejects an exact-checkout or `origin/main` ancestry mismatch. The
+Android upload-key digest proves candidate custody; association
 files use the distinct protected Play App Signing digest. See
 [mobile-release.md](../mobile-release.md).
 

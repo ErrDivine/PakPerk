@@ -47,6 +47,12 @@ features:
   commentCreation: true
   accountDeletion: true
 
+alerting:
+  # The packaged contract selects production resources. Staging canaries use
+  # separately imported staging-bound rules and must not claim this ConfigMap.
+  enabled: false
+  policySha256: ""
+
 api:
   # Render-only example. A deployment must use the source CIDRs actually
   # observed from its ingress-controller pods.

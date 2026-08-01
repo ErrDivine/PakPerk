@@ -207,3 +207,33 @@ make restore verification fail closed.
 Exercise this procedure against a non-production restore whenever the backup
 topology, retention, signing-key set, Keycloak realm, or deletion schema
 changes, and at the regular restore-drill cadence.
+
+## Reference-provider end-to-end gate
+
+Before promoting changes to account deletion, run the manual `live account
+deletion` workflow (or the loopback command documented in
+`deploy/keycloak/README.md`). The workflow is fixed to Ubuntu 24.04 and Python
+3.12. It installs the complete
+driver dependency graph from `scripts/requirements/live-account-deletion.txt`
+using binary-only, SHA-256 hash-required pip mode; a missing, changed, or source
+distribution fails before disposable services are started. The disposable
+suite must show all of these bounded checkpoints:
+
+1. stale authentication returns `REAUTHENTICATION_REQUIRED`, while a new PKCE
+   authentication is accepted;
+2. `DELETE /v1/me` immediately changes the local account to
+   `deletion_pending`, writes exactly one database ledger/job and signed
+   external record, and returns the same operation on replay;
+3. the dedicated worker reaches `sessions_revoked`, `identity_deleted`,
+   `app_data_deleted`, and `completed` without exposing provider coordinates;
+4. the refresh token is rejected, the Keycloak Admin API returns `404` for the
+   disposable identity, and the old access token cannot JIT-provision a user;
+5. `verify-ledger` accepts the signed record, and `reapply-ledger` completes a
+   second provider reconciliation while the identity is already absent; and
+6. API/worker logs contain none of the per-run token or client-secret
+   sentinels, and scoped fixtures are removed without deleting Compose volumes.
+
+This local/manual workflow exercises the checked-in development realm and
+ephemeral keys. Production enablement still requires an immutable evidence ID
+from the protected staging environment using its real secret manager, external
+ledger storage, alert route, backup inventory, and privacy-owner approval.

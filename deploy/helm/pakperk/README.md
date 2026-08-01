@@ -29,7 +29,8 @@ production require OTLP export and reviewed network CIDRs, automatic migrations
 are disabled in long-running processes, and the migration job requires a
 verified backup identifier. Production also requires strict full-text policy,
 two API/site replicas, exact HTTPS origins, distinct native/browser OIDC
-clients, and a separately backed-up deletion ledger claim.
+clients, a separately backed-up deletion ledger claim, the exact packaged
+alert-policy digest, and content-addressed release-evidence references.
 
 For shared anonymous prepare/chat and comment abuse limits,
 `api.trustedProxyCidrs` is mandatory and must list the source ranges the API
@@ -41,8 +42,31 @@ is not persisted or logged. The API NetworkPolicy independently limits port
 ingress controller appends the actual connection address, its external
 load-balancer/real-IP trust list is restricted to the platform load balancers,
 and Pod-to-API source addresses fall inside `api.trustedProxyCidrs`. Do not use
-`0.0.0.0/0` or `::/0`. A non-Nginx or externally managed ingress must preserve
-this exact source-boundary contract.
+`0.0.0.0/0` or `::/0`, and keep the list at the API runtime limit of 64
+canonical ranges. A non-Nginx or externally managed ingress must preserve this
+exact source-boundary contract.
+
+Chart validation mirrors the deployed process invariants. Paper-worker and
+deletion-worker polling must remain strictly shorter than their leases;
+deletion retry base must remain below its maximum; deletion ledger retention
+must cover security retention; and deletion steps are capped at 1,800 seconds.
+Paper categories use the runtime arXiv category grammar, the contact must be a
+real monitored non-placeholder address, and model IDs are limited to the
+provider's 128-character safe identifier grammar. The migration Job is pinned
+to embedded migration version `9` and accepts only a bounded, non-placeholder
+backup ID. Metadata sync accepts a bounded five-field numeric/wildcard Cron
+schedule and a JSON object of 1 to 2,000 canonical arXiv IDs no larger than
+1,048,000 bytes; the ConfigMap uses a quoted scalar that preserves those bytes
+exactly while leaving room below Kubernetes' one-MiB data ceiling. API shutdown
+grace exceeds the larger request/chat timeout plus its five-second preStop, and
+paper/deletion shutdown grace exceeds the relevant lease. All four image
+repositories use a lowercase, tag-free OCI grammar capped at the 255-character
+distribution reference-name limit; public/dependency hosts use distinct
+lowercase external FQDNs. Kubernetes names, label/selector keys and values,
+resource quantities, request-at-or-below-limit ordering, and PDB availability
+values are validated before rendering. These checks happen before Kubernetes
+can accept a workload that would then fail process construction, image pull,
+rollout, or scheduled execution.
 
 Render the structural fixture with the repository-pinned validation command:
 
@@ -170,7 +194,11 @@ metadata-only CronJob receives arXiv egress only. Do not place a shared proxy
 address in multiple lists. Every chart CIDR, including trusted proxy, database,
 and telemetry ranges, must be canonical IPv4 with a `/8` through `/32` prefix;
 IPv6 is rejected until the chart has an equally strict canonical parser and
-minimum-prefix contract.
+minimum-prefix contract. API OIDC discovery/JWKS, paper-worker model traffic,
+and deletion-worker identity administration each use a NetworkPolicy egress
+rule fixed to TCP/443. Their configured HTTPS origins may spell `:443`
+explicitly, but any other explicit port is rejected instead of rendering a
+deployment that cannot reach its dependency.
 
 The metadata-sync CronJob has only its database role, exact arXiv HTTPS egress,
 and OTLP egress. It does not mount the model Secret and cannot reach GROBID;
@@ -198,3 +226,33 @@ identical. That value configures the public legal-site disclosure and both API
 acceptance gates, so the chart rejects a rollout that could record acceptance
 for text different from the published document. Update the published files,
 their reviewed version, and all three values in the same release.
+
+## Production evidence and alert-policy gates
+
+`releaseEvidence` stores SHA-256 content IDs for evidence held by the protected
+release system; it never stores approval prose, credentials, user data, or a
+mutable ticket URL. Every production release requires legal review,
+app-reviewer-flow, and strict-content-policy evidence. Enabling comments also
+requires moderation-readiness evidence. Enabling any production account
+surface requires the account-deletion feature, including a comments-disabled
+library release; enabling account deletion in turn requires provider-deletion
+E2E and restore-drill evidence. The chart records the enabled feature set and these IDs in a
+content-addressed immutable ConfigMap so the deployed release can be matched to
+the protected evidence bundle. Its address covers the exact backend, site,
+GROBID, and Collector repository/digest pairs; chart and app versions; enabled
+features; alert-policy digest; and document, terms, community-guidelines, and
+full-text policy identities. Changing any one produces a different ConfigMap.
+Helm can validate the ID shape and gate binding, not the truth of an external
+approval or drill.
+
+The production-only, provider-neutral alert contract is packaged from
+`files/alerts/pakperk-production-alert-policy.json`. `alerting.policySha256`
+must equal its exact SHA-256 digest, and production cannot disable the rendered
+immutable policy ConfigMap. A protected platform adapter still has to import
+the contract, provide its declared infrastructure inputs, connect the named
+role owners to real receivers, and produce live canary evidence. See
+[the observability runbook](../../../docs/runbooks/observability.md).
+Staging must use separately imported rules whose resource filters are bound to
+staging; the chart rejects attaching the production ConfigMap to a staging
+release. Both content-addressed ConfigMap names reserve their digest suffix and
+remain valid DNS labels even when the Helm release name reaches its limit.

@@ -2,11 +2,24 @@
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "pakperk.boundedNameBase" -}}
+{{- $value := printf "%s" .value | trimSuffix "-" -}}
+{{- $maxLength := int .maxLength -}}
+{{- if le (len $value) $maxLength -}}
+{{- $value -}}
+{{- else -}}
+{{- $digest := sha256sum $value | trunc 8 -}}
+{{- $prefixLength := sub $maxLength 9 | int -}}
+{{- printf "%s-%s" ($value | trunc $prefixLength | trimSuffix "-") $digest | trunc $maxLength | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "pakperk.fullname" -}}
 {{- if .Values.fullnameOverride -}}
-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- include "pakperk.boundedNameBase" (dict "value" .Values.fullnameOverride "maxLength" 45) -}}
 {{- else -}}
-{{- printf "%s-%s" .Release.Name (include "pakperk.name" .) | trunc 63 | trimSuffix "-" -}}
+{{- $rawName := printf "%s-%s" .Release.Name (include "pakperk.name" .) -}}
+{{- include "pakperk.boundedNameBase" (dict "value" $rawName "maxLength" 45) -}}
 {{- end -}}
 {{- end -}}
 
@@ -31,7 +44,8 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- $base = required "serviceAccount.name base is required when serviceAccount.create=false" $root.Values.serviceAccount.name -}}
 {{- end -}}
 {{- $maxBaseLength := sub 62 (len $component) | int -}}
-{{- printf "%s-%s" (trunc $maxBaseLength $base | trimSuffix "-") $component | trunc 63 | trimSuffix "-" -}}
+{{- $boundedBase := include "pakperk.boundedNameBase" (dict "value" $base "maxLength" $maxBaseLength) -}}
+{{- printf "%s-%s" $boundedBase $component | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
 {{- define "pakperk.migrationServiceAccountName" -}}

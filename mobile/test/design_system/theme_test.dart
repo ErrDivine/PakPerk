@@ -23,13 +23,90 @@ void main() {
     expect(dark.extension<PakPerkSkeletonTheme>(), PakPerkSkeletonTheme.dark);
 
     for (final theme in [light, dark]) {
+      final scheme = theme.colorScheme;
+      final semantic = theme.extension<PakPerkSemanticColors>()!;
+      final schemePairs = <({String name, Color foreground, Color background})>[
+        (
+          name: 'surface text',
+          foreground: scheme.onSurface,
+          background: scheme.surface,
+        ),
+        (
+          name: 'variant text',
+          foreground: scheme.onSurfaceVariant,
+          background: scheme.surfaceContainerHighest,
+        ),
+        (
+          name: 'primary action',
+          foreground: scheme.onPrimary,
+          background: scheme.primary,
+        ),
+        (
+          name: 'primary container',
+          foreground: scheme.onPrimaryContainer,
+          background: scheme.primaryContainer,
+        ),
+        (
+          name: 'secondary action',
+          foreground: scheme.onSecondary,
+          background: scheme.secondary,
+        ),
+        (
+          name: 'secondary container',
+          foreground: scheme.onSecondaryContainer,
+          background: scheme.secondaryContainer,
+        ),
+        (
+          name: 'error action',
+          foreground: scheme.onError,
+          background: scheme.error,
+        ),
+        (
+          name: 'error container',
+          foreground: scheme.onErrorContainer,
+          background: scheme.errorContainer,
+        ),
+        (
+          name: 'inverse surface',
+          foreground: scheme.onInverseSurface,
+          background: scheme.inverseSurface,
+        ),
+      ];
+      for (final pair in schemePairs) {
+        expect(
+          _contrastRatio(pair.foreground, pair.background),
+          greaterThanOrEqualTo(4.5),
+          reason: '${theme.brightness.name} ${pair.name}',
+        );
+      }
+
+      final semanticForegrounds = <String, Color>{
+        'ink': semantic.ink,
+        'muted ink': semantic.mutedInk,
+        'accent': semantic.accent,
+        'warning': semantic.warning,
+        'success': semantic.success,
+        'processing': semantic.processing,
+        'offline': semantic.offline,
+        'moderation': semantic.moderation,
+        'destructive': semantic.destructive,
+      };
+      for (final entry in semanticForegrounds.entries) {
+        for (final surface in <String, Color>{
+          'paper': semantic.paper,
+          'raised paper': semantic.raisedPaper,
+        }.entries) {
+          expect(
+            _contrastRatio(entry.value, surface.value),
+            greaterThanOrEqualTo(4.5),
+            reason: '${theme.brightness.name} ${entry.key} on ${surface.key}',
+          );
+        }
+      }
       expect(
-        _contrastRatio(theme.colorScheme.onSurface, theme.colorScheme.surface),
+        _contrastRatio(semantic.ink, semantic.accentContainer),
         greaterThanOrEqualTo(4.5),
-      );
-      expect(
-        _contrastRatio(theme.colorScheme.onPrimary, theme.colorScheme.primary),
-        greaterThanOrEqualTo(4.5),
+        reason: '${theme.brightness.name} accent container text',
       );
     }
   });

@@ -11,9 +11,21 @@ temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/pakperk-helm-validation.XXXXXX")"
 trap 'rm -rf "$temporary_dir"' EXIT
 rendered="$temporary_dir/rendered.yaml"
 production_rendered="$temporary_dir/production-rendered.yaml"
+long_name_production_rendered="$temporary_dir/long-name-production-rendered.yaml"
+long_name_collision_rendered="$temporary_dir/long-name-collision-rendered.yaml"
+long_fullname_production_rendered="$temporary_dir/long-fullname-production-rendered.yaml"
+long_fullname_collision_rendered="$temporary_dir/long-fullname-collision-rendered.yaml"
+production_guest_rendered="$temporary_dir/production-guest-rendered.yaml"
+binding_variants_dir="$temporary_dir/release-binding-variants"
+chart_version_rendered="$binding_variants_dir/chart-version.yaml"
+app_version_rendered="$binding_variants_dir/app-version.yaml"
+legal_policy_rendered="$binding_variants_dir/legal-policy.yaml"
 external_accounts_rendered="$temporary_dir/external-accounts-rendered.yaml"
 metadata_llm_rotation_rendered="$temporary_dir/metadata-llm-rotation-rendered.yaml"
 metadata_db_rotation_rendered="$temporary_dir/metadata-db-rotation-rendered.yaml"
+metadata_boundary_values="$temporary_dir/metadata-boundary-values.yaml"
+metadata_boundary_rendered="$temporary_dir/metadata-boundary-rendered.yaml"
+metadata_overflow_values="$temporary_dir/metadata-overflow-values.yaml"
 rejection_index=0
 
 collector_checksum_template="$(grep -F 'checksum/config:' "$chart/templates/otel-collector.yaml")"
@@ -56,6 +68,179 @@ expect_template_rejection() {
 "$helm_bin" template pakperk "$chart" \
   --values "$fixture" \
   --values "$production_fixture" >"$production_rendered"
+"$helm_bin" template pakperk "$chart" \
+  --values "$fixture" \
+  --set-string public.oidcOrigin=https://identity.staging.pakperk.app:443 \
+  --set-string public.oidcIssuer=https://identity.staging.pakperk.app:443/realms/pakperk \
+  --set-string deletionWorker.keycloakAdminBaseUrl=https://identity.staging.pakperk.app:443/ \
+  --set-string paperWorker.llmBaseUrl=https://model.staging.pakperk.app:443/v1/ \
+  >/dev/null
+"$helm_bin" template pakperk "$chart" \
+  --values "$fixture" \
+  --set-string public.oidcIssuer=https://identity.staging.pakperk.app/tenants/reference/realms/pakperk \
+  >/dev/null
+trusted_proxy_boundary_json="$(python3 -c 'import json; print(json.dumps([f"10.80.0.{index}/32" for index in range(64)]))')"
+trusted_proxy_overflow_json="$(python3 -c 'import json; print(json.dumps([f"10.80.0.{index}/32" for index in range(65)]))')"
+long_oci_repository="$(python3 -c 'print("ghcr.io/pakperk/" + "a" * 240)')"
+overlong_dns_host="$(python3 -c 'print(".".join(["a"] * 126 + ["app"]))')"
+"$helm_bin" template pakperk "$chart" \
+  --values "$fixture" \
+  --set paperWorker.leaseSeconds=30 \
+  --set paperWorker.pollIntervalMs=29999 \
+  --set-string paperWorker.arxivCategories=cs.AI \
+  --set-string paperWorker.arxivContactEmail=research-ops@pakperk.app \
+  --set-string paperWorker.llmChatModel=provider/chat-v1 \
+  --set-string paperWorker.llmEmbeddingModel=provider/embedding-v1 \
+  --set deletionWorker.leaseSeconds=60 \
+  --set deletionWorker.pollIntervalMs=59999 \
+  --set deletionWorker.retryBaseSeconds=10 \
+  --set deletionWorker.retryMaxSeconds=11 \
+  --set deletionLedger.retentionDays=400 \
+  --set deletionLedger.securityRetentionDays=400 \
+  --set-json "api.trustedProxyCidrs=$trusted_proxy_boundary_json" \
+  --set-string migration.confirmBackupId=pitr-20260801T020000Z-a7f9 \
+  --set migration.expectedVersion=9 \
+  --set-json 'metadataSync.manifestJson="{\"papers\":[{\"arxiv_id\":\"2401.12345v2\"}]}"' \
+  >/dev/null
+"$helm_bin" template pakperk "$chart" \
+  --values "$fixture" \
+  --set-string image.repository=registry.pakperk.app:5000/pakperk/backend \
+  --set-string siteImage.repository=registry.pakperk.app:5000/pakperk/site \
+  --set-string grobid.image.repository=docker.io/grobid/grobid \
+  --set-string otelCollector.image.repository=ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib \
+  >/dev/null
+python3 - "$metadata_boundary_values" "$metadata_overflow_values" <<'PY'
+import pathlib
+import sys
+
+boundary_path, overflow_path = map(pathlib.Path, sys.argv[1:])
+
+
+def manifest(size: int) -> str:
+    prefix = '{"papers":[{"arxiv_id":"2401.12345"}],"padding":"'
+    suffix = '"}'
+    return prefix + ("x" * (size - len(prefix) - len(suffix))) + suffix
+
+
+def values_document(value: str) -> str:
+    return "metadataSync:\n  manifestJson: |-\n    " + value + "\n"
+
+
+boundary_path.write_text(values_document(manifest(1_048_000)), encoding="utf-8")
+overflow_path.write_text(values_document(manifest(1_048_001)), encoding="utf-8")
+PY
+"$helm_bin" template pakperk "$chart" \
+  --values "$fixture" \
+  --values "$metadata_boundary_values" >"$metadata_boundary_rendered"
+python3 - "$metadata_boundary_rendered" <<'PY'
+import json
+import pathlib
+import sys
+
+rendered = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+prefix = "  manifest.json: "
+encoded = next(
+    (line[len(prefix):] for line in rendered.splitlines() if line.startswith(prefix)),
+    None,
+)
+if encoded is None:
+    raise SystemExit("rendered metadata ConfigMap is missing manifest.json")
+manifest = json.loads(encoded)
+if len(manifest.encode("utf-8")) != 1_048_000:
+    raise SystemExit("rendered metadata manifest did not preserve the validated byte boundary exactly")
+if not manifest.startswith('{"papers":[{"arxiv_id":"2401.12345"}],"padding":"'):
+    raise SystemExit("rendered metadata manifest content changed")
+PY
+if "$helm_bin" template pakperk "$chart" \
+  --values "$fixture" \
+  --values "$metadata_overflow_values" >/dev/null 2>&1; then
+  echo "Chart accepted a metadata manifest above its ConfigMap-safe byte boundary." >&2
+  exit 1
+fi
+mkdir -p "$binding_variants_dir"
+binding_mutations=(
+  'image.repository=ghcr.io/pakperk/pakperk-contract-variant'
+  'image.digest=sha256:1111111111111111111111111111111111111111111111111111111111111111'
+  'siteImage.repository=ghcr.io/pakperk/pakperk-site-contract-variant'
+  'siteImage.digest=sha256:2222222222222222222222222222222222222222222222222222222222222222'
+  'grobid.image.repository=grobid/grobid-contract-variant'
+  'grobid.image.digest=sha256:3333333333333333333333333333333333333333333333333333333333333333'
+  'otelCollector.image.repository=ghcr.io/open-telemetry/pakperk-contract-variant'
+  'otelCollector.image.digest=sha256:4444444444444444444444444444444444444444444444444444444444444444'
+)
+binding_variant_paths=()
+for index in "${!binding_mutations[@]}"; do
+  variant_path="$binding_variants_dir/image-$index.yaml"
+  "$helm_bin" template pakperk "$chart" \
+    --values "$fixture" \
+    --values "$production_fixture" \
+    --set-string "${binding_mutations[$index]}" >"$variant_path"
+  binding_variant_paths+=("$variant_path")
+done
+"$helm_bin" template pakperk "$chart" \
+  --values "$fixture" \
+  --values "$production_fixture" \
+  --set-string public.documentVersion=2026-08-02 \
+  --set-string policy.termsVersion=2026-08-02 \
+  --set-string policy.communityGuidelinesVersion=2026-08-02 >"$legal_policy_rendered"
+chart_version_mutation="$temporary_dir/chart-version-mutation"
+app_version_mutation="$temporary_dir/app-version-mutation"
+cp -R "$chart" "$chart_version_mutation"
+cp -R "$chart" "$app_version_mutation"
+python3 - "$chart_version_mutation/Chart.yaml" "$app_version_mutation/Chart.yaml" <<'PY'
+import pathlib
+import sys
+
+chart_path, app_path = map(pathlib.Path, sys.argv[1:])
+chart_source = chart_path.read_text(encoding="utf-8")
+app_source = app_path.read_text(encoding="utf-8")
+chart_path.write_text(
+    chart_source.replace("version: 0.2.1\n", "version: 0.2.2\n", 1),
+    encoding="utf-8",
+)
+app_path.write_text(
+    app_source.replace('appVersion: "0.2.0"\n', 'appVersion: "0.2.1"\n', 1),
+    encoding="utf-8",
+)
+PY
+"$helm_bin" template pakperk "$chart_version_mutation" \
+  --values "$fixture" \
+  --values "$production_fixture" >"$chart_version_rendered"
+"$helm_bin" template pakperk "$app_version_mutation" \
+  --values "$fixture" \
+  --values "$production_fixture" >"$app_version_rendered"
+binding_variant_paths+=(
+  "$legal_policy_rendered"
+  "$chart_version_rendered"
+  "$app_version_rendered"
+)
+"$helm_bin" template pakperk-production-release-common-prefix-aaaaaaaaaa1 "$chart" \
+  --values "$fixture" \
+  --values "$production_fixture" >"$long_name_production_rendered"
+"$helm_bin" template pakperk-production-release-common-prefix-aaaaaaaaaa2 "$chart" \
+  --values "$fixture" \
+  --values "$production_fixture" >"$long_name_collision_rendered"
+"$helm_bin" template pakperk "$chart" \
+  --values "$fixture" \
+  --values "$production_fixture" \
+  --set-string fullnameOverride=pakperk-production-fullname-common-prefix-aaaaaaaaaaaaaaaaaaaa1 >"$long_fullname_production_rendered"
+"$helm_bin" template pakperk "$chart" \
+  --values "$fixture" \
+  --values "$production_fixture" \
+  --set-string fullnameOverride=pakperk-production-fullname-common-prefix-aaaaaaaaaaaaaaaaaaaa2 >"$long_fullname_collision_rendered"
+"$helm_bin" template pakperk "$chart" \
+  --values "$fixture" \
+  --values "$production_fixture" \
+  --set features.accounts=false \
+  --set features.library=false \
+  --set features.libraryWrites=false \
+  --set features.comments=false \
+  --set features.commentCreation=false \
+  --set features.accountDeletion=false \
+  --set deletionWorker.enabled=false \
+  --set-string releaseEvidence.moderationReadinessId= \
+  --set-string releaseEvidence.accountDeletionE2eId= \
+  --set-string releaseEvidence.restoreDrillId= >"$production_guest_rendered"
 "$helm_bin" template pakperk "$chart" \
   --values "$fixture" \
   --set serviceAccount.create=false \
@@ -108,10 +293,170 @@ grep -Fq 'name: API_TRUSTED_PROXY_CIDRS' "$rendered"
 grep -Fq 'documentVersion: "2026-07-31"' "$rendered"
 grep -Fq 'name: CURRENT_TERMS_VERSION, value: "2026-07-31"' "$rendered"
 grep -Fq 'name: CURRENT_COMMUNITY_GUIDELINES_VERSION, value: "2026-07-31"' "$rendered"
+if grep -Fq 'app.kubernetes.io/component: alert-policy' "$rendered" || \
+   grep -Fq 'pakperk-production-alert-policy.json' "$rendered"; then
+  echo "Staging render attached the production-only alert policy." >&2
+  exit 1
+fi
 grep -Fq 'environment: "production"' "$production_rendered"
 grep -Fq 'documentVersion: "2026-08-01"' "$production_rendered"
 grep -Fq 'name: CURRENT_TERMS_VERSION, value: "2026-08-01"' "$production_rendered"
 grep -Fq 'name: CURRENT_COMMUNITY_GUIDELINES_VERSION, value: "2026-08-01"' "$production_rendered"
+grep -Fq 'app.kubernetes.io/component: alert-policy' "$production_rendered"
+grep -Fq 'pakperk.app/alert-policy-sha256: "sha256:17d4e5087723d78da7a61486af6170eff238a69d2254c201eaa7860393172702"' "$production_rendered"
+grep -Fq 'app.kubernetes.io/component: release-evidence' "$production_rendered"
+grep -Fq 'legalReviewId: "sha256:f89d44fee80d431539b2b3c4df101f00d5ad0aa0af150e9963d2d9f20b0565c2"' "$production_rendered"
+grep -Fq 'alertPolicySha256: "sha256:17d4e5087723d78da7a61486af6170eff238a69d2254c201eaa7860393172702"' "$production_rendered"
+grep -Fq 'pakperk.app/release-binding-schema: "1"' "$production_rendered"
+grep -Fq 'imageIdentities.json:' "$production_rendered"
+grep -Fq 'chartIdentity.json:' "$production_rendered"
+grep -Fq 'legalPolicy.json:' "$production_rendered"
+grep -Fq 'releaseContract.json:' "$production_rendered"
+grep -Fq 'immutable: true' "$production_rendered"
+grep -Fq 'strictContentReviewId: "sha256:0946ee59d150a1e065ba7d02eb1c3e2fa8323feca8b9c21de388eb76f2ab3cc8"' "$production_guest_rendered"
+grep -Fq 'moderationReadinessId: ""' "$production_guest_rendered"
+grep -Fq 'accountDeletionE2eId: ""' "$production_guest_rendered"
+grep -Fq 'restoreDrillId: ""' "$production_guest_rendered"
+python3 - "$production_rendered" "$chart/files/alerts/pakperk-production-alert-policy.json" <<'PY'
+import pathlib
+import sys
+
+rendered = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines(keepends=True)
+source = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
+marker = "  pakperk-production-alert-policy.json: |\n"
+try:
+    start = rendered.index(marker) + 1
+except ValueError as error:
+    raise SystemExit("rendered alert-policy ConfigMap data key is missing") from error
+embedded = []
+for line in rendered[start:]:
+    if not line.startswith("    "):
+        break
+    embedded.append(line[4:])
+if "".join(embedded) != source:
+    raise SystemExit("rendered alert-policy ConfigMap bytes differ from the checksummed source policy")
+PY
+production_evidence_name="$(awk '/^  name: .*release-evidence-/ { print $2; exit }' "$production_rendered")"
+production_guest_evidence_name="$(awk '/^  name: .*release-evidence-/ { print $2; exit }' "$production_guest_rendered")"
+if [[ -z "$production_evidence_name" || -z "$production_guest_evidence_name" || "$production_evidence_name" == "$production_guest_evidence_name" ]]; then
+  echo "Immutable release-evidence ConfigMap name does not bind the environment feature set." >&2
+  exit 1
+fi
+python3 - "$production_rendered" "${binding_variant_paths[@]}" <<'PY'
+import hashlib
+import json
+import pathlib
+import re
+import sys
+
+
+def release_binding(path: str) -> tuple[str, str, dict]:
+    source = pathlib.Path(path).read_text(encoding="utf-8")
+    names = re.findall(
+        r"(?m)^  name: (\S+-release-evidence-[0-9a-f]{12})\s*$",
+        source,
+    )
+    annotations = re.findall(
+        r'(?m)^    pakperk[.]app/release-binding-sha256: "sha256:([0-9a-f]{64})"$',
+        source,
+    )
+    encoded_contracts = re.findall(
+        r"(?m)^  releaseContract[.]json: (.+)$",
+        source,
+    )
+    if len(names) != 1 or len(annotations) != 1 or len(encoded_contracts) != 1:
+        raise SystemExit(f"{path} has an ambiguous release-evidence binding")
+    try:
+        contract = json.loads(json.loads(encoded_contracts[0]))
+    except (json.JSONDecodeError, TypeError) as error:
+        raise SystemExit(f"{path} releaseContract.json is not canonical JSON") from error
+    canonical = json.dumps(contract, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    if annotations[0] != digest or not names[0].endswith(digest[:12]):
+        raise SystemExit(f"{path} release binding digest does not address its contract")
+    return names[0], digest, contract
+
+
+baseline_name, baseline_digest, contract = release_binding(sys.argv[1])
+if set(contract) != {
+    "schemaVersion",
+    "environment",
+    "features",
+    "releaseEvidence",
+    "alertPolicySha256",
+    "images",
+    "chart",
+    "legalPolicy",
+} or contract["schemaVersion"] != 1:
+    raise SystemExit("release contract has an incomplete or unknown top-level shape")
+if set(contract["images"]) != {"backend", "site", "grobid", "otelCollector"}:
+    raise SystemExit("release contract does not bind every deployed image identity")
+for component, identity in contract["images"].items():
+    if set(identity) != {"repository", "digest"} or not identity["repository"]:
+        raise SystemExit(f"release contract image identity is malformed: {component}")
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", identity["digest"]) is None:
+        raise SystemExit(f"release contract image digest is malformed: {component}")
+if contract["chart"] != {
+    "name": "pakperk",
+    "version": "0.2.1",
+    "appVersion": "0.2.0",
+}:
+    raise SystemExit("release contract does not bind the exact chart/app identity")
+if contract["legalPolicy"] != {
+    "documentVersion": "2026-08-01",
+    "termsVersion": "2026-08-01",
+    "communityGuidelinesVersion": "2026-08-01",
+    "fulltext": "strict",
+}:
+    raise SystemExit("release contract does not bind the exact legal/full-text policy")
+
+variant_bindings = [release_binding(path) for path in sys.argv[2:]]
+if any(name == baseline_name or digest == baseline_digest for name, digest, _ in variant_bindings):
+    raise SystemExit("a release-contract input changed without changing its content address")
+if len({digest for _, digest, _ in variant_bindings}) != len(variant_bindings):
+    raise SystemExit("distinct release-contract mutations produced the same binding")
+PY
+python3 - \
+  "$long_name_production_rendered" \
+  "$long_name_collision_rendered" \
+  "$long_fullname_production_rendered" \
+  "$long_fullname_collision_rendered" <<'PY'
+import pathlib
+import re
+import sys
+
+name_sets = []
+for path in sys.argv[1:]:
+    source = pathlib.Path(path).read_text(encoding="utf-8")
+    metadata_names = re.findall(r"(?m)^  name: (\S+)\s*$", source)
+    if (
+        not metadata_names
+        or any(len(name) > 63 for name in metadata_names)
+        or any(
+            re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", name) is None
+            for name in metadata_names
+        )
+    ):
+        raise SystemExit("a long Helm name produced invalid or duplicate metadata.name values")
+    for component in ("alert-policy", "release-evidence"):
+        matching = [
+            name
+            for name in metadata_names
+            if re.search(rf"-{component}-[0-9a-f]{{12}}$", name)
+        ]
+        if len(matching) != 1 or len(matching[0]) > 63:
+            raise SystemExit(f"the {component} ConfigMap did not preserve its digest suffix")
+    name_sets.append(set(metadata_names))
+for first, second, label in (
+    (name_sets[0], name_sets[1], "release names"),
+    (name_sets[2], name_sets[3], "fullname overrides"),
+):
+    overlap = first & second
+    if overlap:
+        raise SystemExit(
+            f"long {label} with a common prefix collide on metadata names: {sorted(overlap)[:3]}"
+        )
+PY
 if [[ "$(grep -Fc 'name: ARXIV_USER_AGENT, value: "Pakperk/0.2.0"' "$rendered")" -ne 3 ]]; then
   echo "Every arXiv client must use the release-version agent exactly once; contact is appended by the client." >&2
   exit 1
@@ -425,6 +770,17 @@ expect_template_rejection \
   --skip-schema-validation \
   --set-json 'api.trustedProxyCidrs=["abc"]'
 expect_template_rejection \
+  "more trusted-proxy CIDRs than the API runtime accepts" \
+  "api.trustedProxyCidrs: Array must have at most 64 items" \
+  --values "$fixture" \
+  --set-json "api.trustedProxyCidrs=$trusted_proxy_overflow_json"
+expect_template_rejection \
+  "more trusted-proxy CIDRs than the API runtime accepts with schema validation bypassed" \
+  "api.trustedProxyCidrs must contain at most 64 CIDR ranges" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-json "api.trustedProxyCidrs=$trusted_proxy_overflow_json"
+expect_template_rejection \
   "a noncanonical database CIDR with host bits" \
   "10.40.0.1/24 must start at its canonical network address" \
   --values "$fixture" \
@@ -443,6 +799,320 @@ expect_template_rejection \
   --skip-schema-validation \
   --set-json 'networkPolicy.apiHttpsCidrs=["2001:db8::/32"]'
 expect_template_rejection \
+  "an OIDC origin on a port blocked by the API NetworkPolicy" \
+  "public.oidcOrigin must be an exact HTTPS origin on TCP/443 without path, query, fragment, credentials, or wildcard" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string public.oidcOrigin=https://identity.staging.pakperk.app:8443 \
+  --set-string public.oidcIssuer=https://identity.staging.pakperk.app:8443/realms/pakperk
+expect_template_rejection \
+  "a query-bearing OIDC issuer rejected by the runtime" \
+  "public.oidcIssuer must be a bounded HTTPS URL on TCP/443 below public.oidcOrigin with a nonempty safe path and no credentials, query, or fragment" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string 'public.oidcIssuer=https://identity.staging.pakperk.app/tenant?target=/realms/pakperk'
+expect_template_rejection \
+  "a fragment-bearing OIDC issuer rejected by the runtime" \
+  "public.oidcIssuer must be a bounded HTTPS URL on TCP/443 below public.oidcOrigin with a nonempty safe path and no credentials, query, or fragment" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string 'public.oidcIssuer=https://identity.staging.pakperk.app/tenant#target=/realms/pakperk'
+expect_template_rejection \
+  "a Keycloak admin origin on a port blocked by the deletion-worker NetworkPolicy" \
+  "deletionWorker.keycloakAdminBaseUrl must be an exact HTTPS origin on TCP/443" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string deletionWorker.keycloakAdminBaseUrl=https://identity.staging.pakperk.app:8443/
+expect_template_rejection \
+  "a model-provider URL on a port blocked by the paper-worker NetworkPolicy" \
+  "paperWorker.llmBaseUrl must be a credential-free HTTPS URL on TCP/443 without query or fragment" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string paperWorker.llmBaseUrl=https://model.staging.pakperk.app:8443/v1/
+expect_template_rejection \
+  "an invalid OCI backend repository" \
+  "image.repository: Does not match pattern" \
+  --values "$fixture" \
+  --set-string 'image.repository=bad repo'
+for repository_path in image.repository siteImage.repository grobid.image.repository otelCollector.image.repository; do
+  expect_template_rejection \
+    "an invalid $repository_path with schema validation bypassed" \
+    "$repository_path must be a lowercase tag-free OCI repository with an optional valid registry port" \
+    --values "$fixture" \
+    --skip-schema-validation \
+    --set-string "$repository_path=bad repo"
+done
+expect_template_rejection \
+  "an OCI repository above the distribution reference-name limit" \
+  "image.repository: String length must be less than or equal to 255" \
+  --values "$fixture" \
+  --set-string "image.repository=$long_oci_repository"
+expect_template_rejection \
+  "an OCI repository above the distribution reference-name limit with schema validation bypassed" \
+  "image.repository must be a lowercase tag-free OCI repository with an optional valid registry port and at most 255 characters" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string "image.repository=$long_oci_repository"
+expect_template_rejection \
+  "an ingress host with a leading hyphen" \
+  "public.siteOrigin must be an exact HTTPS origin without path, query, fragment, credentials, or wildcard" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string ingress.siteHost=-bad.staging.pakperk.app \
+  --set-string public.siteOrigin=https://-bad.staging.pakperk.app
+expect_template_rejection \
+  "an invalid Kubernetes IngressClass name" \
+  "ingress.className must be a valid Kubernetes DNS-subdomain name" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string 'ingress.className=bad class'
+expect_template_rejection \
+  "an invalid Kubernetes TLS Secret name" \
+  "ingress.tlsSecretName must be a valid Kubernetes DNS-subdomain name" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string ingress.tlsSecretName=BAD_SECRET
+expect_template_rejection \
+  "an invalid Kubernetes deletion-ledger PVC name" \
+  "deletionLedger.existingClaim must be a valid Kubernetes DNS-subdomain name" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string deletionLedger.existingClaim=BAD_CLAIM
+expect_template_rejection \
+  "an enabled deletion worker without its ledger claim" \
+  "account deletion or an enabled deletion worker requires a separately backed-up deletionLedger.existingClaim" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set features.accountDeletion=false \
+  --set-string deletionLedger.existingClaim=
+expect_template_rejection \
+  "an enabled deletion worker bound to another ledger environment" \
+  "deletionLedger.environmentId must exactly equal the canonical environment" \
+  --values "$fixture" \
+  --set features.accountDeletion=false \
+  --set-string deletionLedger.environmentId=production
+expect_template_rejection \
+  "an invalid Kubernetes CPU quantity" \
+  "api.resources.requests.cpu must be a nonnegative integer core count or positive millicore quantity" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string api.resources.requests.cpu=wat
+expect_template_rejection \
+  "an invalid Kubernetes memory quantity" \
+  "api.resources.requests.memory must be a positive binary Kubernetes memory quantity" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string api.resources.requests.memory=no
+expect_template_rejection \
+  "a Kubernetes CPU request above its limit" \
+  "api.resources.requests.cpu must not exceed its CPU limit" \
+  --values "$fixture" \
+  --set api.resources.requests.cpu=2 \
+  --set api.resources.limits.cpu=1
+expect_template_rejection \
+  "a Kubernetes memory request above its limit" \
+  "api.resources.requests.memory must not exceed its memory limit" \
+  --values "$fixture" \
+  --set-string api.resources.requests.memory=2Gi \
+  --set-string api.resources.limits.memory=1024Mi
+expect_template_rejection \
+  "an invalid custom Pod label value" \
+  "podLabels[bad] must use Kubernetes label-value grammar" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string 'podLabels.bad=value with spaces'
+expect_template_rejection \
+  "an invalid ingress-controller selector label value" \
+  "networkPolicy.ingressController.podSelector[bad] must use Kubernetes label-value grammar" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string 'networkPolicy.ingressController.podSelector.bad=value with spaces'
+expect_template_rejection \
+  "an invalid Kubernetes PDB availability value" \
+  "api.pdb.minAvailable must be a nonnegative integer or a percentage from 0% to 100%" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string api.pdb.minAvailable=bogus
+expect_template_rejection \
+  "an API termination budget equal to an ordinary request plus preStop" \
+  "api.terminationGracePeriodSeconds must exceed the maximum request/chat timeout plus the five-second preStop budget" \
+  --values "$fixture" \
+  --set api.requestTimeoutSeconds=300 \
+  --set api.chatTimeoutSeconds=1 \
+  --set api.terminationGracePeriodSeconds=305
+expect_template_rejection \
+  "a paper-worker termination budget equal to its lease" \
+  "paperWorker.terminationGracePeriodSeconds must exceed leaseSeconds" \
+  --values "$fixture" \
+  --set paperWorker.leaseSeconds=300 \
+  --set paperWorker.terminationGracePeriodSeconds=300
+expect_template_rejection \
+  "a control character in the arXiv contact" \
+  "paperWorker.arxivContactEmail must be a monitored, non-placeholder email address" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-json 'paperWorker.arxivContactEmail="ops\u0007@pakperk.app"'
+expect_template_rejection \
+  "a numeric OIDC host normalized to loopback by the runtime" \
+  "public.oidcOrigin must be an exact HTTPS origin on TCP/443 without path, query, fragment, credentials, or wildcard" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string public.oidcOrigin=https://2130706433 \
+  --set-string public.oidcIssuer=https://2130706433/realms/pakperk
+expect_template_rejection \
+  "a numeric model-provider host normalized to loopback by the runtime" \
+  "paperWorker.llmBaseUrl must be a credential-free HTTPS URL on TCP/443 without query or fragment" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string paperWorker.llmBaseUrl=https://2130706433/v1
+expect_template_rejection \
+  "a model-provider host above the DNS length limit" \
+  "paperWorker.llmBaseUrl host must not exceed the DNS maximum of 253 characters" \
+  --values "$fixture" \
+  --set-string "paperWorker.llmBaseUrl=https://$overlong_dns_host/v1"
+expect_template_rejection \
+  "an out-of-range public origin port rejected by the runtime" \
+  "public.siteOrigin must be an exact HTTPS origin without path, query, fragment, credentials, or wildcard" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set ingress.enabled=false \
+  --set-string public.siteOrigin=https://staging.pakperk.app:99999
+expect_template_rejection \
+  "a reserved model-provider host" \
+  "paperWorker.llmBaseUrl must not use a loopback, local, reserved, or placeholder host" \
+  --values "$fixture" \
+  --set-string paperWorker.llmBaseUrl=https://model.invalid/v1
+expect_template_rejection \
+  "a reserved Keycloak admin host" \
+  "deletionWorker.keycloakAdminBaseUrl must not use a loopback, local, reserved, or placeholder host" \
+  --values "$fixture" \
+  --set-string deletionWorker.keycloakAdminBaseUrl=https://admin.invalid/
+expect_template_rejection \
+  "a reserved telemetry exporter host" \
+  "otelCollector.exporterEndpoint must not use a loopback, local, reserved, or placeholder host" \
+  --values "$fixture" \
+  --set-string otelCollector.exporterEndpoint=https://sink.invalid:4317
+expect_template_rejection \
+  "two public services sharing one host" \
+  "site, API, telemetry, and OIDC public origins must use distinct hosts" \
+  --values "$fixture" \
+  --set-string public.apiOrigin=https://staging.pakperk.app \
+  --set-string ingress.apiHost=staging.pakperk.app
+expect_template_rejection \
+  "a paper-worker poll interval equal to its lease" \
+  "paperWorker.pollIntervalMs must be shorter than leaseSeconds" \
+  --values "$fixture" \
+  --set paperWorker.leaseSeconds=30 \
+  --set paperWorker.pollIntervalMs=30000
+expect_template_rejection \
+  "paper-worker categories that become empty after runtime splitting" \
+  "paperWorker.arxivCategories must contain at least one nonempty category" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-json 'paperWorker.arxivCategories=" , "'
+expect_template_rejection \
+  "a paper-worker category rejected by the runtime query grammar" \
+  "every paperWorker.arxivCategories entry must use the runtime arXiv category grammar" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string 'paperWorker.arxivCategories=not valid'
+expect_template_rejection \
+  "a placeholder arXiv contact rejected during runtime client construction" \
+  "paperWorker.arxivContactEmail must be a monitored, non-placeholder email address" \
+  --values "$fixture" \
+  --set-string paperWorker.arxivContactEmail=research@example.com
+expect_template_rejection \
+  "an unsafe model ID rejected during runtime provider construction" \
+  "paperWorker model IDs must contain 1 to 128 safe provider identifier characters" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string 'paperWorker.llmChatModel=bad model'
+expect_template_rejection \
+  "a deletion-worker poll interval equal to its lease" \
+  "deletionWorker.pollIntervalMs must be shorter than leaseSeconds" \
+  --values "$fixture" \
+  --set deletionWorker.leaseSeconds=60 \
+  --set deletionWorker.pollIntervalMs=60000
+expect_template_rejection \
+  "a deletion-worker retry base equal to its retry maximum" \
+  "deletionWorker.retryBaseSeconds must be shorter than retryMaxSeconds" \
+  --values "$fixture" \
+  --set deletionWorker.retryBaseSeconds=10 \
+  --set deletionWorker.retryMaxSeconds=10
+expect_template_rejection \
+  "a deletion-worker step timeout above the runtime maximum" \
+  "deletionWorker.stepTimeoutSeconds: Must be less than or equal to 1800" \
+  --values "$fixture" \
+  --set deletionWorker.stepTimeoutSeconds=1801 \
+  --set deletionWorker.leaseSeconds=1803 \
+  --set deletionWorker.terminationGracePeriodSeconds=1804
+expect_template_rejection \
+  "a deletion-worker step timeout above the runtime maximum with schema validation bypassed" \
+  "deletionWorker.stepTimeoutSeconds must not exceed the runtime maximum of 1800" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set deletionWorker.stepTimeoutSeconds=1801 \
+  --set deletionWorker.leaseSeconds=1803 \
+  --set deletionWorker.terminationGracePeriodSeconds=1804
+expect_template_rejection \
+  "deletion-ledger retention shorter than security retention" \
+  "deletionLedger.retentionDays must be at least deletionLedger.securityRetentionDays" \
+  --values "$fixture" \
+  --set deletionLedger.retentionDays=365 \
+  --set deletionLedger.securityRetentionDays=400
+expect_template_rejection \
+  "a migration version different from the release binary" \
+  "migration.expectedVersion: Must be less than or equal to 9" \
+  --values "$fixture" \
+  --set migration.expectedVersion=10
+expect_template_rejection \
+  "a migration version different from the release binary with schema validation bypassed" \
+  "migration.expectedVersion must match embedded migration version 9" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set migration.expectedVersion=10
+expect_template_rejection \
+  "a placeholder migration backup ID accepted by the old chart" \
+  "migration.confirmBackupId must identify a verified real backup" \
+  --values "$fixture" \
+  --set-string migration.confirmBackupId=todo-backup-20260801
+expect_template_rejection \
+  "an invalid metadata-sync Cron schedule" \
+  "metadataSync.schedule: Does not match pattern" \
+  --values "$fixture" \
+  --set-string metadataSync.schedule=not-a-cron
+expect_template_rejection \
+  "an invalid metadata-sync Cron schedule with schema validation bypassed" \
+  "metadataSync.schedule must be a bounded five-field numeric or wildcard Cron schedule" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string metadataSync.schedule=not-a-cron
+expect_template_rejection \
+  "an invalid scheduled metadata manifest" \
+  "metadataSync.manifestJson must be a valid JSON object" \
+  --values "$fixture" \
+  --set-json 'metadataSync.manifestJson="not-json"'
+expect_template_rejection \
+  "a scheduled metadata manifest with an array root" \
+  "metadataSync.manifestJson must be a valid JSON object" \
+  --values "$fixture" \
+  --set-json 'metadataSync.manifestJson="[]"'
+expect_template_rejection \
+  "a scheduled metadata manifest with a null root" \
+  "metadataSync.manifestJson must be a valid JSON object" \
+  --values "$fixture" \
+  --set-json 'metadataSync.manifestJson="null"'
+expect_template_rejection \
+  "an empty scheduled metadata manifest" \
+  "metadataSync.manifestJson must contain 1 to 2000 papers" \
+  --values "$fixture" \
+  --set-json 'metadataSync.manifestJson="{\"papers\":[]}"'
+expect_template_rejection \
+  "a scheduled metadata manifest with a runtime-invalid arXiv ID" \
+  "every metadataSync manifest paper must be an object with a canonical arxiv_id" \
+  --values "$fixture" \
+  --set-json 'metadataSync.manifestJson="{\"papers\":[{\"arxiv_id\":\"not-an-id\"}]}"'
+expect_template_rejection \
   "a provider CIDR with an invalid octet" \
   "10.0.0.999/24 must be a canonical IPv4 CIDR" \
   --values "$fixture" \
@@ -459,6 +1129,11 @@ expect_template_rejection \
   "public.documentVersion, policy.termsVersion, and policy.communityGuidelinesVersion must match exactly" \
   --values "$fixture" \
   --set-string policy.communityGuidelinesVersion=2026-08-01
+expect_template_rejection \
+  "a mutable non-content-addressed release-evidence reference" \
+  "releaseEvidence.legalReviewId: Does not match pattern" \
+  --values "$fixture" \
+  --set-string releaseEvidence.legalReviewId=change-123
 expect_template_rejection \
   "one external Secret key shared by unrelated credentials" \
   "database URLs and every purpose-specific credential must use distinct external Secret keys" \
@@ -528,6 +1203,89 @@ expect_template_rejection \
   --values "$fixture" \
   --values "$production_fixture" \
   --set-string policy.fulltext=prototype
+expect_template_rejection \
+  "a production render without legal-review evidence" \
+  "production requires an immutable sha256 release-evidence ID for legal review" \
+  --values "$fixture" \
+  --values "$production_fixture" \
+  --set-string releaseEvidence.legalReviewId=
+expect_template_rejection \
+  "a production render without app-reviewer-flow evidence" \
+  "production requires an immutable sha256 release-evidence ID for app-reviewer flow" \
+  --values "$fixture" \
+  --values "$production_fixture" \
+  --set-string releaseEvidence.reviewerFlowId=
+expect_template_rejection \
+  "a production render without strict-content-review evidence" \
+  "production requires an immutable sha256 release-evidence ID for strict content review" \
+  --values "$fixture" \
+  --values "$production_fixture" \
+  --set-string releaseEvidence.strictContentReviewId=
+expect_template_rejection \
+  "production comments without moderation-readiness evidence" \
+  "production comments require an immutable moderation-readiness evidence ID" \
+  --values "$fixture" \
+  --values "$production_fixture" \
+  --set-string releaseEvidence.moderationReadinessId=
+expect_template_rejection \
+  "production comments with account deletion disabled" \
+  "production comments require the account-deletion feature and its policy controls" \
+  --values "$fixture" \
+  --values "$production_fixture" \
+  --set features.commentCreation=false \
+  --set features.accountDeletion=false \
+  --set deletionWorker.enabled=false
+expect_template_rejection \
+  "production accounts and library with account deletion disabled" \
+  "production accounts require the account-deletion feature and its policy controls" \
+  --values "$fixture" \
+  --values "$production_fixture" \
+  --set features.comments=false \
+  --set features.commentCreation=false \
+  --set features.accountDeletion=false \
+  --set deletionWorker.enabled=false
+expect_template_rejection \
+  "production account deletion without provider E2E evidence" \
+  "production account deletion requires an immutable provider deletion E2E evidence ID" \
+  --values "$fixture" \
+  --values "$production_fixture" \
+  --set-string releaseEvidence.accountDeletionE2eId=
+expect_template_rejection \
+  "production account deletion without restore-drill evidence" \
+  "production account deletion requires an immutable restore-drill evidence ID" \
+  --values "$fixture" \
+  --values "$production_fixture" \
+  --set-string releaseEvidence.restoreDrillId=
+expect_template_rejection \
+  "a production release-evidence placeholder" \
+  "production releaseEvidence.reviewerFlowId cannot use an obvious placeholder digest" \
+  --values "$fixture" \
+  --values "$production_fixture" \
+  --set-string releaseEvidence.reviewerFlowId=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+expect_template_rejection \
+  "a production release with alert-policy packaging disabled" \
+  "production requires the packaged alert policy" \
+  --values "$fixture" \
+  --values "$production_fixture" \
+  --set alerting.enabled=false \
+  --set-string alerting.policySha256=
+expect_template_rejection \
+  "a staging release that attaches the production-only alert policy" \
+  "the packaged alert policy is production-only and cannot be enabled for staging" \
+  --values "$fixture" \
+  --set alerting.enabled=true \
+  --set-string alerting.policySha256=sha256:17d4e5087723d78da7a61486af6170eff238a69d2254c201eaa7860393172702
+expect_template_rejection \
+  "a disabled alert policy with a stale digest" \
+  "alerting.policySha256 must be empty when alerting.enabled=false" \
+  --values "$fixture" \
+  --set-string alerting.policySha256=sha256:17d4e5087723d78da7a61486af6170eff238a69d2254c201eaa7860393172702
+expect_template_rejection \
+  "an alert-policy digest that does not match the packaged contract" \
+  "alerting.policySha256 must pin the exact packaged provider-neutral alert policy" \
+  --values "$fixture" \
+  --set alerting.enabled=true \
+  --set-string alerting.policySha256=sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 
 if "$helm_bin" template pakperk "$chart" --values "$fixture" \
   --set public.siteOrigin=https://reserved.example.test >/dev/null 2>&1; then

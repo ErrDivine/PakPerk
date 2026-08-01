@@ -48,6 +48,14 @@ final localStoreProvider = Provider<LocalStore>(
       throw StateError('localStoreProvider must be overridden at startup.'),
 );
 
+/// Returns the opened local store as soon as it is safe for independent local
+/// cleanup work. Production startup overrides this so deletion recovery can
+/// wait for Drift to open without waiting for feed/restoration hydration.
+final localStoreWhenReadyProvider = Provider<Future<LocalStore> Function()>(
+  (ref) =>
+      () async => ref.read(localStoreProvider),
+);
+
 /// Null in focused tests or alternate stores that do not provide relational
 /// feed persistence; production startup supplies a Drift-backed store.
 final feedCachePersistenceProvider = Provider<FeedCachePersistence?>((ref) {

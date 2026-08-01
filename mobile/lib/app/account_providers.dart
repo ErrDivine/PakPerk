@@ -136,7 +136,7 @@ final accountOwnedDataClearerProvider = Provider<AccountOwnedDataClearer>((
   ref,
 ) {
   return (accountId, invalidatedThroughEpoch) async {
-    final store = ref.read(localStoreProvider);
+    final store = await ref.read(localStoreWhenReadyProvider)();
     if (store is! DriftLocalStore) return;
     final accountCache = AccountCacheDao(store.database);
     await ref
@@ -156,9 +156,8 @@ typedef AccountDeletionLocalFinalizer =
 final accountDeletionCommentCachePurgerProvider =
     Provider<Future<void> Function()>((ref) {
       return () async {
-        await ref
-            .read(localStoreProvider)
-            .purgeAccountDeletionCommentSnapshots();
+        final store = await ref.read(localStoreWhenReadyProvider)();
+        await store.purgeAccountDeletionCommentSnapshots();
       };
     });
 
@@ -317,12 +316,36 @@ final class AccountAwareStartupBootstrapper implements StartupBootstrapper {
   final CurrentAccountController _currentAccount;
   final AccountDeletionController _accountDeletion;
   bool _deletionPending = false;
+  Future<StartupSessionStatus>? _sessionInspection;
 
   @override
   Future<void> hydrateLocalState() => _delegate.hydrateLocalState();
 
   @override
-  Future<StartupSessionStatus> checkAuthenticatedSession() async {
+  Future<StartupSessionStatus> checkAuthenticatedSession() {
+    final active = _sessionInspection;
+    if (active != null) return active;
+    final operation = _checkAuthenticatedSession();
+    late final Future<StartupSessionStatus> tracked;
+    tracked = operation.whenComplete(() {
+      if (identical(_sessionInspection, tracked)) {
+        _sessionInspection = null;
+      }
+    });
+    _sessionInspection = tracked;
+    return tracked;
+  }
+
+  Future<StartupSessionStatus> _checkAuthenticatedSession() {
+    final delegate = _delegate;
+    if (delegate is StartupLocalStoreLeaseCoordinator) {
+      return (delegate as StartupLocalStoreLeaseCoordinator)
+          .withStartupLocalStoreLease(_inspectAuthenticatedSession);
+    }
+    return _inspectAuthenticatedSession();
+  }
+
+  Future<StartupSessionStatus> _inspectAuthenticatedSession() async {
     _deletionPending = await _accountDeletion.recoverAtStartup();
     if (_deletionPending) return StartupSessionStatus.anonymous;
     final status = await _authSession.inspectStoredSession();

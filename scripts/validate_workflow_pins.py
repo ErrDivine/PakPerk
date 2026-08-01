@@ -17,6 +17,39 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 USES = re.compile(r"^\s*(?:-\s+)?uses\s*:\s*(.*?)\s*$")
 COMMIT = re.compile(r"[0-9a-f]{40}")
 DOCKER_DIGEST = re.compile(r"docker://[^@\s]+@sha256:[0-9a-f]{64}")
+JOB = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$")
+
+
+def _validate_job_steps(path: pathlib.Path, source: str) -> None:
+    """Reject duplicate job-level steps keys before YAML's last-key-wins parse."""
+
+    in_jobs = False
+    current_job: str | None = None
+    steps_keys = 0
+
+    def finish_job() -> None:
+        if current_job is not None and steps_keys > 1:
+            raise RuntimeError(
+                f"{path.relative_to(ROOT)}: job {current_job} repeats the steps key"
+            )
+
+    for line in source.splitlines():
+        if line == "jobs:":
+            in_jobs = True
+            continue
+        if not in_jobs:
+            continue
+        if line and not line.startswith((" ", "#")):
+            finish_job()
+            return
+        job_match = JOB.fullmatch(line)
+        if job_match:
+            finish_job()
+            current_job = job_match.group(1)
+            steps_keys = 0
+        elif current_job is not None and line == "    steps:":
+            steps_keys += 1
+    finish_job()
 
 
 def _uses_value(path: pathlib.Path, line_number: int, raw_value: str) -> str:
@@ -36,7 +69,9 @@ def workflow_pins() -> tuple[dict[tuple[str, str], list[str]], int]:
     uses_count = 0
     external_count = 0
     for path in workflows:
-        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        source = path.read_text(encoding="utf-8")
+        _validate_job_steps(path, source)
+        for line_number, line in enumerate(source.splitlines(), 1):
             match = USES.match(line)
             if not match:
                 continue

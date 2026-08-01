@@ -5,13 +5,21 @@ import 'package:pakperk/app/startup_controller.dart';
 
 void main() {
   test(
-    'cold startup exposes ordered local/session phases and starts post work once',
+    'cold startup starts local/session work together and exposes ordered phases',
     () async {
       final localReady = Completer<void>();
       final sessionChecked = Completer<StartupSessionStatus>();
+      var hydrationStarted = false;
+      var sessionCheckStarted = false;
       final bootstrapper = _FakeBootstrapper(
-        hydrate: () => localReady.future,
-        checkSession: () => sessionChecked.future,
+        hydrate: () {
+          hydrationStarted = true;
+          return localReady.future;
+        },
+        checkSession: () {
+          sessionCheckStarted = true;
+          return sessionChecked.future;
+        },
       );
       final splash = _RecordingSplashHandoff();
       final controller = StartupController(
@@ -25,10 +33,13 @@ void main() {
       final startup = controller.start();
       expect(controller.state.phase, StartupPhase.bootstrapping);
       expect(controller.state.attempt, 1);
+      expect(hydrationStarted, isTrue);
+      expect(sessionCheckStarted, isTrue);
 
       localReady.complete();
       await _flushMicrotasks();
       expect(controller.state.phase, StartupPhase.localReady);
+      expect(controller.state.hasUsableLocalState, isTrue);
       expect(splash.releaseCalls, 1);
 
       sessionChecked.complete(StartupSessionStatus.refreshRequired);
@@ -95,6 +106,34 @@ void main() {
     expect(controller.state.attempt, 2);
     controller.dispose();
   });
+
+  test(
+    'post-local session failure retries without repairing usable data',
+    () async {
+      var checks = 0;
+      final bootstrapper = _FakeBootstrapper(
+        checkSession: () async {
+          checks += 1;
+          if (checks == 1) throw StateError('secure store unavailable');
+          return StartupSessionStatus.anonymous;
+        },
+      );
+      final controller = StartupController(
+        bootstrapper: bootstrapper,
+        splashHandoff: _RecordingSplashHandoff(),
+      );
+
+      await controller.start();
+      expect(controller.state.phase, StartupPhase.recoverableFailure);
+      expect(controller.state.failure?.localStateUsable, isTrue);
+
+      await controller.repairAndRetry();
+      expect(bootstrapper.repairCalls, 0);
+      expect(checks, 2);
+      expect(controller.state.phase, StartupPhase.ready);
+      controller.dispose();
+    },
+  );
 
   test(
     'migration failure can repair local data without credential deletion',

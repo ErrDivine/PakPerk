@@ -1,7 +1,7 @@
 # Structural production-render overrides used only by chart contract tests.
-# The digests, signing identity, private CIDRs, backup ID, and credentials are
-# deterministic fixtures and are not deployable production evidence. Always
-# layer this file after ci/staging-values.yaml.
+# The digests, evidence IDs, signing identity, private CIDRs, backup ID, and
+# credentials are deterministic fixtures and are not deployable production
+# evidence. Always layer this file after ci/staging-values.yaml.
 environment: production
 
 image:
@@ -31,6 +31,23 @@ mobileAssociations:
     - "01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF"
   appleTeamId: PKPRK2026A
   appleBundleId: app.pakperk.pakperk
+
+# These values are SHA-256 hashes of CI-only labels. They prove that production
+# gates render and fail closed; they do not claim a legal approval, live drill,
+# moderation staffing, reviewer account, or content review happened. Contract
+# tests also prove that changing images, chart/app identity, or legal versions
+# creates a different content-addressed release-evidence ConfigMap.
+releaseEvidence:
+  legalReviewId: sha256:f89d44fee80d431539b2b3c4df101f00d5ad0aa0af150e9963d2d9f20b0565c2
+  moderationReadinessId: sha256:46cc3a96ba16a64c77beed61701a2c92ad57e8f3fdeca446bfbd3062653bf247
+  accountDeletionE2eId: sha256:dbdeb2de548f9cf7ab5e9cea8f875d4bb408eae2ea5693216a8ded5352057b7e
+  restoreDrillId: sha256:a1cf52beab76ea56f2ed07b5f035241769a674cb4bb715df2dc8700104b06002
+  reviewerFlowId: sha256:03db190dfbe2a135b2492392c9ab29d30485b5fb0a29664469e1544fb07d2b68
+  strictContentReviewId: sha256:0946ee59d150a1e065ba7d02eb1c3e2fa8323feca8b9c21de388eb76f2ab3cc8
+
+alerting:
+  enabled: true
+  policySha256: sha256:17d4e5087723d78da7a61486af6170eff238a69d2254c201eaa7860393172702
 
 policy:
   termsVersion: "2026-08-01"

@@ -60,9 +60,22 @@ not a substitute for the signed `iphoneos` IPA gate or App Store acceptance.
 
 ## Reproducible checks and builds
 
-Use Flutter `3.44.8`, the exact stable SDK pinned by CI and the signed-release
-workflow. A different local SDK is development evidence only; release metadata
-generation fails closed when its resolved SDK differs from the workflow pin.
+Use Flutter `3.44.8` at framework revision
+`058e0af2c2b57e369d905a03ac9748b0ebf543c6` with its bundled Dart `3.12.2`, the
+exact stable SDK identity checked before dependency resolution in release
+workflows and the full local check. A different local SDK is development
+evidence only; release metadata generation fails closed when its resolved SDK
+differs from the workflow pin.
+
+Native Android dependency resolution and release builds use the hosted arm64
+macOS runner's `JAVA_HOME_17_arm64` only after it reports Eclipse Adoptium
+Temurin `17.0.19+10`; Ubuntu security evidence independently uses
+`JAVA_HOME_17_X64`. Both retain `java -version`, and runner drift blocks release.
+Before any gem installation or Bundler execution, the signed candidate requires
+MRI Ruby `3.4.10` (`RUBY_ENGINE=ruby`) with RubyGems `4.0.17` and records the
+resolved executable and versions. Store upload uses Bundler `2.6.9` downloaded
+from RubyGems, verified against its reviewed SHA-256 before local installation,
+then a frozen Fastlane `2.235.0` graph whose every gem has a lockfile checksum.
 
 Launcher PNGs are deterministic outputs of the canonical
 `mobile/assets/brand/pakperk_app_icon.svg`. With `rsvg-convert` and
@@ -129,7 +142,10 @@ because the simulator filesystem does not expose iOS data-protection classes.
 Never commit signing material or substitute a debug/personal identity.
 
 The manual `signed-mobile-release` workflow binds its single job to the chosen
-protected GitHub environment. Configure these environment secrets:
+protected GitHub environment. Dispatch it from `main` with the reviewed full
+commit SHA; the job rejects any checkout that is not that exact lowercase SHA
+or is not reachable from `origin/main` before it reads protected inputs.
+Configure these environment secrets:
 
 - Android build signing: `PAKPERK_ANDROID_KEYSTORE_BASE64`,
   `PAKPERK_ANDROID_STORE_PASSWORD`, `PAKPERK_ANDROID_KEY_ALIAS`, and

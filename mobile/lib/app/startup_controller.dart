@@ -38,11 +38,13 @@ class StartupFailure {
     required this.error,
     required this.stackTrace,
     required this.timedOut,
+    this.localStateUsable = false,
   });
 
   final Object error;
   final StackTrace stackTrace;
   final bool timedOut;
+  final bool localStateUsable;
 }
 
 class StartupState {
@@ -70,8 +72,12 @@ class StartupState {
   final bool openingCompleted;
 
   bool get isReady => phase == StartupPhase.ready;
+  bool get hasUsableLocalState =>
+      phase == StartupPhase.localReady ||
+      phase == StartupPhase.authenticatedSessionChecked ||
+      phase == StartupPhase.ready;
 
-  bool get shouldShowOpening => isReady && !openingCompleted;
+  bool get shouldShowOpening => hasUsableLocalState && !openingCompleted;
 
   StartupState copyWith({
     StartupPhase? phase,
@@ -110,6 +116,16 @@ abstract interface class StartupBootstrapper {
 
   /// Performs non-gating refreshes after the first usable Flutter frame.
   Future<void> runPostReadyWork();
+}
+
+/// Optional coordination seam for startup work that uses the hydration store
+/// concurrently with public-cache loading.
+///
+/// Implementations keep supersession/repair from closing the store until the
+/// protected local-only inspection has released it. This never makes network
+/// work part of the startup gate.
+abstract interface class StartupLocalStoreLeaseCoordinator {
+  Future<T> withStartupLocalStoreLease<T>(Future<T> Function() operation);
 }
 
 /// A bootstrapper for composing independent local tasks without serializing
@@ -239,6 +255,7 @@ class StartupController extends StateNotifier<StartupState> {
   Future<void>? _activeRun;
   int _runToken = 0;
   bool _postReadyStarted = false;
+  bool _firstUsableFramePresented = false;
   bool _disposed = false;
   DateTime? _attemptStartedAt;
 
@@ -258,7 +275,9 @@ class StartupController extends StateNotifier<StartupState> {
     if (state.phase != StartupPhase.recoverableFailure) {
       return Future.value();
     }
-    return _beginAttempt(repairFirst: true);
+    return _beginAttempt(
+      repairFirst: !(state.failure?.localStateUsable ?? false),
+    );
   }
 
   void markOpeningComplete() {
@@ -269,7 +288,18 @@ class StartupController extends StateNotifier<StartupState> {
   /// Starts network refreshes and outbox work once, without changing a ready
   /// app back into a blocking startup state.
   void notifyFirstUsableFrame() {
-    if (_disposed || !state.isReady || _postReadyStarted) return;
+    if (_disposed || !state.hasUsableLocalState) return;
+    _firstUsableFramePresented = true;
+    _startPostReadyWorkIfEligible();
+  }
+
+  void _startPostReadyWorkIfEligible() {
+    if (_disposed ||
+        !state.isReady ||
+        !_firstUsableFramePresented ||
+        _postReadyStarted) {
+      return;
+    }
     _postReadyStarted = true;
     unawaited(_runPostReadyWork());
   }
@@ -282,6 +312,7 @@ class StartupController extends StateNotifier<StartupState> {
     final runToken = ++_runToken;
     _attemptStartedAt = DateTime.now().toUtc();
     _postReadyStarted = false;
+    _firstUsableFramePresented = false;
     state = StartupState(
       phase: StartupPhase.bootstrapping,
       launchMode: state.launchMode,
@@ -310,6 +341,7 @@ class StartupController extends StateNotifier<StartupState> {
       );
     } on Object catch (error, stackTrace) {
       if (!_isCurrent(runToken)) return;
+      final localStateUsable = state.hasUsableLocalState;
       _runToken += 1;
       state = StartupState(
         phase: StartupPhase.recoverableFailure,
@@ -320,6 +352,7 @@ class StartupController extends StateNotifier<StartupState> {
           error: error,
           stackTrace: stackTrace,
           timedOut: error is StartupTimeoutException,
+          localStateUsable: localStateUsable,
         ),
       );
       emitTelemetry(_telemetry, PakPerkTelemetryEvent.startupFailure, {
@@ -356,12 +389,23 @@ class StartupController extends StateNotifier<StartupState> {
       if (!_isCurrent(runToken)) return;
     }
 
-    await _bootstrapper.hydrateLocalState();
+    // The secure-session/deletion-guard inspection is local and independent
+    // of public cache hydration. Start both at once, while keeping their
+    // publication phases ordered and fail-closed.
+    final hydration = Future<void>.sync(_bootstrapper.hydrateLocalState);
+    final sessionCheck = Future<StartupSessionStatus>.sync(
+      _bootstrapper.checkAuthenticatedSession,
+    );
+    // If hydration fails first, the independently running session future must
+    // not surface an unhandled asynchronous error after this attempt ends.
+    sessionCheck.ignore();
+
+    await hydration;
     if (!_isCurrent(runToken)) return;
     state = state.copyWith(phase: StartupPhase.localReady, clearFailure: true);
     _splashHandoff.releaseToFlutter();
 
-    final sessionStatus = await _bootstrapper.checkAuthenticatedSession();
+    final sessionStatus = await sessionCheck;
     if (!_isCurrent(runToken)) return;
     state = state.copyWith(
       phase: StartupPhase.authenticatedSessionChecked,
@@ -370,6 +414,7 @@ class StartupController extends StateNotifier<StartupState> {
     );
 
     state = state.copyWith(phase: StartupPhase.ready, clearFailure: true);
+    _startPostReadyWorkIfEligible();
     final started = _attemptStartedAt;
     emitTelemetry(_telemetry, PakPerkTelemetryEvent.startupReady, {
       'environment': _environment,

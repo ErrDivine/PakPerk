@@ -150,10 +150,8 @@ a different paper or intent returns 409 `IDEMPOTENCY_CONFLICT`. Durable known
 replays and conflicts are resolved before consuming a new mutation permit, so
 a full rate-limit bucket cannot turn a previously accepted replay into 429.
 Distinct operation IDs are serialized and last server acceptance wins, so an
-ordinary cross-device race is not an error. `LIBRARY_OPERATION_CONFLICT` is
-reserved for a future conflict the service cannot safely order; v0.0's
-transactional locks avoid that case. Shared PostgreSQL rate limits are keyed
-by the server-owned user UUID and return 429 with `Retry-After`.
+ordinary cross-device race is not an error. Shared PostgreSQL rate limits are
+keyed by the server-owned user UUID and return 429 with `Retry-After`.
 
 ## Retention and reset
 

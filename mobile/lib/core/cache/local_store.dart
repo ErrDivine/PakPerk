@@ -53,6 +53,16 @@ abstract interface class LocalStore {
   Future<void> clearAllLocalData();
 }
 
+/// Optional lifecycle contract for stores that own resources such as a
+/// database connection or application lifecycle observer.
+///
+/// Startup uses this contract to dispose a hydration store that failed or was
+/// superseded before its values could be mounted. Lightweight stores with no
+/// owned resources do not need to implement it.
+abstract interface class CloseableLocalStore {
+  Future<void> close();
+}
+
 class SharedPreferencesLocalStore implements LocalStore {
   SharedPreferencesLocalStore(this._preferences);
 

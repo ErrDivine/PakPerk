@@ -11,6 +11,7 @@ import '../../core/providers.dart';
 import '../../core/telemetry/telemetry.dart';
 import '../../core/widgets/paper_stage_indicator.dart';
 import '../../core/widgets/status_widgets.dart';
+import '../../design_system/motion.dart';
 import '../chat/chat_controller.dart';
 import '../comments/paper_comments_control.dart';
 import '../connections/connections_controller.dart';
@@ -350,6 +351,10 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
   }
 
   void _goToStage(PaperStage stage) {
+    if (platformPrefersReducedMotion(context)) {
+      _horizontalController.jumpToPage(stage.index);
+      return;
+    }
     _horizontalController.animateToPage(
       stage.index,
       duration: const Duration(milliseconds: 280),

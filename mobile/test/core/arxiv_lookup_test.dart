@@ -31,6 +31,14 @@ void main() {
       expect(legacy?.baseId, 'math.GT/0309136');
       expect(legacy?.queryId, 'math.GT/0309136v3');
       expect(legacy?.encodedRouteSegment, 'math.GT%2F0309136v3');
+      expect(
+        legacy?.canonicalAbsUri.toString(),
+        'https://arxiv.org/abs/math.GT/0309136v3',
+      );
+      expect(
+        modern?.canonicalPdfUri.toString(),
+        'https://arxiv.org/pdf/2401.12345v2',
+      );
     });
 
     test('rejects traversal, URLs, oversized IDs, and version zero', () {
@@ -46,6 +54,53 @@ void main() {
       ]) {
         expect(ArxivIdentifier.tryParse(value), isNull, reason: value);
       }
+    });
+
+    test('paper decoding replaces hostile or mismatched supplied links', () {
+      for (final links in [
+        ('javascript:alert(1)', 'data:text/plain,hostile'),
+        (
+          'https://attacker.example/abs/1706.03762v7',
+          'https://attacker.example/pdf/1706.03762v7',
+        ),
+        (
+          'https://arxiv.org/abs/9999.99999v1',
+          'https://arxiv.org/pdf/9999.99999v1',
+        ),
+      ]) {
+        final paper = PaperSummary.fromJson(
+          samplePaper.toJson()
+            ..['abs_url'] = links.$1
+            ..['pdf_url'] = links.$2,
+        );
+
+        expect(paper.absUrl, 'https://arxiv.org/abs/1706.03762v7');
+        expect(paper.pdfUrl, 'https://arxiv.org/pdf/1706.03762v7');
+        expect(paper.canonicalAbsUri?.scheme, 'https');
+        expect(paper.canonicalAbsUri?.host, 'arxiv.org');
+      }
+    });
+
+    test(
+      'paper decoding normalizes the identifier used by canonical links',
+      () {
+        final paper = PaperSummary.fromJson(
+          samplePaper.toJson()..['arxiv_id'] = '2401.12345v002',
+        );
+
+        expect(paper.arxivId, '2401.12345v2');
+        expect(paper.absUrl, 'https://arxiv.org/abs/2401.12345v2');
+        expect(paper.pdfUrl, 'https://arxiv.org/pdf/2401.12345v2');
+      },
+    );
+
+    test('paper decoding rejects an ID that cannot name arXiv links', () {
+      expect(
+        () => PaperSummary.fromJson(
+          samplePaper.toJson()..['arxiv_id'] = '../2401.12345',
+        ),
+        throwsFormatException,
+      );
     });
   });
 

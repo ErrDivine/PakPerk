@@ -18,6 +18,8 @@ concurrency:
 env:
   RUST_TOOLCHAIN: 1.91.1
   FLUTTER_VERSION: 3.44.8
+  PAKPERK_JDK_RUNTIME_VERSION: 17.0.19+10
+  PAKPERK_JDK_VENDOR: Eclipse Adoptium
   GROBID_IMAGE: grobid/grobid@sha256:24ba90eb1c959f65d812bcdb2cf79c677fa5fd7b95235de616b8bc9fa1317849
   OTEL_COLLECTOR_IMAGE: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib@sha256:e0f565815b2b8e78eb9fdbb80f6190c921ab323aaa8ccceab3255c6d4225f4af
 
@@ -81,7 +83,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   dependency-policy-and-artifacts:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -103,6 +105,34 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+      - name: Verify and record the exact reviewed Flutter SDK
+        run: |
+          mkdir -p release/metadata
+          flutter --version --machine >release/metadata/flutter-toolchain.json
+          python3 scripts/validate_flutter_toolchain.py \
+            release/metadata/flutter-toolchain.json
+      - name: Select, verify, and record the reviewed Android JDK
+        shell: bash
+        run: |
+          reviewed_java_home="${JAVA_HOME_17_X64:-}"
+          if [[ -z "$reviewed_java_home" || ! -x "$reviewed_java_home/bin/java" ]]; then
+            echo "The Ubuntu 24.04 runner does not expose JAVA_HOME_17_X64." >&2
+            exit 1
+          fi
+          java_properties="$("$reviewed_java_home/bin/java" -XshowSettings:properties -version 2>&1)"
+          runtime_version="$(awk -F' = ' '$1 ~ /^[[:space:]]*java.runtime.version$/ { print $2; exit }' <<<"$java_properties")"
+          java_vendor="$(awk -F' = ' '$1 ~ /^[[:space:]]*java.vendor$/ { print $2; exit }' <<<"$java_properties")"
+          if [[ "$runtime_version" != "$PAKPERK_JDK_RUNTIME_VERSION" || "$java_vendor" != "$PAKPERK_JDK_VENDOR" ]]; then
+            echo "The runner JDK does not match reviewed Temurin $PAKPERK_JDK_RUNTIME_VERSION." >&2
+            exit 1
+          fi
+          printf 'JAVA_HOME=%s\n' "$reviewed_java_home" >>"$GITHUB_ENV"
+          printf '%s/bin\n' "$reviewed_java_home" >>"$GITHUB_PATH"
+          mkdir -p release/metadata
+          {
+            printf 'java_home=%s\n' "$reviewed_java_home"
+            "$reviewed_java_home/bin/java" -version 2>&1
+          } >release/metadata/android-native-toolchain.txt
       # cargo-audit 0.22.x is required for RustSec advisories using CVSS 4.0.
       - run: cargo install --locked --version 0.22.2 cargo-audit
       - run: cargo install --locked --version 0.20.2 cargo-deny
@@ -143,6 +173,19 @@ jobs:
           SOURCE_REVISION="${GITHUB_SHA}" SOURCE_DATE_EPOCH="$source_epoch" ./scripts/generate_release_metadata.py --flutter-sdk-version "$FLUTTER_VERSION" --output-dir /tmp/release-metadata-b
           cmp /tmp/release-metadata-a/open-source-notices.txt /tmp/release-metadata-b/open-source-notices.txt
           cmp /tmp/release-metadata-a/dependencies.cdx.json /tmp/release-metadata-b/dependencies.cdx.json
+      - name: Generate and validate the Android production runtime SBOM
+        working-directory: mobile/android
+        env:
+          PAKPERK_ANDROID_SBOM_FLAVOR: prod
+        run: |
+          ./gradlew :app:cyclonedxDirectBom \
+            --init-script ../../scripts/cyclonedx-gradle.init.gradle.kts \
+            --no-daemon
+          python3 ../../scripts/validate_android_native_sbom.py \
+            ../build/app/reports/cyclonedx-direct/bom.json
+          python3 ../../scripts/validate_gradle_verification.py
+          cp ../build/app/reports/cyclonedx-direct/bom.json \
+            ../../release/metadata/android-native.cdx.json
       - run: ./scripts/prepare_release_site.sh
       - run: docker build --file backend/Dockerfile --target runtime --tag pakperk-backend:ci .
       - name: Smoke-test every release utility in the runtime image

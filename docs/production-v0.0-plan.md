@@ -115,20 +115,39 @@ Phase 6's **repository implementation is present as a dark-launched release
 candidate**. It includes the recent-auth mobile/API/web deletion flow, bounded
 Keycloak administration, leased deletion worker, independent signed restore
 ledger and replay, retention cleanup/purge controls, a production Helm topology,
-OTLP and a validating mobile telemetry gateway, security/SBOM workflows,
-signed mobile candidate automation, policy/support hosting, and release,
-incident, moderation, deletion, observability, and backup/restore runbooks.
-Repository and mobile evidence is recorded in the
+OTLP and a validating mobile telemetry gateway, a content-addressed production
+alert policy and immutable release-evidence contract bound to features,
+deployed image digests, chart/app identity, and legal-policy versions, exact-
+SHA scan-before-publish backend/site image automation with digest-only
+promotion, security/source/native SBOM workflows with reviewed runtime-graph
+completeness, and locked native/mobile release tools including MRI Ruby 3.4.10
+and RubyGems 4.0.17 plus Flutter 3.44.8/framework
+`058e0af2c2b57e369d905a03ac9748b0ebf543c6`/Dart 3.12.2, signed mobile
+candidate automation, policy/support hosting,
+and release,
+incident, moderation, deletion, observability, load, and backup/restore
+runbooks. The repository also contains an opt-in disposable Keycloak deletion
+acceptance workflow, a protected exact-SHA staging backend load gate, and mobile
+startup/accessibility hardening for concurrent local/session work, retry/repair
+ownership, reduced motion, settled haptics, 200% text, contrast, and canonical
+arXiv actions. Repository and mobile evidence is recorded in the
 [Phase 6 report](phase-reports/phase-6.md) and
 [mobile Phase 6 report](phase-reports/phase-6-mobile.md).
 
 Phase 6 is not accepted as a public/store release from source evidence alone.
-An actual isolated backup/PITR restore and deletion replay, migration/rollback
-exercise, deployed staging/production telemetry and alert checks, physical
-device and performance/crash windows, protected signing, TestFlight/closed Play
-upload, reviewer account/notes, legal/content review, disclosures, and store
-approval remain external release gates and must stay marked unpassed until their
-owners attach evidence.
+The disposable reference-provider workflow does not replace protected staging
+deletion against the real secret manager, external ledger, backup inventory,
+and alert route; the bounded load harness does not replace a successful
+protected staging run. Final direct Dart formatting and analysis passed, while
+the current-tree locked Flutter/widget verification remains unrecorded. An
+actual isolated backup/PITR restore and deletion replay, migration/rollback
+exercise, deployed staging/production telemetry sink/retention and alert-
+adapter/receiver/canary checks, current networked advisory/container scans,
+protected image publication and digest promotion, physical-device and
+performance/crash windows, protected signing, TestFlight/closed Play upload,
+reviewer account/notes, legal/content review, disclosures, and store approval
+remain external release gates and must stay marked unpassed until their owners
+attach immutable evidence.
 
 Phase 0's exit criteria require unchanged demo behavior and API fixtures,
 passing `./scripts/check.sh`, complete OpenAPI coverage for its existing routes,

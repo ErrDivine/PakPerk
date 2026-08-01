@@ -1,0 +1,239 @@
+name: staging backend load gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Reviewed full commit SHA reachable from main
+        required: true
+        type: string
+      evidence_id:
+        description: Non-secret immutable evidence identifier
+        required: true
+        type: string
+      duration_seconds:
+        description: Measured workload duration
+        required: true
+        default: "60"
+        type: choice
+        options: ["30", "60", "120", "300"]
+      concurrency:
+        description: Bounded HTTP worker count
+        required: true
+        default: "8"
+        type: choice
+        options: ["1", "4", "8", "16"]
+      max_requests:
+        description: Hard measured-request cap
+        required: true
+        default: "10000"
+        type: choice
+        options: ["1000", "5000", "10000", "25000"]
+      minimum_samples_per_scenario:
+        description: Required samples for every enabled scenario
+        required: true
+        default: "10"
+        type: choice
+        options: ["5", "10", "20"]
+      include_authenticated_library:
+        description: Exercise one authenticated To Read page
+        required: true
+        default: false
+        type: boolean
+      include_authenticated_comments:
+        description: Exercise one authenticated comments page using the protected fixture
+        required: true
+        default: false
+        type: boolean
+      allow_library_mutations:
+        description: Explicitly allow capped writes against the protected disposable fixture
+        required: true
+        default: false
+        type: boolean
+      mutation_confirmation:
+        description: For writes, type RUN_DEDICATED_STAGING_LIBRARY_MUTATIONS
+        required: false
+        type: string
+      max_library_mutation_requests:
+        description: Hard measured library-mutation cap
+        required: true
+        default: "20"
+        type: choice
+        options: ["5", "10", "20"]
+      simulated_network_delay_ms:
+        description: Fixed client-side delay added to each measured request
+        required: true
+        default: "0"
+        type: choice
+        options: ["0", "100", "250", "500"]
+      simulated_packet_loss_rate:
+        description: Deterministic client-side synthetic loss rate
+        required: true
+        default: "0"
+        type: choice
+        options: ["0", "0.01", "0.05"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-backend-load
+  cancel-in-progress: false
+
+jobs:
+  load-gate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: staging
+    env:
+      STAGING_API_ORIGIN: ${{ vars.PAKPERK_STAGING_API_ORIGIN }}
+      COMMENTS_PAPER_ID: ${{ vars.PAKPERK_STAGING_LOAD_COMMENTS_PAPER_ID }}
+      MUTATION_PAPER_ID: ${{ vars.PAKPERK_STAGING_LOAD_MUTATION_PAPER_ID }}
+      REQUESTED_REVISION: ${{ inputs.source_revision }}
+      EVIDENCE_ID: ${{ inputs.evidence_id }}
+      DURATION_SECONDS: ${{ inputs.duration_seconds }}
+      LOAD_CONCURRENCY: ${{ inputs.concurrency }}
+      MAX_REQUESTS: ${{ inputs.max_requests }}
+      MINIMUM_SAMPLES: ${{ inputs.minimum_samples_per_scenario }}
+      INCLUDE_LIBRARY: ${{ inputs.include_authenticated_library }}
+      INCLUDE_COMMENTS: ${{ inputs.include_authenticated_comments }}
+      ALLOW_MUTATIONS: ${{ inputs.allow_library_mutations }}
+      MUTATION_CONFIRMATION: ${{ inputs.mutation_confirmation }}
+      MAX_MUTATIONS: ${{ inputs.max_library_mutation_requests }}
+      NETWORK_DELAY_MS: ${{ inputs.simulated_network_delay_ms }}
+      PACKET_LOSS_RATE: ${{ inputs.simulated_packet_loss_rate }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_revision }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify reviewed source and protected inputs
+        shell: bash
+        run: |
+          if ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_revision must be a full lowercase Git commit SHA." >&2
+            exit 2
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$REQUESTED_REVISION" ]]; then
+            echo "Checkout did not resolve the exact requested revision." >&2
+            exit 2
+          fi
+          if ! git merge-base --is-ancestor "$REQUESTED_REVISION" origin/main; then
+            echo "The requested revision is not reachable from origin/main." >&2
+            exit 2
+          fi
+          if [[ -z "$STAGING_API_ORIGIN" ]]; then
+            echo "The protected staging API origin is unavailable." >&2
+            exit 2
+          fi
+          if [[ "$ALLOW_MUTATIONS" == "true" && "$MUTATION_CONFIRMATION" != "RUN_DEDICATED_STAGING_LIBRARY_MUTATIONS" ]]; then
+            echo "Mutation confirmation did not match the required phrase." >&2
+            exit 2
+          fi
+          if [[ "$ALLOW_MUTATIONS" == "true" && "$MAX_MUTATIONS" -lt "$MINIMUM_SAMPLES" ]]; then
+            echo "The mutation cap cannot be below the sample floor." >&2
+            exit 2
+          fi
+          if [[ "$INCLUDE_COMMENTS" == "true" && ! "$COMMENTS_PAPER_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+            echo "The protected comments fixture is unavailable or invalid." >&2
+            exit 2
+          fi
+          if [[ "$ALLOW_MUTATIONS" == "true" && ! "$MUTATION_PAPER_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+            echo "The protected mutation fixture is unavailable or invalid." >&2
+            exit 2
+          fi
+
+      - name: Run bounded staging gate
+        id: backend-load
+        continue-on-error: true
+        shell: bash
+        env:
+          STAGING_LOAD_TOKEN: ${{ secrets.PAKPERK_STAGING_LOAD_TOKEN }}
+        run: |
+          evidence_dir="$RUNNER_TEMP/pakperk-backend-load-evidence"
+          token_file="$RUNNER_TEMP/pakperk-backend-load-token"
+          umask 077
+          mkdir "$evidence_dir"
+          trap 'if [[ -f "$token_file" ]]; then chmod u+w "$token_file"; rm -f "$token_file"; fi' EXIT
+
+          arguments=(
+            --api-origin "$STAGING_API_ORIGIN"
+            --environment staging
+            --output "$evidence_dir/backend-load-evidence.json"
+            --evidence-id "$EVIDENCE_ID"
+            --source-revision "$REQUESTED_REVISION"
+            --duration-seconds "$DURATION_SECONDS"
+            --concurrency "$LOAD_CONCURRENCY"
+            --max-requests "$MAX_REQUESTS"
+            --minimum-samples-per-scenario "$MINIMUM_SAMPLES"
+            --request-timeout-seconds 5
+            --preflight-timeout-seconds 60
+            --max-bootstrap-pages 100
+            --simulated-network-delay-ms "$NETWORK_DELAY_MS"
+            --simulated-packet-loss-rate "$PACKET_LOSS_RATE"
+          )
+
+          if [[ "$INCLUDE_LIBRARY" == "true" || "$INCLUDE_COMMENTS" == "true" || "$ALLOW_MUTATIONS" == "true" ]]; then
+            if [[ -z "$STAGING_LOAD_TOKEN" ]]; then
+              echo "The protected synthetic-account token is unavailable." >&2
+              exit 2
+            fi
+            printf '%s' "$STAGING_LOAD_TOKEN" >"$token_file"
+            chmod 0600 "$token_file"
+            arguments+=(--bearer-token-file "$token_file")
+          fi
+          unset STAGING_LOAD_TOKEN
+          if [[ "$INCLUDE_LIBRARY" == "true" ]]; then
+            arguments+=(--include-library)
+          fi
+          if [[ "$INCLUDE_COMMENTS" == "true" ]]; then
+            arguments+=(--comments-paper-id "$COMMENTS_PAPER_ID")
+          fi
+          if [[ "$ALLOW_MUTATIONS" == "true" ]]; then
+            arguments+=(
+              --allow-library-mutations
+              --library-mutation-paper-id "$MUTATION_PAPER_ID"
+              --max-library-mutation-requests "$MAX_MUTATIONS"
+            )
+          fi
+
+          set +e
+          python3 scripts/run_backend_load.py "${arguments[@]}"
+          load_status="$?"
+          set -e
+          if [[ -f "$evidence_dir/backend-load-evidence.json" ]]; then
+            (
+              cd "$evidence_dir"
+              sha256sum backend-load-evidence.json >SHA256SUMS
+              chmod 0400 SHA256SUMS
+            )
+            tar \
+              --create \
+              --file "$RUNNER_TEMP/pakperk-backend-load-evidence.tar" \
+              --directory "$evidence_dir" \
+              backend-load-evidence.json SHA256SUMS
+            chmod 0400 "$RUNNER_TEMP/pakperk-backend-load-evidence.tar"
+          fi
+          exit "$load_status"
+
+      - name: Upload redacted staging evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: staging-backend-load-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pakperk-backend-load-evidence.tar
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Enforce staging load result
+        if: always()
+        env:
+          LOAD_OUTCOME: ${{ steps.backend-load.outcome }}
+        run: |
+          if [[ "$LOAD_OUTCOME" != "success" ]]; then
+            echo "The staging backend load gate did not pass." >&2
+            exit 1
+          fi

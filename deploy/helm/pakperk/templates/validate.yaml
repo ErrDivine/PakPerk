@@ -1,9 +1,101 @@
-{{- $httpsOrigin := `^https://[A-Za-z0-9.-]+(?::[0-9]{1,5})?$` -}}
+{{- $kubeSubdomain := `[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(\.[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)*` -}}
+{{- $externalHostname := `[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(\.[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)*\.[a-z]([-a-z0-9]{0,61}[a-z0-9])?` -}}
+{{- $kubeName := printf `^%s$` $kubeSubdomain -}}
+{{- $httpsOrigin := printf `^https://%s(:443)?$` $externalHostname -}}
+{{- $networkPolicyHttpsOrigin := $httpsOrigin -}}
+{{- $networkPolicyHttpsBaseUrl := printf `^https://%s(:443)?/?$` $externalHostname -}}
+{{- $networkPolicyHttpsIssuer := printf `^https://%s(:443)?(/[A-Za-z0-9._~!$&'()*+,;=:@%%-]+)+$` $externalHostname -}}
+{{- $modelProviderUrl := printf `^https://%s(:443)?(/[A-Za-z0-9._~!$&'()*+,;=:@%%-]*)*/?$` $externalHostname -}}
+{{- $telemetryExporterUrl := printf `^https://%s:[0-9]{1,5}/?$` $externalHostname -}}
+{{- $ociRepository := `^([a-z0-9]+([.-][a-z0-9]+)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?/)?[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*$` -}}
 {{- $digest := `^sha256:[a-f0-9]{64}$` -}}
+{{- $alertPolicyBytes := .Files.Get "files/alerts/pakperk-production-alert-policy.json" -}}
+{{- $alertPolicyDigest := printf "sha256:%s" (sha256sum $alertPolicyBytes) -}}
+{{- range $component, $repository := dict "image.repository" .Values.image.repository "siteImage.repository" .Values.siteImage.repository "grobid.image.repository" .Values.grobid.image.repository "otelCollector.image.repository" .Values.otelCollector.image.repository -}}
+{{- if or (gt (len $repository) 255) (not (regexMatch $ociRepository $repository)) -}}
+{{- fail (printf "%s must be a lowercase tag-free OCI repository with an optional valid registry port and at most 255 characters" $component) -}}
+{{- end -}}
+{{- end -}}
 {{- if not (regexMatch $digest .Values.image.digest) -}}{{- fail "image.digest must be sha256-pinned" -}}{{- end -}}
 {{- if not (regexMatch $digest .Values.siteImage.digest) -}}{{- fail "siteImage.digest must be sha256-pinned" -}}{{- end -}}
 {{- if not (regexMatch $digest .Values.grobid.image.digest) -}}{{- fail "grobid.image.digest must be sha256-pinned" -}}{{- end -}}
 {{- if not (regexMatch $digest .Values.otelCollector.image.digest) -}}{{- fail "otelCollector.image.digest must be sha256-pinned" -}}{{- end -}}
+{{- range $component, $resources := dict "api" .Values.api.resources "telemetryGateway" .Values.telemetryGateway.resources "paperWorker" .Values.paperWorker.resources "deletionWorker" .Values.deletionWorker.resources "migration" .Values.migration.resources "site" .Values.site.resources "grobid" .Values.grobid.resources "otelCollector" .Values.otelCollector.resources -}}
+{{- range $kind, $quantities := dict "requests" $resources.requests "limits" $resources.limits -}}
+{{- if not (regexMatch `^(0|[1-9][0-9]{0,5}|[1-9][0-9]{0,5}m)$` (toString $quantities.cpu)) -}}
+{{- fail (printf "%s.resources.%s.cpu must be a nonnegative integer core count or positive millicore quantity" $component $kind) -}}
+{{- end -}}
+{{- if not (regexMatch `^[1-9][0-9]{0,5}(Ki|Mi|Gi|Ti)$` (toString $quantities.memory)) -}}
+{{- fail (printf "%s.resources.%s.memory must be a positive binary Kubernetes memory quantity" $component $kind) -}}
+{{- end -}}
+{{- end -}}
+{{- $cpuRequestText := toString $resources.requests.cpu -}}
+{{- $cpuLimitText := toString $resources.limits.cpu -}}
+{{- $cpuRequestMilli := mul (int64 $cpuRequestText) 1000 -}}
+{{- if hasSuffix "m" $cpuRequestText -}}
+{{- $cpuRequestMilli = int64 (trimSuffix "m" $cpuRequestText) -}}
+{{- end -}}
+{{- $cpuLimitMilli := mul (int64 $cpuLimitText) 1000 -}}
+{{- if hasSuffix "m" $cpuLimitText -}}
+{{- $cpuLimitMilli = int64 (trimSuffix "m" $cpuLimitText) -}}
+{{- end -}}
+{{- if gt $cpuRequestMilli $cpuLimitMilli -}}
+{{- fail (printf "%s.resources.requests.cpu must not exceed its CPU limit" $component) -}}
+{{- end -}}
+{{- $memoryMultipliers := dict "Ki" 1 "Mi" 1024 "Gi" 1048576 "Ti" 1073741824 -}}
+{{- $memoryRequestText := toString $resources.requests.memory -}}
+{{- $memoryLimitText := toString $resources.limits.memory -}}
+{{- $memoryRequestUnit := regexFind `(Ki|Mi|Gi|Ti)$` $memoryRequestText -}}
+{{- $memoryLimitUnit := regexFind `(Ki|Mi|Gi|Ti)$` $memoryLimitText -}}
+{{- $memoryRequestKi := mul (int64 (trimSuffix $memoryRequestUnit $memoryRequestText)) (int64 (get $memoryMultipliers $memoryRequestUnit)) -}}
+{{- $memoryLimitKi := mul (int64 (trimSuffix $memoryLimitUnit $memoryLimitText)) (int64 (get $memoryMultipliers $memoryLimitUnit)) -}}
+{{- if gt $memoryRequestKi $memoryLimitKi -}}
+{{- fail (printf "%s.resources.requests.memory must not exceed its memory limit" $component) -}}
+{{- end -}}
+{{- end -}}
+{{- range $component, $pdb := dict "api" .Values.api.pdb "telemetryGateway" .Values.telemetryGateway.pdb "site" .Values.site.pdb -}}
+{{- if and $pdb.enabled (not (regexMatch `^([0-9]+|(100|[0-9]|[1-9][0-9])%)$` (toString $pdb.minAvailable))) -}}
+{{- fail (printf "%s.pdb.minAvailable must be a nonnegative integer or a percentage from 0%% to 100%%" $component) -}}
+{{- end -}}
+{{- end -}}
+{{- $labelKey := `^([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(\.[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)*/)?[A-Za-z0-9]([A-Za-z0-9_.-]{0,61}[A-Za-z0-9])?$` -}}
+{{- $labelValue := `^$|^[A-Za-z0-9]([A-Za-z0-9_.-]{0,61}[A-Za-z0-9])?$` -}}
+{{- range $mapName, $labels := dict "podLabels" .Values.podLabels "nodeSelector" .Values.nodeSelector "networkPolicy.ingressController.namespaceSelector" .Values.networkPolicy.ingressController.namespaceSelector "networkPolicy.ingressController.podSelector" .Values.networkPolicy.ingressController.podSelector "networkPolicy.dnsNamespaceSelector" .Values.networkPolicy.dnsNamespaceSelector "networkPolicy.dnsPodSelector" .Values.networkPolicy.dnsPodSelector -}}
+{{- range $key, $value := $labels -}}
+{{- if or (gt (len $key) 253) (not (regexMatch $labelKey $key)) -}}
+{{- fail (printf "%s[%s] must use Kubernetes label-key grammar" $mapName $key) -}}
+{{- end -}}
+{{- if or (gt (len $value) 63) (not (regexMatch $labelValue $value)) -}}
+{{- fail (printf "%s[%s] must use Kubernetes label-value grammar" $mapName $key) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- range $mapName, $selector := dict "networkPolicy.ingressController.namespaceSelector" .Values.networkPolicy.ingressController.namespaceSelector "networkPolicy.ingressController.podSelector" .Values.networkPolicy.ingressController.podSelector "networkPolicy.dnsNamespaceSelector" .Values.networkPolicy.dnsNamespaceSelector "networkPolicy.dnsPodSelector" .Values.networkPolicy.dnsPodSelector -}}
+{{- if empty $selector -}}
+{{- fail (printf "%s must contain at least one exact label" $mapName) -}}
+{{- end -}}
+{{- range $key, $value := $selector -}}
+{{- if empty $value -}}
+{{- fail (printf "%s[%s] must use a nonempty Kubernetes label value" $mapName $key) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- range $mapName, $annotations := dict "ingress.annotations" .Values.ingress.annotations "serviceAccount.annotations" .Values.serviceAccount.annotations "podAnnotations" .Values.podAnnotations -}}
+{{- range $key, $_ := $annotations -}}
+{{- if or (gt (len $key) 253) (not (regexMatch $labelKey $key)) -}}
+{{- fail (printf "%s[%s] must use Kubernetes annotation-key grammar" $mapName $key) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.alerting.enabled (ne .Values.alerting.policySha256 $alertPolicyDigest) -}}
+{{- fail "alerting.policySha256 must pin the exact packaged provider-neutral alert policy" -}}
+{{- end -}}
+{{- if and (not .Values.alerting.enabled) (not (empty .Values.alerting.policySha256)) -}}
+{{- fail "alerting.policySha256 must be empty when alerting.enabled=false" -}}
+{{- end -}}
+{{- if and .Values.alerting.enabled (ne .Values.environment "production") -}}
+{{- fail "the packaged alert policy is production-only and cannot be enabled for staging" -}}
+{{- end -}}
 {{- if empty .Values.secret.rotationVersion -}}{{- fail "secret.rotationVersion is required and must change on external Secret rotation" -}}{{- end -}}
 {{- $databaseKeys := list .Values.secret.apiDatabaseUrlKey .Values.secret.paperWorkerDatabaseUrlKey .Values.secret.metadataSyncDatabaseUrlKey .Values.secret.deletionWorkerDatabaseUrlKey .Values.secret.migrationDatabaseUrlKey -}}
 {{- if ne (len (uniq $databaseKeys)) (len $databaseKeys) -}}
@@ -25,8 +117,21 @@
 {{- if not (regexMatch $httpsOrigin .Values.public.mobileTelemetryOrigin) -}}
 {{- fail "public.mobileTelemetryOrigin must be an exact HTTPS origin" -}}
 {{- end -}}
-{{- if not (regexMatch $httpsOrigin .Values.public.oidcOrigin) -}}
-{{- fail "public.oidcOrigin must be an exact HTTPS origin without path, query, fragment, credentials, or wildcard" -}}
+{{- if not (regexMatch $networkPolicyHttpsOrigin .Values.public.oidcOrigin) -}}
+{{- fail "public.oidcOrigin must be an exact HTTPS origin on TCP/443 without path, query, fragment, credentials, or wildcard" -}}
+{{- end -}}
+{{- range $component, $endpoint := dict "public.siteOrigin" .Values.public.siteOrigin "public.apiOrigin" .Values.public.apiOrigin "public.mobileTelemetryOrigin" .Values.public.mobileTelemetryOrigin "public.oidcOrigin" .Values.public.oidcOrigin "public.oidcIssuer" .Values.public.oidcIssuer "paperWorker.llmBaseUrl" .Values.paperWorker.llmBaseUrl "deletionWorker.keycloakAdminBaseUrl" .Values.deletionWorker.keycloakAdminBaseUrl "otelCollector.exporterEndpoint" .Values.otelCollector.exporterEndpoint -}}
+{{- $endpointHost := trimPrefix "https://" (regexFind `^https://[^/:]+` $endpoint) -}}
+{{- if gt (len $endpointHost) 253 -}}
+{{- fail (printf "%s host must not exceed the DNS maximum of 253 characters" $component) -}}
+{{- end -}}
+{{- end -}}
+{{- $normalizedPublicOrigins := list (trimSuffix ":443" .Values.public.siteOrigin) (trimSuffix ":443" .Values.public.apiOrigin) (trimSuffix ":443" .Values.public.mobileTelemetryOrigin) (trimSuffix ":443" .Values.public.oidcOrigin) -}}
+{{- if ne (len (uniq $normalizedPublicOrigins)) (len $normalizedPublicOrigins) -}}
+{{- fail "site, API, telemetry, and OIDC public origins must use distinct hosts" -}}
+{{- end -}}
+{{- if or (gt (len .Values.public.oidcIssuer) 2048) (not (regexMatch $networkPolicyHttpsIssuer .Values.public.oidcIssuer)) -}}
+{{- fail "public.oidcIssuer must be a bounded HTTPS URL on TCP/443 below public.oidcOrigin with a nonempty safe path and no credentials, query, or fragment" -}}
 {{- end -}}
 {{- range $origin := list .Values.public.siteOrigin .Values.public.apiOrigin .Values.public.mobileTelemetryOrigin .Values.public.oidcOrigin -}}
 {{- $lowerOrigin := lower $origin -}}
@@ -123,6 +228,38 @@
 {{- fail "production requires at least two mobile telemetry gateway replicas" -}}
 {{- end -}}
 {{- if eq .Values.environment "production" -}}
+{{- if not .Values.alerting.enabled -}}
+{{- fail "production requires the packaged alert policy" -}}
+{{- end -}}
+{{- $evidenceByGate := dict "legal review" .Values.releaseEvidence.legalReviewId "app-reviewer flow" .Values.releaseEvidence.reviewerFlowId "strict content review" .Values.releaseEvidence.strictContentReviewId -}}
+{{- range $gate, $evidenceId := $evidenceByGate -}}
+{{- if not (regexMatch $digest $evidenceId) -}}
+{{- fail (printf "production requires an immutable sha256 release-evidence ID for %s" $gate) -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.features.comments (not .Values.features.accountDeletion) -}}
+{{- fail "production comments require the account-deletion feature and its policy controls" -}}
+{{- end -}}
+{{- if and .Values.features.accounts (not .Values.features.accountDeletion) -}}
+{{- fail "production accounts require the account-deletion feature and its policy controls" -}}
+{{- end -}}
+{{- if and .Values.features.comments (not (regexMatch $digest .Values.releaseEvidence.moderationReadinessId)) -}}
+{{- fail "production comments require an immutable moderation-readiness evidence ID" -}}
+{{- end -}}
+{{- if .Values.features.accountDeletion -}}
+{{- if not (regexMatch $digest .Values.releaseEvidence.accountDeletionE2eId) -}}
+{{- fail "production account deletion requires an immutable provider deletion E2E evidence ID" -}}
+{{- end -}}
+{{- if not (regexMatch $digest .Values.releaseEvidence.restoreDrillId) -}}
+{{- fail "production account deletion requires an immutable restore-drill evidence ID" -}}
+{{- end -}}
+{{- end -}}
+{{- $placeholderEvidenceIds := list (printf "sha256:%s" (repeat 64 "0")) (printf "sha256:%s" (repeat 64 "a")) (printf "sha256:%s" (repeat 64 "b")) (printf "sha256:%s" (repeat 64 "c")) (printf "sha256:%s" (repeat 64 "f")) -}}
+{{- range $gate, $evidenceId := dict "legalReviewId" .Values.releaseEvidence.legalReviewId "moderationReadinessId" .Values.releaseEvidence.moderationReadinessId "accountDeletionE2eId" .Values.releaseEvidence.accountDeletionE2eId "restoreDrillId" .Values.releaseEvidence.restoreDrillId "reviewerFlowId" .Values.releaseEvidence.reviewerFlowId "strictContentReviewId" .Values.releaseEvidence.strictContentReviewId -}}
+{{- if and (not (empty $evidenceId)) (has $evidenceId $placeholderEvidenceIds) -}}
+{{- fail (printf "production releaseEvidence.%s cannot use an obvious placeholder digest" $gate) -}}
+{{- end -}}
+{{- end -}}
 {{- range $imageDigest := list .Values.image.digest .Values.siteImage.digest .Values.grobid.image.digest .Values.otelCollector.image.digest -}}
 {{- if has $imageDigest (list (printf "sha256:%s" (repeat 64 "a")) (printf "sha256:%s" (repeat 64 "b")) (printf "sha256:%s" (repeat 64 "c")) (printf "sha256:%s" (repeat 64 "0"))) -}}
 {{- fail "production image digests must be signed release artifacts, not render fixtures" -}}
@@ -152,6 +289,10 @@
 {{- if and .Values.features.comments (lt (int .Values.api.databasePoolSize) 2) -}}
 {{- fail "features.comments requires api.databasePoolSize>=2 for coordinated writes" -}}
 {{- end -}}
+{{- $apiMaximumTimeout := max (int .Values.api.requestTimeoutSeconds) (int .Values.api.chatTimeoutSeconds) -}}
+{{- if le (int .Values.api.terminationGracePeriodSeconds) (add $apiMaximumTimeout 5) -}}
+{{- fail "api.terminationGracePeriodSeconds must exceed the maximum request/chat timeout plus the five-second preStop budget" -}}
+{{- end -}}
 {{- $serviceAccountBase := default (include "pakperk.fullname" .) .Values.serviceAccount.name -}}
 {{- if not (regexMatch `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$` $serviceAccountBase) -}}
 {{- fail "the derived ServiceAccount base must be one DNS label" -}}
@@ -169,6 +310,9 @@
 {{- if empty .Values.api.trustedProxyCidrs -}}
 {{- fail "api.trustedProxyCidrs is required for trustworthy anonymous prepare/chat and comment origin limits" -}}
 {{- end -}}
+{{- if gt (len .Values.api.trustedProxyCidrs) 64 -}}
+{{- fail "api.trustedProxyCidrs must contain at most 64 CIDR ranges" -}}
+{{- end -}}
 {{- range $cidr := .Values.api.trustedProxyCidrs -}}
 {{- if or (eq $cidr "0.0.0.0/0") (eq $cidr "::/0") -}}
 {{- fail "api.trustedProxyCidrs cannot trust an internet-wide range" -}}
@@ -184,20 +328,23 @@
 {{- if and .Values.features.accountDeletion (not .Values.deletionWorker.enabled) -}}
 {{- fail "account deletion requires the deletion worker" -}}
 {{- end -}}
-{{- if and .Values.features.accountDeletion (empty .Values.deletionLedger.existingClaim) -}}
-{{- fail "account deletion requires a separately backed-up deletionLedger.existingClaim" -}}
+{{- if and (or .Values.features.accountDeletion .Values.deletionWorker.enabled) (empty .Values.deletionLedger.existingClaim) -}}
+{{- fail "account deletion or an enabled deletion worker requires a separately backed-up deletionLedger.existingClaim" -}}
 {{- end -}}
-{{- if and .Values.features.accountDeletion (empty .Values.deletionLedger.environmentId) -}}
-{{- fail "account deletion requires deletionLedger.environmentId" -}}
+{{- if and (not (empty .Values.deletionLedger.existingClaim)) (not (regexMatch $kubeName .Values.deletionLedger.existingClaim)) -}}
+{{- fail "deletionLedger.existingClaim must be a valid Kubernetes DNS-subdomain name" -}}
 {{- end -}}
-{{- if and .Values.features.accountDeletion (ne .Values.deletionLedger.environmentId .Values.environment) -}}
+{{- if and (or .Values.features.accountDeletion .Values.deletionWorker.enabled) (empty .Values.deletionLedger.environmentId) -}}
+{{- fail "account deletion or an enabled deletion worker requires deletionLedger.environmentId" -}}
+{{- end -}}
+{{- if and (or .Values.features.accountDeletion .Values.deletionWorker.enabled) (ne .Values.deletionLedger.environmentId .Values.environment) -}}
 {{- fail "deletionLedger.environmentId must exactly equal the canonical environment" -}}
 {{- end -}}
 {{- if and .Values.deletionWorker.enabled (or (empty .Values.deletionWorker.keycloakAdminBaseUrl) (empty .Values.deletionWorker.keycloakRealm) (empty .Values.deletionWorker.keycloakAdminClientId)) -}}
 {{- fail "deletionWorker requires Keycloak admin base URL, realm, and client ID" -}}
 {{- end -}}
-{{- if and .Values.deletionWorker.enabled (not (regexMatch `^https://[A-Za-z0-9.-]+(?::[0-9]{1,5})?/?$` .Values.deletionWorker.keycloakAdminBaseUrl)) -}}
-{{- fail "deletionWorker.keycloakAdminBaseUrl must be an exact HTTPS origin" -}}
+{{- if and .Values.deletionWorker.enabled (not (regexMatch $networkPolicyHttpsBaseUrl .Values.deletionWorker.keycloakAdminBaseUrl)) -}}
+{{- fail "deletionWorker.keycloakAdminBaseUrl must be an exact HTTPS origin on TCP/443" -}}
 {{- end -}}
 {{- if and .Values.deletionWorker.enabled (not (hasSuffix (printf "/realms/%s" .Values.deletionWorker.keycloakRealm) .Values.public.oidcIssuer)) -}}
 {{- fail "public.oidcIssuer must end with /realms/{deletionWorker.keycloakRealm}" -}}
@@ -205,20 +352,59 @@
 {{- if and .Values.deletionWorker.enabled (gt (add (int .Values.deletionWorker.stepTimeoutSeconds) 2) (int .Values.deletionWorker.leaseSeconds)) -}}
 {{- fail "deletionWorker.stepTimeoutSeconds must be at most leaseSeconds minus two" -}}
 {{- end -}}
+{{- if and .Values.deletionWorker.enabled (gt (int .Values.deletionWorker.stepTimeoutSeconds) 1800) -}}
+{{- fail "deletionWorker.stepTimeoutSeconds must not exceed the runtime maximum of 1800" -}}
+{{- end -}}
+{{- if and .Values.deletionWorker.enabled (ge (int .Values.deletionWorker.pollIntervalMs) (mul (int .Values.deletionWorker.leaseSeconds) 1000)) -}}
+{{- fail "deletionWorker.pollIntervalMs must be shorter than leaseSeconds" -}}
+{{- end -}}
+{{- if and .Values.deletionWorker.enabled (ge (int .Values.deletionWorker.retryBaseSeconds) (int .Values.deletionWorker.retryMaxSeconds)) -}}
+{{- fail "deletionWorker.retryBaseSeconds must be shorter than retryMaxSeconds" -}}
+{{- end -}}
 {{- if and .Values.deletionWorker.enabled (le (int .Values.deletionWorker.terminationGracePeriodSeconds) (int .Values.deletionWorker.leaseSeconds)) -}}
 {{- fail "deletionWorker.terminationGracePeriodSeconds must exceed leaseSeconds" -}}
 {{- end -}}
 {{- if and .Values.deletionWorker.enabled (le (int .Values.deletionLedger.retentionDays) (int .Values.deletionWorker.recoverableBackupDays)) -}}
 {{- fail "deletionLedger.retentionDays must exceed deletionWorker.recoverableBackupDays" -}}
 {{- end -}}
+{{- if and .Values.deletionWorker.enabled (lt (int .Values.deletionLedger.retentionDays) (int .Values.deletionLedger.securityRetentionDays)) -}}
+{{- fail "deletionLedger.retentionDays must be at least deletionLedger.securityRetentionDays" -}}
+{{- end -}}
 {{- if and .Values.paperWorker.enabled (ne .Values.paperWorker.llmProvider "openai_compatible") -}}
 {{- fail "deployed paper workers require paperWorker.llmProvider=openai_compatible" -}}
+{{- end -}}
+{{- if and .Values.paperWorker.enabled (ge (int .Values.paperWorker.pollIntervalMs) (mul (int .Values.paperWorker.leaseSeconds) 1000)) -}}
+{{- fail "paperWorker.pollIntervalMs must be shorter than leaseSeconds" -}}
+{{- end -}}
+{{- if and .Values.paperWorker.enabled (le (int .Values.paperWorker.terminationGracePeriodSeconds) (int .Values.paperWorker.leaseSeconds)) -}}
+{{- fail "paperWorker.terminationGracePeriodSeconds must exceed leaseSeconds" -}}
+{{- end -}}
+{{- if and .Values.paperWorker.enabled (not (regexMatch `[^,[:space:]]` .Values.paperWorker.arxivCategories)) -}}
+{{- fail "paperWorker.arxivCategories must contain at least one nonempty category" -}}
+{{- end -}}
+{{- if .Values.paperWorker.enabled -}}
+{{- range $rawCategory := splitList "," .Values.paperWorker.arxivCategories -}}
+{{- $category := trim $rawCategory -}}
+{{- if and (not (empty $category)) (not (regexMatch `^[A-Za-z][A-Za-z0-9-]*(\.[A-Za-z][A-Za-z0-9-]*)?$` $category)) -}}
+{{- fail "every paperWorker.arxivCategories entry must use the runtime arXiv category grammar" -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- if and .Values.paperWorker.enabled (or (empty .Values.paperWorker.llmBaseUrl) (empty .Values.paperWorker.llmChatModel) (empty .Values.paperWorker.llmEmbeddingModel) (empty .Values.paperWorker.arxivContactEmail)) -}}
 {{- fail "deployed paper workers require LLM coordinates/models and an arXiv contact" -}}
 {{- end -}}
-{{- if and .Values.paperWorker.enabled (not (regexMatch `^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~!$&'()*+,;=:@%-]*)*/?$` .Values.paperWorker.llmBaseUrl)) -}}
-{{- fail "paperWorker.llmBaseUrl must be a credential-free HTTPS URL without query or fragment" -}}
+{{- if .Values.paperWorker.enabled -}}
+{{- $arxivContact := trim .Values.paperWorker.arxivContactEmail -}}
+{{- $arxivContactDomain := lower (regexFind `[^@]+$` $arxivContact) -}}
+{{- if or (ne $arxivContact .Values.paperWorker.arxivContactEmail) (not (regexMatch `^[A-Za-z0-9._%+-]+@[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(\.[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)+$` $arxivContact)) (has $arxivContactDomain (list "example.com" "example.org" "example.net")) (hasSuffix ".invalid" $arxivContactDomain) -}}
+{{- fail "paperWorker.arxivContactEmail must be a monitored, non-placeholder email address" -}}
+{{- end -}}
+{{- if or (not (regexMatch `^[A-Za-z0-9._/:-]{1,128}$` .Values.paperWorker.llmChatModel)) (not (regexMatch `^[A-Za-z0-9._/:-]{1,128}$` .Values.paperWorker.llmEmbeddingModel)) -}}
+{{- fail "paperWorker model IDs must contain 1 to 128 safe provider identifier characters" -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.paperWorker.enabled (not (regexMatch $modelProviderUrl .Values.paperWorker.llmBaseUrl)) -}}
+{{- fail "paperWorker.llmBaseUrl must be a credential-free HTTPS URL on TCP/443 without query or fragment" -}}
 {{- end -}}
 {{- if and .Values.paperWorker.enabled (or (contains "localhost" (lower .Values.paperWorker.llmBaseUrl)) (regexMatch `^https://127\.` .Values.paperWorker.llmBaseUrl)) -}}
 {{- fail "paperWorker.llmBaseUrl must not use a loopback host" -}}
@@ -229,20 +415,76 @@
 {{- if empty .Values.otelCollector.exporterEndpoint -}}
 {{- fail "otelCollector.exporterEndpoint is required" -}}
 {{- end -}}
-{{- if not (regexMatch `^https://[A-Za-z0-9.-]+:[0-9]{1,5}/?$` .Values.otelCollector.exporterEndpoint) -}}
+{{- if not (regexMatch $telemetryExporterUrl .Values.otelCollector.exporterEndpoint) -}}
 {{- fail "otelCollector.exporterEndpoint must be a credential-free HTTPS host:port without path, query, or fragment" -}}
 {{- end -}}
 {{- if not (hasSuffix (printf ":%d" (int .Values.networkPolicy.telemetryPort)) (trimSuffix "/" .Values.otelCollector.exporterEndpoint)) -}}
 {{- fail "otelCollector.exporterEndpoint port must match networkPolicy.telemetryPort" -}}
 {{- end -}}
+{{- range $component, $endpoint := dict "paperWorker.llmBaseUrl" .Values.paperWorker.llmBaseUrl "deletionWorker.keycloakAdminBaseUrl" .Values.deletionWorker.keycloakAdminBaseUrl "otelCollector.exporterEndpoint" .Values.otelCollector.exporterEndpoint -}}
+{{- if not (empty $endpoint) -}}
+{{- $lowerEndpoint := lower $endpoint -}}
+{{- if or (contains "localhost" $lowerEndpoint) (contains ".local" $lowerEndpoint) (contains ".test" $lowerEndpoint) (contains ".invalid" $lowerEndpoint) (contains ".example" $lowerEndpoint) (contains "example.com" $lowerEndpoint) (contains "example.org" $lowerEndpoint) (contains "example.net" $lowerEndpoint) -}}
+{{- fail (printf "%s must not use a loopback, local, reserved, or placeholder host" $component) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- if and .Values.migration.enabled (empty .Values.migration.confirmBackupId) -}}
 {{- fail "migration.confirmBackupId is required as evidence of the verified pre-deploy backup" -}}
 {{- end -}}
-{{- if and .Values.metadataSync.enabled (empty .Values.metadataSync.manifestJson) -}}
-{{- fail "metadataSync.manifestJson is required when scheduled metadata sync is enabled" -}}
+{{- if .Values.migration.enabled -}}
+{{- if not (regexMatch `^[A-Za-z0-9._:-]{8,128}$` .Values.migration.confirmBackupId) -}}
+{{- fail "migration.confirmBackupId must contain 8 to 128 safe identifier characters" -}}
+{{- end -}}
+{{- $migrationBackupId := lower .Values.migration.confirmBackupId -}}
+{{- range $marker := list "placeholder" "example" "changeme" "replace" "unknown" "todo" -}}
+{{- if contains $marker $migrationBackupId -}}
+{{- fail "migration.confirmBackupId must identify a verified real backup" -}}
+{{- end -}}
+{{- end -}}
+{{- if ne (int .Values.migration.expectedVersion) 9 -}}
+{{- fail "migration.expectedVersion must match embedded migration version 9" -}}
+{{- end -}}
+{{- end -}}
+{{- if .Values.metadataSync.enabled -}}
+{{- if not (regexMatch `^(\*|\*/([1-9]|[1-5][0-9])|[0-9]|[1-5][0-9]) (\*|\*/([1-9]|1[0-9]|2[0-3])|[0-9]|1[0-9]|2[0-3]) (\*|\*/([1-9]|[12][0-9]|3[01])|[1-9]|[12][0-9]|3[01]) (\*|\*/([1-9]|1[0-2])|[1-9]|1[0-2]) (\*|\*/[1-7]|[0-7])$` .Values.metadataSync.schedule) -}}
+{{- fail "metadataSync.schedule must be a bounded five-field numeric or wildcard Cron schedule" -}}
+{{- end -}}
+{{- if or (empty .Values.metadataSync.manifestJson) (gt (len .Values.metadataSync.manifestJson) 1048000) -}}
+{{- fail "metadataSync.manifestJson must contain 1 to 1048000 bytes" -}}
+{{- end -}}
+{{- $metadataManifest := fromJson .Values.metadataSync.manifestJson -}}
+{{- if or (eq (toJson $metadataManifest) "null") (not (kindIs "map" $metadataManifest)) (hasKey $metadataManifest "Error") -}}
+{{- fail "metadataSync.manifestJson must be a valid JSON object" -}}
+{{- end -}}
+{{- $metadataPapers := get $metadataManifest "papers" -}}
+{{- if not (kindIs "slice" $metadataPapers) -}}
+{{- fail "metadataSync.manifestJson must contain a papers array" -}}
+{{- end -}}
+{{- if or (eq (len $metadataPapers) 0) (gt (len $metadataPapers) 2000) -}}
+{{- fail "metadataSync.manifestJson must contain 1 to 2000 papers" -}}
+{{- end -}}
+{{- range $paper := $metadataPapers -}}
+{{- if not (kindIs "map" $paper) -}}
+{{- fail "every metadataSync manifest paper must be an object with a canonical arxiv_id" -}}
+{{- end -}}
+{{- $arxivId := get $paper "arxiv_id" -}}
+{{- if or (not (kindIs "string" $arxivId)) (not (regexMatch `^([0-9]{4}\.[0-9]{4,5}|[A-Za-z][A-Za-z0-9.-]*/[0-9]{7})(v[1-9][0-9]{0,8})?$` (toString $arxivId))) -}}
+{{- fail "every metadataSync manifest paper must be an object with a canonical arxiv_id" -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- if and .Values.ingress.enabled (or (empty .Values.ingress.siteHost) (empty .Values.ingress.apiHost) (empty .Values.ingress.telemetryHost) (empty .Values.ingress.tlsSecretName)) -}}
 {{- fail "ingress siteHost, apiHost, telemetryHost, and tlsSecretName are required" -}}
+{{- end -}}
+{{- if and .Values.ingress.enabled (ne (len (uniq (list .Values.ingress.siteHost .Values.ingress.apiHost .Values.ingress.telemetryHost))) 3) -}}
+{{- fail "ingress.siteHost, apiHost, and telemetryHost must be pairwise distinct" -}}
+{{- end -}}
+{{- if and .Values.ingress.enabled (not (regexMatch $kubeName .Values.ingress.tlsSecretName)) -}}
+{{- fail "ingress.tlsSecretName must be a valid Kubernetes DNS-subdomain name" -}}
+{{- end -}}
+{{- if and (not (empty .Values.ingress.className)) (not (regexMatch $kubeName .Values.ingress.className)) -}}
+{{- fail "ingress.className must be a valid Kubernetes DNS-subdomain name" -}}
 {{- end -}}
 {{- if and .Values.ingress.enabled (ne .Values.public.siteOrigin (printf "https://%s" .Values.ingress.siteHost)) -}}
 {{- fail "public.siteOrigin must exactly match ingress.siteHost" -}}

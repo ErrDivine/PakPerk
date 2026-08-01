@@ -11,7 +11,7 @@ abstract final class PakPerkColors {
   static const paperRaised = Color(0xFFFFFCF5);
   static const moss = Color(0xFF315C47);
   static const mossSoft = Color(0xFFDCE9DF);
-  static const ochre = Color(0xFF9B6427);
+  static const ochre = Color(0xFF9A6326);
   static const outline = Color(0xFFD4CEC0);
   static const error = Color(0xFF9B2C2C);
 

@@ -48,6 +48,8 @@ telemetry gateway, OTLP deployment, Helm topology, security/SBOM jobs, signed
 candidate workflow, and operational runbooks are implemented. The
 [Phase 6 report](docs/phase-reports/phase-6.md) distinguishes repository evidence
 from the public/store/deployed evidence that is still required.
+The opt-in [backend staging load runbook](docs/runbooks/backend-load-testing.md)
+defines the bounded, redacted HTTP latency gate and its mobile-only limitations.
 
 The accepted Phase 4 API uses authenticated list/change/save/remove routes with durable
 operation IDs, server revisions, removal tombstones, and an independent

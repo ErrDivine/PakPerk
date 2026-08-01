@@ -91,6 +91,19 @@ class WorkflowPinTests(unittest.TestCase):
     steps:
       - name: Mutable action
         uses: owner/action@v1
+                """
+            )
+
+    def test_duplicate_job_steps_key_fails(self):
+        sha = "d" * 40
+        with self.assertRaisesRegex(RuntimeError, "repeats the steps key"):
+            self.validate(
+                f"""jobs:
+  test:
+    steps:
+      - uses: owner/action@{sha}
+    steps:
+      - uses: owner/another@{sha}
 """
             )
 

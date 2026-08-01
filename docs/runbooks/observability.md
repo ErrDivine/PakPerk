@@ -44,6 +44,29 @@ trackers or long-lived test fixtures.
 
 ## Verification and alerts
 
+The reviewed, provider-neutral rule contract is
+`deploy/helm/pakperk/files/alerts/pakperk-production-alert-policy.json`.
+`scripts/validate_alert_policy.py` fixes the required signal, threshold,
+missing-data behavior, role owner, notification class, and runbook for every
+rule below. The Helm chart verifies `alerting.policySha256` against the exact
+packaged bytes and deploys those bytes in a content-addressed, immutable
+ConfigMap. This makes the released policy auditable; a ConfigMap is not an
+alert engine and is not evidence that paging works.
+
+The platform adapter must import every rule without weakening it, supply the
+declared external synthetic/database/Kubernetes/Collector inputs, and retain
+immutable evidence of the imported policy digest, enabled rule IDs, receiver
+ownership, and successful staging page/ticket canaries. Collector failure
+signals must be observed outside the Collector's own failing export path. Do
+not enable production feature gates merely because repository validation or a
+Helm render passed.
+
+The packaged policy is deliberately production-only: its exact filters select
+production resource and service identities. Staging canaries must use a
+separately imported copy whose resource filters select staging, and that
+staging policy needs its own immutable adapter evidence. The chart rejects
+mounting the packaged production policy in a staging release.
+
 Before release:
 
 1. Run `scripts/test_backend_log_export.sh` with the chart-pinned Collector. It
@@ -61,12 +84,13 @@ Before release:
 4. Restart one agent in staging and record replay volume/duplicates and recovery
    time. Verify node coverage and that log rotation cannot outgrow storage.
 
-Alert on API readiness/error/latency and database saturation; paper/deletion
-queue age and terminal failure; moderation report age; authentication recovery
-failure; Collector rejected/dropped/export-failed data; missing node agents;
-telemetry gateway rejection spikes; and deletion-ledger verification/capacity.
-Alerts contain aggregates only. Each alert links its owner and the applicable
-incident/deletion/moderation runbook.
+The immutable policy alerts on API readiness/error/latency and database
+saturation; paper/deletion queue age and terminal failure; moderation report
+age; authentication recovery failure; Collector rejected/dropped/export-failed
+data; missing node agents; telemetry gateway rejection spikes; and
+deletion-ledger verification/capacity. Alerts contain aggregates only. Each
+alert links its role owner and the applicable incident/deletion/moderation
+runbook.
 
 If redaction, exporter credentials, sink access, or retention is wrong, stop
 the affected export, preserve bounded evidence, rotate credentials when needed,

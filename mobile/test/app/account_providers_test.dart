@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -126,6 +127,51 @@ void main() {
       expect(container.read(authSessionProvider).isAuthenticated, isTrue);
       expect(container.read(currentAccountProvider).profile?.id, accountId);
       expect(tokens.record?.accountId, accountId);
+    },
+  );
+
+  test(
+    'repair preserves the single in-flight startup session inspection',
+    () async {
+      final delegate = _StartupDelegate();
+      final tokens = _GatedSecureTokenStore();
+      final store = MemoryLocalStore();
+      final container = ProviderContainer(
+        overrides: [
+          appBuildConfigProvider.overrideWithValue(_accountConfig()),
+          localStoreProvider.overrideWithValue(store),
+          initialAnonymousSessionIdProvider.overrideWithValue(
+            await store.getOrCreateSessionId(),
+          ),
+          oidcClientProvider.overrideWithValue(FakeOidcClient()),
+          secureTokenStoreProvider.overrideWithValue(tokens),
+          ...accountApplicationOverrides(delegate),
+        ],
+      );
+      addTearDown(container.dispose);
+      final startup = container.read(startupBootstrapperProvider);
+
+      final first = startup.checkAuthenticatedSession();
+      while (tokens.readCalls == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      await startup.repairLocalStatePreservingCredentials();
+      final second = startup.checkAuthenticatedSession();
+      expect(second, same(first));
+
+      expect(tokens.readCalls, 1);
+      expect(delegate.repairCalls, 1);
+      expect(delegate.storeLeaseCalls, 1);
+      tokens.readResult.complete(null);
+      expect(
+        await Future.wait([first, second]),
+        everyElement(StartupSessionStatus.anonymous),
+      );
+      expect(tokens.readCalls, 1);
+
+      await startup.checkAuthenticatedSession();
+      expect(tokens.readCalls, 2, reason: 'a completed inspection is reusable');
+      expect(delegate.storeLeaseCalls, 2);
     },
   );
 
@@ -308,7 +354,10 @@ AppBuildConfig _flavorAccountConfig(AppEnvironment environment) {
   });
 }
 
-final class _StartupDelegate implements StartupBootstrapper {
+final class _StartupDelegate
+    implements StartupBootstrapper, StartupLocalStoreLeaseCoordinator {
+  int repairCalls = 0;
+  int storeLeaseCalls = 0;
   int postReadyCalls = 0;
 
   @override
@@ -319,12 +368,37 @@ final class _StartupDelegate implements StartupBootstrapper {
       StartupSessionStatus.anonymous;
 
   @override
-  Future<void> repairLocalStatePreservingCredentials() async {}
+  Future<void> repairLocalStatePreservingCredentials() async {
+    repairCalls += 1;
+  }
 
   @override
   Future<void> runPostReadyWork() async {
     postReadyCalls += 1;
   }
+
+  @override
+  Future<T> withStartupLocalStoreLease<T>(Future<T> Function() operation) {
+    storeLeaseCalls += 1;
+    return operation();
+  }
+}
+
+final class _GatedSecureTokenStore implements SecureTokenStore {
+  final readResult = Completer<SecureAuthRecord?>();
+  int readCalls = 0;
+
+  @override
+  Future<SecureAuthRecord?> read() {
+    readCalls += 1;
+    return readResult.future;
+  }
+
+  @override
+  Future<void> write(SecureAuthRecord record) async {}
+
+  @override
+  Future<void> clear() async {}
 }
 
 final class _AccountAdapter implements HttpClientAdapter {
