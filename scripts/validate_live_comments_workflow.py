@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pathlib
 import re
@@ -23,8 +24,24 @@ DEFAULT_RELEASE_RUNBOOK = ROOT / "docs/runbooks/release.md"
 DEFAULT_CI = ROOT / ".github/workflows/ci.yml"
 DEFAULT_CHECK = ROOT / "scripts/check.sh"
 CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-UPLOAD_ACTION = (
-    "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+UPLOAD_ACTION = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+EXPECTED_SOURCE_STEP_SHA256 = (
+    "f586094ef94bf80c2a41a342729b21a6691b2dccc4f7c5d5d12e8a9460a1fb6f"
+)
+EXPECTED_TRIGGER_SHA256 = (
+    "9bef5dddf168d63576ae6113caf9d0eaa3f7adb4406f13f6cf656419fc67ab7b"
+)
+EXPECTED_STEP_ITEMS_SHA256 = (
+    "b4a5239a1aac2d3df063e602d8ce6ee4713ab90a86c1bf49250a1913e555aea4"
+)
+EXPECTED_CHECKOUT_STEP_SHA256 = (
+    "6bc05ec1a7fbb3a14b447485291230172fdfe398392d701d6fc4ec2a09b4ca50"
+)
+EXPECTED_ENFORCEMENT_STEP_SHA256 = (
+    "b6ab966d9941c65763475ba780104259ac47f7bd4c3de95052ba9f504593e546"
+)
+EXPECTED_JOB_ENV_SHA256 = (
+    "5bf081dc06c458901ecb4bf8202a8f865175950ebf11ac06e9e5cf4aa6791c8c"
 )
 EXPECTED_REQUIREMENTS = {
     "beautifulsoup4": (
@@ -85,6 +102,20 @@ def _step_block(source: str, marker: str, label: str) -> str:
     return source[start:] if end < 0 else source[start:end]
 
 
+def _mapping_keys(source: str, indent: int) -> list[str]:
+    prefix = " " * indent
+    nested_prefix = prefix + " "
+    keys: list[str] = []
+    for raw_line in source.splitlines():
+        if not raw_line.startswith(prefix) or raw_line.startswith(nested_prefix):
+            continue
+        content = raw_line[indent:]
+        if not content or content.startswith("#") or ":" not in content:
+            continue
+        keys.append(content.partition(":")[0].strip())
+    return keys
+
+
 def _validate_requirements(path: pathlib.Path) -> None:
     resolved: dict[str, tuple[str, str]] = {}
     for line_number, raw_line in enumerate(
@@ -103,7 +134,9 @@ def _validate_requirements(path: pathlib.Path) -> None:
             raise RuntimeError(f"live-comments requirement is duplicated: {name}")
         resolved[name] = (version, digest)
     if resolved != EXPECTED_REQUIREMENTS:
-        raise RuntimeError("live-comments Python dependency graph changed without review")
+        raise RuntimeError(
+            "live-comments Python dependency graph changed without review"
+        )
 
 
 def _validate_compose(path: pathlib.Path) -> None:
@@ -137,7 +170,9 @@ def _validate_admin_client(path: pathlib.Path) -> None:
     clients = document.get("clients")
     if not isinstance(clients, list):
         raise RuntimeError("Keycloak realm clients must be a list")
-    matches = [client for client in clients if client.get("clientId") == "pakperk-admin-dev"]
+    matches = [
+        client for client in clients if client.get("clientId") == "pakperk-admin-dev"
+    ]
     if len(matches) != 1:
         raise RuntimeError("Keycloak realm must contain one dedicated admin client")
     client = matches[0]
@@ -213,9 +248,10 @@ def _validate_non_release_evidence_identity(
         raise RuntimeError("Helm release-evidence ID pattern changed without review")
     reference_id = "reference-sha256:" + "a" * 64
     release_id = "sha256:" + "a" * 64
-    if re.fullmatch(release_pattern, reference_id) is not None or re.fullmatch(
-        release_pattern, release_id
-    ) is None:
+    if (
+        re.fullmatch(release_pattern, reference_id) is not None
+        or re.fullmatch(release_pattern, release_id) is None
+    ):
         raise RuntimeError(
             "disposable reference evidence is not separated from release evidence"
         )
@@ -240,12 +276,16 @@ def _validate_manual_evidence_docs(
         "deployment-branch restriction",
         "cannot prove that the GitHub-hosted reviewer and deployment-branch rules exist",
     ):
-        _require(documents["Keycloak acceptance runbook"], fragment, "hosted prerequisite")
+        _require(
+            documents["Keycloak acceptance runbook"], fragment, "hosted prerequisite"
+        )
     for fragment in (
         "do not create or attest those out-of-band protection settings",
         "never a protected-environment claim",
     ):
-        _require(documents["moderation runbook"], fragment, "truthful moderation evidence")
+        _require(
+            documents["moderation runbook"], fragment, "truthful moderation evidence"
+        )
     _require(
         documents["release runbook"],
         "it does not attest GitHub environment\nprotection",
@@ -271,9 +311,7 @@ def validate(
     _validate_compose(compose)
     _validate_admin_client(realm)
     _validate_non_release_evidence_identity(evidence_contract, helm_schema)
-    _validate_manual_evidence_docs(
-        keycloak_readme, moderation_runbook, release_runbook
-    )
+    _validate_manual_evidence_docs(keycloak_readme, moderation_runbook, release_runbook)
     harness_source = harness.read_text(encoding="utf-8")
     _require(
         harness_source,
@@ -282,12 +320,23 @@ def validate(
     )
 
     source = workflow.read_text(encoding="utf-8")
-    trigger_end = source.index("\npermissions:")
-    trigger = source[:trigger_end]
-    if trigger.count("workflow_dispatch:") != 1 or re.search(
-        r"(?m)^  (?:pull_request|push|schedule|workflow_run):", trigger
-    ):
+    if _mapping_keys(source, 0) != [
+        "name",
+        "on",
+        "permissions",
+        "concurrency",
+        "jobs",
+    ]:
+        raise RuntimeError("live-comments workflow root mapping changed")
+    if re.search(r"(?m)^\s*<<\s*:", source):
+        raise RuntimeError("live-comments workflow must not use YAML merge keys")
+    trigger_start = source.index("\non:\n") + 1
+    trigger_end = source.index("\npermissions:", trigger_start)
+    trigger = source[trigger_start:trigger_end]
+    if _mapping_keys(trigger, 2) != ["workflow_dispatch"]:
         raise RuntimeError("live-comments acceptance must be manual-dispatch only")
+    if hashlib.sha256(trigger.encode("utf-8")).hexdigest() != EXPECTED_TRIGGER_SHA256:
+        raise RuntimeError("live-comments dispatch schema changed")
     for input_name in ("source_revision", "confirmation"):
         if trigger.count(f"      {input_name}:") != 1:
             raise RuntimeError(f"workflow must define one required {input_name} input")
@@ -296,11 +345,72 @@ def validate(
     permissions = source[trigger_end + 1 : permissions_end].strip()
     if permissions != "permissions:\n  contents: read":
         raise RuntimeError("live-comments workflow permissions are not least privilege")
+    concurrency_end = source.index("\njobs:\n", permissions_end)
+    if source[permissions_end + 1 : concurrency_end].strip() != (
+        "concurrency:\n"
+        "  group: live-comments-acceptance\n"
+        "  cancel-in-progress: false"
+    ):
+        raise RuntimeError(
+            "live-comments concurrency must be bounded and non-cancelling"
+        )
+
+    if source.count("\njobs:\n") != 1:
+        raise RuntimeError("live-comments workflow job boundary is malformed")
+    jobs = source[source.index("\njobs:\n") + len("\njobs:\n") :]
+    if _mapping_keys(jobs, 2) != ["disposable-comments"]:
+        raise RuntimeError(
+            "live-comments workflow must contain exactly one bounded job"
+        )
+    job_start = source.index("  disposable-comments:\n", source.index("\njobs:\n"))
+    env_start = source.index("    env:\n", job_start)
+    expected_job_prefix = (
+        "  disposable-comments:\n"
+        "    runs-on: ubuntu-24.04\n"
+        "    environment: live-comments-acceptance\n"
+        "    timeout-minutes: 45\n"
+    )
+    if source[job_start:env_start] != expected_job_prefix:
+        raise RuntimeError(
+            "live-comments job execution boundary changed; job-level conditions are fail-open"
+        )
+    steps_start = source.index("    steps:\n", env_start)
+    job_env = source[env_start:steps_start].removesuffix("\n")
+    if hashlib.sha256(job_env.encode("utf-8")).hexdigest() != EXPECTED_JOB_ENV_SHA256:
+        raise RuntimeError("live-comments inherited job environment changed")
+    if _mapping_keys(source[job_start:], 4) != [
+        "runs-on",
+        "environment",
+        "timeout-minutes",
+        "env",
+        "steps",
+    ]:
+        raise RuntimeError(
+            "live-comments job contains an unexpected or reordered job-level key"
+        )
+    step_items = re.findall(r"(?m)^      -[^\n]*$", source[steps_start:])
+    if any(
+        re.fullmatch(r"      - (?:name: .+|uses: [^ #]+(?: # .+)?)", item) is None
+        for item in step_items
+    ):
+        raise RuntimeError("live-comments workflow contains a non-canonical step item")
+    step_item_contract = "\n".join(step_items) + "\n"
+    if (
+        hashlib.sha256(step_item_contract.encode("utf-8")).hexdigest()
+        != EXPECTED_STEP_ITEMS_SHA256
+    ):
+        raise RuntimeError("live-comments workflow step surface changed")
+    if step_items[:2] != [
+        f"      - uses: {CHECKOUT_ACTION} # v7.0.1",
+        "      - name: Verify exact reviewed main source",
+    ]:
+        raise RuntimeError(
+            "live-comments workflow must establish source trust before executable work"
+        )
 
     for fragment in (
         "group: live-comments-acceptance",
         "cancel-in-progress: false",
-        "if: github.ref == 'refs/heads/main'",
         "runs-on: ubuntu-24.04",
         "environment: live-comments-acceptance",
         "timeout-minutes: 45\n",
@@ -317,20 +427,36 @@ def validate(
         f"      - uses: {CHECKOUT_ACTION}",
         "reviewed checkout step",
     )
-    for fragment in (
-        "ref: ${{ inputs.source_revision }}",
-        "fetch-depth: 0",
-        "persist-credentials: false",
+    if (
+        hashlib.sha256(checkout.encode("utf-8")).hexdigest()
+        != EXPECTED_CHECKOUT_STEP_SHA256
     ):
-        _require(checkout, fragment, "reviewed checkout step")
+        raise RuntimeError("reviewed checkout step changed")
+    if re.findall(r"(?m)^        ([a-z][a-z0-9-]*):", checkout) != ["with"]:
+        raise RuntimeError("reviewed checkout step has an unexpected step key")
+    expected_checkout = (
+        "        with:\n"
+        "          ref: ${{ inputs.source_revision }}\n"
+        "          fetch-depth: 0\n"
+        "          persist-credentials: false\n"
+    )
+    if checkout[checkout.index("        with:\n") :] != expected_checkout:
+        raise RuntimeError("reviewed checkout step inputs changed")
 
     source_step = _step_block(
         source,
         "      - name: Verify exact reviewed main source\n",
         "source verification step",
     )
+    if (
+        hashlib.sha256(source_step.encode("utf-8")).hexdigest()
+        != EXPECTED_SOURCE_STEP_SHA256
+    ):
+        raise RuntimeError("exact reviewed source verification command changed")
     for fragment in (
+        "DISPATCH_REF: ${{ github.ref }}",
         "DISPATCH_REVISION: ${{ github.sha }}",
+        '[[ "$DISPATCH_REF" != "refs/heads/main" ]]',
         '[[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]]',
         '[[ "$REQUESTED_REVISION" != "$DISPATCH_REVISION" ]]',
         '[[ "$(git rev-parse HEAD)" != "$REQUESTED_REVISION" ]]',
@@ -338,6 +464,8 @@ def validate(
         '"RUN_DISPOSABLE_LIVE_COMMENTS"',
     ):
         _require(source_step, fragment, "exact reviewed source verification")
+    if "continue-on-error:" in source_step:
+        raise RuntimeError("exact reviewed source verification must not be recoverable")
 
     dependency_step = _step_block(
         source,
@@ -387,8 +515,8 @@ def validate(
         "COMPOSE_CLEANUP_OUTCOME: ${{ steps.compose-cleanup.outcome }}",
         "umask 077",
         '[[ "$COMPOSE_CLEANUP_OUTCOME" != "success" ]]',
-        'success) evidence_outcome=passed ;;',
-        'failure) evidence_outcome=failed ;;',
+        "success) evidence_outcome=passed ;;",
+        "failure) evidence_outcome=failed ;;",
         "python3 scripts/validate_live_comments_evidence.py",
         "--environment manual_ci_disposable_reference",
         '--expected-outcome "$evidence_outcome"',
@@ -456,6 +584,11 @@ def validate(
         "      - name: Enforce live-comments acceptance result\n",
         "result enforcement step",
     )
+    if (
+        hashlib.sha256(enforce.encode("utf-8")).hexdigest()
+        != EXPECTED_ENFORCEMENT_STEP_SHA256
+    ):
+        raise RuntimeError("live-comments result enforcement step changed")
     for fragment in (
         "if: always()",
         "LIVE_COMMENTS_OUTCOME: ${{ steps.live-comments.outcome }}",
@@ -474,7 +607,9 @@ def validate(
         source.index("Enforce live-comments acceptance result"),
     ]
     if positions != sorted(positions):
-        raise RuntimeError("live-comments trust, cleanup, evidence, and result steps reordered")
+        raise RuntimeError(
+            "live-comments trust, cleanup, evidence, and result steps reordered"
+        )
 
     ci_source = ci.read_text(encoding="utf-8")
     check_source = check.read_text(encoding="utf-8")

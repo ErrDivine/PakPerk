@@ -25,21 +25,18 @@ def _move_step_after(source: str, moving_name: str, anchor_name: str) -> str:
 
     anchor_marker = f"      - name: {anchor_name}\n"
     anchor_start = without_moving.index(anchor_marker)
-    anchor_end = without_moving.find(
-        "\n      - ", anchor_start + len(anchor_marker)
-    )
+    anchor_end = without_moving.find("\n      - ", anchor_start + len(anchor_marker))
     if anchor_end < 0:
         raise AssertionError(f"anchor step has no following step: {anchor_name}")
     return (
-        without_moving[:anchor_end]
-        + "\n"
-        + moving_block
-        + without_moving[anchor_end:]
+        without_moving[:anchor_end] + "\n" + moving_block + without_moving[anchor_end:]
     )
 
 
 class MobileReleaseWorkflowValidationTests(unittest.TestCase):
-    def _validate(self, mobile: str = MOBILE_SOURCE, security: str = SECURITY_SOURCE) -> None:
+    def _validate(
+        self, mobile: str = MOBILE_SOURCE, security: str = SECURITY_SOURCE
+    ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
             mobile_path = root / "mobile-release.yml"
@@ -60,6 +57,121 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
 
     def test_checked_in_contract_passes(self) -> None:
         self._validate()
+
+    def test_automatic_trigger_is_rejected(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "  workflow_dispatch:\n", "  workflow_dispatch:\n  push:\n"
+        )
+
+    def test_quoted_automatic_trigger_is_rejected(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "  workflow_dispatch:\n",
+            '  workflow_dispatch:\n  "push": {}\n',
+        )
+
+    def test_dispatch_environment_cannot_be_widened(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "        type: choice\n"
+            "        options: [development, staging, production]",
+            "        type: string",
+        )
+
+    def test_inherited_bash_environment_is_rejected(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "  FLUTTER_VERSION: 3.44.8\n",
+            "  BASH_ENV: ${{ github.workspace }}/pretrust.sh\n"
+            "  FLUTTER_VERSION: 3.44.8\n",
+        )
+
+    def test_inflight_candidate_cannot_be_cancelled(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "cancel-in-progress: false", "cancel-in-progress: true"
+        )
+
+    def test_quoted_checkout_key_is_rejected(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "        with:\n",
+            '        "uses": attacker/execute@deadbeef\n        with:\n',
+        )
+
+    def test_permission_expansion_is_rejected(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "permissions:\n  contents: read",
+            "permissions:\n  contents: read\n  actions: write",
+        )
+
+    def test_job_level_main_guard_is_rejected_as_fail_open(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "  signed-candidate:\n    name:",
+            "  signed-candidate:\n"
+            "    if: github.ref == 'refs/heads/main'\n"
+            "    name:",
+        )
+
+    def test_job_level_continue_on_error_is_rejected(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "  signed-candidate:\n    name:",
+            "  signed-candidate:\n    continue-on-error: true\n    name:",
+        )
+
+    def test_trailing_job_level_if_is_rejected(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "job-level key"):
+            self._validate(mobile=MOBILE_SOURCE + "    if: false\n")
+
+    def test_quoted_sibling_job_is_rejected(self) -> None:
+        source = MOBILE_SOURCE + (
+            '  "bypass":\n'
+            "    runs-on: macos-26\n"
+            "    steps:\n"
+            '      - run: "true"\n'
+        )
+        with self.assertRaisesRegex(RuntimeError, "exactly one bounded job"):
+            self._validate(mobile=source)
+
+    def test_executable_step_before_source_trust_is_rejected(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "          persist-credentials: false\n"
+            "      - name: Resolve reviewed source revision",
+            "          persist-credentials: false\n"
+            "      - run: echo bypass\n"
+            "      - name: Resolve reviewed source revision",
+        )
+
+    def test_bare_sequence_step_before_source_trust_is_rejected(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "    steps:\n",
+            "    steps:\n      -\n        run: echo bypass\n",
+        )
+
+    def test_dispatch_ref_must_be_bound_to_github_context(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "          DISPATCH_REF: ${{ github.ref }}\n",
+            "          DISPATCH_REF: refs/heads/main\n",
+        )
+
+    def test_release_environment_must_be_bound_to_dispatch_input(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "          RELEASE_ENVIRONMENT: ${{ inputs.environment }}\n",
+            "          RELEASE_ENVIRONMENT: staging\n",
+        )
+
+    def test_runtime_environment_allowlist_cannot_be_weakened(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            'if [[ "$RELEASE_ENVIRONMENT" != "development" && "$RELEASE_ENVIRONMENT" != "staging" && "$RELEASE_ENVIRONMENT" != "production" ]]; then',
+            'if [[ -z "$RELEASE_ENVIRONMENT" ]]; then',
+        )
+
+    def test_non_main_guard_cannot_be_short_circuited(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            '          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then',
+            '          true || if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then',
+        )
+
+    def test_non_main_guard_cannot_be_commented_out(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            '          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then',
+            '          # if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then',
+        )
 
     def test_mobile_flutter_version_tamper_is_rejected(self) -> None:
         self._assert_mobile_tamper_rejected(
@@ -122,14 +234,10 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
         )
 
     def test_mobile_x64_jdk_contract_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "JAVA_HOME_17_arm64", "JAVA_HOME_17_X64"
-        )
+        self._assert_mobile_tamper_rejected("JAVA_HOME_17_arm64", "JAVA_HOME_17_X64")
 
     def test_security_arm64_jdk_contract_is_rejected(self) -> None:
-        self._assert_security_tamper_rejected(
-            "JAVA_HOME_17_X64", "JAVA_HOME_17_arm64"
-        )
+        self._assert_security_tamper_rejected("JAVA_HOME_17_X64", "JAVA_HOME_17_arm64")
 
     def test_xcode_version_tamper_is_rejected(self) -> None:
         self._assert_mobile_tamper_rejected(
@@ -158,7 +266,7 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
             "Generate SBOM, notices, and immutable evidence hashes",
             "Build and inspect signed Android artifacts",
         )
-        with self.assertRaisesRegex(RuntimeError, "must be verified before"):
+        with self.assertRaisesRegex(RuntimeError, "step surface changed"):
             self._validate(mobile=tampered)
 
     def test_security_missing_evidence_is_not_a_warning(self) -> None:

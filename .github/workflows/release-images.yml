@@ -27,7 +27,6 @@ env:
 
 jobs:
   publish:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     environment: ${{ inputs.environment }}
@@ -42,8 +41,18 @@ jobs:
         id: release
         shell: bash
         env:
+          DISPATCH_REF: ${{ github.ref }}
+          RELEASE_ENVIRONMENT: ${{ inputs.environment }}
           REQUESTED_REVISION: ${{ inputs.source_revision }}
         run: |
+          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then
+            echo "Release-image publication must be dispatched from main." >&2
+            exit 2
+          fi
+          if [[ "$RELEASE_ENVIRONMENT" != "staging" && "$RELEASE_ENVIRONMENT" != "production" ]]; then
+            echo "Release-image environment must be staging or production." >&2
+            exit 2
+          fi
           if ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
             echo "source_revision must be a full lowercase Git commit SHA." >&2
             exit 1

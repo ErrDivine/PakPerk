@@ -49,7 +49,6 @@ env:
 
 jobs:
   signed-candidate:
-    if: github.ref == 'refs/heads/main'
     name: ${{ inputs.environment }} signed candidate
     runs-on: macos-26
     timeout-minutes: 150
@@ -64,8 +63,18 @@ jobs:
         id: source
         shell: bash
         env:
+          DISPATCH_REF: ${{ github.ref }}
+          RELEASE_ENVIRONMENT: ${{ inputs.environment }}
           REQUESTED_REVISION: ${{ inputs.source_revision }}
         run: |
+          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then
+            echo "Signed-mobile release must be dispatched from main." >&2
+            exit 2
+          fi
+          if [[ "$RELEASE_ENVIRONMENT" != "development" && "$RELEASE_ENVIRONMENT" != "staging" && "$RELEASE_ENVIRONMENT" != "production" ]]; then
+            echo "Signed-mobile environment must be development, staging, or production." >&2
+            exit 2
+          fi
           if ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
             echo "source_revision must be a full lowercase Git commit SHA." >&2
             exit 1

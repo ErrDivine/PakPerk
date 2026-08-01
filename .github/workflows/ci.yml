@@ -88,6 +88,8 @@ jobs:
           python3 scripts/test_live_comments_evidence.py
           python3 scripts/test_validate_live_comments_workflow.py
           python3 scripts/validate_live_comments_workflow.py
+          python3 scripts/test_validate_staging_backend_load_workflow.py
+          python3 scripts/validate_staging_backend_load_workflow.py
           python3 scripts/test_public_edge_evidence.py
           python3 scripts/test_verify_public_edge.py
           python3 scripts/test_validate_public_edge_workflow.py

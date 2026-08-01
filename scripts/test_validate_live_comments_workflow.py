@@ -95,6 +95,15 @@ class LiveCommentsWorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "manual-dispatch only"):
             self._validate(workflow_source=source)
 
+    def test_quoted_automatic_trigger_fails(self) -> None:
+        source = self._workflow().replace(
+            "  workflow_dispatch:\n",
+            '  workflow_dispatch:\n  "push": {}\n',
+            1,
+        )
+        with self.assertRaisesRegex(RuntimeError, "manual-dispatch only"):
+            self._validate(workflow_source=source)
+
     def test_write_permission_fails(self) -> None:
         source = self._workflow().replace("contents: read", "contents: write", 1)
         with self.assertRaisesRegex(RuntimeError, "least privilege"):
@@ -106,16 +115,111 @@ class LiveCommentsWorkflowTests(unittest.TestCase):
             "RUST_TOOLCHAIN: 1.91.1\n      UNSAFE: ${{ secrets.UNSAFE }}",
             1,
         )
-        with self.assertRaisesRegex(RuntimeError, "must not consume secrets"):
+        with self.assertRaisesRegex(RuntimeError, "inherited job environment"):
             self._validate(workflow_source=source)
 
-    def test_non_main_dispatch_fails(self) -> None:
+    def test_job_level_main_guard_is_rejected_as_fail_open(self) -> None:
         source = self._workflow().replace(
-            "if: github.ref == 'refs/heads/main'",
-            "if: github.ref != ''",
+            "  disposable-comments:\n    runs-on: ubuntu-24.04",
+            "  disposable-comments:\n"
+            "    if: github.ref == 'refs/heads/main'\n"
+            "    runs-on: ubuntu-24.04",
             1,
         )
-        with self.assertRaisesRegex(RuntimeError, "boundary is missing"):
+        with self.assertRaisesRegex(RuntimeError, "job execution boundary"):
+            self._validate(workflow_source=source)
+
+    def test_job_level_continue_on_error_fails(self) -> None:
+        source = self._workflow().replace(
+            "  disposable-comments:\n    runs-on: ubuntu-24.04",
+            "  disposable-comments:\n"
+            "    continue-on-error: true\n"
+            "    runs-on: ubuntu-24.04",
+            1,
+        )
+        with self.assertRaisesRegex(RuntimeError, "job execution boundary"):
+            self._validate(workflow_source=source)
+
+    def test_trailing_job_level_if_fails(self) -> None:
+        source = self._workflow() + "    if: false\n"
+        with self.assertRaisesRegex(RuntimeError, "job-level key"):
+            self._validate(workflow_source=source)
+
+    def test_quoted_sibling_job_fails(self) -> None:
+        source = self._workflow() + (
+            '  "bypass":\n'
+            "    runs-on: ubuntu-24.04\n"
+            "    steps:\n"
+            '      - run: "true"\n'
+        )
+        with self.assertRaisesRegex(RuntimeError, "exactly one bounded job"):
+            self._validate(workflow_source=source)
+
+    def test_executable_step_before_source_trust_fails(self) -> None:
+        source = self._workflow().replace(
+            "          persist-credentials: false\n\n"
+            "      - name: Verify exact reviewed main source",
+            "          persist-credentials: false\n\n"
+            "      - run: echo bypass\n\n"
+            "      - name: Verify exact reviewed main source",
+            1,
+        )
+        with self.assertRaisesRegex(RuntimeError, "non-canonical step item"):
+            self._validate(workflow_source=source)
+
+    def test_inherited_bash_environment_fails(self) -> None:
+        source = self._workflow().replace(
+            "      RUST_TOOLCHAIN: 1.91.1\n",
+            "      BASH_ENV: ${{ github.workspace }}/pretrust.sh\n"
+            "      RUST_TOOLCHAIN: 1.91.1\n",
+            1,
+        )
+        with self.assertRaisesRegex(RuntimeError, "inherited job environment"):
+            self._validate(workflow_source=source)
+
+    def test_quoted_checkout_key_fails(self) -> None:
+        source = self._workflow().replace(
+            "        with:\n",
+            '        "uses": attacker/execute@deadbeef\n        with:\n',
+            1,
+        )
+        with self.assertRaisesRegex(RuntimeError, "checkout step changed"):
+            self._validate(workflow_source=source)
+
+    def test_bare_sequence_step_before_source_trust_fails(self) -> None:
+        source = self._workflow().replace(
+            "    steps:\n",
+            "    steps:\n      -\n        run: echo bypass\n",
+            1,
+        )
+        with self.assertRaisesRegex(RuntimeError, "non-canonical step item"):
+            self._validate(workflow_source=source)
+
+    def test_dispatch_ref_must_be_bound_to_github_context(self) -> None:
+        source = self._workflow().replace(
+            "          DISPATCH_REF: ${{ github.ref }}\n",
+            "          DISPATCH_REF: refs/heads/main\n",
+            1,
+        )
+        with self.assertRaisesRegex(RuntimeError, "source verification"):
+            self._validate(workflow_source=source)
+
+    def test_non_main_guard_cannot_be_short_circuited(self) -> None:
+        source = self._workflow().replace(
+            '          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then',
+            '          true || if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then',
+            1,
+        )
+        with self.assertRaisesRegex(RuntimeError, "source verification"):
+            self._validate(workflow_source=source)
+
+    def test_non_main_guard_cannot_be_commented_out(self) -> None:
+        source = self._workflow().replace(
+            '          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then',
+            '          # if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then',
+            1,
+        )
+        with self.assertRaisesRegex(RuntimeError, "source verification"):
             self._validate(workflow_source=source)
 
     def test_dispatch_sha_equality_removal_fails(self) -> None:
@@ -131,19 +235,21 @@ class LiveCommentsWorkflowTests(unittest.TestCase):
         source = self._workflow().replace(
             "ref: ${{ inputs.source_revision }}", "ref: main", 1
         )
-        with self.assertRaisesRegex(RuntimeError, "checkout step is missing"):
+        with self.assertRaisesRegex(RuntimeError, "checkout step changed"):
             self._validate(workflow_source=source)
 
     def test_unprotected_environment_fails(self) -> None:
         source = self._workflow().replace(
             "environment: live-comments-acceptance", "environment: development", 1
         )
-        with self.assertRaisesRegex(RuntimeError, "boundary is missing"):
+        with self.assertRaisesRegex(RuntimeError, "job execution boundary"):
             self._validate(workflow_source=source)
 
     def test_unbounded_timeout_fails(self) -> None:
-        source = self._workflow().replace("timeout-minutes: 45", "timeout-minutes: 450", 1)
-        with self.assertRaisesRegex(RuntimeError, "boundary is missing"):
+        source = self._workflow().replace(
+            "timeout-minutes: 45", "timeout-minutes: 450", 1
+        )
+        with self.assertRaisesRegex(RuntimeError, "job execution boundary"):
             self._validate(workflow_source=source)
 
     def test_missing_dependency_hash_fails(self) -> None:
@@ -274,7 +380,9 @@ class LiveCommentsWorkflowTests(unittest.TestCase):
             self._validate(helm_schema_source=schema)
 
     def test_harness_failure_masking_fails(self) -> None:
-        source = self._workflow().replace("continue-on-error: true", "continue-on-error: false", 1)
+        source = self._workflow().replace(
+            "continue-on-error: true", "continue-on-error: false", 1
+        )
         with self.assertRaisesRegex(RuntimeError, "harness is missing"):
             self._validate(workflow_source=source)
 
@@ -298,8 +406,8 @@ class LiveCommentsWorkflowTests(unittest.TestCase):
 
     def test_owner_only_packaging_umask_is_required(self) -> None:
         source = self._workflow().replace(
-            "        run: |\n          umask 077\n          evidence_dir=\"$RUNNER_TEMP/pakperk-live-comments-evidence\"",
-            "        run: |\n          evidence_dir=\"$RUNNER_TEMP/pakperk-live-comments-evidence\"",
+            '        run: |\n          umask 077\n          evidence_dir="$RUNNER_TEMP/pakperk-live-comments-evidence"',
+            '        run: |\n          evidence_dir="$RUNNER_TEMP/pakperk-live-comments-evidence"',
             1,
         )
         with self.assertRaisesRegex(RuntimeError, "packaging is missing"):
@@ -349,7 +457,9 @@ class LiveCommentsWorkflowTests(unittest.TestCase):
             self._validate(workflow_source=source)
 
     def test_long_retention_fails(self) -> None:
-        source = self._workflow().replace("retention-days: 30", "retention-days: 365", 1)
+        source = self._workflow().replace(
+            "retention-days: 30", "retention-days: 365", 1
+        )
         with self.assertRaisesRegex(RuntimeError, "upload is missing"):
             self._validate(workflow_source=source)
 
@@ -389,12 +499,9 @@ class LiveCommentsWorkflowTests(unittest.TestCase):
         teardown = source[teardown_start:package_start]
         package = source[package_start:summary_start]
         reordered = (
-            source[:teardown_start]
-            + package
-            + teardown
-            + source[summary_start:]
+            source[:teardown_start] + package + teardown + source[summary_start:]
         )
-        with self.assertRaisesRegex(RuntimeError, "steps reordered"):
+        with self.assertRaisesRegex(RuntimeError, "step surface changed"):
             self._validate(workflow_source=reordered)
 
     def test_final_result_must_enforce_teardown(self) -> None:

@@ -21,7 +21,6 @@ concurrency:
 
 jobs:
   disposable-comments:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     environment: live-comments-acceptance
     timeout-minutes: 45
@@ -40,8 +39,13 @@ jobs:
       - name: Verify exact reviewed main source
         shell: bash
         env:
+          DISPATCH_REF: ${{ github.ref }}
           DISPATCH_REVISION: ${{ github.sha }}
         run: |
+          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then
+            echo "Disposable live-comments acceptance must be dispatched from main." >&2
+            exit 2
+          fi
           if [[ "$DISPATCH_CONFIRMATION" != "RUN_DISPOSABLE_LIVE_COMMENTS" ]]; then
             echo "Dispatch confirmation did not match the required phrase." >&2
             exit 2

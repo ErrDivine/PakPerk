@@ -177,25 +177,39 @@ that exact expected schema version.
   `058e0af2c2b57e369d905a03ac9748b0ebf543c6` with Dart 3.12.2. The signed-
   mobile, security, and release-image workflows validate and retain that
   machine-readable identity before resolving Pub dependencies.
-- The image-publication workflow validator and tamper cases passed for manual
-  dispatch, permissions, exact-source trust, scan/SBOM-before-push ordering,
-  immutable tags, and digest-only handoff. The protected workflow was not run,
-  and no registry publication is inferred.
+- The image-publication workflow's 29 validation tests and the signed-mobile
+  workflow's 37 validation tests passed. In this reviewed workflow revision, both
+  jobs run an executable source gate instead of using a job-level branch
+  condition, so a non-`main` or tag dispatch fails rather than completing as a
+  skipped green job. Their validators
+  lock the dispatch schema, non-cancelling concurrency, inherited environment,
+  complete step-header surface, pinned exact-source checkout, and source gate;
+  the existing scan/SBOM/publication and signed-candidate boundaries remain in
+  force. Neither protected workflow was run, so no registry publication or
+  signed candidate is inferred. GitHub deployment-branch/environment protection
+  is still required to prevent dispatching historical refs that contain an
+  older copy of either workflow.
 - All nine deterministic loopback backend-load contract tests passed, including
   response-identity binding, token/content redaction, mutation serialization
-  and cleanup, threshold failures, and request caps. No staging endpoint was
-  called; the protected staging workflow result remains required evidence.
+  and cleanup, threshold failures, and request caps. A new structural validator
+  and 55 validation tests lock the manual dispatch inputs and runtime allowlists,
+  unconditional job,
+  protected environment/variables, step-scoped token, bounded runner, evidence
+  upload, and final enforcement; non-`main` dispatch now fails in the executable
+  trust gate. No staging endpoint was called; the protected staging workflow
+  result remains required evidence.
 - The reference deletion driver's five no-service contract tests and its
   hash-locked workflow validator passed. Eight workflow-validation tests also
   enforce manual-only execution, least privilege, immutable scope upload, and
   the non-release classification. The destructive Docker/Keycloak suite and a
   protected staging/provider run were not executed in this verification.
-- The live-comments workflow validator and its tamper regressions cover manual
-  dispatch, exact-main source trust, least privilege, dependency/image pins,
-  dedicated operator audience, evidence-only upload, bounded retention, and
-  disposable cleanup. They do not invoke Docker. The updated live-comments
-  workflow and reference stack were not executed in this verification, and no
-  staging moderation-readiness approval is inferred.
+- The live-comments workflow validator's 51 validation tests cover manual
+  dispatch, unconditional exact-main source trust, least privilege,
+  dependency/image pins, dedicated operator audience, evidence-only upload,
+  bounded retention, disposable cleanup, and non-recoverable final enforcement.
+  They do not invoke Docker. The updated live-comments workflow and reference
+  stack were not executed in this verification, and no staging moderation-
+  readiness approval is inferred.
 - The public-edge evidence/verifier regressions passed 24 hermetic cases,
   including closed success/failure matrices, hostile JSON/header/body shapes,
   stable route markers, source mismatch, unsafe origins, private/multicast/

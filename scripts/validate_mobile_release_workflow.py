@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import pathlib
 import re
 import sys
@@ -13,6 +14,22 @@ import validate_flutter_toolchain as flutter_toolchain
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/mobile-release.yml"
 SECURITY_WORKFLOW = ROOT / ".github/workflows/security.yml"
+CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+EXPECTED_TRIGGER_SHA256 = (
+    "0fb2be1cd95989cfab15d87f6eebb2ad2edf0a53928a190e7ca8ebeb1675970f"
+)
+EXPECTED_STEP_ITEMS_SHA256 = (
+    "4d17e98e13297db79c4e91af4fd4bc92bfaa6def6dd03432634acb62dcd03aeb"
+)
+EXPECTED_CHECKOUT_STEP_SHA256 = (
+    "b4a8b878bb5923badf0b69619820ec21476ed7fa3ff811b2e9e0f61b79542f86"
+)
+EXPECTED_ROOT_ENV_SHA256 = (
+    "fb7644d3a6eb8cd652774bf4a222de6ef20641842d5d6d67667a880a41c6b2bb"
+)
+EXPECTED_SOURCE_STEP_SHA256 = (
+    "62bdf540dd03b642475def0f869332db633cceabcae3f9fff40b1ade39f82351"
+)
 
 
 def _require_fragments(source: str, fragments: tuple[str, ...], label: str) -> None:
@@ -41,6 +58,28 @@ def _step_block(source: str, name: str, label: str) -> str:
     return source[start:] if end < 0 else source[start:end]
 
 
+def _step_block_at_marker(source: str, marker: str, label: str) -> str:
+    if source.count(marker) != 1:
+        raise RuntimeError(f"{label} must contain exactly one reviewed checkout step")
+    start = source.index(marker)
+    end = source.find("\n      - ", start + len(marker))
+    return source[start:] if end < 0 else source[start:end]
+
+
+def _mapping_keys(source: str, indent: int) -> list[str]:
+    prefix = " " * indent
+    nested_prefix = prefix + " "
+    keys: list[str] = []
+    for raw_line in source.splitlines():
+        if not raw_line.startswith(prefix) or raw_line.startswith(nested_prefix):
+            continue
+        content = raw_line[indent:]
+        if not content or content.startswith("#") or ":" not in content:
+            continue
+        keys.append(content.partition(":")[0].strip())
+    return keys
+
+
 def validate(
     workflow: pathlib.Path = WORKFLOW,
     security_workflow: pathlib.Path = SECURITY_WORKFLOW,
@@ -57,6 +96,116 @@ def validate(
     ):
         raise RuntimeError("reviewed Flutter release identity changed without review")
     source = workflow.read_text(encoding="utf-8")
+    if _mapping_keys(source, 0) != [
+        "name",
+        "on",
+        "permissions",
+        "concurrency",
+        "env",
+        "jobs",
+    ]:
+        raise RuntimeError("signed mobile workflow root mapping changed")
+    if re.search(r"(?m)^\s*<<\s*:", source):
+        raise RuntimeError("signed mobile workflow must not use YAML merge keys")
+    trigger_end = source.index("\npermissions:")
+    trigger = source[source.index("\non:\n") + 1 : trigger_end]
+    if _mapping_keys(trigger, 2) != ["workflow_dispatch"]:
+        raise RuntimeError("signed mobile release must be manual-dispatch only")
+    if hashlib.sha256(trigger.encode("utf-8")).hexdigest() != EXPECTED_TRIGGER_SHA256:
+        raise RuntimeError(
+            "signed mobile dispatch schema or environment choices changed"
+        )
+    permissions_end = source.index("\nconcurrency:", trigger_end)
+    if source[trigger_end + 1 : permissions_end].strip() != (
+        "permissions:\n  contents: read"
+    ):
+        raise RuntimeError("signed mobile workflow permissions are not least privilege")
+    concurrency_end = source.index("\nenv:\n", permissions_end)
+    if source[permissions_end + 1 : concurrency_end].strip() != (
+        "concurrency:\n"
+        "  group: signed-mobile-${{ inputs.environment }}\n"
+        "  cancel-in-progress: false"
+    ):
+        raise RuntimeError(
+            "signed mobile concurrency must be scoped and non-cancelling"
+        )
+    env_start = concurrency_end + 1
+    env_end = source.index("\njobs:\n", env_start)
+    root_env = source[env_start:env_end]
+    if hashlib.sha256(root_env.encode("utf-8")).hexdigest() != EXPECTED_ROOT_ENV_SHA256:
+        raise RuntimeError("signed mobile inherited environment changed")
+
+    if source.count("\njobs:\n") != 1:
+        raise RuntimeError("signed mobile workflow job boundary is malformed")
+    jobs = source[source.index("\njobs:\n") + len("\njobs:\n") :]
+    if _mapping_keys(jobs, 2) != ["signed-candidate"]:
+        raise RuntimeError(
+            "signed mobile workflow must contain exactly one bounded job"
+        )
+    job_start = source.index("  signed-candidate:\n", env_end)
+    steps_start = source.index("    steps:\n", job_start)
+    expected_job_prefix = (
+        "  signed-candidate:\n"
+        "    name: ${{ inputs.environment }} signed candidate\n"
+        "    runs-on: macos-26\n"
+        "    timeout-minutes: 150\n"
+        "    environment: ${{ inputs.environment }}\n"
+    )
+    if source[job_start:steps_start] != expected_job_prefix:
+        raise RuntimeError(
+            "signed mobile job execution boundary changed; job-level conditions are fail-open"
+        )
+    if _mapping_keys(source[job_start:], 4) != [
+        "name",
+        "runs-on",
+        "timeout-minutes",
+        "environment",
+        "steps",
+    ]:
+        raise RuntimeError(
+            "signed mobile job contains an unexpected or reordered job-level key"
+        )
+    step_items = re.findall(r"(?m)^      -[^\n]*$", source[steps_start:])
+    if any(
+        re.fullmatch(r"      - (?:name: .+|uses: [^ #]+(?: # .+)?)", item) is None
+        for item in step_items
+    ):
+        raise RuntimeError("signed mobile workflow contains a non-canonical step item")
+    step_item_contract = "\n".join(step_items) + "\n"
+    if (
+        hashlib.sha256(step_item_contract.encode("utf-8")).hexdigest()
+        != EXPECTED_STEP_ITEMS_SHA256
+    ):
+        raise RuntimeError("signed mobile workflow step surface changed")
+    if step_items[:2] != [
+        f"      - uses: {CHECKOUT_ACTION} # v7.0.1",
+        "      - name: Resolve reviewed source revision",
+    ]:
+        raise RuntimeError(
+            "signed mobile workflow must establish source trust before executable work"
+        )
+
+    checkout = _step_block_at_marker(
+        source,
+        f"      - uses: {CHECKOUT_ACTION}",
+        "signed mobile workflow",
+    )
+    if (
+        hashlib.sha256(checkout.encode("utf-8")).hexdigest()
+        != EXPECTED_CHECKOUT_STEP_SHA256
+    ):
+        raise RuntimeError("signed mobile checkout step changed")
+    if re.findall(r"(?m)^        ([a-z][a-z0-9-]*):", checkout) != ["with"]:
+        raise RuntimeError("signed mobile checkout has an unexpected step key")
+    expected_checkout = (
+        "        with:\n"
+        "          ref: ${{ inputs.source_revision }}\n"
+        "          fetch-depth: 0\n"
+        "          persist-credentials: false"
+    )
+    if checkout[checkout.index("        with:\n") :] != expected_checkout:
+        raise RuntimeError("signed mobile exact-source checkout inputs changed")
+
     _require_exact_scalar(source, "FLUTTER_VERSION", "3.44.8", "signed mobile workflow")
     _require_exact_scalar(
         source,
@@ -80,9 +229,7 @@ def validate(
         source,
         (
             "source_revision:",
-            "if: github.ref == 'refs/heads/main'",
             "ref: ${{ inputs.source_revision }}",
-            "git merge-base --is-ancestor",
             'SOURCE_REVISION="${{ steps.source.outputs.source_revision }}"',
             "runs-on: macos-26",
             "PAKPERK_JDK_RUNTIME_VERSION: 17.0.19+10",
@@ -114,6 +261,33 @@ def validate(
         ),
         "signed mobile workflow",
     )
+
+    source_step = _step_block(
+        source,
+        "Resolve reviewed source revision",
+        "signed mobile workflow",
+    )
+    if (
+        hashlib.sha256(source_step.encode("utf-8")).hexdigest()
+        != EXPECTED_SOURCE_STEP_SHA256
+    ):
+        raise RuntimeError("signed mobile source trust step changed")
+    _require_fragments(
+        source_step,
+        (
+            "DISPATCH_REF: ${{ github.ref }}",
+            "RELEASE_ENVIRONMENT: ${{ inputs.environment }}",
+            "REQUESTED_REVISION: ${{ inputs.source_revision }}",
+            'if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then',
+            'if [[ "$RELEASE_ENVIRONMENT" != "development" && "$RELEASE_ENVIRONMENT" != "staging" && "$RELEASE_ENVIRONMENT" != "production" ]]; then',
+            'if ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]]; then',
+            'if [[ "$source_revision" != "$REQUESTED_REVISION" ]]; then',
+            'if ! git merge-base --is-ancestor "$source_revision" origin/main; then',
+        ),
+        "signed mobile source trust step",
+    )
+    if "continue-on-error:" in source_step:
+        raise RuntimeError("signed mobile source trust step must not be recoverable")
     for forbidden in (
         "runs-on: macos-latest",
         "gem install --user-install fastlane",
@@ -126,7 +300,9 @@ def validate(
         "if-no-files-found: warn",
     ):
         if forbidden in source:
-            raise RuntimeError(f"signed mobile workflow contains a floating tool: {forbidden}")
+            raise RuntimeError(
+                f"signed mobile workflow contains a floating tool: {forbidden}"
+            )
 
     ruby_step = _step_block(
         source,
@@ -142,7 +318,7 @@ def validate(
             '"$ruby_version" != "$PAKPERK_RUBY_VERSION" ]]',
             'rubygems_version="$(gem --version)"',
             'if [[ "$rubygems_version" != "$PAKPERK_RUBYGEMS_VERSION" ]]',
-            'ruby_executable=%s\\n',
+            "ruby_executable=%s\\n",
             '"$RUNNER_TEMP/evidence/ruby-toolchain.txt"',
         ),
         "reviewed Ruby runtime step",
@@ -164,8 +340,16 @@ def validate(
     flutter_dependencies = source.index("Resolve locked Flutter dependencies")
     bundler_install = source.index("Install and record the pinned store upload client")
     if source_gate >= protected_inputs:
-        raise RuntimeError("mobile source trust must be established before protected inputs")
-    if not source_gate < flutter_gate < ruby_gate < flutter_dependencies < bundler_install:
+        raise RuntimeError(
+            "mobile source trust must be established before protected inputs"
+        )
+    if (
+        not source_gate
+        < flutter_gate
+        < ruby_gate
+        < flutter_dependencies
+        < bundler_install
+    ):
         raise RuntimeError(
             "reviewed Flutter and Ruby must be gated after source trust and before dependencies or Bundler"
         )
@@ -208,9 +392,7 @@ def validate(
     )
 
     security = security_workflow.read_text(encoding="utf-8")
-    _require_exact_scalar(
-        security, "FLUTTER_VERSION", "3.44.8", "security workflow"
-    )
+    _require_exact_scalar(security, "FLUTTER_VERSION", "3.44.8", "security workflow")
     _require_exact_scalar(
         security,
         "flutter-version",
@@ -240,7 +422,9 @@ def validate(
     if "JAVA_HOME_17_arm64" in security:
         raise RuntimeError("security workflow must use the Ubuntu x64 JDK contract")
     if "if-no-files-found: warn" in security:
-        raise RuntimeError("security evidence upload must fail when artifacts are absent")
+        raise RuntimeError(
+            "security evidence upload must fail when artifacts are absent"
+        )
     security_flutter_gate = security.index(
         "Verify and record the exact reviewed Flutter SDK"
     )
@@ -251,7 +435,9 @@ def validate(
         "Generate and validate the Android production runtime SBOM"
     )
     if not security_flutter_gate < security_jdk_gate < security_gradle:
-        raise RuntimeError("security workflow selects a reviewed toolchain after Gradle")
+        raise RuntimeError(
+            "security workflow selects a reviewed toolchain after Gradle"
+        )
 
 
 def main() -> int:

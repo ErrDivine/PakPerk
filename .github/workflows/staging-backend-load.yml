@@ -82,7 +82,6 @@ concurrency:
 
 jobs:
   load-gate:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: staging
@@ -112,7 +111,13 @@ jobs:
 
       - name: Verify reviewed source and protected inputs
         shell: bash
+        env:
+          DISPATCH_REF: ${{ github.ref }}
         run: |
+          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then
+            echo "Staging backend load verification must be dispatched from main." >&2
+            exit 2
+          fi
           if ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
             echo "source_revision must be a full lowercase Git commit SHA." >&2
             exit 2
@@ -129,6 +134,40 @@ jobs:
             echo "The protected staging API origin is unavailable." >&2
             exit 2
           fi
+          case "$DURATION_SECONDS" in
+            30|60|120|300) ;;
+            *) echo "duration_seconds is outside the reviewed workflow choices." >&2; exit 2 ;;
+          esac
+          case "$LOAD_CONCURRENCY" in
+            1|4|8|16) ;;
+            *) echo "concurrency is outside the reviewed workflow choices." >&2; exit 2 ;;
+          esac
+          case "$MAX_REQUESTS" in
+            1000|5000|10000|25000) ;;
+            *) echo "max_requests is outside the reviewed workflow choices." >&2; exit 2 ;;
+          esac
+          case "$MINIMUM_SAMPLES" in
+            5|10|20) ;;
+            *) echo "minimum_samples_per_scenario is outside the reviewed workflow choices." >&2; exit 2 ;;
+          esac
+          case "$MAX_MUTATIONS" in
+            5|10|20) ;;
+            *) echo "max_library_mutation_requests is outside the reviewed workflow choices." >&2; exit 2 ;;
+          esac
+          case "$NETWORK_DELAY_MS" in
+            0|100|250|500) ;;
+            *) echo "simulated_network_delay_ms is outside the reviewed workflow choices." >&2; exit 2 ;;
+          esac
+          case "$PACKET_LOSS_RATE" in
+            0|0.01|0.05) ;;
+            *) echo "simulated_packet_loss_rate is outside the reviewed workflow choices." >&2; exit 2 ;;
+          esac
+          for boolean_input in INCLUDE_LIBRARY INCLUDE_COMMENTS ALLOW_MUTATIONS; do
+            case "${!boolean_input}" in
+              true|false) ;;
+              *) echo "A boolean dispatch input is outside true or false." >&2; exit 2 ;;
+            esac
+          done
           if [[ "$ALLOW_MUTATIONS" == "true" && "$MUTATION_CONFIRMATION" != "RUN_DEDICATED_STAGING_LIBRARY_MUTATIONS" ]]; then
             echo "Mutation confirmation did not match the required phrase." >&2
             exit 2

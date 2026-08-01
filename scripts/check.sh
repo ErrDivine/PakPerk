@@ -17,7 +17,9 @@ for command in cargo jq python3; do
 done
 
 echo "== Repository contracts =="
-bash -n "$project_dir"/scripts/*.sh
+for shell_script in "$project_dir"/scripts/*.sh; do
+  bash -n "$shell_script"
+done
 "$project_dir/scripts/drill_backup_restore.sh" --self-test
 python3 -B - "$project_dir"/scripts/*.py <<'PY'
 import pathlib
@@ -85,6 +87,8 @@ python3 "$project_dir/scripts/validate_live_account_deletion_workflow.py"
 python3 "$project_dir/scripts/test_live_comments_evidence.py"
 python3 "$project_dir/scripts/test_validate_live_comments_workflow.py"
 python3 "$project_dir/scripts/validate_live_comments_workflow.py"
+python3 "$project_dir/scripts/test_validate_staging_backend_load_workflow.py"
+python3 "$project_dir/scripts/validate_staging_backend_load_workflow.py"
 python3 "$project_dir/scripts/test_public_edge_evidence.py"
 python3 "$project_dir/scripts/test_verify_public_edge.py"
 python3 "$project_dir/scripts/test_validate_public_edge_workflow.py"
