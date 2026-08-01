@@ -42,6 +42,11 @@ void main() {
         'destination': 'abstract',
         'reselected': false,
       });
+      await sink.event(PakPerkTelemetryEvent.userReported, const {
+        'outcome': 'accepted',
+        'user_id': '00000000-0000-4000-8000-000000000001',
+        'detail': 'private report context',
+      });
 
       expect(delegate.events, [
         const _RecordedEvent(PakPerkTelemetryEvent.saveFailed, {
@@ -55,6 +60,9 @@ void main() {
         }),
         const _RecordedEvent(PakPerkTelemetryEvent.shellDestinationSelected, {
           'reselected': false,
+        }),
+        const _RecordedEvent(PakPerkTelemetryEvent.userReported, {
+          'outcome': 'accepted',
         }),
       ]);
     });

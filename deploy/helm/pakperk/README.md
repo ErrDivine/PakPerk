@@ -8,7 +8,7 @@ and secret material are deliberately external.
 The external Secret must expose a different key for every component database
 URL and every purpose-specific credential; reusing one key for two consumers
 is rejected even when neither value is a database URL. This keeps database,
-model, request-origin, identity, deletion-ledger, provider-encryption, OIDC
+model, comment-moderation, request-origin, identity, deletion-ledger, provider-encryption, OIDC
 admin, and telemetry credentials independently grantable and rotatable. When
 account deletion is enabled the Secret must
 also contain rotation-ordered owner-only keyrings for identity fingerprints,
@@ -53,7 +53,7 @@ must cover security retention; and deletion steps are capped at 1,800 seconds.
 Paper categories use the runtime arXiv category grammar, the contact must be a
 real monitored non-placeholder address, and model IDs are limited to the
 provider's 128-character safe identifier grammar. The migration Job is pinned
-to embedded migration version `9` and accepts only a bounded, non-placeholder
+to embedded migration version `10` and accepts only a bounded, non-placeholder
 backup ID. Metadata sync accepts a bounded five-field numeric/wildcard Cron
 schedule and a JSON object of 1 to 2,000 canonical arXiv IDs no larger than
 1,048,000 bytes; the ConfigMap uses a quoted scalar that preserves those bytes
@@ -67,6 +67,17 @@ resource quantities, request-at-or-below-limit ordering, and PDB availability
 values are validated before rendering. These checks happen before Kubernetes
 can accept a workload that would then fail process construction, image pull,
 rollout, or scheduled execution.
+
+`api.commentModerationProvider=rules` keeps the deterministic built-in
+moderator. Setting it to `http` is allowed only with comments enabled and
+requires a bounded HTTPS `api.commentModerationUrl`, a timeout no greater than
+10 seconds, and the external Secret key selected by
+`secret.commentModerationTokenKey`. The API receives the token through the
+same owner-only memory-backed materialization boundary as its other file
+secrets. Include every moderation-provider address in
+`networkPolicy.apiHttpsCidrs`; the adapter has no redirect support and treats
+transport, status, response-size, and response-schema failures as unavailable,
+which leaves content pending review rather than publishing it.
 
 Render the structural fixture with the repository-pinned validation command:
 
@@ -149,7 +160,7 @@ Rotate the external Secret, verify every new/retained keyring and credential,
 then increment `secret.rotationVersion` to force a rollout. Keep old identity
 fingerprint, ledger signature, and provider-coordinate decryption keys until
 every bound record and recoverable backup has expired or completed an evidenced
-purge. Model, OIDC admin, telemetry exporter, and request-origin credentials can
+purge. Model, comment-moderation, OIDC admin, telemetry exporter, and request-origin credentials can
 be removed only after old pods stop and their bounded request/rate windows have
 elapsed. Never put secret bytes in values, annotations, rollout checksums, logs,
 or release evidence.
@@ -194,7 +205,8 @@ metadata-only CronJob receives arXiv egress only. Do not place a shared proxy
 address in multiple lists. Every chart CIDR, including trusted proxy, database,
 and telemetry ranges, must be canonical IPv4 with a `/8` through `/32` prefix;
 IPv6 is rejected until the chart has an equally strict canonical parser and
-minimum-prefix contract. API OIDC discovery/JWKS, paper-worker model traffic,
+minimum-prefix contract. API OIDC discovery/JWKS and optional HTTPS comment
+moderation use `networkPolicy.apiHttpsCidrs`; paper-worker model traffic,
 and deletion-worker identity administration each use a NetworkPolicy egress
 rule fixed to TCP/443. Their configured HTTPS origins may spell `:443`
 explicitly, but any other explicit port is rejected instead of rendering a

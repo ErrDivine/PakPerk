@@ -484,6 +484,39 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
         report_id
     );
 
+    let user_report = second
+        .clone()
+        .oneshot(user_report_request(user_id, &second_token))
+        .await
+        .unwrap();
+    assert_eq!(user_report.status(), StatusCode::OK);
+    let user_report = response_json(user_report).await;
+    let user_report_id = user_report["report"]["id"].as_str().unwrap().to_owned();
+    assert_eq!(
+        user_report["report"]["reported_user_id"],
+        user_id.to_string()
+    );
+    assert_eq!(user_report["report"]["reason"], "impersonation");
+    let user_report_replay = first
+        .clone()
+        .oneshot(user_report_request(user_id, &second_token))
+        .await
+        .unwrap();
+    assert_eq!(user_report_replay.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(user_report_replay).await["report"]["id"],
+        user_report_id
+    );
+    let blocks_after_report: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM user_blocks WHERE blocker_user_id = $1 AND blocked_user_id = $2",
+    )
+    .bind(second_user_id)
+    .bind(user_id)
+    .fetch_one(database.pool())
+    .await
+    .unwrap();
+    assert_eq!(blocks_after_report, 0, "reporting must not create a block");
+
     let blocked = second
         .clone()
         .oneshot(authorized_empty_request(
@@ -1297,6 +1330,25 @@ fn comment_report_request(comment_id: Uuid, token: &str) -> Request<Body> {
     request.extensions_mut().insert(ConnectInfo(SocketAddr::new(
         IpAddr::V4(COMMENT_ORIGIN),
         41_235,
+    )));
+    request
+}
+
+fn user_report_request(user_id: Uuid, token: &str) -> Request<Body> {
+    let mut request = Request::post(format!("/v1/users/{user_id}/reports"))
+        .header(AUTHORIZATION, bearer(token))
+        .header(CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({
+                "reason": "impersonation",
+                "detail": "This profile appears to impersonate another researcher."
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    request.extensions_mut().insert(ConnectInfo(SocketAddr::new(
+        IpAddr::V4(COMMENT_ORIGIN),
+        41_236,
     )));
     request
 }

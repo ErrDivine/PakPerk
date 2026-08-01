@@ -26,8 +26,10 @@ Do not paste private peer-review material, unpublished confidential work, or
 large copyrighted passages. Link to the source and add your own observation.
 Comments are not private notes and may be reviewed by moderators.
 
-Use Report on the relevant comment for content problems. Use Block to remove an
-author from your own view. For urgent safety, privacy, copyright, or legal
+Use Report comment for content problems and Report user for account-level
+behavior. A report is private to the moderation team and does not block anyone.
+Use Block user separately to remove an author from your own view. For urgent
+safety, privacy, copyright, or legal
 issues, follow the [support route](support.md) and include the comment ID—not
 the full comment body—when possible.
 

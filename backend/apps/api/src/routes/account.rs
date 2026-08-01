@@ -32,6 +32,7 @@ pub(crate) async fn private_account_cache_control(request: Request, next: Next) 
     let is_private_account_route = path == "/v1/me"
         || path.starts_with("/v1/me/")
         || path.starts_with("/v1/comments/")
+        || path.starts_with("/v1/users/")
         || (is_paper_comments
             && (method == Method::POST || request.headers().contains_key(AUTHORIZATION)));
     let mut response = next.run(request).await;
@@ -541,7 +542,9 @@ mod tests {
     use super::*;
     use crate::{
         AccountFeatureConfig, ApiConfig, ApiEnvironment, FeatureFlags, build_router,
-        middleware::{OptionalPrincipal, request_id_middleware},
+        middleware::{
+            REQUEST_ID_HEADER, RequestPrincipal, SESSION_ID_HEADER, request_id_middleware,
+        },
     };
 
     #[test]
@@ -696,6 +699,9 @@ mod tests {
                 .body(Body::empty())
                 .unwrap(),
             Request::patch(format!("/v1/comments/{}", Uuid::now_v7()))
+                .body(Body::empty())
+                .unwrap(),
+            Request::post(format!("/v1/users/{}/reports", Uuid::now_v7()))
                 .body(Body::empty())
                 .unwrap(),
         ] {
@@ -959,10 +965,10 @@ mod tests {
         }
     }
 
-    fn account_test_app_with(
+    fn account_test_state_with(
         verifier: Arc<dyn TokenVerifier>,
         user: User,
-    ) -> (Router, Arc<AtomicUsize>) {
+    ) -> (AppState, Arc<AtomicUsize>) {
         let config = account_api_config(true);
         let auth = AuthRuntime::ready(verifier);
         let mut state = AppState::new_with_auth(lazy_database(), &config, auth).unwrap();
@@ -983,11 +989,66 @@ mod tests {
             )
             .unwrap(),
         ));
+        (state, provision_count)
+    }
+
+    fn account_test_app_with(
+        verifier: Arc<dyn TokenVerifier>,
+        user: User,
+    ) -> (Router, Arc<AtomicUsize>) {
+        let config = account_api_config(true);
+        let (state, provision_count) = account_test_state_with(verifier, user);
         (build_router(state, &config), provision_count)
     }
 
     fn account_test_app() -> (Router, Arc<AtomicUsize>) {
         account_test_app_with(Arc::new(AcceptingVerifier), active_user())
+    }
+
+    #[tokio::test]
+    async fn request_principal_keeps_valid_bearer_and_anonymous_session_distinct() {
+        let user = active_user();
+        let user_id = user.id.into_inner();
+        let session_id = Uuid::new_v4();
+        let request_id = Uuid::now_v7();
+        assert_ne!(user_id, session_id);
+        let (state, provision_count) = account_test_state_with(Arc::new(AcceptingVerifier), user);
+        let app = Router::new()
+            .route(
+                "/principal",
+                get(|principal: RequestPrincipal| async move {
+                    Json(serde_json::json!({
+                        "user_id": principal.user_id,
+                        "anonymous_session_id": principal.anonymous_session_id,
+                        "request_id": principal.request_id,
+                    }))
+                }),
+            )
+            .with_state(state)
+            .layer(middleware::from_fn(request_id_middleware));
+
+        let response = app
+            .oneshot(
+                Request::get("/principal")
+                    .header(AUTHORIZATION, "Bearer private-token")
+                    .header(SESSION_ID_HEADER, session_id.to_string())
+                    .header(REQUEST_ID_HEADER, request_id.to_string())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response_json(response).await,
+            serde_json::json!({
+                "user_id": user_id,
+                "anonymous_session_id": session_id,
+                "request_id": request_id,
+            })
+        );
+        assert_eq!(provision_count.load(Ordering::SeqCst), 1);
     }
 
     async fn patch_profile(app: &Router, profile_etag: Option<&str>, body: &str) -> Response {
@@ -1132,8 +1193,8 @@ mod tests {
         let public = Router::new()
             .route(
                 "/public",
-                get(|principal: OptionalPrincipal| async move {
-                    assert!(principal.0.is_none());
+                get(|principal: RequestPrincipal| async move {
+                    assert!(principal.user_id.is_none());
                     StatusCode::OK
                 }),
             )

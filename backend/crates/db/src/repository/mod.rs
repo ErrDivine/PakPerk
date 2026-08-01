@@ -48,7 +48,8 @@ pub use comments::{
     CommentCreateOutcome, CommentCreatePrecondition, CommentCreateResolution,
     CommentDeleteResolution, CommentEditResolution, CommentMutationOutcome, CommentReadOutcome,
     CommentReportOutcome, CommentReportResolution, CommentRepository, CommentWriteGuard,
-    StoredReport, UserBlockOutcome, UserBlockResolution, UserUnblockResolution,
+    StoredReport, StoredUserReport, UserBlockOutcome, UserBlockResolution, UserReportOutcome,
+    UserReportResolution, UserUnblockResolution,
 };
 pub use library::{
     LibraryChangesOutcome, LibraryMutationIntent, LibraryMutationOutcome,
@@ -60,6 +61,7 @@ pub use moderation::{
     AdminUserStatusOutcome, ModerationRepository, StoredAdminActor, StoredInspectionReport,
     StoredModerationInspection, StoredModerationQueuePage, StoredModerationQueueRecord,
     StoredReportAgeMetrics, StoredReportQueuePage, StoredReportQueueRecord,
+    StoredUserReportInspection, StoredUserReportQueuePage, StoredUserReportQueueRecord,
 };
 pub use rate_limits::{
     RateLimitConfigError, RateLimitDecision, RateLimitRepository, RateLimitRequest,

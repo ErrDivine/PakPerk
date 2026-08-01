@@ -261,7 +261,13 @@ final currentAccountProvider =
       return controller;
     });
 
-enum AppPendingActionKind { savePaper, openComposer, reportComment, blockUser }
+enum AppPendingActionKind {
+  savePaper,
+  openComposer,
+  reportComment,
+  reportUser,
+  blockUser,
+}
 
 /// One credential-free, in-memory action marker that can cross an AppAuth
 /// round trip. Feature phases install an executor for the action they own.

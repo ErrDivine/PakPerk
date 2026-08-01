@@ -69,7 +69,7 @@ crash evidence.
    code rollout that stops using a field.
 2. Run the chart migration Job once, with the reviewed image digest, distinct
    migration database role, `RUN_MIGRATIONS=false` everywhere else, expected
-   embedded migration version `9`, and a bounded non-placeholder backup
+   embedded migration version `10`, and a bounded non-placeholder backup
    evidence ID. The scheduled metadata manifest must be valid JSON containing
    1 to 2,000 canonical arXiv IDs within the chart's 1,048,000-byte ConfigMap
    boundary, and its bounded five-field Cron expression must render

@@ -2,8 +2,7 @@ use super::{
     ApiError, AppState, ArxivError, Capabilities, CursorError, DbError, Duration, Extension,
     FailureCategory, FulltextPolicy, HeaderMap, OverallProcessingState, Paper, PaperSummary,
     ProcessingError, ProcessingStage, ProcessingState, ProviderError, PublicRequestAction,
-    PublicRequestRateLimitError, RequestId, SESSION_ID_HEADER, SocketAddr, StatusCode, Url, Uuid,
-    error,
+    PublicRequestRateLimitError, RequestId, SocketAddr, StatusCode, Url, Uuid, error,
 };
 
 pub(super) const NEGATIVE_EXACT_ARXIV_CACHE_TTL: Duration = Duration::from_secs(15 * 60);
@@ -377,13 +376,6 @@ pub(super) fn valid_category(category: &str) -> bool {
         && subject
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || character == '-')
-}
-
-pub(super) fn optional_session_id(headers: &HeaderMap) -> Option<Uuid> {
-    headers
-        .get(&SESSION_ID_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| Uuid::parse_str(value).ok())
 }
 
 #[cfg(test)]

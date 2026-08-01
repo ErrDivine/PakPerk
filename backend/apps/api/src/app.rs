@@ -24,7 +24,7 @@ use library::{LibraryPolicy, LibraryService};
 use llm_provider::{
     ChatProvider, DeterministicProvider, EmbeddingProvider, OpenAiCompatibleProvider,
 };
-use moderation::{ContentModerator, ModerationPipeline};
+use moderation::{ContentModerator, HttpModerationAdapter, ModerationPipeline};
 use tower_http::{
     compression::CompressionLayer,
     cors::{AllowOrigin, CorsLayer},
@@ -44,7 +44,7 @@ use crate::{
         feed, get_me, health_live, health_ready, introduction, library_changes, list_blocked_users,
         list_library, list_my_comments, list_paper_comments, paper_by_arxiv, paper_metadata,
         patch_me, prepare, private_account_cache_control, processing, remove_library_item,
-        report_comment, save_library_item, unblock_user, verify_deletion_identity,
+        report_comment, report_user, save_library_item, unblock_user, verify_deletion_identity,
     },
 };
 
@@ -228,9 +228,15 @@ fn build_application_services(
         .as_ref()
         .zip(config.accounts.as_ref())
         .map(|(comment, account)| {
-            let moderator: Arc<dyn ContentModerator> = match comment.moderation_provider() {
-                CommentModerationProvider::Rules => Arc::new(ModerationPipeline::default()),
+            let adapter: Option<Arc<dyn ContentModerator>> = match comment.moderation_provider() {
+                CommentModerationProvider::Rules => None,
+                CommentModerationProvider::Http => Some(Arc::new(HttpModerationAdapter::new(
+                    comment.moderation_http().cloned().ok_or_else(|| {
+                        anyhow::anyhow!("HTTP moderation configuration is missing")
+                    })?,
+                )?)),
             };
+            let moderator: Arc<dyn ContentModerator> = Arc::new(ModerationPipeline::new(adapter));
             Ok::<_, anyhow::Error>(CommentService::new(
                 database.comments(),
                 database.rate_limits(),
@@ -297,6 +303,7 @@ pub fn build_router(state: AppState, config: &ApiConfig) -> Router {
                 axum::routing::patch(edit_comment).delete(delete_comment),
             )
             .route("/v1/comments/{comment_id}/reports", post(report_comment))
+            .route("/v1/users/{user_id}/reports", post(report_user))
             .route(
                 "/v1/me/blocked-users/{user_id}",
                 put(block_user).delete(unblock_user),
@@ -382,6 +389,7 @@ fn production_feature_routes(features: FeatureFlags) -> Vec<&'static str> {
             "/v1/papers/{paper_id}/comments",
             "/v1/comments/{comment_id}",
             "/v1/comments/{comment_id}/reports",
+            "/v1/users/{user_id}/reports",
             "/v1/me/blocked-users/{user_id}",
             "/v1/me/blocked-users",
             "/v1/me/comments",
@@ -427,6 +435,7 @@ mod tests {
                 "/v1/papers/{paper_id}/comments",
                 "/v1/comments/{comment_id}",
                 "/v1/comments/{comment_id}/reports",
+                "/v1/users/{user_id}/reports",
                 "/v1/me/blocked-users/{user_id}",
                 "/v1/me/blocked-users",
                 "/v1/me/comments",

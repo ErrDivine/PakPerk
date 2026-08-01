@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use chrono::{TimeDelta, Utc};
 use comments::{
     CommentService, CommentServiceConfig, CommentServiceError, CreateCommentRequest,
-    EditCommentRequest, ReportCommentRequest,
+    EditCommentRequest, ReportCommentRequest, ReportUserRequest,
 };
 use db::{Database, RateLimitRequest};
 use domain::{
@@ -174,6 +174,7 @@ async fn accepted_replays_and_noops_bypass_exhausted_shared_buckets() {
     let origin_b = "b".repeat(64);
     let origin_c = "c".repeat(64);
     let origin_d = "d".repeat(64);
+    let origin_e = "e".repeat(64);
     let request_id = Uuid::now_v7();
     let created = service
         .create(
@@ -375,6 +376,76 @@ async fn accepted_replays_and_noops_bypass_exhausted_shared_buckets() {
     assert!(report_replay.replayed);
     assert_eq!(report_replay.report, report.report);
 
+    let user_report = service
+        .report_user(
+            reporter.id,
+            author.id,
+            ReportUserRequest {
+                reason: CommentReportReason::Harassment,
+                detail: Some("Please review this public profile.".to_owned()),
+                origin_scope: origin_e.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!user_report.replayed);
+    for request in [
+        RateLimitRequest::user_report(reporter.id, 1, Duration::from_secs(3_600)).unwrap(),
+        RateLimitRequest::user_report_target(author.id, 1, Duration::from_secs(3_600)).unwrap(),
+        RateLimitRequest::comment_origin(
+            format!("origin:{origin_e}"),
+            1,
+            Duration::from_secs(3_600),
+        )
+        .unwrap(),
+    ] {
+        assert!(
+            !database
+                .rate_limits()
+                .check(&request)
+                .await
+                .unwrap()
+                .allowed
+        );
+    }
+    let user_report_replay = service
+        .report_user(
+            reporter.id,
+            author.id,
+            ReportUserRequest {
+                reason: CommentReportReason::Spam,
+                detail: None,
+                origin_scope: origin_e.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(user_report_replay.replayed);
+    assert_eq!(user_report_replay.report, user_report.report);
+    assert!(matches!(
+        service
+            .report_user(
+                reporter.id,
+                reporter.id,
+                ReportUserRequest {
+                    reason: CommentReportReason::Other,
+                    detail: None,
+                    origin_scope: origin_e.clone(),
+                },
+            )
+            .await,
+        Err(CommentServiceError::CannotReportSelf)
+    ));
+    let blocks_before_block: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM user_blocks WHERE blocker_user_id = $1 AND blocked_user_id = $2",
+    )
+    .bind(reporter.id.into_inner())
+    .bind(author.id.into_inner())
+    .fetch_one(database.pool())
+    .await
+    .unwrap();
+    assert_eq!(blocks_before_block, 0);
+
     let blocked = service.block(reporter.id, author.id).await.unwrap();
     assert_eq!(blocked.blocked_user.user.id, author.id);
     assert!(
@@ -459,11 +530,12 @@ async fn accepted_replays_and_noops_bypass_exhausted_shared_buckets() {
         .await
         .unwrap();
     sqlx::query(
-        "DELETE FROM shared_rate_limit_buckets WHERE scope_key = $1 OR scope_key = $2 OR scope_key = $3",
+        "DELETE FROM shared_rate_limit_buckets WHERE scope_key = $1 OR scope_key = $2 OR scope_key = $3 OR scope_key = $4",
     )
         .bind(format!("origin:{origin_a}"))
         .bind(format!("origin:{origin_b}"))
         .bind(format!("origin:{origin_c}"))
+        .bind(format!("origin:{origin_e}"))
         .execute(database.pool())
         .await
         .unwrap();
@@ -656,6 +728,53 @@ async fn concurrent_retries_are_coordinated_before_limits_and_moderation() {
         assert_eq!(bucket_count(&database, bucket, &scope_key).await, 1);
     }
 
+    let user_report_origin = "f".repeat(64);
+    let user_report_barrier = Arc::new(Barrier::new(CONCURRENT_DUPLICATES + 1));
+    let mut user_reports = JoinSet::new();
+    for _ in 0..CONCURRENT_DUPLICATES {
+        let service = Arc::clone(&service);
+        let barrier = Arc::clone(&user_report_barrier);
+        let origin_scope = user_report_origin.clone();
+        user_reports.spawn(async move {
+            barrier.wait().await;
+            service
+                .report_user(
+                    reporter,
+                    author,
+                    ReportUserRequest {
+                        reason: CommentReportReason::Impersonation,
+                        detail: None,
+                        origin_scope,
+                    },
+                )
+                .await
+        });
+    }
+    user_report_barrier.wait().await;
+    let mut user_report_results = Vec::new();
+    while let Some(result) = user_reports.join_next().await {
+        user_report_results.push(result.unwrap().unwrap());
+    }
+    assert_eq!(
+        user_report_results
+            .iter()
+            .filter(|result| !result.replayed)
+            .count(),
+        1
+    );
+    assert!(
+        user_report_results
+            .iter()
+            .all(|result| result.report == user_report_results[0].report)
+    );
+    for (bucket, scope_key) in [
+        ("user_report", format!("user:{reporter}")),
+        ("user_report_target", format!("user:{author}")),
+        ("comment_origin", format!("origin:{user_report_origin}")),
+    ] {
+        assert_eq!(bucket_count(&database, bucket, &scope_key).await, 1);
+    }
+
     let block_barrier = Arc::new(Barrier::new(CONCURRENT_DUPLICATES + 1));
     let mut blocks = JoinSet::new();
     for _ in 0..CONCURRENT_DUPLICATES {
@@ -771,12 +890,14 @@ async fn concurrent_retries_are_coordinated_before_limits_and_moderation() {
            OR scope_key = $2
            OR scope_key = $3
            OR scope_key = $4
+           OR scope_key = $5
         ",
     )
     .bind(format!("user:{author}"))
     .bind(format!("user:{reporter}"))
     .bind(format!("origin:{create_origin}"))
     .bind(format!("origin:{report_origin}"))
+    .bind(format!("origin:{user_report_origin}"))
     .execute(database.pool())
     .await
     .unwrap();

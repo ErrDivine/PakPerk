@@ -13,4 +13,5 @@ pub(crate) use timeout::{TimeoutConfig, stable_error_middleware, timeout_middlew
 
 pub(crate) const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
 pub(crate) const SESSION_ID_HEADER: HeaderName = HeaderName::from_static("x-session-id");
-pub(crate) use auth::{AccountDeletionPrincipal, AuthenticatedPrincipal, OptionalPrincipal};
+pub use auth::RequestPrincipal;
+pub(crate) use auth::{AccountDeletionPrincipal, AuthenticatedPrincipal};

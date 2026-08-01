@@ -408,6 +408,7 @@ void main() {
     () async {
       final chat = ChatSnapshot(
         threadId: 'thread-1',
+        generation: sampleProcessing.generation,
         messages: [
           ChatMessage(
             id: 'message-1',
@@ -421,11 +422,16 @@ void main() {
       final processingKey = _legacyKey('processing', samplePaper.paperId);
       final introductionKey = _legacyKey('introduction', samplePaper.paperId);
       final connectionsKey = _legacyKey('connections', samplePaper.paperId);
-      const readerKey = 'feed:legacy-reader';
+      final readerKey = feedReaderKey(samplePaper);
       final chatKey = _legacyKey('chat', readerKey);
+      final chatJson = _boundLegacyChat(
+        chat,
+        sessionId: '00000000-0000-4000-8000-000000000099',
+        paper: samplePaper,
+      );
       const corruptKey = 'pakperk.paper.v1.not-valid-base64';
       SharedPreferences.setMockInitialValues({
-        'pakperk.session.v1': 'preserved-session',
+        'pakperk.session.v1': '00000000-0000-4000-8000-000000000099',
         'pakperk.restoration.v2': jsonEncode(
           const AppRestorationState(feedIndex: 4).toJson(),
         ),
@@ -436,7 +442,7 @@ void main() {
         processingKey: jsonEncode(sampleProcessing.toJson()),
         introductionKey: jsonEncode(sampleIntroduction.toJson()),
         connectionsKey: jsonEncode(sampleConnections.toJson()),
-        chatKey: jsonEncode(chat.toJson()),
+        chatKey: jsonEncode(chatJson),
         corruptKey: '{broken',
       });
       final preferences = await SharedPreferences.getInstance();
@@ -452,20 +458,30 @@ void main() {
       expect(stats.failed, isFalse);
       expect(stats.feedRows, 1);
       expect(stats.paperRows, 1);
-      expect(stats.processingRows, 0);
-      expect(stats.introductionRows, 0);
-      expect(stats.connectionRows, 0);
-      expect(stats.chatRows, 0);
-      expect(stats.invalidRows, 5);
+      expect(stats.processingRows, 1);
+      expect(stats.introductionRows, 1);
+      expect(stats.connectionRows, 1);
+      expect(stats.chatRows, 1);
+      expect(stats.unboundRows, 0);
+      expect(stats.invalidRows, 1);
       expect(
         (await store.loadFeed())?.items.single.paperId,
         samplePaper.paperId,
       );
-      expect(await store.loadProcessing(samplePaper.paperId), isNull);
-      expect(await store.loadIntroduction(samplePaper.paperId), isNull);
-      expect(await store.loadConnections(samplePaper.paperId), isNull);
-      expect(await store.loadChat(readerKey), isNull);
-      expect(preferences.getString('pakperk.session.v1'), 'preserved-session');
+      expect(
+        (await store.loadProcessing(samplePaper.paperId))?.generation,
+        sampleProcessing.generation,
+      );
+      expect(
+        (await store.loadIntroduction(samplePaper.paperId))?.heading,
+        sampleIntroduction.heading,
+      );
+      expect((await store.loadConnections(samplePaper.paperId))?.ready, isTrue);
+      expect((await store.loadChat(readerKey))?.threadId, 'thread-1');
+      expect(
+        preferences.getString('pakperk.session.v1'),
+        '00000000-0000-4000-8000-000000000099',
+      );
       expect(preferences.containsKey('pakperk.restoration.v2'), isTrue);
       for (final key in [
         LegacySharedPreferencesImporter.feedKey,
@@ -484,6 +500,518 @@ void main() {
       );
     },
   );
+
+  test(
+    'frozen baseline blobs without generation provenance fail closed',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        LegacySharedPreferencesImporter.feedKey: _frozenV1FeedJson,
+        _frozenV1PaperKey: _frozenV1PaperJson,
+        _frozenV1ProcessingKey: _frozenV1ProcessingJson,
+        _frozenV1IntroductionKey: _frozenV1IntroductionJson,
+        _frozenV1ConnectionsKey: _frozenV1ConnectionsJson,
+        _frozenV1ChatKey: _frozenV1ChatJson,
+      });
+      final preferences = await SharedPreferences.getInstance();
+      final database = _memoryDatabase();
+      final store = DriftLocalStore(
+        preferences: preferences,
+        database: database,
+      );
+      addTearDown(store.close);
+
+      final stats = await store.startLegacyImportWork();
+
+      expect(stats.failed, isFalse);
+      expect(stats.invalidRows, 0);
+      expect(stats.unboundRows, 4);
+      expect(stats.processingRows, 0);
+      expect(stats.introductionRows, 0);
+      expect(stats.connectionRows, 0);
+      expect(stats.chatRows, 0);
+      expect(await store.loadProcessing(_frozenV1PaperId), isNull);
+      expect(await store.loadIntroduction(_frozenV1PaperId), isNull);
+      expect(await store.loadConnections(_frozenV1PaperId), isNull);
+      expect(await store.loadChat(_frozenV1ReaderKey), isNull);
+      expect(
+        await database.readMetadata(legacyPreferencesImportMarker),
+        isTrue,
+      );
+      expect(preferences.getKeys().where(_isLegacyBulkKey), isEmpty);
+    },
+  );
+
+  test('legacy chat requires the pre-migration anonymous session', () async {
+    final readerKey = feedReaderKey(samplePaper);
+    SharedPreferences.setMockInitialValues({
+      LegacySharedPreferencesImporter.feedKey: jsonEncode(
+        FeedPage(items: [samplePaper]).toJson(),
+      ),
+      _legacyKey('paper', samplePaper.paperId): jsonEncode(
+        samplePaper.toJson(),
+      ),
+      _legacyKey('processing', samplePaper.paperId): jsonEncode(
+        sampleProcessing.toJson(),
+      ),
+      _legacyKey('chat', readerKey): jsonEncode(
+        ChatSnapshot(
+          threadId: 'must-not-cross-session',
+          generation: sampleProcessing.generation,
+        ).toJson(),
+      ),
+    });
+    final database = _memoryDatabase();
+    final store = DriftLocalStore(
+      preferences: await SharedPreferences.getInstance(),
+      database: database,
+    );
+    addTearDown(store.close);
+
+    final stats = await store.startLegacyImportWork();
+
+    expect(stats.processingRows, 1);
+    expect(stats.chatRows, 0);
+    expect(stats.unboundRows, 1);
+    expect(await store.loadChat(readerKey), isNull);
+  });
+
+  test(
+    'wrong-type session preference cannot crash construction or bind chat',
+    () async {
+      const envelopeSessionId = '00000000-0000-4000-8000-000000000099';
+      final readerKey = feedReaderKey(samplePaper);
+      SharedPreferences.setMockInitialValues({
+        'pakperk.session.v1': 99,
+        LegacySharedPreferencesImporter.feedKey: jsonEncode(
+          FeedPage(items: [samplePaper]).toJson(),
+        ),
+        _legacyKey('paper', samplePaper.paperId): jsonEncode(
+          samplePaper.toJson(),
+        ),
+        _legacyKey('processing', samplePaper.paperId): jsonEncode(
+          sampleProcessing.toJson(),
+        ),
+        _legacyKey('chat', readerKey): jsonEncode(
+          _boundLegacyChat(
+            ChatSnapshot(
+              threadId: 'must-not-use-corrupt-session',
+              generation: sampleProcessing.generation,
+            ),
+            sessionId: envelopeSessionId,
+            paper: samplePaper,
+          ),
+        ),
+      });
+      final preferences = await SharedPreferences.getInstance();
+      final database = _memoryDatabase();
+      addTearDown(database.close);
+
+      final importer = LegacySharedPreferencesImporter(
+        preferences: preferences,
+        database: database,
+        fulltextPolicy: ClientFulltextPolicy.prototype,
+      );
+      final stats = await importer.run();
+
+      expect(stats.failed, isFalse);
+      expect(stats.processingRows, 1);
+      expect(stats.chatRows, 0);
+      expect(stats.unboundRows, 1);
+      expect(preferences.get('pakperk.session.v1'), 99);
+      expect(await database.select(database.cachedChats).get(), isEmpty);
+    },
+  );
+
+  test('noncanonical session preference cannot bind legacy chat', () async {
+    const noncanonicalSessionId = 'legacy-anonymous-session';
+    final readerKey = feedReaderKey(samplePaper);
+    SharedPreferences.setMockInitialValues({
+      'pakperk.session.v1': noncanonicalSessionId,
+      LegacySharedPreferencesImporter.feedKey: jsonEncode(
+        FeedPage(items: [samplePaper]).toJson(),
+      ),
+      _legacyKey('paper', samplePaper.paperId): jsonEncode(
+        samplePaper.toJson(),
+      ),
+      _legacyKey('processing', samplePaper.paperId): jsonEncode(
+        sampleProcessing.toJson(),
+      ),
+      _legacyKey('chat', readerKey): jsonEncode(
+        _boundLegacyChat(
+          ChatSnapshot(
+            threadId: 'must-not-use-noncanonical-session',
+            generation: sampleProcessing.generation,
+          ),
+          sessionId: noncanonicalSessionId,
+          paper: samplePaper,
+        ),
+      ),
+    });
+    final preferences = await SharedPreferences.getInstance();
+    final database = _memoryDatabase();
+    addTearDown(database.close);
+
+    final stats = await LegacySharedPreferencesImporter(
+      preferences: preferences,
+      database: database,
+      fulltextPolicy: ClientFulltextPolicy.prototype,
+    ).run();
+
+    expect(stats.failed, isFalse);
+    expect(stats.processingRows, 1);
+    expect(stats.chatRows, 0);
+    expect(stats.unboundRows, 1);
+    expect(await database.select(database.cachedChats).get(), isEmpty);
+  });
+
+  test('failed import cannot mint chat provenance for a retry', () async {
+    final readerKey = feedReaderKey(samplePaper);
+    final chatKey = _legacyKey('chat', readerKey);
+    SharedPreferences.setMockInitialValues({
+      LegacySharedPreferencesImporter.feedKey: jsonEncode(
+        FeedPage(items: [samplePaper]).toJson(),
+      ),
+      _legacyKey('paper', samplePaper.paperId): jsonEncode(
+        samplePaper.toJson(),
+      ),
+      _legacyKey('processing', samplePaper.paperId): jsonEncode(
+        sampleProcessing.toJson(),
+      ),
+      chatKey: jsonEncode(
+        ChatSnapshot(
+          threadId: 'must-not-gain-provenance',
+          generation: sampleProcessing.generation,
+        ).toJson(),
+      ),
+    });
+    final preferences = await SharedPreferences.getInstance();
+    final database = _memoryDatabase();
+    addTearDown(database.close);
+    final failed = LegacySharedPreferencesImporter(
+      preferences: preferences,
+      database: database,
+      fulltextPolicy: ClientFulltextPolicy.prototype,
+      beforeMarkComplete: () async => throw StateError('injected failure'),
+    );
+
+    expect((await failed.run()).failed, isTrue);
+    expect(preferences.containsKey('pakperk.session.v1'), isFalse);
+    expect(preferences.containsKey(chatKey), isTrue);
+
+    final retried = await LegacySharedPreferencesImporter(
+      preferences: preferences,
+      database: database,
+      fulltextPolicy: ClientFulltextPolicy.prototype,
+    ).run();
+    expect(retried.failed, isFalse);
+    expect(retried.chatRows, 0);
+    expect(retried.unboundRows, 1);
+    expect(preferences.containsKey('pakperk.session.v1'), isFalse);
+    expect(preferences.containsKey(chatKey), isFalse);
+    expect(await database.select(database.cachedChats).get(), isEmpty);
+  });
+
+  test('legacy route chat requires an exact restored route identity', () async {
+    const restoredRouteId = 'restored-route';
+    final trustedReaderKey = routeReaderKey(restoredRouteId, samplePaper);
+    final untrustedReaderKey = routeReaderKey('different-route', samplePaper);
+    final nonCanonicalReaderKey =
+        'route:$restoredRouteId:${samplePaper.arxivBaseId}v07';
+    SharedPreferences.setMockInitialValues({
+      'pakperk.session.v1': '00000000-0000-4000-8000-000000000099',
+      'pakperk.restoration.v2': jsonEncode(
+        AppRestorationState(
+          routeStack: [
+            PaperRouteEntry(routeId: restoredRouteId, paper: samplePaper),
+          ],
+        ).toJson(),
+      ),
+      LegacySharedPreferencesImporter.feedKey: jsonEncode(
+        FeedPage(items: [samplePaper]).toJson(),
+      ),
+      _legacyKey('paper', samplePaper.paperId): jsonEncode(
+        samplePaper.toJson(),
+      ),
+      _legacyKey('processing', samplePaper.paperId): jsonEncode(
+        sampleProcessing.toJson(),
+      ),
+      _legacyKey('chat', untrustedReaderKey): jsonEncode(
+        _boundLegacyChat(
+          ChatSnapshot(
+            threadId: 'must-not-cross-route',
+            generation: sampleProcessing.generation,
+          ),
+          sessionId: '00000000-0000-4000-8000-000000000099',
+          paper: samplePaper,
+        ),
+      ),
+      _legacyKey('chat', trustedReaderKey): jsonEncode(
+        _boundLegacyChat(
+          ChatSnapshot(
+            threadId: 'restored-route-thread',
+            generation: sampleProcessing.generation,
+          ),
+          sessionId: '00000000-0000-4000-8000-000000000099',
+          paper: samplePaper,
+        ),
+      ),
+      _legacyKey('chat', nonCanonicalReaderKey): jsonEncode(
+        _boundLegacyChat(
+          ChatSnapshot(
+            threadId: 'must-not-normalize-reader-key',
+            generation: sampleProcessing.generation,
+          ),
+          sessionId: '00000000-0000-4000-8000-000000000099',
+          paper: samplePaper,
+        ),
+      ),
+    });
+    final database = _memoryDatabase();
+    final store = DriftLocalStore(
+      preferences: await SharedPreferences.getInstance(),
+      database: database,
+    );
+    addTearDown(store.close);
+
+    final stats = await store.startLegacyImportWork();
+
+    expect(stats.processingRows, 1);
+    expect(stats.chatRows, 1);
+    expect(stats.unboundRows, 2);
+    expect(
+      (await store.loadChat(trustedReaderKey))?.threadId,
+      'restored-route-thread',
+    );
+    expect(await store.loadChat(untrustedReaderKey), isNull);
+    expect(await store.loadChat(nonCanonicalReaderKey), isNull);
+  });
+
+  test('newer feed metadata cannot relabel older derived blobs', () async {
+    final newer = PaperSummary.fromJson(
+      samplePaper.toJson()
+        ..['arxiv_id'] = '${samplePaper.arxivBaseId}v8'
+        ..['updated_at'] = DateTime.utc(2026, 7, 31).toIso8601String(),
+    );
+    SharedPreferences.setMockInitialValues({
+      LegacySharedPreferencesImporter.feedKey: jsonEncode(
+        FeedPage(items: [newer]).toJson(),
+      ),
+      _legacyKey('paper', samplePaper.paperId): jsonEncode(
+        samplePaper.toJson(),
+      ),
+      _legacyKey('processing', samplePaper.paperId): jsonEncode(
+        sampleProcessing.toJson(),
+      ),
+      _legacyKey('introduction', samplePaper.paperId): jsonEncode(
+        sampleIntroduction.toJson(),
+      ),
+    });
+    final database = _memoryDatabase();
+    final store = DriftLocalStore(
+      preferences: await SharedPreferences.getInstance(),
+      database: database,
+    );
+    addTearDown(store.close);
+
+    final stats = await store.startLegacyImportWork();
+
+    expect(stats.failed, isFalse);
+    expect(stats.unboundRows, 2);
+    expect(
+      (await store.loadPaper(samplePaper.paperId))?.arxivId,
+      newer.arxivId,
+    );
+    expect(await store.loadProcessing(samplePaper.paperId), isNull);
+    expect(await store.loadIntroduction(samplePaper.paperId), isNull);
+  });
+
+  test('unversioned paper metadata cannot bind legacy derived blobs', () async {
+    final unversioned = PaperSummary.fromJson(
+      samplePaper.toJson()..['arxiv_id'] = samplePaper.arxivBaseId,
+    );
+    SharedPreferences.setMockInitialValues({
+      LegacySharedPreferencesImporter.feedKey: jsonEncode(
+        FeedPage(items: [unversioned]).toJson(),
+      ),
+      _legacyKey('paper', unversioned.paperId): jsonEncode(
+        unversioned.toJson(),
+      ),
+      _legacyKey('processing', unversioned.paperId): jsonEncode(
+        sampleProcessing.toJson(),
+      ),
+    });
+    final database = _memoryDatabase();
+    final store = DriftLocalStore(
+      preferences: await SharedPreferences.getInstance(),
+      database: database,
+    );
+    addTearDown(store.close);
+
+    final stats = await store.startLegacyImportWork();
+
+    expect(stats.failed, isFalse);
+    expect(stats.processingRows, 0);
+    expect(stats.unboundRows, 1);
+    expect((await store.loadPaper(unversioned.paperId))?.arxivId, isNotEmpty);
+    expect(await store.loadProcessing(unversioned.paperId), isNull);
+  });
+
+  test(
+    'legacy child rows must match the imported processing generation',
+    () async {
+      final generationTwo = PaperProcessingState.fromJson(
+        sampleProcessing.toJson()..['generation'] = 2,
+      );
+      final readerKey = feedReaderKey(samplePaper);
+      SharedPreferences.setMockInitialValues({
+        'pakperk.session.v1': '00000000-0000-4000-8000-000000000099',
+        LegacySharedPreferencesImporter.feedKey: jsonEncode(
+          FeedPage(items: [samplePaper]).toJson(),
+        ),
+        _legacyKey('paper', samplePaper.paperId): jsonEncode(
+          samplePaper.toJson(),
+        ),
+        _legacyKey('processing', samplePaper.paperId): jsonEncode(
+          generationTwo.toJson(),
+        ),
+        _legacyKey('introduction', samplePaper.paperId): jsonEncode(
+          sampleIntroduction.toJson(),
+        ),
+        _legacyKey('connections', samplePaper.paperId): jsonEncode(
+          sampleConnections.toJson(),
+        ),
+        _legacyKey('chat', readerKey): jsonEncode(
+          ChatSnapshot(threadId: 'g1-thread', generation: 1).toJson(),
+        ),
+      });
+      final database = _memoryDatabase();
+      final store = DriftLocalStore(
+        preferences: await SharedPreferences.getInstance(),
+        database: database,
+      );
+      addTearDown(store.close);
+
+      final stats = await store.startLegacyImportWork();
+
+      expect(stats.processingRows, 1);
+      expect(stats.unboundRows, 3);
+      expect((await store.loadProcessing(samplePaper.paperId))?.generation, 2);
+      expect(await store.loadIntroduction(samplePaper.paperId), isNull);
+      expect(await store.loadConnections(samplePaper.paperId), isNull);
+      expect(await store.loadChat(readerKey), isNull);
+    },
+  );
+
+  test(
+    'session created after importer construction cannot label legacy chat',
+    () async {
+      const siblingSessionId = '00000000-0000-4000-8000-000000000099';
+      final readerKey = feedReaderKey(samplePaper);
+      SharedPreferences.setMockInitialValues({
+        LegacySharedPreferencesImporter.feedKey: jsonEncode(
+          FeedPage(items: [samplePaper]).toJson(),
+        ),
+        _legacyKey('paper', samplePaper.paperId): jsonEncode(
+          samplePaper.toJson(),
+        ),
+        _legacyKey('processing', samplePaper.paperId): jsonEncode(
+          sampleProcessing.toJson(),
+        ),
+        _legacyKey('chat', readerKey): jsonEncode(
+          _boundLegacyChat(
+            ChatSnapshot(
+              threadId: 'must-not-use-sibling-session',
+              generation: sampleProcessing.generation,
+            ),
+            sessionId: siblingSessionId,
+            paper: samplePaper,
+          ),
+        ),
+      });
+      final preferences = await SharedPreferences.getInstance();
+      final database = _memoryDatabase();
+      addTearDown(database.close);
+      final importer = LegacySharedPreferencesImporter(
+        preferences: preferences,
+        database: database,
+        fulltextPolicy: ClientFulltextPolicy.prototype,
+      );
+
+      // Startup performs session creation and local hydration concurrently.
+      // A sibling task writing a new session here must not retroactively bind
+      // chat that predates that identity.
+      expect(
+        await preferences.setString('pakperk.session.v1', siblingSessionId),
+        isTrue,
+      );
+
+      final stats = await importer.run();
+
+      expect(stats.processingRows, 1);
+      expect(stats.chatRows, 0);
+      expect(stats.unboundRows, 1);
+      expect(await database.select(database.cachedChats).get(), isEmpty);
+    },
+  );
+
+  test('session rotation races legacy chat import fail closed', () async {
+    const oldSessionId = '00000000-0000-4000-8000-000000000099';
+    const newSessionId = '00000000-0000-4000-8000-000000000100';
+    final readerKey = feedReaderKey(samplePaper);
+    final chatKey = _legacyKey('chat', readerKey);
+    SharedPreferences.setMockInitialValues({
+      'pakperk.session.v1': oldSessionId,
+      LegacySharedPreferencesImporter.feedKey: jsonEncode(
+        FeedPage(items: [samplePaper]).toJson(),
+      ),
+      _legacyKey('paper', samplePaper.paperId): jsonEncode(
+        samplePaper.toJson(),
+      ),
+      _legacyKey('processing', samplePaper.paperId): jsonEncode(
+        sampleProcessing.toJson(),
+      ),
+      chatKey: jsonEncode(
+        _boundLegacyChat(
+          ChatSnapshot(
+            threadId: 'old-session-thread',
+            generation: sampleProcessing.generation,
+          ),
+          sessionId: oldSessionId,
+          paper: samplePaper,
+        ),
+      ),
+    });
+    final preferences = await SharedPreferences.getInstance();
+    final database = _memoryDatabase();
+    addTearDown(database.close);
+    final importer = LegacySharedPreferencesImporter(
+      preferences: preferences,
+      database: database,
+      fulltextPolicy: ClientFulltextPolicy.prototype,
+      beforeMarkComplete: () async {
+        await preferences.setString('pakperk.session.v1', newSessionId);
+      },
+    );
+
+    final failed = await importer.run();
+
+    expect(failed.failed, isTrue);
+    expect(await database.select(database.cachedChats).get(), isEmpty);
+    expect(await database.readMetadata(legacyPreferencesImportMarker), isNull);
+    expect(preferences.containsKey(chatKey), isTrue);
+
+    final retried = await LegacySharedPreferencesImporter(
+      preferences: preferences,
+      database: database,
+      fulltextPolicy: ClientFulltextPolicy.prototype,
+    ).run();
+    expect(retried.failed, isFalse);
+    expect(retried.processingRows, 1);
+    expect(retried.chatRows, 0);
+    expect(retried.unboundRows, 1);
+    expect(await database.select(database.cachedChats).get(), isEmpty);
+    expect(preferences.containsKey(chatKey), isFalse);
+  });
 
   test(
     'failed legacy transaction neither throws nor removes source data',
@@ -520,6 +1048,71 @@ void main() {
         await database.readMetadata(legacyPreferencesImportMarker),
         isNull,
       );
+    },
+  );
+
+  test(
+    'source mutation before the marker rolls back and preserves the new value',
+    () async {
+      final processingKey = _legacyKey('processing', samplePaper.paperId);
+      final generationTwo = PaperProcessingState.fromJson(
+        sampleProcessing.toJson()..['generation'] = 2,
+      );
+      SharedPreferences.setMockInitialValues({
+        LegacySharedPreferencesImporter.feedKey: jsonEncode(
+          FeedPage(items: [samplePaper]).toJson(),
+        ),
+        _legacyKey('paper', samplePaper.paperId): jsonEncode(
+          samplePaper.toJson(),
+        ),
+        processingKey: jsonEncode(sampleProcessing.toJson()),
+      });
+      final preferences = await SharedPreferences.getInstance();
+      final database = _memoryDatabase();
+      addTearDown(database.close);
+      final importer = LegacySharedPreferencesImporter(
+        preferences: preferences,
+        database: database,
+        fulltextPolicy: ClientFulltextPolicy.prototype,
+        beforeMarkComplete: () async {
+          await preferences.setString(
+            processingKey,
+            jsonEncode(generationTwo.toJson()),
+          );
+        },
+      );
+
+      final failed = await importer.run();
+
+      expect(failed.failed, isTrue);
+      expect(await database.select(database.cachedPapers).get(), isEmpty);
+      expect(await database.select(database.cachedProcessing).get(), isEmpty);
+      expect(
+        await database.readMetadata(legacyPreferencesImportMarker),
+        isNull,
+      );
+      expect(
+        PaperProcessingState.fromJson(
+          Map<String, dynamic>.from(
+            jsonDecode(preferences.getString(processingKey)!) as Map,
+          ),
+        ).generation,
+        2,
+      );
+
+      final retried = await LegacySharedPreferencesImporter(
+        preferences: preferences,
+        database: database,
+        fulltextPolicy: ClientFulltextPolicy.prototype,
+      ).run();
+      expect(retried.failed, isFalse);
+      expect(retried.processingRows, 1);
+      expect(
+        (await database.select(database.cachedProcessing).getSingle())
+            .generation,
+        2,
+      );
+      expect(preferences.containsKey(processingKey), isFalse);
     },
   );
 
@@ -604,7 +1197,7 @@ void main() {
     'strict migration masks metadata and purges all derived bulk records',
     () async {
       final prepared = _withCapabilities(samplePaper);
-      const readerKey = 'feed:strict-reader';
+      final readerKey = feedReaderKey(prepared);
       SharedPreferences.setMockInitialValues({
         LegacySharedPreferencesImporter.feedKey: jsonEncode(
           FeedPage(items: [prepared]).toJson(),
@@ -620,7 +1213,10 @@ void main() {
           sampleConnections.toJson(),
         ),
         _legacyKey('chat', readerKey): jsonEncode(
-          const ChatSnapshot(threadId: 'prototype-thread').toJson(),
+          ChatSnapshot(
+            threadId: 'prototype-thread',
+            generation: sampleProcessing.generation,
+          ).toJson(),
         ),
       });
       final preferences = await SharedPreferences.getInstance();
@@ -636,10 +1232,12 @@ void main() {
       final paper = (await store.loadFeed())!.items.single;
 
       expect(stats.failed, isFalse);
-      expect(stats.policyDiscardedRows, 3);
+      expect(stats.policyDiscardedRows, 4);
+      expect(stats.unboundRows, 0);
       expect(paper.capabilities.introduction, isFalse);
       expect(paper.capabilities.chat, isFalse);
       expect(paper.capabilities.connections, isFalse);
+      expect(await store.loadProcessing(prepared.paperId), isNull);
       expect(await store.loadIntroduction(prepared.paperId), isNull);
       expect(await store.loadConnections(prepared.paperId), isNull);
       expect(await store.loadChat(readerKey), isNull);
@@ -2245,6 +2843,15 @@ PakPerkDatabase _memoryDatabase() => PakPerkDatabase(NativeDatabase.memory());
 String _legacyKey(String kind, String id) =>
     'pakperk.$kind.v1.${base64Url.encode(utf8.encode(id))}';
 
+Map<String, dynamic> _boundLegacyChat(
+  ChatSnapshot chat, {
+  required String sessionId,
+  required PaperSummary paper,
+}) => chat.toJson()
+  ..['session_id'] = sessionId
+  ..['paper_id'] = paper.paperId
+  ..['arxiv_id'] = paper.arxivId;
+
 bool _isLegacyBulkKey(String key) =>
     key == LegacySharedPreferencesImporter.feedKey ||
     LegacySharedPreferencesImporter.bulkPrefixes.any(key.startsWith);
@@ -2266,6 +2873,34 @@ PaperSummary _paper(int index) => PaperSummary.fromJson(
     ..['title'] = 'Cached paper $index'
     ..['updated_at'] = DateTime.utc(2026, 7, 30, 0, index).toIso8601String(),
 );
+
+// Byte-for-byte SharedPreferences fixtures emitted by the frozen baseline
+// serializers at 8dd3bc6. Keep these literal: constructing them with current
+// toJson methods would hide an incompatible serializer change.
+const _frozenV1PaperId = '17060376-2000-4000-8000-000000000001';
+const _frozenV1ReaderKey =
+    'feed:17060376-2000-4000-8000-000000000001:1706.03762v7';
+const _frozenV1PaperKey =
+    'pakperk.paper.v1.MTcwNjAzNzYtMjAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx';
+const _frozenV1ProcessingKey =
+    'pakperk.processing.v1.MTcwNjAzNzYtMjAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx';
+const _frozenV1IntroductionKey =
+    'pakperk.introduction.v1.MTcwNjAzNzYtMjAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx';
+const _frozenV1ConnectionsKey =
+    'pakperk.connections.v1.MTcwNjAzNzYtMjAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAx';
+const _frozenV1ChatKey =
+    'pakperk.chat.v1.ZmVlZDoxNzA2MDM3Ni0yMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDE6MTcwNi4wMzc2MnY3';
+const _frozenV1PaperJson =
+    r'''{"paper_id":"17060376-2000-4000-8000-000000000001","arxiv_id":"1706.03762v7","title":"Attention Is All You Need","abstract":"A Transformer architecture based entirely on attention mechanisms.","authors":["Ashish Vaswani","Noam Shazeer"],"primary_category":"cs.CL","categories":["cs.CL","cs.LG"],"published_at":"2017-06-12T00:00:00.000Z","updated_at":"2023-08-02T00:00:00.000Z","abs_url":"https://arxiv.org/abs/1706.03762v7","pdf_url":"https://arxiv.org/pdf/1706.03762v7","capabilities":{"metadata":true,"introduction":false,"chat":false,"connections":false}}''';
+const _frozenV1FeedJson =
+    r'''{"items":[{"paper_id":"17060376-2000-4000-8000-000000000001","arxiv_id":"1706.03762v7","title":"Attention Is All You Need","abstract":"A Transformer architecture based entirely on attention mechanisms.","authors":["Ashish Vaswani","Noam Shazeer"],"primary_category":"cs.CL","categories":["cs.CL","cs.LG"],"published_at":"2017-06-12T00:00:00.000Z","updated_at":"2023-08-02T00:00:00.000Z","abs_url":"https://arxiv.org/abs/1706.03762v7","pdf_url":"https://arxiv.org/pdf/1706.03762v7","capabilities":{"metadata":true,"introduction":false,"chat":false,"connections":false}}],"next_cursor":null}''';
+const _frozenV1ProcessingJson =
+    r'''{"paper_id":"17060376-2000-4000-8000-000000000001","overall_state":"ready","stage":"ready","capabilities":{"metadata":true,"introduction":true,"chat":true,"connections":true},"retryable":false,"updated_at":"2026-07-29T00:00:00.000Z"}''';
+const _frozenV1IntroductionJson =
+    r'''{"paper_id":"17060376-2000-4000-8000-000000000001","generation":1,"heading":"1 Introduction","paragraphs":[],"detection_confidence":0.99,"original_pdf_url":"https://arxiv.org/pdf/1706.03762v7"}''';
+const _frozenV1ConnectionsJson =
+    r'''{"paper_id":"17060376-2000-4000-8000-000000000001","ready":true,"key_connections":[],"references":[]}''';
+const _frozenV1ChatJson = r'''{"thread_id":"baseline-thread","messages":[]}''';
 
 /// Frozen production schema v1 fixture. Later versions add validators,
 /// completeness and generation scopes while preserving durable records.

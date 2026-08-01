@@ -296,6 +296,48 @@ final class CommentReportReceipt {
   final DateTime createdAt;
 }
 
+final class UserReportReceipt {
+  const UserReportReceipt({
+    required this.id,
+    required this.reportedUserId,
+    required this.reason,
+    required this.status,
+    required this.createdAt,
+  });
+
+  factory UserReportReceipt.fromJson(Map<String, dynamic> json) {
+    _expectKeys(json, const {
+      'id',
+      'reported_user_id',
+      'reason',
+      'status',
+      'created_at',
+    });
+    final reason = CommentReportReason.values.where(
+      (value) => value.wireValue == json['reason'],
+    );
+    final status = json['status'];
+    if (reason.length != 1 ||
+        status is! String ||
+        !const {'open', 'reviewed', 'actioned', 'dismissed'}.contains(status)) {
+      throw const FormatException('Invalid user-report receipt.');
+    }
+    return UserReportReceipt(
+      id: _requiredUuid(json, 'id'),
+      reportedUserId: _requiredUuid(json, 'reported_user_id'),
+      reason: reason.single,
+      status: status,
+      createdAt: _requiredDate(json, 'created_at'),
+    );
+  }
+
+  final String id;
+  final String reportedUserId;
+  final CommentReportReason reason;
+  final String status;
+  final DateTime createdAt;
+}
+
 String normalizeCommentDraft(String input) => input
     .replaceAll('\r\n', '\n')
     .replaceAll('\r', '\n')

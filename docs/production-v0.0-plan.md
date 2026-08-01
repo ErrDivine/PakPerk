@@ -103,7 +103,8 @@ evidence is recorded in the [Phase 4 report](phase-reports/phase-4.md).
 
 Phase 5 is **complete** as a repository capability. It implements flat public
 paper comments, current policy acceptance, deterministic and provider-neutral
-moderation, shared user/request-origin limits, report/block/author actions,
+moderation, shared user/request-origin limits, separate comment-report,
+user-report, block, and author actions,
 audited moderator tooling, account-scoped mobile pages/drafts/blocks, and the
 independent comment-creation kill switch. Live two-user PostgreSQL/Keycloak and
 provider-outage evidence is recorded in the

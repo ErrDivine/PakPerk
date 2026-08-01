@@ -1,19 +1,19 @@
 use super::{
-    ApiError, AppState, ConnectInfo, Extension, FulltextPolicy, HeaderMap, IntoResponse, Json,
-    Path, PrepareBody, PublicRequestAction, RequestId, SocketAddr, State, StatusCode, Uuid,
+    ApiError, AppState, ConnectInfo, FulltextPolicy, HeaderMap, IntoResponse, Json, Path,
+    PrepareBody, PublicRequestAction, RequestId, SocketAddr, State, StatusCode, Uuid,
     apply_processing_policy, apply_summary_policy, capability_not_ready, enforce_derived_policy,
     enforce_public_request_limit, internal_db_error, invalid_arxiv_id, negative_exact_cache_ttl,
-    normalize_arxiv_id, observe_arxiv_result, optional_session_id, paper_not_found,
+    normalize_arxiv_id, observe_arxiv_result, paper_not_found,
 };
-use crate::middleware::OptionalPrincipal;
+use crate::middleware::RequestPrincipal;
 
 #[utoipa::path(get, path = "/v1/papers/{paper_id}", security((), ("oidcBearer" = [])), params(("paper_id" = Uuid, Path)), responses((status = 200, description = "Paper metadata", body = crate::openapi::PaperSummarySchema), (status = 404, description = "Paper not found", body = crate::openapi::ErrorEnvelopeSchema)))]
 pub(crate) async fn paper_metadata(
     State(state): State<AppState>,
-    Extension(request_id): Extension<RequestId>,
-    _principal: OptionalPrincipal,
+    principal: RequestPrincipal,
     Path(paper_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let request_id = RequestId(principal.request_id);
     let mut paper = state
         .papers
         .get_summary(paper_id)
@@ -39,10 +39,10 @@ pub(crate) async fn paper_metadata(
 #[utoipa::path(get, path = "/v1/papers/by-arxiv/{arxiv_id}", security((), ("oidcBearer" = [])), params(("arxiv_id" = String, Path)), responses((status = 200, description = "Paper metadata", body = crate::openapi::PaperSummarySchema), (status = 400, description = "Invalid arXiv identifier", body = crate::openapi::ErrorEnvelopeSchema), (status = 404, description = "Paper not found", body = crate::openapi::ErrorEnvelopeSchema)))]
 pub(crate) async fn paper_by_arxiv(
     State(state): State<AppState>,
-    Extension(request_id): Extension<RequestId>,
-    _principal: OptionalPrincipal,
+    principal: RequestPrincipal,
     Path(arxiv_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let request_id = RequestId(principal.request_id);
     let normalized = normalize_arxiv_id(&arxiv_id).map_err(|_| invalid_arxiv_id(request_id))?;
     if let Some(paper) = state
         .papers
@@ -132,20 +132,20 @@ pub(crate) async fn paper_by_arxiv(
 #[utoipa::path(post, path = "/v1/papers/{paper_id}/prepare", security((), ("oidcBearer" = [])), request_body = PrepareBody, params(("paper_id" = Uuid, Path)), responses((status = 200, description = "Already ready or terminal", body = crate::openapi::ProcessingStateSchema), (status = 202, description = "Preparation accepted", body = crate::openapi::ProcessingStateSchema), (status = 404, description = "Paper not found", body = crate::openapi::ErrorEnvelopeSchema), (status = 429, description = "Rate limited", body = crate::openapi::ErrorEnvelopeSchema)))]
 pub(crate) async fn prepare(
     State(state): State<AppState>,
-    Extension(request_id): Extension<RequestId>,
-    _principal: OptionalPrincipal,
+    principal: RequestPrincipal,
     remote: ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(paper_id): Path<Uuid>,
     Json(body): Json<PrepareBody>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let request_id = RequestId(principal.request_id);
     enforce_public_request_limit(
         &state,
         PublicRequestAction::Prepare,
         request_id,
         &headers,
         remote.0,
-        optional_session_id(&headers),
+        principal.anonymous_session_id,
     )
     .await?;
     let mut result = state
@@ -178,10 +178,10 @@ pub(crate) async fn prepare(
 #[utoipa::path(get, path = "/v1/papers/{paper_id}/processing", security((), ("oidcBearer" = [])), params(("paper_id" = Uuid, Path)), responses((status = 200, description = "Processing state", body = crate::openapi::ProcessingStateSchema), (status = 404, description = "Paper not found", body = crate::openapi::ErrorEnvelopeSchema)))]
 pub(crate) async fn processing(
     State(state): State<AppState>,
-    Extension(request_id): Extension<RequestId>,
-    _principal: OptionalPrincipal,
+    principal: RequestPrincipal,
     Path(paper_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let request_id = RequestId(principal.request_id);
     let mut processing = state
         .papers
         .processing(paper_id)
@@ -207,10 +207,10 @@ pub(crate) async fn processing(
 #[utoipa::path(get, path = "/v1/papers/{paper_id}/introduction", security((), ("oidcBearer" = [])), params(("paper_id" = Uuid, Path)), responses((status = 200, description = "Paper introduction", body = crate::openapi::IntroductionSchema), (status = 403, description = "Full-text policy denied", body = crate::openapi::ErrorEnvelopeSchema), (status = 409, description = "Capability not ready", body = crate::openapi::ErrorEnvelopeSchema), (status = 404, description = "Paper not found", body = crate::openapi::ErrorEnvelopeSchema)))]
 pub(crate) async fn introduction(
     State(state): State<AppState>,
-    Extension(request_id): Extension<RequestId>,
-    _principal: OptionalPrincipal,
+    principal: RequestPrincipal,
     Path(paper_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let request_id = RequestId(principal.request_id);
     enforce_derived_policy(&state, request_id, paper_id).await?;
     if let Some(introduction) = state
         .papers
@@ -236,10 +236,10 @@ pub(crate) async fn introduction(
 #[utoipa::path(get, path = "/v1/papers/{paper_id}/connections", security((), ("oidcBearer" = [])), params(("paper_id" = Uuid, Path)), responses((status = 200, description = "Paper connections", body = crate::openapi::ConnectionsResponseSchema), (status = 403, description = "Full-text policy denied", body = crate::openapi::ErrorEnvelopeSchema), (status = 409, description = "Capability not ready", body = crate::openapi::ErrorEnvelopeSchema), (status = 404, description = "Paper not found", body = crate::openapi::ErrorEnvelopeSchema)))]
 pub(crate) async fn connections(
     State(state): State<AppState>,
-    Extension(request_id): Extension<RequestId>,
-    _principal: OptionalPrincipal,
+    principal: RequestPrincipal,
     Path(paper_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let request_id = RequestId(principal.request_id);
     enforce_derived_policy(&state, request_id, paper_id).await?;
     let connections = state
         .papers

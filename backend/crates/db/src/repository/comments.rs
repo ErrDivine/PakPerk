@@ -204,6 +204,38 @@ pub enum CommentReportResolution {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredUserReport {
+    pub id: Uuid,
+    pub reported_user_id: AuthenticatedUserId,
+    pub reporter_user_id: AuthenticatedUserId,
+    pub reason: CommentReportReason,
+    pub status: CommentReportStatus,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserReportOutcome {
+    Accepted {
+        report: StoredUserReport,
+        replayed: bool,
+    },
+    AccountNotFound,
+    Inactive(AccountStatus),
+    TargetNotFound,
+    CannotReportSelf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserReportResolution {
+    Unknown,
+    Replay(StoredUserReport),
+    AccountNotFound,
+    Inactive(AccountStatus),
+    TargetNotFound,
+    CannotReportSelf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UserBlockOutcome {
     Applied { blocked_user: BlockedUser },
     Removed { existed: bool },
@@ -242,6 +274,16 @@ struct ReportRow {
     created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, FromRow)]
+struct UserReportRow {
+    id: Uuid,
+    reported_user_id: Uuid,
+    reporter_user_id: Uuid,
+    reason: String,
+    status: String,
+    created_at: DateTime<Utc>,
+}
+
 impl TryFrom<ReportRow> for StoredReport {
     type Error = DbError;
 
@@ -249,6 +291,23 @@ impl TryFrom<ReportRow> for StoredReport {
         Ok(Self {
             id: row.id,
             comment_id: row.comment_id,
+            reporter_user_id: AuthenticatedUserId::new(row.reporter_user_id),
+            reason: CommentReportReason::from_str(&row.reason)
+                .map_err(|error| DbError::InvalidData(error.to_string()))?,
+            status: CommentReportStatus::from_str(&row.status)
+                .map_err(|error| DbError::InvalidData(error.to_string()))?,
+            created_at: row.created_at,
+        })
+    }
+}
+
+impl TryFrom<UserReportRow> for StoredUserReport {
+    type Error = DbError;
+
+    fn try_from(row: UserReportRow) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: row.id,
+            reported_user_id: AuthenticatedUserId::new(row.reported_user_id),
             reporter_user_id: AuthenticatedUserId::new(row.reporter_user_id),
             reason: CommentReportReason::from_str(&row.reason)
                 .map_err(|error| DbError::InvalidData(error.to_string()))?,
@@ -382,6 +441,22 @@ impl CommentRepository {
     ) -> Result<CommentWriteGuard, DbError> {
         self.coordinate_write("comment-service-report", reporter_user_id, comment_id)
             .await
+    }
+
+    /// Serializes the unique reporter/reported-user relationship without
+    /// sharing state with the independent block relationship.
+    #[allow(clippy::similar_names)]
+    pub async fn coordinate_user_report(
+        &self,
+        reporter_user_id: AuthenticatedUserId,
+        reported_user_id: AuthenticatedUserId,
+    ) -> Result<CommentWriteGuard, DbError> {
+        self.coordinate_write(
+            "comment-service-user-report",
+            reporter_user_id,
+            reported_user_id.into_inner(),
+        )
+        .await
     }
 
     /// Serializes both directions of the same block relationship mutation.
@@ -1139,6 +1214,130 @@ impl CommentRepository {
             CommentReportResolution::Unknown
         } else {
             CommentReportResolution::CommentNotFound
+        })
+    }
+
+    #[allow(clippy::similar_names)]
+    pub async fn report_user(
+        &self,
+        reporter_user_id: AuthenticatedUserId,
+        reported_user_id: AuthenticatedUserId,
+        reason: CommentReportReason,
+        detail: Option<&ReportDetail>,
+    ) -> Result<UserReportOutcome, DbError> {
+        if reporter_user_id == reported_user_id {
+            return Ok(UserReportOutcome::CannotReportSelf);
+        }
+        let mut transaction = self.pool.begin().await?;
+        match lock_account_status(&mut transaction, reporter_user_id).await? {
+            None => return Ok(UserReportOutcome::AccountNotFound),
+            Some(status) if !status.is_active() => {
+                return Ok(UserReportOutcome::Inactive(status));
+            }
+            Some(_) => {}
+        }
+        advisory_lock(
+            &mut transaction,
+            "user-report",
+            reporter_user_id,
+            reported_user_id.into_inner(),
+        )
+        .await?;
+        let target_exists: bool =
+            sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM users WHERE id = $1)")
+                .bind(reported_user_id.into_inner())
+                .fetch_one(&mut *transaction)
+                .await?;
+        if !target_exists {
+            return Ok(UserReportOutcome::TargetNotFound);
+        }
+        let inserted = sqlx::query(
+            r"
+            INSERT INTO user_reports (reported_user_id, reporter_user_id, reason, detail)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (reported_user_id, reporter_user_id) DO NOTHING
+            ",
+        )
+        .bind(reported_user_id.into_inner())
+        .bind(reporter_user_id.into_inner())
+        .bind(reason.as_str())
+        .bind(detail.map(ReportDetail::as_str))
+        .execute(&mut *transaction)
+        .await?
+        .rows_affected()
+            == 1;
+        let row = sqlx::query_as::<_, UserReportRow>(
+            r"
+            SELECT id, reported_user_id, reporter_user_id, reason, status, created_at
+            FROM user_reports
+            WHERE reported_user_id = $1 AND reporter_user_id = $2
+            ",
+        )
+        .bind(reported_user_id.into_inner())
+        .bind(reporter_user_id.into_inner())
+        .fetch_one(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        Ok(UserReportOutcome::Accepted {
+            report: StoredUserReport::try_from(row)?,
+            replayed: !inserted,
+        })
+    }
+
+    /// Resolves the immutable reporter/reported-user record before consuming
+    /// shared rate capacity. It deliberately reads only `user_reports` and never
+    /// `user_blocks`, preserving the two independent safety controls.
+    #[allow(clippy::similar_names)]
+    pub async fn resolve_user_report(
+        &self,
+        reporter_user_id: AuthenticatedUserId,
+        reported_user_id: AuthenticatedUserId,
+    ) -> Result<UserReportResolution, DbError> {
+        if reporter_user_id == reported_user_id {
+            return Ok(UserReportResolution::CannotReportSelf);
+        }
+        let mut transaction = self.pool.begin().await?;
+        match lock_account_status(&mut transaction, reporter_user_id).await? {
+            None => return Ok(UserReportResolution::AccountNotFound),
+            Some(status) if !status.is_active() => {
+                return Ok(UserReportResolution::Inactive(status));
+            }
+            Some(_) => {}
+        }
+        advisory_lock(
+            &mut transaction,
+            "user-report",
+            reporter_user_id,
+            reported_user_id.into_inner(),
+        )
+        .await?;
+        let row = sqlx::query_as::<_, UserReportRow>(
+            r"
+            SELECT id, reported_user_id, reporter_user_id, reason, status, created_at
+            FROM user_reports
+            WHERE reported_user_id = $1 AND reporter_user_id = $2
+            ",
+        )
+        .bind(reported_user_id.into_inner())
+        .bind(reporter_user_id.into_inner())
+        .fetch_optional(&mut *transaction)
+        .await?;
+        if let Some(row) = row {
+            transaction.commit().await?;
+            return Ok(UserReportResolution::Replay(StoredUserReport::try_from(
+                row,
+            )?));
+        }
+        let target_exists: bool =
+            sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM users WHERE id = $1)")
+                .bind(reported_user_id.into_inner())
+                .fetch_one(&mut *transaction)
+                .await?;
+        transaction.commit().await?;
+        Ok(if target_exists {
+            UserReportResolution::Unknown
+        } else {
+            UserReportResolution::TargetNotFound
         })
     }
 

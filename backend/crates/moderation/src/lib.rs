@@ -9,13 +9,16 @@ use async_trait::async_trait;
 use domain::CommentBody;
 use thiserror::Error;
 
+mod adapter;
 mod service;
 
+pub use adapter::{HttpModerationAdapter, HttpModerationConfig};
 pub use db::AdminReportResolution;
 pub use service::{
     AdminActor, InspectionReport, ModerationActionResult, ModerationInspection,
     ModerationQueuePage, ModerationQueueRecord, ModerationService, ModerationServiceError,
-    ReportAgeMetrics, ReportQueuePage, ReportQueueRecord, ReportResolutionResult, UserStatusResult,
+    ReportAgeMetrics, ReportQueuePage, ReportQueueRecord, ReportResolutionResult,
+    UserReportInspection, UserReportQueuePage, UserReportQueueRecord, UserStatusResult,
 };
 
 #[derive(Clone, PartialEq, Eq)]
@@ -76,6 +79,8 @@ impl ModerationReasonCode {
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ModerationError {
+    #[error("moderation provider configuration is invalid")]
+    InvalidConfiguration,
     #[error("moderation provider is unavailable")]
     Unavailable,
     #[error("moderation provider returned an invalid decision")]

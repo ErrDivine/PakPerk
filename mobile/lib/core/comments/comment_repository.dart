@@ -317,6 +317,29 @@ final class CommentRepository {
     return result;
   }
 
+  Future<UserReportReceipt> reportUser({
+    required String accountId,
+    required int authEpoch,
+    required String reportedUserId,
+    required CommentReportReason reason,
+    String? detail,
+  }) async {
+    final guard = mutationGuard(accountId, authEpoch);
+    if (!guard() || reportedUserId == accountId) {
+      throw const CommentScopeChanged();
+    }
+    final result = await _remote.reportUser(
+      userId: reportedUserId,
+      reason: reason,
+      detail: detail,
+      expectedAuthEpoch: authEpoch,
+    );
+    if (!guard() || result.reportedUserId != reportedUserId) {
+      throw const CommentScopeChanged();
+    }
+    return result;
+  }
+
   Stream<List<BlockedUserValue>> watchBlockedUsers(String accountId) =>
       _local.watchBlockedUsers(accountId);
 

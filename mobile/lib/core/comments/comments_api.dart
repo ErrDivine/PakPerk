@@ -42,6 +42,13 @@ abstract interface class CommentsRemoteDataSource {
     required int expectedAuthEpoch,
   });
 
+  Future<UserReportReceipt> reportUser({
+    required String userId,
+    required CommentReportReason reason,
+    required String? detail,
+    required int expectedAuthEpoch,
+  });
+
   Future<BlockedUser> block({
     required String userId,
     required int expectedAuthEpoch,
@@ -187,14 +194,7 @@ final class CommentsApi implements CommentsRemoteDataSource {
   }) async {
     _validateUuid(commentId, 'commentId');
     _validateEpoch(expectedAuthEpoch);
-    final normalizedDetail = detail?.trim();
-    if (normalizedDetail != null &&
-        (normalizedDetail.isEmpty ||
-            normalizedDetail.runes.length > 500 ||
-            utf8.encode(normalizedDetail).length > 2000 ||
-            normalizedDetail.runes.any((rune) => rune < 0x20))) {
-      throw ArgumentError.value(detail, 'detail', 'Invalid report detail.');
-    }
+    final normalizedDetail = _normalizeReportDetail(detail);
     try {
       final response = await _dio.post<Object?>(
         '/v1/comments/${Uri.encodeComponent(commentId)}/reports',
@@ -213,6 +213,38 @@ final class CommentsApi implements CommentsRemoteDataSource {
       if (report.commentId != commentId) {
         throw const FormatException();
       }
+      return report;
+    } on DioException catch (error) {
+      throw mapDioException(error);
+    } on FormatException {
+      throw _invalidResponse;
+    }
+  }
+
+  @override
+  Future<UserReportReceipt> reportUser({
+    required String userId,
+    required CommentReportReason reason,
+    required String? detail,
+    required int expectedAuthEpoch,
+  }) async {
+    _validateUuid(userId, 'userId');
+    _validateEpoch(expectedAuthEpoch);
+    final normalizedDetail = _normalizeReportDetail(detail);
+    try {
+      final response = await _dio.post<Object?>(
+        '/v1/users/${Uri.encodeComponent(userId)}/reports',
+        data: {'reason': reason.wireValue, 'detail': normalizedDetail},
+        options: _repeatSafeOptions(expectedAuthEpoch),
+      );
+      final root = _map(response.data);
+      _expectKeys(root, const {'report'});
+      final raw = root['report'];
+      if (raw is! Map) throw const FormatException();
+      final report = UserReportReceipt.fromJson(Map<String, dynamic>.from(raw));
+      // Reporter/target uniqueness returns the first canonical reason on a
+      // retry, while the target identity must always match this request.
+      if (report.reportedUserId != userId) throw const FormatException();
       return report;
     } on DioException catch (error) {
       throw mapDioException(error);
@@ -366,6 +398,18 @@ void _expectKeys(Map<String, dynamic> json, Set<String> keys) {
 void _validateBody(String body) {
   final issue = validateCommentBody(body);
   if (issue != null) throw ArgumentError.value(body.length, 'body', issue);
+}
+
+String? _normalizeReportDetail(String? detail) {
+  final normalized = detail?.trim();
+  if (normalized != null &&
+      (normalized.isEmpty ||
+          normalized.runes.length > 500 ||
+          utf8.encode(normalized).length > 2000 ||
+          normalized.runes.any((rune) => rune < 0x20))) {
+    throw ArgumentError.value(detail, 'detail', 'Invalid report detail.');
+  }
+  return normalized;
 }
 
 void _validateList({required String? cursor, required int limit}) {

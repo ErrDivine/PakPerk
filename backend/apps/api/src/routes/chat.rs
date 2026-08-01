@@ -1,13 +1,12 @@
 use super::{
     ApiError, AppState, ChatBody, ChatCompletionRequest, ChatResponse, ConnectInfo,
-    ContextSelectionConfig, DbError, EmbeddingRequest, EvidenceExcerpt, Extension, HeaderMap,
-    Instant, IntoResponse, Json, Path, PublicRequestAction, RequestId, RetrievalScope,
-    SESSION_ID_HEADER, SearchHit, SocketAddr, State, StatusCode, Uuid, capability_not_ready,
-    enforce_derived_policy, enforce_public_request_limit, hybrid_rank, info, internal_db_error,
-    keyword_websearch_query, paper_not_found, provider_error, reciprocal_rank_score,
-    retrieval_error, select_context,
+    ContextSelectionConfig, DbError, EmbeddingRequest, EvidenceExcerpt, HeaderMap, Instant,
+    IntoResponse, Json, Path, PublicRequestAction, RequestId, RetrievalScope, SearchHit,
+    SocketAddr, State, StatusCode, Uuid, capability_not_ready, enforce_derived_policy,
+    enforce_public_request_limit, hybrid_rank, info, internal_db_error, keyword_websearch_query,
+    paper_not_found, provider_error, reciprocal_rank_score, retrieval_error, select_context,
 };
-use crate::middleware::OptionalPrincipal;
+use crate::middleware::RequestPrincipal;
 
 struct ChatObservation {
     request_id: RequestId,
@@ -51,15 +50,18 @@ impl Drop for ChatObservation {
 #[utoipa::path(post, path = "/v1/papers/{paper_id}/chat", security((), ("oidcBearer" = [])), request_body = ChatBody, params(("paper_id" = Uuid, Path)), responses((status = 200, description = "Grounded chat answer", body = crate::openapi::ChatResponseSchema), (status = 400, description = "Invalid anonymous session or question", body = crate::openapi::ErrorEnvelopeSchema), (status = 403, description = "Full-text policy denied", body = crate::openapi::ErrorEnvelopeSchema), (status = 409, description = "Capability not ready", body = crate::openapi::ErrorEnvelopeSchema), (status = 429, description = "Rate limited", body = crate::openapi::ErrorEnvelopeSchema)))]
 pub(crate) async fn chat(
     State(state): State<AppState>,
-    Extension(request_id): Extension<RequestId>,
-    _principal: OptionalPrincipal,
+    principal: RequestPrincipal,
     remote: ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(paper_id): Path<Uuid>,
     Json(body): Json<ChatBody>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let request_id = RequestId(principal.request_id);
     let mut observation = ChatObservation::new(request_id, paper_id);
-    let session_id = validate_chat_body(request_id, &headers, paper_id, &body)?;
+    // v0.0 chat remains anonymous even for a signed-in request. Retaining the
+    // two principal identifiers separately prevents an implicit account/chat
+    // history merge when both identity headers are present.
+    let session_id = validate_chat_body(request_id, principal.anonymous_session_id, &body)?;
     enforce_public_request_limit(
         &state,
         PublicRequestAction::Chat,
@@ -216,23 +218,18 @@ pub(crate) async fn chat(
 
 pub(super) fn validate_chat_body(
     request_id: RequestId,
-    headers: &HeaderMap,
-    _paper_id: Uuid,
+    anonymous_session_id: Option<Uuid>,
     body: &ChatBody,
 ) -> Result<Uuid, ApiError> {
-    let session_id = headers
-        .get(&SESSION_ID_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| Uuid::parse_str(value).ok())
-        .ok_or_else(|| {
-            ApiError::new(
-                request_id,
-                StatusCode::BAD_REQUEST,
-                "INVALID_SESSION_ID",
-                "X-Session-Id must contain an anonymous UUID.",
-                false,
-            )
-        })?;
+    let session_id = anonymous_session_id.ok_or_else(|| {
+        ApiError::new(
+            request_id,
+            StatusCode::BAD_REQUEST,
+            "INVALID_SESSION_ID",
+            "X-Session-Id must contain an anonymous UUID.",
+            false,
+        )
+    })?;
     let message = body.message.trim();
     if message.is_empty() {
         return Err(ApiError::new(

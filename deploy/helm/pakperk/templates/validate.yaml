@@ -101,7 +101,7 @@
 {{- if ne (len (uniq $databaseKeys)) (len $databaseKeys) -}}
 {{- fail "every component must use a distinct database URL Secret key and least-privilege role" -}}
 {{- end -}}
-{{- $allSecretKeys := list .Values.secret.apiDatabaseUrlKey .Values.secret.paperWorkerDatabaseUrlKey .Values.secret.metadataSyncDatabaseUrlKey .Values.secret.deletionWorkerDatabaseUrlKey .Values.secret.migrationDatabaseUrlKey .Values.secret.llmApiKeyKey .Values.secret.apiOriginHashKey .Values.secret.identityFingerprintKeysKey .Values.secret.deletionLedgerSigningKeysKey .Values.secret.deletionProviderIdentityKeysKey .Values.secret.oidcAdminClientSecretKey .Values.secret.telemetryExporterHeadersKey -}}
+{{- $allSecretKeys := list .Values.secret.apiDatabaseUrlKey .Values.secret.paperWorkerDatabaseUrlKey .Values.secret.metadataSyncDatabaseUrlKey .Values.secret.deletionWorkerDatabaseUrlKey .Values.secret.migrationDatabaseUrlKey .Values.secret.llmApiKeyKey .Values.secret.commentModerationTokenKey .Values.secret.apiOriginHashKey .Values.secret.identityFingerprintKeysKey .Values.secret.deletionLedgerSigningKeysKey .Values.secret.deletionProviderIdentityKeysKey .Values.secret.oidcAdminClientSecretKey .Values.secret.telemetryExporterHeadersKey -}}
 {{- if ne (len (uniq $allSecretKeys)) (len $allSecretKeys) -}}
 {{- fail "database URLs and every purpose-specific credential must use distinct external Secret keys" -}}
 {{- end -}}
@@ -120,7 +120,7 @@
 {{- if not (regexMatch $networkPolicyHttpsOrigin .Values.public.oidcOrigin) -}}
 {{- fail "public.oidcOrigin must be an exact HTTPS origin on TCP/443 without path, query, fragment, credentials, or wildcard" -}}
 {{- end -}}
-{{- range $component, $endpoint := dict "public.siteOrigin" .Values.public.siteOrigin "public.apiOrigin" .Values.public.apiOrigin "public.mobileTelemetryOrigin" .Values.public.mobileTelemetryOrigin "public.oidcOrigin" .Values.public.oidcOrigin "public.oidcIssuer" .Values.public.oidcIssuer "paperWorker.llmBaseUrl" .Values.paperWorker.llmBaseUrl "deletionWorker.keycloakAdminBaseUrl" .Values.deletionWorker.keycloakAdminBaseUrl "otelCollector.exporterEndpoint" .Values.otelCollector.exporterEndpoint -}}
+{{- range $component, $endpoint := dict "public.siteOrigin" .Values.public.siteOrigin "public.apiOrigin" .Values.public.apiOrigin "public.mobileTelemetryOrigin" .Values.public.mobileTelemetryOrigin "public.oidcOrigin" .Values.public.oidcOrigin "public.oidcIssuer" .Values.public.oidcIssuer "api.commentModerationUrl" .Values.api.commentModerationUrl "paperWorker.llmBaseUrl" .Values.paperWorker.llmBaseUrl "deletionWorker.keycloakAdminBaseUrl" .Values.deletionWorker.keycloakAdminBaseUrl "otelCollector.exporterEndpoint" .Values.otelCollector.exporterEndpoint -}}
 {{- $endpointHost := trimPrefix "https://" (regexFind `^https://[^/:]+` $endpoint) -}}
 {{- if gt (len $endpointHost) 253 -}}
 {{- fail (printf "%s host must not exceed the DNS maximum of 253 characters" $component) -}}
@@ -421,12 +421,24 @@
 {{- if not (hasSuffix (printf ":%d" (int .Values.networkPolicy.telemetryPort)) (trimSuffix "/" .Values.otelCollector.exporterEndpoint)) -}}
 {{- fail "otelCollector.exporterEndpoint port must match networkPolicy.telemetryPort" -}}
 {{- end -}}
-{{- range $component, $endpoint := dict "paperWorker.llmBaseUrl" .Values.paperWorker.llmBaseUrl "deletionWorker.keycloakAdminBaseUrl" .Values.deletionWorker.keycloakAdminBaseUrl "otelCollector.exporterEndpoint" .Values.otelCollector.exporterEndpoint -}}
+{{- range $component, $endpoint := dict "api.commentModerationUrl" .Values.api.commentModerationUrl "paperWorker.llmBaseUrl" .Values.paperWorker.llmBaseUrl "deletionWorker.keycloakAdminBaseUrl" .Values.deletionWorker.keycloakAdminBaseUrl "otelCollector.exporterEndpoint" .Values.otelCollector.exporterEndpoint -}}
 {{- if not (empty $endpoint) -}}
 {{- $lowerEndpoint := lower $endpoint -}}
 {{- if or (contains "localhost" $lowerEndpoint) (contains ".local" $lowerEndpoint) (contains ".test" $lowerEndpoint) (contains ".invalid" $lowerEndpoint) (contains ".example" $lowerEndpoint) (contains "example.com" $lowerEndpoint) (contains "example.org" $lowerEndpoint) (contains "example.net" $lowerEndpoint) -}}
 {{- fail (printf "%s must not use a loopback, local, reserved, or placeholder host" $component) -}}
 {{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if eq .Values.api.commentModerationProvider "rules" -}}
+{{- if not (empty .Values.api.commentModerationUrl) -}}
+{{- fail "api.commentModerationUrl must be empty when api.commentModerationProvider=rules" -}}
+{{- end -}}
+{{- else if eq .Values.api.commentModerationProvider "http" -}}
+{{- if not .Values.features.comments -}}
+{{- fail "api.commentModerationProvider=http requires features.comments=true" -}}
+{{- end -}}
+{{- if not (regexMatch $modelProviderUrl .Values.api.commentModerationUrl) -}}
+{{- fail "api.commentModerationUrl must be a bounded HTTPS provider URL on TCP/443" -}}
 {{- end -}}
 {{- end -}}
 {{- if and .Values.migration.enabled (empty .Values.migration.confirmBackupId) -}}
@@ -442,8 +454,8 @@
 {{- fail "migration.confirmBackupId must identify a verified real backup" -}}
 {{- end -}}
 {{- end -}}
-{{- if ne (int .Values.migration.expectedVersion) 9 -}}
-{{- fail "migration.expectedVersion must match embedded migration version 9" -}}
+{{- if ne (int .Values.migration.expectedVersion) 10 -}}
+{{- fail "migration.expectedVersion must match embedded migration version 10" -}}
 {{- end -}}
 {{- end -}}
 {{- if .Values.metadataSync.enabled -}}

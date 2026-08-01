@@ -4,7 +4,8 @@ use accounts::{AccountServiceError, VerifiedIdentity};
 use auth::{AuthRuntimeStatus, VerifyError};
 use axum::{
     extract::FromRequestParts,
-    http::{StatusCode, header::AUTHORIZATION, request::Parts},
+    http::{HeaderMap, StatusCode, header::AUTHORIZATION, request::Parts},
+    response::{IntoResponse as _, Response},
 };
 use chrono::{DateTime, Utc};
 use domain::{AccountStatus, AuthenticatedUserId};
@@ -14,6 +15,7 @@ use uuid::Uuid;
 use crate::{
     AppState,
     error::{ApiError, RequestId, account_service_error},
+    middleware::SESSION_ID_HEADER,
 };
 
 const MAX_AUTHORIZATION_HEADER_BYTES: usize = 64 * 1024;
@@ -27,12 +29,17 @@ pub(crate) struct AuthenticatedPrincipal {
     pub(crate) auth_time: Option<DateTime<Utc>>,
 }
 
-/// Optional authentication for public routes. An absent header—or an
-/// unavailable/disabled optional identity boundary—continues as a guest.
-/// Supplied credentials are validated when metadata is ready, so invalid
-/// tokens are never silently treated as an authenticated identity.
+/// Transport-independent identity resolved for a public API request.
+///
+/// Account and anonymous identity remain separate on purpose. In particular,
+/// the presence of `user_id` never changes the anonymous session used by the
+/// v0.0 preparation and chat APIs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct OptionalPrincipal(pub(crate) Option<AuthenticatedPrincipal>);
+pub struct RequestPrincipal {
+    pub user_id: Option<Uuid>,
+    pub anonymous_session_id: Option<Uuid>,
+    pub request_id: Uuid,
+}
 
 /// Verified provider identity for account deletion. Unlike ordinary account
 /// authentication this never JIT-provisions and never rejects suspended or
@@ -64,28 +71,34 @@ impl FromRequestParts<AppState> for AuthenticatedPrincipal {
     }
 }
 
-impl FromRequestParts<AppState> for OptionalPrincipal {
-    type Rejection = ApiError;
+impl FromRequestParts<AppState> for RequestPrincipal {
+    type Rejection = Response;
 
     async fn from_request_parts(
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        if !parts.headers.contains_key(AUTHORIZATION)
+        let authenticated = if !parts.headers.contains_key(AUTHORIZATION)
             || !matches!(state.auth.status(), AuthRuntimeStatus::Ready)
         {
-            return Ok(Self(None));
-        }
-        match authenticate(parts, state).await {
-            Ok(principal) => Ok(Self(Some(principal))),
-            // Public routes do not authorize from this principal. Provider
-            // metadata/storage outages and inactive-account policy therefore
-            // degrade to the same bounded public representation as a guest.
-            // Malformed, expired, or cryptographically invalid credentials
-            // still receive a challenge instead of being silently accepted.
-            Err(error) if optional_auth_falls_back_to_guest(&error) => Ok(Self(None)),
-            Err(error) => Err(error),
-        }
+            None
+        } else {
+            match authenticate(parts, state).await {
+                Ok(principal) => Some(principal),
+                // Public routes do not authorize from this principal. Provider
+                // metadata/storage outages and inactive-account policy therefore
+                // degrade to the same bounded public representation as a guest.
+                // Malformed, expired, or cryptographically invalid credentials
+                // still receive a challenge instead of being silently accepted.
+                Err(error) if optional_auth_falls_back_to_guest(&error) => None,
+                Err(error) => return Err(error.into_response()),
+            }
+        };
+        Ok(Self {
+            user_id: authenticated.map(|principal| principal.user_id.into_inner()),
+            anonymous_session_id: anonymous_session_id(&parts.headers),
+            request_id: request_id(parts).0,
+        })
     }
 }
 
@@ -96,11 +109,7 @@ impl FromRequestParts<AppState> for AccountDeletionPrincipal {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let request_id = parts
-            .extensions
-            .get::<RequestId>()
-            .copied()
-            .unwrap_or_else(|| RequestId(Uuid::now_v7()));
+        let request_id = request_id(parts);
         if state.account_deletion.is_none() {
             return Err(ApiError::new(
                 request_id,
@@ -141,11 +150,7 @@ fn optional_auth_falls_back_to_guest(error: &ApiError) -> bool {
 }
 
 async fn authenticate(parts: &Parts, state: &AppState) -> Result<AuthenticatedPrincipal, ApiError> {
-    let request_id = parts
-        .extensions
-        .get::<RequestId>()
-        .copied()
-        .unwrap_or_else(|| RequestId(Uuid::now_v7()));
+    let request_id = request_id(parts);
     let token = bearer_token(parts, request_id)?;
     let verifier = state
         .auth
@@ -192,6 +197,26 @@ async fn authenticate(parts: &Parts, state: &AppState) -> Result<AuthenticatedPr
             &AccountServiceError::Deleted,
         )),
     }
+}
+
+fn request_id(parts: &Parts) -> RequestId {
+    parts
+        .extensions
+        .get::<RequestId>()
+        .copied()
+        .unwrap_or_else(|| RequestId(Uuid::now_v7()))
+}
+
+fn anonymous_session_id(headers: &HeaderMap) -> Option<Uuid> {
+    let mut values = headers.get_all(&SESSION_ID_HEADER).iter();
+    let value = values.next()?;
+    if values.next().is_some() {
+        return None;
+    }
+    value
+        .to_str()
+        .ok()
+        .and_then(|value| Uuid::parse_str(value).ok())
 }
 
 fn account_operation_outcome<T>(result: &Result<T, AccountServiceError>) -> OperationOutcome {

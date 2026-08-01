@@ -16,11 +16,11 @@ use observability::{
 use sha2::{Digest as _, Sha256};
 
 use super::{
-    ApiError, AppState, Extension, FeedCursor, FeedParams, FeedQuery, FulltextPolicy, IntoResponse,
-    Json, Query, RequestId, State, StatusCode, apply_summary_policy, cursor_error,
-    internal_db_error, valid_category,
+    ApiError, AppState, FeedCursor, FeedParams, FeedQuery, FulltextPolicy, IntoResponse, Json,
+    Query, RequestId, State, StatusCode, apply_summary_policy, cursor_error, internal_db_error,
+    valid_category,
 };
-use crate::middleware::OptionalPrincipal;
+use crate::middleware::RequestPrincipal;
 
 const FEED_CACHE_CONTROL: &str = "public, max-age=60, stale-while-revalidate=300";
 const FEED_ETAG_VERSION: &[u8] = b"pakperk-feed-etag-v1";
@@ -60,11 +60,11 @@ const MAX_IF_NONE_MATCH_BYTES: usize = 16 * 1024;
 )]
 pub(crate) async fn feed(
     State(state): State<AppState>,
-    Extension(request_id): Extension<RequestId>,
-    _principal: OptionalPrincipal,
+    principal: RequestPrincipal,
     headers: HeaderMap,
     Query(params): Query<FeedParams>,
 ) -> Result<Response, ApiError> {
+    let request_id = RequestId(principal.request_id);
     if let Some(category) = &params.category
         && !valid_category(category)
     {

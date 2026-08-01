@@ -104,7 +104,8 @@ silently produce passing evidence.
 Each phase also fails if any required account, paper, core-job, library,
 comment/safety, or deletion table is absent. Its checksummed database snapshots
 record row counts for `users`, `papers`, `jobs`, `user_paper_library`,
-`library_operations`, `paper_comments`, `comment_reports`, `user_blocks`, the
+`library_operations`, `paper_comments`, `comment_reports`, `user_reports`,
+`user_blocks`, the
 deletion ledger, and deletion jobs. Paper and core-job counts must remain
 unchanged across ledger verification/reapplication; account-owned counts may
 decrease as deletion obligations are correctly replayed.

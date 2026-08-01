@@ -23,13 +23,31 @@ void main() {
         'sexual exploitation',
         'copyright abuse',
         'https://pakperk.app/support/',
-        'Use **Report**',
+        'Use **Report comment**',
+        '**Report user**',
         'Use **Block user**',
+        'does not block anyone',
       ]) {
         expect(policy, contains(requiredText));
       }
     },
   );
+
+  test('bundled terms keep reports and blocks distinct', () async {
+    final terms = await loadBundledLegalDocument(
+      rootBundle,
+      LegalDocumentKind.terms.assetPath,
+    );
+
+    for (final requiredText in const [
+      '**Report comment**',
+      '**Report user**',
+      '**Block user**',
+      'does not itself hide content or create a block',
+    ]) {
+      expect(terms, contains(requiredText));
+    }
+  });
 
   testWidgets('renders selectable Markdown and audits link opening', (
     tester,

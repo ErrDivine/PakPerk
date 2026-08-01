@@ -25,6 +25,8 @@ pub use repository::{
     StoredAdminActor, StoredDeletionIdentityVerification, StoredInspectionReport,
     StoredLibraryChangesPage, StoredLibraryPage, StoredModerationInspection,
     StoredModerationQueuePage, StoredModerationQueueRecord, StoredReport, StoredReportAgeMetrics,
-    StoredReportQueuePage, StoredReportQueueRecord, StoredSection, TitleCandidate,
-    UserBlockOutcome, UserBlockResolution, UserUnblockResolution, VerificationMetrics,
+    StoredReportQueuePage, StoredReportQueueRecord, StoredSection, StoredUserReport,
+    StoredUserReportInspection, StoredUserReportQueuePage, StoredUserReportQueueRecord,
+    TitleCandidate, UserBlockOutcome, UserBlockResolution, UserReportOutcome, UserReportResolution,
+    UserUnblockResolution, VerificationMetrics,
 };

@@ -5,10 +5,11 @@ use db::{
     AccountDeletionRepository, AccountDeletionRequest, AccountDeletionRequestOutcome,
     AdminCommentAction, Database, DbError, DeletionReapplyAction,
     ExternalLedgerPurgeAuthorizationState, LibraryMutationIntent, LibraryMutationOutcome,
-    StoredAdminActor,
+    StoredAdminActor, UserReportOutcome,
 };
 use domain::{
-    AccountDeletionState, ArxivIdentifier, Author, IdentityFingerprint, LibraryState, PaperMetadata,
+    AccountDeletionState, ArxivIdentifier, Author, CommentReportReason, IdentityFingerprint,
+    LibraryState, PaperMetadata,
 };
 use url::Url;
 use uuid::Uuid;
@@ -874,6 +875,18 @@ async fn postgres_deletion_hides_comments_and_serializes_user_admin_actor() {
         .unwrap();
     let actor_comment = insert_comment(database.pool(), paper.id, actor.id.into_inner()).await;
     let target_comment = insert_comment(database.pool(), paper.id, author.id.into_inner()).await;
+    let user_report_id = match database
+        .comments()
+        .report_user(actor.id, author.id, CommentReportReason::Harassment, None)
+        .await
+        .unwrap()
+    {
+        UserReportOutcome::Accepted {
+            report,
+            replayed: false,
+        } => report.id,
+        other => panic!("expected deletion user-report fixture, got {other:?}"),
+    };
     let public_before = database
         .comments()
         .list_public(paper.id, None, None, 20)
@@ -974,6 +987,15 @@ async fn postgres_deletion_hides_comments_and_serializes_user_admin_actor() {
         .unwrap(),
         0,
         "no post-purge audit event may retain the erased actor link"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM user_reports WHERE id = $1")
+            .bind(user_report_id)
+            .fetch_one(database.pool())
+            .await
+            .unwrap(),
+        0,
+        "deleting a reporter must erase its account-level safety report"
     );
 
     sqlx::query("DELETE FROM comment_moderation_events WHERE comment_id = $1")

@@ -22,7 +22,8 @@ secure, moderate, and improve the service.
 
 Pakperk may reject, hold, hide, or delete content and may suspend an account to
 enforce these Terms, the Community Guidelines, law, or service security. You
-may report content and block an author in the app. The account-deletion and
+may report a comment, report a user, and separately block an author in the app.
+Reporting does not create a block. The account-deletion and
 retention behavior described in the [Privacy Notice](privacy.md) must be live
 before public account creation is enabled.
 

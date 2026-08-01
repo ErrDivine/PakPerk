@@ -18,6 +18,7 @@ use domain::{
     FulltextPolicy, TermsVersion,
 };
 use llm_provider::OpenAiCompatibleConfig;
+use moderation::HttpModerationConfig;
 use secrecy::{ExposeSecret as _, SecretString};
 use sha2::{Digest as _, Sha256};
 use url::{Host, Url};
@@ -156,6 +157,7 @@ pub struct LibraryFeatureConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CommentModerationProvider {
     Rules,
+    Http,
 }
 
 impl FromStr for CommentModerationProvider {
@@ -164,9 +166,8 @@ impl FromStr for CommentModerationProvider {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "rules" => Ok(Self::Rules),
-            _ => anyhow::bail!(
-                "COMMENT_MODERATION_PROVIDER must be `rules`; no other provider is wired"
-            ),
+            "http" => Ok(Self::Http),
+            _ => anyhow::bail!("COMMENT_MODERATION_PROVIDER must be `rules` or `http`"),
         }
     }
 }
@@ -273,6 +274,7 @@ pub struct CommentFeatureConfig {
     maximum_comment_bytes: usize,
     maximum_comment_urls: usize,
     moderation_provider: CommentModerationProvider,
+    moderation_http: Option<HttpModerationConfig>,
     support_contact_url: Url,
     maximum_page_size: u32,
     create_limit: u32,
@@ -293,6 +295,10 @@ impl fmt::Debug for CommentFeatureConfig {
             .field("maximum_comment_bytes", &self.maximum_comment_bytes)
             .field("maximum_comment_urls", &self.maximum_comment_urls)
             .field("moderation_provider", &self.moderation_provider)
+            .field(
+                "moderation_http",
+                &self.moderation_http.as_ref().map(|_| "<configured>"),
+            )
             .field("support_contact_url", &self.support_contact_url.as_str())
             .field("maximum_page_size", &self.maximum_page_size)
             .field("create_limit", &self.create_limit)
@@ -310,11 +316,15 @@ impl fmt::Debug for CommentFeatureConfig {
 impl CommentFeatureConfig {
     fn from_env(environment: ApiEnvironment) -> anyhow::Result<Self> {
         let moderation_provider = std::env::var("COMMENT_MODERATION_PROVIDER").ok();
+        let moderation_provider =
+            parse_comment_moderation_provider(moderation_provider.as_deref())?;
+        let moderation_http = comment_moderation_http_config(environment, moderation_provider)?;
         let config = Self {
             maximum_comment_scalars: env_parse("COMMENT_MAX_SCALARS", COMMENT_MAX_SCALARS)?,
             maximum_comment_bytes: env_parse("COMMENT_MAX_BYTES", COMMENT_MAX_BYTES)?,
             maximum_comment_urls: env_parse("COMMENT_MAX_URLS", COMMENT_MAX_URLS)?,
-            moderation_provider: parse_comment_moderation_provider(moderation_provider.as_deref())?,
+            moderation_provider,
+            moderation_http,
             support_contact_url: parse_comment_support_contact_url(
                 environment,
                 &required_comments_env("COMMENT_SUPPORT_CONTACT_URL")?,
@@ -356,6 +366,7 @@ impl CommentFeatureConfig {
             maximum_comment_bytes: COMMENT_MAX_BYTES,
             maximum_comment_urls: COMMENT_MAX_URLS,
             moderation_provider: CommentModerationProvider::Rules,
+            moderation_http: None,
             support_contact_url: Url::parse("https://pakperk.app/support")?,
             maximum_page_size: 50,
             create_limit: 10,
@@ -371,6 +382,10 @@ impl CommentFeatureConfig {
 
     pub(crate) const fn moderation_provider(&self) -> CommentModerationProvider {
         self.moderation_provider
+    }
+
+    pub(crate) fn moderation_http(&self) -> Option<&HttpModerationConfig> {
+        self.moderation_http.as_ref()
     }
 
     fn validate(&self, environment: ApiEnvironment) -> anyhow::Result<()> {
@@ -406,6 +421,45 @@ fn parse_comment_moderation_provider(
     value: Option<&str>,
 ) -> anyhow::Result<CommentModerationProvider> {
     value.unwrap_or("rules").parse()
+}
+
+fn comment_moderation_http_config(
+    environment: ApiEnvironment,
+    provider: CommentModerationProvider,
+) -> anyhow::Result<Option<HttpModerationConfig>> {
+    let configured_http_value = [
+        "COMMENT_MODERATION_URL",
+        "COMMENT_MODERATION_TOKEN_FILE",
+        "COMMENT_MODERATION_TIMEOUT_MS",
+    ]
+    .into_iter()
+    .find(|name| std::env::var_os(name).is_some());
+    if provider == CommentModerationProvider::Rules {
+        if let Some(name) = configured_http_value {
+            anyhow::bail!("{name} requires COMMENT_MODERATION_PROVIDER=http");
+        }
+        return Ok(None);
+    }
+
+    let endpoint = Url::parse(&required_comments_env("COMMENT_MODERATION_URL")?)
+        .map_err(|_| anyhow::anyhow!("COMMENT_MODERATION_URL must be a valid URL"))?;
+    let token_path = required_comments_env("COMMENT_MODERATION_TOKEN_FILE")?;
+    if environment.is_deployed() && !Path::new(&token_path).is_absolute() {
+        anyhow::bail!("COMMENT_MODERATION_TOKEN_FILE must be absolute outside development");
+    }
+    let token = SecretString::from(read_secret_file(
+        "COMMENT_MODERATION_TOKEN_FILE",
+        Path::new(&token_path),
+    )?);
+    let timeout = Duration::from_millis(env_parse("COMMENT_MODERATION_TIMEOUT_MS", 2_000_u64)?);
+    HttpModerationConfig::new(
+        endpoint,
+        token,
+        timeout,
+        environment == ApiEnvironment::Development,
+    )
+    .map(Some)
+    .map_err(Into::into)
 }
 
 fn validate_comment_content_limits(
@@ -1320,49 +1374,53 @@ fn validate_model_api_key_sources(
 }
 
 fn read_model_api_key_file(path: &Path) -> anyhow::Result<String> {
+    read_secret_file("LLM_API_KEY_FILE", path)
+}
+
+fn read_secret_file(variable: &str, path: &Path) -> anyhow::Result<String> {
     let path_metadata = fs::symlink_metadata(path)
-        .map_err(|error| anyhow::anyhow!("could not read LLM_API_KEY_FILE metadata: {error}"))?;
+        .map_err(|error| anyhow::anyhow!("could not read {variable} metadata: {error}"))?;
     if path_metadata.file_type().is_symlink() || !path_metadata.is_file() {
-        anyhow::bail!("LLM_API_KEY_FILE must reference a regular non-symlink file");
+        anyhow::bail!("{variable} must reference a regular non-symlink file");
     }
     let mut file = fs::File::open(path)
-        .map_err(|error| anyhow::anyhow!("could not open LLM_API_KEY_FILE: {error}"))?;
+        .map_err(|error| anyhow::anyhow!("could not open {variable}: {error}"))?;
     let metadata = file
         .metadata()
-        .map_err(|error| anyhow::anyhow!("could not read opened LLM_API_KEY_FILE: {error}"))?;
+        .map_err(|error| anyhow::anyhow!("could not read opened {variable}: {error}"))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt as _;
         if path_metadata.dev() != metadata.dev() || path_metadata.ino() != metadata.ino() {
-            anyhow::bail!("LLM_API_KEY_FILE changed while it was opened");
+            anyhow::bail!("{variable} changed while it was opened");
         }
         if metadata.mode() & 0o077 != 0 {
-            anyhow::bail!("LLM_API_KEY_FILE must not be accessible by group or others");
+            anyhow::bail!("{variable} must not be accessible by group or others");
         }
     }
     if !(1..=16_384).contains(&metadata.len()) {
-        anyhow::bail!("LLM_API_KEY_FILE must contain 1 to 16384 bytes");
+        anyhow::bail!("{variable} must contain 1 to 16384 bytes");
     }
     let expected_length = metadata.len();
     let mut bytes = Vec::with_capacity(usize::try_from(expected_length).unwrap_or(16_384));
     (&mut file)
         .take(16_385)
         .read_to_end(&mut bytes)
-        .map_err(|error| anyhow::anyhow!("could not read LLM_API_KEY_FILE: {error}"))?;
+        .map_err(|error| anyhow::anyhow!("could not read {variable}: {error}"))?;
     let final_metadata = file
         .metadata()
-        .map_err(|error| anyhow::anyhow!("could not recheck LLM_API_KEY_FILE: {error}"))?;
+        .map_err(|error| anyhow::anyhow!("could not recheck {variable}: {error}"))?;
     if final_metadata.len() != expected_length
         || u64::try_from(bytes.len()).ok() != Some(expected_length)
     {
-        anyhow::bail!("LLM_API_KEY_FILE changed while it was read");
+        anyhow::bail!("{variable} changed while it was read");
     }
     let value = String::from_utf8(bytes)
-        .map_err(|_| anyhow::anyhow!("LLM_API_KEY_FILE must contain UTF-8"))?
+        .map_err(|_| anyhow::anyhow!("{variable} must contain UTF-8"))?
         .trim_end_matches(['\r', '\n'])
         .to_owned();
     if value.is_empty() || value.trim() != value || value.chars().any(char::is_control) {
-        anyhow::bail!("LLM_API_KEY_FILE must contain one non-blank line");
+        anyhow::bail!("{variable} must contain one non-blank line");
     }
     Ok(value)
 }
@@ -1647,7 +1705,7 @@ mod tests {
     }
 
     #[test]
-    fn comment_moderation_provider_rejects_unwired_values() {
+    fn comment_moderation_provider_exposes_only_wired_values() {
         assert_eq!(
             parse_comment_moderation_provider(None).unwrap(),
             CommentModerationProvider::Rules
@@ -1656,7 +1714,11 @@ mod tests {
             parse_comment_moderation_provider(Some("rules")).unwrap(),
             CommentModerationProvider::Rules
         );
-        for unsupported in ["", "Rules", "model", "external", "off"] {
+        assert_eq!(
+            parse_comment_moderation_provider(Some("http")).unwrap(),
+            CommentModerationProvider::Http
+        );
+        for unsupported in ["", "Rules", "model", "external", "off", "none"] {
             assert!(
                 parse_comment_moderation_provider(Some(unsupported)).is_err(),
                 "accepted unwired moderation provider {unsupported}"

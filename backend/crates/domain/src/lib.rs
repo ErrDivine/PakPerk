@@ -33,7 +33,7 @@ pub use comment::{
     CommentReportReasonParseError, CommentReportReceipt, CommentReportStatus,
     CommentReportStatusParseError, CommentStatus, CommentStatusParseError,
     CommunityGuidelinesVersion, CommunityGuidelinesVersionValidationError, PaperComment,
-    ReportDetail, ReportDetailValidationError,
+    ReportDetail, ReportDetailValidationError, UserReportReceipt,
 };
 pub use connection::{
     CitationContext, Connection, ConnectionReference, ConnectionsResponse, KeyConnection,

@@ -1,7 +1,7 @@
 use db::{
     AdminCommentAction, AdminCommentOutcome, AdminReportOutcome, AdminReportResolution,
     AdminUserStatusOutcome, DbError, ModerationRepository, StoredAdminActor,
-    StoredModerationInspection,
+    StoredModerationInspection, StoredUserReportInspection,
 };
 use domain::{
     AccountStatus, AuthenticatedUserId, CommentBody, CommentReportReason, CommentStatus, PaperId,
@@ -22,20 +22,6 @@ impl AdminActor {
     #[must_use]
     pub const fn local(user_id: AuthenticatedUserId) -> Self {
         Self(StoredAdminActor::User(user_id))
-    }
-
-    pub fn label(label: impl Into<String>) -> Result<Self, ModerationServiceError> {
-        let label = label.into();
-        if label.is_empty()
-            || label.len() > 128
-            || label.trim() != label
-            || !label.bytes().all(|byte| {
-                byte.is_ascii_alphanumeric() || matches!(byte, b'@' | b'.' | b'_' | b':' | b'-')
-            })
-        {
-            return Err(ModerationServiceError::InvalidAdminActor);
-        }
-        Ok(Self(StoredAdminActor::Label(label)))
     }
 
     const fn stored(&self) -> &StoredAdminActor {
@@ -78,6 +64,37 @@ pub struct ReportQueueRecord {
 pub struct ReportQueuePage {
     pub items: Vec<ReportQueueRecord>,
     pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UserReportQueueRecord {
+    pub report_id: Uuid,
+    pub reported_user_id: AuthenticatedUserId,
+    pub reporter_user_id: AuthenticatedUserId,
+    pub reason: CommentReportReason,
+    pub status: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UserReportQueuePage {
+    pub items: Vec<UserReportQueueRecord>,
+    pub next_cursor: Option<String>,
+}
+
+/// Full reporter context is available only from the explicit operator inspect
+/// command; the validated detail remains redacted from Debug output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UserReportInspection {
+    pub report_id: Uuid,
+    pub reported_user_id: AuthenticatedUserId,
+    pub reporter_user_id: AuthenticatedUserId,
+    pub reason: CommentReportReason,
+    pub detail: Option<ReportDetail>,
+    pub status: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub reviewed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub reviewed_by: Option<AuthenticatedUserId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -136,8 +153,6 @@ pub struct ReportAgeMetrics {
 
 #[derive(Debug, Error)]
 pub enum ModerationServiceError {
-    #[error("admin actor is invalid")]
-    InvalidAdminActor,
     #[error("moderation page limit must be positive")]
     InvalidPageLimit,
     #[error("moderation target was not found")]
@@ -234,6 +249,45 @@ impl ModerationService {
         })
     }
 
+    pub async fn list_user_reports(
+        &self,
+        status: &str,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<UserReportQueuePage, ModerationServiceError> {
+        let limit = self.page_limit(limit)?;
+        let page = self
+            .repository
+            .list_user_reports(status, cursor, limit)
+            .await?;
+        Ok(UserReportQueuePage {
+            items: page
+                .items
+                .into_iter()
+                .map(|item| UserReportQueueRecord {
+                    report_id: item.report_id,
+                    reported_user_id: item.reported_user_id,
+                    reporter_user_id: item.reporter_user_id,
+                    reason: item.reason,
+                    status: item.status,
+                    created_at: item.created_at,
+                })
+                .collect(),
+            next_cursor: page.next_cursor,
+        })
+    }
+
+    pub async fn inspect_user_report(
+        &self,
+        report_id: Uuid,
+    ) -> Result<UserReportInspection, ModerationServiceError> {
+        self.repository
+            .inspect_user_report(report_id)
+            .await?
+            .map(map_user_report_inspection)
+            .ok_or(ModerationServiceError::NotFound)
+    }
+
     pub async fn inspect(
         &self,
         comment_id: Uuid,
@@ -286,6 +340,36 @@ impl ModerationService {
         match self
             .repository
             .resolve_report(report_id, actor.stored(), resolution, reason_code)
+            .await?
+        {
+            AdminReportOutcome::Updated { report_id, status } => Ok(ReportResolutionResult {
+                report_id,
+                status,
+                replayed: false,
+            }),
+            AdminReportOutcome::AlreadyInState { report_id, status } => {
+                Ok(ReportResolutionResult {
+                    report_id,
+                    status,
+                    replayed: true,
+                })
+            }
+            AdminReportOutcome::NotFound => Err(ModerationServiceError::NotFound),
+            AdminReportOutcome::ResolutionConflict { .. } => Err(ModerationServiceError::Conflict),
+        }
+    }
+
+    pub async fn resolve_user_report(
+        &self,
+        actor: &AdminActor,
+        report_id: Uuid,
+        resolution: AdminReportResolution,
+        reason_code: &str,
+    ) -> Result<ReportResolutionResult, ModerationServiceError> {
+        validate_reason(reason_code)?;
+        match self
+            .repository
+            .resolve_user_report(report_id, actor.stored(), resolution, reason_code)
             .await?
         {
             AdminReportOutcome::Updated { report_id, status } => Ok(ReportResolutionResult {
@@ -430,5 +514,19 @@ fn map_inspection(value: StoredModerationInspection) -> ModerationInspection {
                 created_at: report.created_at,
             })
             .collect(),
+    }
+}
+
+fn map_user_report_inspection(value: StoredUserReportInspection) -> UserReportInspection {
+    UserReportInspection {
+        report_id: value.report_id,
+        reported_user_id: value.reported_user_id,
+        reporter_user_id: value.reporter_user_id,
+        reason: value.reason,
+        detail: value.detail,
+        status: value.status,
+        created_at: value.created_at,
+        reviewed_at: value.reviewed_at,
+        reviewed_by: value.reviewed_by,
     }
 }

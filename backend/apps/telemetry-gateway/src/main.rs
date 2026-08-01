@@ -434,6 +434,7 @@ fn valid_event(event: &str) -> bool {
             | "comment_pending"
             | "comment_rejected"
             | "comment_reported"
+            | "user_reported"
             | "account_deletion_requested"
             | "account_deletion_accepted"
             | "account_deletion_unavailable"
@@ -567,7 +568,9 @@ fn valid_event_attribute(event: &str, key: &str, value: &OtlpValue, environment:
         ("comment_created", "visibility") => string_value(Some(value)) == Some("published"),
         ("comment_pending", "visibility") => string_value(Some(value)) == Some("private_review"),
         ("comment_rejected", "failure_code") => string_value(Some(value)) == Some("not_accepted"),
-        ("comment_reported", "outcome") => string_value(Some(value)) == Some("accepted"),
+        ("comment_reported" | "user_reported", "outcome") => {
+            string_value(Some(value)) == Some("accepted")
+        }
         ("account_deletion_accepted", "server_state") => matches!(
             string_value(Some(value)),
             Some(
@@ -601,6 +604,7 @@ fn valid_event_attribute_set(event: &str, attributes: &HashMap<&str, &OtlpValue>
         "feed_cache_bytes" => &["bytes"],
         "feed_time_to_readable_ms" => &["elapsed_ms"],
         "library_outbox_backlog" => &["pending_count"],
+        "comment_reported" | "user_reported" => &["outcome"],
         "http_request_completed" => &[
             "method_class",
             "route_class",
@@ -859,6 +863,32 @@ mod tests {
                 .is_err(),
                 "accepted forbidden HTTP field {forbidden_key}"
             );
+        }
+    }
+
+    #[test]
+    fn accepts_only_the_closed_report_event_shapes() {
+        for event in ["comment_reported", "user_reported"] {
+            let accepted = payload(
+                event,
+                &json!([{"key":"outcome","value":{"stringValue":"accepted"}}]),
+            );
+            assert!(
+                validate_payload(&accepted, "staging", SystemTime::now()).is_ok(),
+                "rejected {event}"
+            );
+
+            for attributes in [
+                json!([]),
+                json!([{"key":"outcome","value":{"stringValue":"rejected"}}]),
+                json!([{"key":"user_id","value":{"stringValue":"private"}}]),
+            ] {
+                assert!(
+                    validate_payload(&payload(event, &attributes), "staging", SystemTime::now(),)
+                        .is_err(),
+                    "accepted unsafe or incomplete {event} attributes"
+                );
+            }
         }
     }
 

@@ -43,8 +43,10 @@ rotation owner in the protected release evidence.
    `Store review test comment`; then edit it to `Store review test comment
    edited` and delete it. Draft text remains local until Send is selected.
 6. On the seeded review-only comment from `[review fixture handle]`, open the
-   context menu and select **Report**. Choose a listed reason and submit. Repeat
-   with **Block user**. The author's comments disappear immediately, and the
+   context menu and select **Report comment**. Choose a listed reason and
+   submit. Reopen the menu and select **Report user**; verify the confirmation
+   says no block was added and the comment remains visible. Then select
+   **Block user**. The author's comments disappear immediately, and the
    user is visible under **You > Blocked users**, where they can be unblocked.
    Do not report or block real users.
 7. Open **You > Settings > Clear reading cache**. The confirmation explains
@@ -64,7 +66,8 @@ rotation owner in the protected release evidence.
 
 - Comments are public plain text. Posting requires sign-in, a handle, current
   Terms acceptance, and Community Guidelines acceptance.
-- Every eligible third-party comment exposes Report and Block. Moderation can
+- Every eligible third-party comment exposes separate Report comment, Report
+  user, and Block user actions. Moderation can
   hide/restore content and suspend/reinstate accounts with an audit trail.
 - Comment creation can be disabled independently; existing comments and paper
   reading remain available when the kill switch is off.

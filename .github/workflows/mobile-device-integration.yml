@@ -28,6 +28,13 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+      - name: Verify and record the exact reviewed Flutter SDK
+        id: flutter-toolchain
+        shell: bash
+        run: |
+          flutter --version --machine >"$RUNNER_TEMP/flutter-toolchain.json"
+          python3 scripts/validate_flutter_toolchain.py \
+            "$RUNNER_TEMP/flutter-toolchain.json"
       - name: Resolve locked Flutter dependencies
         working-directory: mobile
         run: flutter pub get --enforce-lockfile
@@ -282,6 +289,7 @@ jobs:
         if: always()
         shell: bash
         env:
+          PAKPERK_FLUTTER_TOOLCHAIN_OUTCOME: ${{ steps.flutter-toolchain.outcome }}
           PAKPERK_DEVICE_TEST_OUTCOME: ${{ steps.device-test.outcome }}
           PAKPERK_EVIDENCE_VALIDATION_OUTCOME: ${{ steps.evidence-validation.outcome }}
         run: |
@@ -293,6 +301,9 @@ jobs:
 
           destination, summary_path = map(pathlib.Path, sys.argv[1:])
           component_outcomes = {
+              "flutter_toolchain": os.environ.get(
+                  "PAKPERK_FLUTTER_TOOLCHAIN_OUTCOME", "unknown"
+              ),
               "device_test": os.environ.get("PAKPERK_DEVICE_TEST_OUTCOME", "unknown"),
               "evidence_validation": os.environ.get(
                   "PAKPERK_EVIDENCE_VALIDATION_OUTCOME", "unknown"
@@ -346,14 +357,33 @@ jobs:
                   "`docs/mobile-release.md`.\n"
               )
           PY
+      - name: Require the complete scoped evidence bundle
+        if: always()
+        shell: bash
+        run: |
+          required_evidence=(
+            "$RUNNER_TEMP/flutter-toolchain.json"
+            "$RUNNER_TEMP/device-evidence.json"
+            "$RUNNER_TEMP/performance-evidence.json"
+            "$RUNNER_TEMP/verification-scope.json"
+          )
+          missing=0
+          for evidence_path in "${required_evidence[@]}"; do
+            if [[ ! -s "$evidence_path" ]]; then
+              echo "Required device evidence is missing or empty: $evidence_path" >&2
+              missing=1
+            fi
+          done
+          exit "$missing"
       - name: Retain scoped device and frame-timing evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mobile-device-integration-${{ github.sha }}
           path: |
+            ${{ runner.temp }}/flutter-toolchain.json
             ${{ runner.temp }}/device-evidence.json
             ${{ runner.temp }}/performance-evidence.json
             ${{ runner.temp }}/verification-scope.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30

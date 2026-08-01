@@ -1,4 +1,5 @@
 mod cli;
+mod identity;
 
 use std::{
     io::{self, Write as _},
@@ -9,6 +10,7 @@ use anyhow::{Context as _, Result};
 use cli::{CliError, Command};
 use db::{AdminReportResolution, Database};
 use domain::AuthenticatedUserId;
+use identity::AdminIdentityConfig;
 use moderation::{AdminActor, ModerationActionResult, ModerationService};
 use observability::{
     ObservabilityConfig, OperationClass, OperationOutcome, init, record_operation,
@@ -18,8 +20,7 @@ use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let actor = std::env::var("PAKPERK_ADMIN_ACTOR").ok();
-    let parsed = match cli::parse(std::env::args(), actor.as_deref()) {
+    let parsed = match cli::parse(std::env::args()) {
         Ok(parsed) => parsed,
         Err(CliError::Help) => {
             println!("{}", cli::usage());
@@ -51,8 +52,9 @@ async fn main() -> Result<()> {
             .ready()
             .await
             .context("moderation database is not ready")?;
-        let actor =
-            AdminActor::label(parsed.actor.as_str()).context("PAKPERK_ADMIN_ACTOR is invalid")?;
+        let actor = AdminIdentityConfig::from_env()?
+            .authenticate(&database)
+            .await?;
         execute(
             &ModerationService::new(database.moderation()),
             &actor,
@@ -86,6 +88,7 @@ const fn is_moderation_mutation(command: &Command) -> bool {
             | Command::CommentsDelete { .. }
             | Command::CommentsRestore { .. }
             | Command::ReportsResolve { .. }
+            | Command::UserReportsResolve { .. }
             | Command::UsersSuspend { .. }
             | Command::UsersReinstate { .. }
     )
@@ -128,16 +131,34 @@ async fn execute(service: &ModerationService, actor: &AdminActor, command: Comma
             write_json(&comment_action_output(&result))
         }
         Command::ReportsResolve { report_id, action } => {
-            let resolution = match action.as_str() {
-                "reviewed" => AdminReportResolution::Reviewed,
-                "actioned" => AdminReportResolution::Actioned,
-                "dismissed" => AdminReportResolution::Dismissed,
-                _ => anyhow::bail!("report action must be reviewed, actioned, or dismissed"),
-            };
+            let resolution = report_resolution(&action)?;
             let reason = format!("admin_{action}");
             write_json(
                 &service
                     .resolve_report(actor, report_id, resolution, &reason)
+                    .await?,
+            )
+        }
+        Command::UserReportsList {
+            status,
+            cursor,
+            limit,
+        } => write_json(
+            &service
+                .list_user_reports(&status, cursor.as_deref(), limit)
+                .await?,
+        ),
+        Command::UserReportsInspect { report_id } => {
+            // This explicit command is the only user-report operation that
+            // serializes the reporter's optional detail.
+            write_json(&service.inspect_user_report(report_id).await?)
+        }
+        Command::UserReportsResolve { report_id, action } => {
+            let resolution = report_resolution(&action)?;
+            let reason = format!("admin_{action}");
+            write_json(
+                &service
+                    .resolve_user_report(actor, report_id, resolution, &reason)
                     .await?,
             )
         }
@@ -151,6 +172,15 @@ async fn execute(service: &ModerationService, actor: &AdminActor, command: Comma
                 .reinstate_user(actor, AuthenticatedUserId::new(user_id), "manual_reinstate")
                 .await?,
         ),
+    }
+}
+
+fn report_resolution(action: &str) -> Result<AdminReportResolution> {
+    match action {
+        "reviewed" => Ok(AdminReportResolution::Reviewed),
+        "actioned" => Ok(AdminReportResolution::Actioned),
+        "dismissed" => Ok(AdminReportResolution::Dismissed),
+        _ => anyhow::bail!("report action must be reviewed, actioned, or dismissed"),
     }
 }
 

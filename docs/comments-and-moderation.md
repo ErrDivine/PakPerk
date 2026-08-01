@@ -10,11 +10,14 @@ replies, reactions, votes, or inline annotations.
 safety routes. `COMMENT_CREATION_ENABLED=false` is the independent emergency
 write switch: it rejects only new comment creation with 503
 `FEATURE_DISABLED`; existing comments remain readable, authors can still edit
-or delete, users can still report or block, and moderators can still act.
+or delete, users can still report comments or users, block users, and
+moderators can still act.
 Neither flag changes guest paper reading or paper preparation.
 
-Guests may list published comments. An active account may report a comment or
-block another author without completing profile onboarding. Creating a comment
+Guests may list published comments. An active account may report a comment,
+report a user, or block another author without completing profile onboarding.
+Reporting and blocking are separate: a user report creates a private moderation
+record but never hides content or creates a block. Creating a comment
 additionally requires a handle, the current Terms version, and the current
 Community Guidelines version. Only the author may edit or delete a comment.
 Suspended or deletion-pending accounts cannot mutate UGC.
@@ -32,6 +35,7 @@ POST   /v1/papers/{paper_id}/comments
 PATCH  /v1/comments/{comment_id}
 DELETE /v1/comments/{comment_id}
 POST   /v1/comments/{comment_id}/reports
+POST   /v1/users/{user_id}/reports
 PUT    /v1/me/blocked-users/{user_id}
 DELETE /v1/me/blocked-users/{user_id}
 GET    /v1/me/blocked-users?cursor=&limit=
@@ -50,7 +54,13 @@ Create uses a canonical client UUID:
 An exact replay returns the existing canonical comment. Reusing the request ID
 for another paper or normalized body returns `IDEMPOTENCY_CONFLICT`. Edits carry
 the complete replacement body and `expected_version`; stale versions return
-`COMMENT_EDIT_CONFLICT`. Delete, report, block, and unblock are repeat-safe.
+`COMMENT_EDIT_CONFLICT`. Delete, comment report, user report, block, and
+unblock are repeat-safe. Comment reports are unique per reporter/comment and
+user reports are independently unique per reporter/reported-user pair.
+Both report request bodies use the closed shape `{"reason": ..., "detail":
+...}`. The `detail` property is always present and is either a bounded string
+or explicit JSON `null`; unknown or omitted properties fail with
+`INVALID_REQUEST`, matching the code-first OpenAPI schema.
 
 Lists are newest-first and use an opaque `(created_at, id)` cursor. Paper
 comment lists contain published comments only. The authenticated
@@ -61,7 +71,7 @@ handle, display name, and a public status marker. Report counts, moderation
 reasons, provider decisions, OIDC identity, and private account data are never
 returned.
 
-Account-specific comment, report, block, and owner-list responses are always
+Account-specific comment, comment-report, user-report, block, and owner-list responses are always
 `Cache-Control: private, no-store`. Comment bodies and report details are never
 placed in tracing fields, analytics, error messages, or debug output.
 
@@ -88,6 +98,17 @@ is held for review. With no external adapter configured, a low-risk
 deterministic pass may publish. When a configured adapter is unavailable or
 uncertain, the comment is held privately instead of failing open. Moderator
 output and error detail remain private and content-free in diagnostics.
+
+`COMMENT_MODERATION_PROVIDER=rules` selects the deterministic-only baseline.
+`http` enables the provider-neutral server-side adapter and requires
+`COMMENT_MODERATION_URL`, an owner-only
+`COMMENT_MODERATION_TOKEN_FILE`, and an optional timeout of at most 10 seconds.
+Deployed URLs are HTTPS, redirects are disabled, responses are capped at 64
+KiB, and the accepted JSON shape is deliberately closed: `publish` has no
+reason, while `pending_review` and `reject` require one bounded stable
+`reason_code`. Configuration, credentials, request/response content, and
+provider errors remain redacted. The Helm values mirror this contract and the
+provider address must be included in the API's reviewed HTTPS egress ranges.
 
 Request-origin rate limiting never persists a raw network address. A direct
 development connection uses its peer address. A deployed API requires
@@ -117,6 +138,10 @@ cached comments from the active view immediately, while server-side filtering
 makes the choice persistent across devices. Sign-out/account switch clears
 drafts, block projections, personalized pages, and in-flight account work while
 preserving guest-safe public paper data.
+
+The comment action menu labels **Report comment**, **Report user**, and
+**Block user** separately. A successful user report confirms that no block was
+added; only the explicit block action removes the author's comments.
 
 The code-first [OpenAPI artifact](openapi-v1.json) is the machine-readable wire
 contract. The [moderation runbook](runbooks/moderation.md) owns operational

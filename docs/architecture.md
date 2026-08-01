@@ -64,7 +64,7 @@ flowchart LR
   W --> G["GROBID 0.9.0"]
   W --> L["Configured model provider"]
   W --> P
-  O["Audited pakperk-admin CLI"] -->|"moderation actions"| P
+  O["OIDC-authenticated and allowlisted pakperk-admin CLI"] -->|"audited moderation actions"| P
   DW["Deletion worker"] -->|"leased deletion jobs"| P
   DW -->|"bounded admin calls"| I
   DW --> EL[("Independent signed deletion ledger")]

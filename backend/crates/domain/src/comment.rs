@@ -368,6 +368,18 @@ pub struct CommentReportReceipt {
     pub created_at: DateTime<Utc>,
 }
 
+/// Canonical receipt for a report about an account. User reports and blocks
+/// are deliberately separate domain concepts: accepting this record does not
+/// create a block or change comment visibility.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UserReportReceipt {
+    pub id: Uuid,
+    pub reported_user_id: crate::AuthenticatedUserId,
+    pub reason: CommentReportReason,
+    pub status: CommentReportStatus,
+    pub created_at: DateTime<Utc>,
+}
+
 /// Optional reporter context, also redacted from debug output.
 #[derive(Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]

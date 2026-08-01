@@ -62,6 +62,7 @@ abstract final class PakPerkTelemetryEvent {
   static const commentPending = 'comment_pending';
   static const commentRejected = 'comment_rejected';
   static const commentReported = 'comment_reported';
+  static const userReported = 'user_reported';
   static const accountDeletionRequested = 'account_deletion_requested';
   static const accountDeletionAccepted = 'account_deletion_accepted';
   static const accountDeletionUnavailable = 'account_deletion_unavailable';
@@ -190,6 +191,9 @@ final class RedactingTelemetrySink implements TelemetrySink {
       'retryable': _boolean,
     },
     PakPerkTelemetryEvent.commentReported: {
+      'outcome': _StringEnumPolicy({'accepted'}),
+    },
+    PakPerkTelemetryEvent.userReported: {
       'outcome': _StringEnumPolicy({'accepted'}),
     },
     PakPerkTelemetryEvent.accountDeletionRequested: {},

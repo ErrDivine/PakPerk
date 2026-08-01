@@ -909,6 +909,19 @@ impl AccountDeletionRepository {
         .bind(&comment_ids)
         .fetch_all(&mut *transaction)
         .await?;
+        sqlx::query(
+            r"
+            SELECT id FROM user_reports
+            WHERE reporter_user_id = $1
+               OR reported_user_id = $1
+               OR reviewed_by = $1
+            ORDER BY id
+            FOR UPDATE
+            ",
+        )
+        .bind(job.user_id)
+        .fetch_all(&mut *transaction)
+        .await?;
 
         sqlx::query(
             r"

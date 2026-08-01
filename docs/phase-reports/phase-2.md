@@ -28,8 +28,10 @@ Production v0.0 release are complete.
 
 ## Relational device cache
 
-The stable production database is `pakperk_content.sqlite`, currently at schema
-version 3 with foreign keys and WAL enabled. Its tables cover cached papers,
+The stable production database is `pakperk_content.sqlite`. The accepted Phase
+2 snapshot introduced schema version 3; the current production tree is schema
+version 6 after the library and comment phases extended the same explicit
+migration chain. Foreign keys and WAL remain enabled. Its tables cover cached papers,
 feed queries and ordered membership, processing, Introductions, Connections,
 comment pages, anonymous chats, library projections, drafts, a sync outbox, and
 cache metadata.
@@ -62,18 +64,32 @@ session.
 
 The one-time importer recognizes the previous feed, paper, processing,
 Introduction, Connections, and chat keys. It uses existing model parsers,
-imports valid rows in one transaction, verifies the result, writes a Drift
-migration marker, and only then removes the legacy bulk keys. Corrupt rows are
-counted without logging their contents. If parsing or transaction verification
-fails, startup continues and the source preferences remain available for a
-future retry.
+imports accepted rows in one transaction, verifies the result, writes a Drift
+migration marker, and only then removes the legacy bulk keys. Paper metadata
+can be recovered independently. Derived rows require an exact individually
+cached arXiv version plus an explicitly serialized positive generation, and
+children require a successfully imported processing row at that generation.
+Chat also requires explicit session/paper/arXiv fields matching the exact
+feed/restored-route reader key and the anonymous session sampled when the
+importer was constructed. A concurrently created or later session cannot lend
+provenance to older chat. Before committing the marker, the importer rechecks
+the complete immutable bulk-preference snapshot and any imported chat's
+session; cleanup removes a key only while its value still matches that
+snapshot. Consequently, source mutation or session rotation rolls back without
+data loss, frozen unscoped v1 derived/chat blobs are counted as unbound and
+discarded, and only a fully bound transitional record can migrate. Wrong-typed,
+corrupt, and unbound values are handled without logging their contents. If
+parsing or transaction verification fails, startup continues and the source
+preferences remain available for a future retry.
 
-The Drift schema has an in-place migration test built from a complete frozen
-version-1 database fixture. Version 2 adds feed entry counts, conditional-feed
+The Drift schema has in-place migration tests built from complete frozen
+historical fixtures. Version 2 adds feed entry counts, conditional-feed
 validators, and anonymous chat persistence. Version 3 adds processing-
 generation context. Rebuildable derived rows that predate that context are
-deleted rather than inaccurately relabeled. Strict-policy import retains masked
-metadata but discards derived full-text and chat records.
+deleted rather than inaccurately relabeled. Versions 4–6 extend synchronized
+library and account-bound comment state and remove the dormant reply column.
+Strict-policy import retains masked metadata but discards every derived
+full-text and chat record.
 
 ## Predictive feed coordinator
 
@@ -150,8 +166,10 @@ an intentionally empty category result, rather than leaking the all-feed page.
 
 Focused suites cover:
 
-- complete schema-v1 migration, transactional legacy import and rollback,
-  strict-policy migration, and offline startup from imported content;
+- complete historical schema migration, transactional legacy import and
+  rollback, exact version/generation/session provenance, frozen unbound v1
+  rejection, strict-policy migration, and offline startup from imported
+  content;
 - exact feed queries and validators, monotonic arXiv metadata, version- and
   generation-safe derived writes, anonymous-session isolation, eviction
   ownership, row/live-byte bounds, and lifecycle-only physical compaction;

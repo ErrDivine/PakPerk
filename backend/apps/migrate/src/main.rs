@@ -175,6 +175,7 @@ async fn run_locked(connection: &mut PgConnection, config: &Config) -> Result<()
             'papers',
             'users',
             'paper_comments',
+            'user_reports',
             'account_deletion_jobs',
             'account_deletion_ledger'
           )
@@ -183,7 +184,7 @@ async fn run_locked(connection: &mut PgConnection, config: &Config) -> Result<()
     .fetch_one(&mut *connection)
     .await
     .context("could not verify required application tables")?;
-    if required_tables != 5 {
+    if required_tables != 6 {
         anyhow::bail!("required application tables are missing after migration");
     }
     Ok(())

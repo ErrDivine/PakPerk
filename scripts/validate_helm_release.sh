@@ -10,6 +10,7 @@ helm_bin="${HELM_BIN:-helm}"
 temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/pakperk-helm-validation.XXXXXX")"
 trap 'rm -rf "$temporary_dir"' EXIT
 rendered="$temporary_dir/rendered.yaml"
+http_moderation_rendered="$temporary_dir/http-moderation-rendered.yaml"
 production_rendered="$temporary_dir/production-rendered.yaml"
 long_name_production_rendered="$temporary_dir/long-name-production-rendered.yaml"
 long_name_collision_rendered="$temporary_dir/long-name-collision-rendered.yaml"
@@ -64,6 +65,11 @@ expect_template_rejection() {
 
 "$helm_bin" lint "$chart" --values "$fixture"
 "$helm_bin" template pakperk "$chart" --values "$fixture" >"$rendered"
+"$helm_bin" template pakperk "$chart" \
+  --values "$fixture" \
+  --set api.commentModerationProvider=http \
+  --set-string api.commentModerationUrl=https://moderation.staging.pakperk.app/v1/evaluate \
+  >"$http_moderation_rendered"
 "$helm_bin" lint "$chart" --values "$fixture" --values "$production_fixture"
 "$helm_bin" template pakperk "$chart" \
   --values "$fixture" \
@@ -99,7 +105,7 @@ overlong_dns_host="$(python3 -c 'print(".".join(["a"] * 126 + ["app"]))')"
   --set deletionLedger.securityRetentionDays=400 \
   --set-json "api.trustedProxyCidrs=$trusted_proxy_boundary_json" \
   --set-string migration.confirmBackupId=pitr-20260801T020000Z-a7f9 \
-  --set migration.expectedVersion=9 \
+  --set migration.expectedVersion=10 \
   --set-json 'metadataSync.manifestJson="{\"papers\":[{\"arxiv_id\":\"2401.12345v2\"}]}"' \
   >/dev/null
 "$helm_bin" template pakperk "$chart" \
@@ -468,6 +474,17 @@ grep -Fq 'chown 0:0 /work' "$rendered"
 grep -Fq 'rm -f /work/LLM_API_KEY' "$rendered"
 grep -Fq 'install -m 0400 /source/LLM_API_KEY /work/LLM_API_KEY' "$rendered"
 grep -Fq 'chown 10001:10001 /work/LLM_API_KEY' "$rendered"
+if grep -Fq '/source/COMMENT_MODERATION_TOKEN' "$rendered" || grep -Fq 'name: COMMENT_MODERATION_TOKEN_FILE' "$rendered"; then
+  echo "Rules moderation unexpectedly mounted or configured the HTTP provider credential." >&2
+  exit 1
+fi
+grep -Fq 'install -m 0400 /source/COMMENT_MODERATION_TOKEN /work/COMMENT_MODERATION_TOKEN' "$http_moderation_rendered"
+grep -Fq 'chown 10001:10001 /work/COMMENT_MODERATION_TOKEN' "$http_moderation_rendered"
+grep -Fq 'key: COMMENT_MODERATION_TOKEN, path: COMMENT_MODERATION_TOKEN' "$http_moderation_rendered"
+grep -Fq 'name: COMMENT_MODERATION_PROVIDER, value: "http"' "$http_moderation_rendered"
+grep -Fq 'name: COMMENT_MODERATION_URL, value: "https://moderation.staging.pakperk.app/v1/evaluate"' "$http_moderation_rendered"
+grep -Fq 'name: COMMENT_MODERATION_TOKEN_FILE, value: "/var/run/pakperk-secrets/COMMENT_MODERATION_TOKEN"' "$http_moderation_rendered"
+grep -Fq 'name: COMMENT_MODERATION_TIMEOUT_MS, value: "2000"' "$http_moderation_rendered"
 grep -Fq 'chown 10001:10001 /work' "$rendered"
 grep -Fq 'mkdir -p /ledger/data; chown 0:0 /ledger/data; chmod 0700 /ledger/data; chown 10001:10001 /ledger/data' "$rendered"
 python3 - \
@@ -1062,15 +1079,15 @@ expect_template_rejection \
   --set deletionLedger.securityRetentionDays=400
 expect_template_rejection \
   "a migration version different from the release binary" \
-  "migration.expectedVersion: Must be less than or equal to 9" \
+  "migration.expectedVersion: Must be less than or equal to 10" \
   --values "$fixture" \
-  --set migration.expectedVersion=10
+  --set migration.expectedVersion=11
 expect_template_rejection \
   "a migration version different from the release binary with schema validation bypassed" \
-  "migration.expectedVersion must match embedded migration version 9" \
+  "migration.expectedVersion must match embedded migration version 10" \
   --values "$fixture" \
   --skip-schema-validation \
-  --set migration.expectedVersion=10
+  --set migration.expectedVersion=11
 expect_template_rejection \
   "a placeholder migration backup ID accepted by the old chart" \
   "migration.confirmBackupId must identify a verified real backup" \
@@ -1139,6 +1156,35 @@ expect_template_rejection \
   "database URLs and every purpose-specific credential must use distinct external Secret keys" \
   --values "$fixture" \
   --set-string secret.telemetryExporterHeadersKey=LLM_API_KEY
+expect_template_rejection \
+  "a moderation credential reusing the model credential key" \
+  "database URLs and every purpose-specific credential must use distinct external Secret keys" \
+  --values "$fixture" \
+  --set-string secret.commentModerationTokenKey=LLM_API_KEY
+expect_template_rejection \
+  "an HTTP moderation provider without an endpoint" \
+  "api.commentModerationUrl must be a bounded HTTPS provider URL on TCP/443" \
+  --values "$fixture" \
+  --set api.commentModerationProvider=http
+expect_template_rejection \
+  "an HTTP moderation provider over plaintext" \
+  "api.commentModerationUrl: Does not match pattern" \
+  --values "$fixture" \
+  --set api.commentModerationProvider=http \
+  --set-string api.commentModerationUrl=http://moderation.staging.pakperk.app/v1/evaluate
+expect_template_rejection \
+  "HTTP moderation while comments are disabled" \
+  "api.commentModerationProvider=http requires features.comments=true" \
+  --values "$fixture" \
+  --set api.commentModerationProvider=http \
+  --set-string api.commentModerationUrl=https://moderation.staging.pakperk.app/v1/evaluate \
+  --set features.comments=false \
+  --set features.commentCreation=false
+expect_template_rejection \
+  "a latent moderation endpoint with the rules provider" \
+  "api.commentModerationUrl must be empty when api.commentModerationProvider=rules" \
+  --values "$fixture" \
+  --set-string api.commentModerationUrl=https://moderation.staging.pakperk.app/v1/evaluate
 expect_template_rejection \
   "comments with no connection reserved for coordinated writes" \
   "features.comments requires api.databasePoolSize>=2 for coordinated writes" \

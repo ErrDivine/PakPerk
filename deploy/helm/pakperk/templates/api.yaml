@@ -22,6 +22,7 @@ spec:
       annotations:
         checksum/site-origin: {{ printf "%s|%s|%s" .Values.public.siteOrigin .Values.public.apiOrigin .Values.public.oidcIssuer | sha256sum }}
         checksum/runtime-secrets: {{ printf "%s|%s|%s|%s|%s|%s|%s|%s" .Values.secret.existingSecret .Values.secret.rotationVersion .Values.secret.apiDatabaseUrlKey .Values.secret.llmApiKeyKey .Values.secret.apiOriginHashKey .Values.secret.identityFingerprintKeysKey .Values.secret.deletionLedgerSigningKeysKey .Values.secret.deletionProviderIdentityKeysKey | sha256sum }}
+        checksum/comment-moderation: {{ printf "%s|%s|%d|%s|%s" .Values.api.commentModerationProvider .Values.api.commentModerationUrl (int .Values.api.commentModerationTimeoutMs) .Values.secret.commentModerationTokenKey .Values.secret.rotationVersion | sha256sum }}
         {{- with .Values.podAnnotations }}{{ toYaml . | nindent 8 }}{{- end }}
     spec:
       serviceAccountName: {{ include "pakperk.componentServiceAccountName" (dict "root" . "component" "api") }}
@@ -85,7 +86,12 @@ spec:
             - { name: OIDC_ALLOWED_ALGORITHMS, value: "RS256" }
             - { name: CURRENT_TERMS_VERSION, value: {{ .Values.policy.termsVersion | quote }} }
             - { name: CURRENT_COMMUNITY_GUIDELINES_VERSION, value: {{ .Values.policy.communityGuidelinesVersion | quote }} }
-            - { name: COMMENT_MODERATION_PROVIDER, value: "rules" }
+            - { name: COMMENT_MODERATION_PROVIDER, value: {{ .Values.api.commentModerationProvider | quote }} }
+            {{- if eq .Values.api.commentModerationProvider "http" }}
+            - { name: COMMENT_MODERATION_URL, value: {{ .Values.api.commentModerationUrl | quote }} }
+            - { name: COMMENT_MODERATION_TOKEN_FILE, value: "/var/run/pakperk-secrets/COMMENT_MODERATION_TOKEN" }
+            - { name: COMMENT_MODERATION_TIMEOUT_MS, value: {{ .Values.api.commentModerationTimeoutMs | quote }} }
+            {{- end }}
             - { name: COMMENT_SUPPORT_CONTACT_URL, value: {{ printf "%s/support/" .Values.public.siteOrigin | quote }} }
             - { name: API_ORIGIN_HASH_SECRET_FILE, value: "/var/run/pakperk-secrets/API_ORIGIN_HASH_SECRET" }
             - { name: API_TRUSTED_PROXY_CIDRS, value: {{ join "," .Values.api.trustedProxyCidrs | quote }} }

@@ -27,7 +27,7 @@ account deletion.
 ## Implemented shape
 
 The production database uses the stable `pakperk_content.sqlite` filename and
-currently has schema version 4. Foreign keys are enabled and the database uses
+currently has schema version 6. Foreign keys are enabled and the database uses
 WAL mode. The schema contains:
 
 - normalized paper, feed-query, and ordered feed-membership tables;
@@ -47,11 +47,22 @@ Connections, or chat responses from crossing a retry boundary.
 
 The one-time legacy importer parses existing feed, paper, processing,
 Introduction, Connections, and chat blobs with the ordinary model decoders,
-imports and verifies them in one transaction, and removes bulk preference keys
-only after that verification succeeds. Invalid rows are counted without
-logging their content. A failed transaction leaves the source preferences in
-place and does not block startup. Under strict full-text policy, public metadata
-is masked and derived legacy records are not retained.
+imports and verifies accepted rows in one transaction, and removes bulk
+preference keys only after that verification succeeds. A derived record is
+accepted only when an individually cached paper proves the exact arXiv version,
+the JSON explicitly carries a positive generation, and the corresponding
+processing row for that generation was imported first. Chat additionally needs
+an explicit session, paper, and arXiv envelope matching the exact feed/restored
+route reader key and the anonymous session that existed when the importer was
+constructed. It never mints or resamples an identity to label old chat, so
+genuine unscoped v1 derived/chat blobs fail closed instead of borrowing newer
+provenance. The marker is committed only while the complete captured bulk
+snapshot and imported chat session remain unchanged, and cleanup compares each
+key again before removal. Invalid, wrong-typed, and unbound rows are counted
+without logging their content. A failed or raced transaction leaves the source
+preferences in place and does not block startup. Under strict full-text policy,
+public metadata is masked and all derived legacy records are discarded by
+policy.
 
 Eviction applies comment expiry, stale non-active feed membership, unpinned
 paper LRU/TTL, and then expired or oldest unprotected derived generation
@@ -92,6 +103,9 @@ convention.
   offline.
 - Cache size, TTL, LRU eviction, saved-paper pinning, and lifecycle-safe
   physical compaction have focused metrics and tests.
-- Migrations are explicit and tested from a complete version-1 schema fixture.
+- Migrations are explicit and tested from complete historical schema fixtures
+  through version 6.
   Rebuildable pre-generation derived blobs are discarded during the version-3
-  migration instead of being relabeled as current.
+  migration instead of being relabeled as current. Later migrations add
+  synchronized-library state, account-bound comment caches/drafts and blocks,
+  and remove the dormant reply column without weakening prior boundaries.

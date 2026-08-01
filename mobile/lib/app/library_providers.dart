@@ -173,6 +173,7 @@ List<Override> libraryApplicationOverrides() => [
           return;
         case AppPendingActionKind.openComposer:
         case AppPendingActionKind.reportComment:
+        case AppPendingActionKind.reportUser:
         case AppPendingActionKind.blockUser:
           throw StateError(
             'The pending ${action.kind.name} feature is not enabled.',

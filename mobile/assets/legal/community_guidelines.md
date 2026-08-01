@@ -24,8 +24,10 @@ Do not paste private peer-review material, unpublished confidential work, or
 large copyrighted passages. Link to the source and add your own observation.
 Comments are not private notes and may be reviewed by moderators.
 
-Use **Report** on the relevant comment for content problems. Use **Block user**
-to remove an author from your own view. For urgent safety, privacy, copyright,
+Use **Report comment** for content problems and **Report user** for account-level
+behavior. A report is private to the moderation team and does not block anyone.
+Use **Block user** separately to remove an author from your own view. For urgent
+safety, privacy, copyright,
 or legal issues, contact Pakperk support and moderation at
 <https://pakperk.app/support/>. Include the comment ID—not the full harmful
 comment body—when possible.

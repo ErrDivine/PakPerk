@@ -124,6 +124,27 @@ impl RateLimitRequest {
         )
     }
 
+    pub fn user_report(
+        user_id: AuthenticatedUserId,
+        limit: u32,
+        window: Duration,
+    ) -> Result<Self, RateLimitConfigError> {
+        Self::new("user_report", format!("user:{user_id}"), limit, window)
+    }
+
+    pub fn user_report_target(
+        user_id: AuthenticatedUserId,
+        limit: u32,
+        window: Duration,
+    ) -> Result<Self, RateLimitConfigError> {
+        Self::new(
+            "user_report_target",
+            format!("user:{user_id}"),
+            limit,
+            window,
+        )
+    }
+
     /// A hashed request-origin scope consumed alongside the account bucket by
     /// API boundaries which have a source-validated origin/device fingerprint.
     /// Raw IPs or device identifiers must never be passed here.
@@ -325,6 +346,18 @@ mod tests {
             request.scope_key(),
             "user:00000000-0000-0000-0000-000000000000"
         );
+    }
+
+    #[test]
+    fn user_report_account_and_target_buckets_are_independent() {
+        let user_id = AuthenticatedUserId::new(Uuid::nil());
+        let account =
+            RateLimitRequest::user_report(user_id, 30, Duration::from_secs(3_600)).unwrap();
+        let target =
+            RateLimitRequest::user_report_target(user_id, 30, Duration::from_secs(3_600)).unwrap();
+        assert_eq!(account.bucket(), "user_report");
+        assert_eq!(target.bucket(), "user_report_target");
+        assert_eq!(account.scope_key(), target.scope_key());
     }
 
     #[test]

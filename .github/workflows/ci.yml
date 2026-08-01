@@ -81,6 +81,8 @@ jobs:
           python3 scripts/test_validate_flutter_toolchain.py
           python3 scripts/test_validate_mobile_release_workflow.py
           python3 scripts/validate_mobile_release_workflow.py
+          python3 scripts/test_validate_mobile_device_workflow.py
+          python3 scripts/validate_mobile_device_workflow.py
           python3 scripts/test_validate_live_account_deletion_workflow.py
           python3 scripts/validate_live_account_deletion_workflow.py
       - name: Verify Docker context excludes local credentials
@@ -131,7 +133,7 @@ jobs:
           LOG_FORMAT: json
           RUST_LOG: info
           PAKPERK_MIGRATION_BACKUP_ID: ci-snapshot-${{ github.sha }}
-          PAKPERK_MIGRATION_EXPECTED_VERSION: "9"
+          PAKPERK_MIGRATION_EXPECTED_VERSION: "10"
           OTEL_EXPORTER_OTLP_ENDPOINT: http://pakperk-ci-otel-collector:4317
           OTEL_EXPORTER_OTLP_INSECURE: "true"
           OTEL_EXPORT_TIMEOUT_SECONDS: "1"

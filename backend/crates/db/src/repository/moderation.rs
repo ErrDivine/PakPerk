@@ -107,6 +107,35 @@ pub struct StoredReportQueuePage {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredUserReportQueueRecord {
+    pub report_id: Uuid,
+    pub reported_user_id: AuthenticatedUserId,
+    pub reporter_user_id: AuthenticatedUserId,
+    pub reason: CommentReportReason,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredUserReportQueuePage {
+    pub items: Vec<StoredUserReportQueueRecord>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredUserReportInspection {
+    pub report_id: Uuid,
+    pub reported_user_id: AuthenticatedUserId,
+    pub reporter_user_id: AuthenticatedUserId,
+    pub reason: CommentReportReason,
+    pub detail: Option<ReportDetail>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub reviewed_at: Option<DateTime<Utc>>,
+    pub reviewed_by: Option<AuthenticatedUserId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredInspectionReport {
     pub report_id: Uuid,
     pub reporter_user_id: AuthenticatedUserId,
@@ -206,6 +235,29 @@ struct ReportQueueRow {
     created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, FromRow)]
+struct UserReportQueueRow {
+    report_id: Uuid,
+    reported_user_id: Uuid,
+    reporter_user_id: Uuid,
+    reason: String,
+    status: String,
+    created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, FromRow)]
+struct UserReportInspectionRow {
+    report_id: Uuid,
+    reported_user_id: Uuid,
+    reporter_user_id: Uuid,
+    reason: String,
+    detail: Option<String>,
+    status: String,
+    created_at: DateTime<Utc>,
+    reviewed_at: Option<DateTime<Utc>>,
+    reviewed_by: Option<Uuid>,
+}
+
 impl TryFrom<ReportQueueRow> for StoredReportQueueRecord {
     type Error = DbError;
 
@@ -220,6 +272,45 @@ impl TryFrom<ReportQueueRow> for StoredReportQueueRecord {
                 .map_err(|error| DbError::InvalidData(error.to_string()))?,
             status: row.status,
             created_at: row.created_at,
+        })
+    }
+}
+
+impl TryFrom<UserReportQueueRow> for StoredUserReportQueueRecord {
+    type Error = DbError;
+
+    fn try_from(row: UserReportQueueRow) -> Result<Self, Self::Error> {
+        Ok(Self {
+            report_id: row.report_id,
+            reported_user_id: AuthenticatedUserId::new(row.reported_user_id),
+            reporter_user_id: AuthenticatedUserId::new(row.reporter_user_id),
+            reason: CommentReportReason::from_str(&row.reason)
+                .map_err(|error| DbError::InvalidData(error.to_string()))?,
+            status: row.status,
+            created_at: row.created_at,
+        })
+    }
+}
+
+impl TryFrom<UserReportInspectionRow> for StoredUserReportInspection {
+    type Error = DbError;
+
+    fn try_from(row: UserReportInspectionRow) -> Result<Self, Self::Error> {
+        Ok(Self {
+            report_id: row.report_id,
+            reported_user_id: AuthenticatedUserId::new(row.reported_user_id),
+            reporter_user_id: AuthenticatedUserId::new(row.reporter_user_id),
+            reason: CommentReportReason::from_str(&row.reason)
+                .map_err(|error| DbError::InvalidData(error.to_string()))?,
+            detail: row
+                .detail
+                .map(|detail| ReportDetail::parse(&detail))
+                .transpose()
+                .map_err(|error| DbError::InvalidData(error.to_string()))?,
+            status: row.status,
+            created_at: row.created_at,
+            reviewed_at: row.reviewed_at,
+            reviewed_by: row.reviewed_by.map(AuthenticatedUserId::new),
         })
     }
 }
@@ -391,6 +482,93 @@ impl ModerationRepository {
             .encode()
         });
         Ok(StoredReportQueuePage { items, next_cursor })
+    }
+
+    pub async fn list_user_reports(
+        &self,
+        status: &str,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<StoredUserReportQueuePage, DbError> {
+        if !matches!(status, "open" | "reviewed" | "actioned" | "dismissed") {
+            return Err(DbError::InvalidData(
+                "user-report status filter is invalid".to_owned(),
+            ));
+        }
+        let cursor = cursor
+            .map(CreatedAtCursor::decode)
+            .transpose()
+            .map_err(|_| DbError::InvalidData("user-report cursor is invalid".to_owned()))?;
+        let page_size = limit.max(1);
+        let rows = sqlx::query_as::<_, UserReportQueueRow>(
+            r"
+            SELECT
+                id AS report_id,
+                reported_user_id,
+                reporter_user_id,
+                reason,
+                status,
+                created_at
+            FROM user_reports
+            WHERE status = $1
+              AND (
+                    $2::timestamptz IS NULL
+                    OR (created_at, id) > ($2, $3)
+              )
+            ORDER BY created_at, id
+            LIMIT $4
+            ",
+        )
+        .bind(status)
+        .bind(cursor.map(|value| value.created_at))
+        .bind(cursor.map(|value| value.id))
+        .bind(i64::from(page_size) + 1)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut items = rows
+            .into_iter()
+            .map(StoredUserReportQueueRecord::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+        let has_more = items.len() > usize::try_from(page_size).unwrap_or(usize::MAX);
+        if has_more {
+            items.pop();
+        }
+        let next_cursor = has_more.then(|| {
+            let last = items.last().expect("a page with more items is non-empty");
+            CreatedAtCursor {
+                created_at: last.created_at,
+                id: last.report_id,
+            }
+            .encode()
+        });
+        Ok(StoredUserReportQueuePage { items, next_cursor })
+    }
+
+    pub async fn inspect_user_report(
+        &self,
+        report_id: Uuid,
+    ) -> Result<Option<StoredUserReportInspection>, DbError> {
+        sqlx::query_as::<_, UserReportInspectionRow>(
+            r"
+            SELECT
+                id AS report_id,
+                reported_user_id,
+                reporter_user_id,
+                reason,
+                detail,
+                status,
+                created_at,
+                reviewed_at,
+                reviewed_by
+            FROM user_reports
+            WHERE id = $1
+            ",
+        )
+        .bind(report_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .map(StoredUserReportInspection::try_from)
+        .transpose()
     }
 
     pub async fn inspect(
@@ -602,6 +780,66 @@ impl ModerationRepository {
         })
     }
 
+    pub async fn resolve_user_report(
+        &self,
+        report_id: Uuid,
+        actor: &StoredAdminActor,
+        resolution: AdminReportResolution,
+        reason_code: &str,
+    ) -> Result<AdminReportOutcome, DbError> {
+        let mut transaction = self.pool.begin().await?;
+        lock_active_admin_actor(&mut transaction, actor).await?;
+        let current = sqlx::query_as::<_, (Uuid, String)>(
+            "SELECT reported_user_id, status FROM user_reports WHERE id = $1 FOR UPDATE",
+        )
+        .bind(report_id)
+        .fetch_optional(&mut *transaction)
+        .await?;
+        let Some((reported_user_id, current_status)) = current else {
+            return Ok(AdminReportOutcome::NotFound);
+        };
+        let target = resolution.as_str();
+        if current_status == target {
+            transaction.commit().await?;
+            return Ok(AdminReportOutcome::AlreadyInState {
+                report_id,
+                status: current_status,
+            });
+        }
+        if current_status != "open" {
+            return Ok(AdminReportOutcome::ResolutionConflict { current_status });
+        }
+        sqlx::query(
+            r"
+            UPDATE user_reports
+            SET status = $2,
+                reviewed_at = statement_timestamp(),
+                reviewed_by = $3
+            WHERE id = $1
+            ",
+        )
+        .bind(report_id)
+        .bind(target)
+        .bind(actor.user_id())
+        .execute(&mut *transaction)
+        .await?;
+        insert_admin_event(
+            &mut transaction,
+            None,
+            Some(AuthenticatedUserId::new(reported_user_id)),
+            actor,
+            "user_report_resolved",
+            Some(reason_code),
+            json!({"report_id": report_id, "resolution": target}),
+        )
+        .await?;
+        transaction.commit().await?;
+        Ok(AdminReportOutcome::Updated {
+            report_id,
+            status: target.to_owned(),
+        })
+    }
+
     pub async fn set_user_suspended(
         &self,
         target_user_id: AuthenticatedUserId,
@@ -677,7 +915,11 @@ impl ModerationRepository {
                     WHERE status = 'open'
                       AND created_at <= statement_timestamp() - interval '72 hours'
                 ) AS open_over_72h
-            FROM comment_reports
+            FROM (
+                SELECT status, created_at FROM comment_reports
+                UNION ALL
+                SELECT status, created_at FROM user_reports
+            ) reports
             ",
         )
         .fetch_one(&self.pool)

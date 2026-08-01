@@ -89,112 +89,144 @@ void main() {
     expect(pending.state?.targetId, samplePaper.paperId);
   });
 
-  testWidgets('report and block actions confirm, call controllers, and hide', (
-    tester,
-  ) async {
-    final fixture = await _fixture(
-      viewerAccountId: accountA,
-      page: CommentPage(
-        items: [_comment(authorId: accountB, idSuffix: '11')],
-        nextCursor: null,
-      ),
-    );
-    addTearDown(fixture.database.close);
+  testWidgets(
+    'comment report, user report, and block remain distinct actions',
+    (tester) async {
+      final fixture = await _fixture(
+        viewerAccountId: accountA,
+        page: CommentPage(
+          items: [_comment(authorId: accountB, idSuffix: '11')],
+          nextCursor: null,
+        ),
+      );
+      addTearDown(fixture.database.close);
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          commentViewerScopeProvider.overrideWithValue(
-            const CommentViewerScope.authenticated(
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            commentViewerScopeProvider.overrideWithValue(
+              const CommentViewerScope.authenticated(
+                accountId: accountA,
+                authEpoch: 1,
+              ),
+            ),
+            commentComposerEligibleProvider.overrideWithValue(true),
+            verifiedCommentScopeProvider.overrideWithValue(const (
               accountId: accountA,
               authEpoch: 1,
+            )),
+            commentThreadProvider.overrideWith(
+              (ref, paperId) => fixture.controller,
+            ),
+            networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
+          ],
+          child: MaterialApp(
+            home: CommentsScreen(
+              paperId: samplePaper.paperId,
+              paperTitle: samplePaper.title,
+              onClose: () {},
             ),
           ),
-          commentComposerEligibleProvider.overrideWithValue(true),
-          verifiedCommentScopeProvider.overrideWithValue(const (
-            accountId: accountA,
-            authEpoch: 1,
-          )),
-          commentThreadProvider.overrideWith(
-            (ref, paperId) => fixture.controller,
-          ),
-          networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
-        ],
-        child: MaterialApp(
-          home: CommentsScreen(
-            paperId: samplePaper.paperId,
-            paperTitle: samplePaper.title,
-            onClose: () {},
-          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    final actions = find.byKey(
-      const ValueKey('comment-actions-018f47a6-4b56-7f4c-8c7a-e2656e820011'),
-    );
-    await tester.tap(actions);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Report'));
-    await tester.pumpAndSettle();
+      final actions = find.byKey(
+        const ValueKey('comment-actions-018f47a6-4b56-7f4c-8c7a-e2656e820011'),
+      );
+      await tester.tap(actions);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Report comment'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Report comment'), findsOneWidget);
-    expect(fixture.remote.reportCalls, isEmpty);
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Additional detail (optional)'),
-      'Repeated unsolicited promotion.',
-    );
-    await tester.tap(find.widgetWithText(FilledButton, 'Send report'));
-    await tester.pumpAndSettle();
+      expect(find.text('Report comment'), findsOneWidget);
+      expect(fixture.remote.reportCalls, isEmpty);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Additional detail (optional)'),
+        'Repeated unsolicited promotion.',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Send report'));
+      await tester.pumpAndSettle();
 
-    expect(fixture.remote.reportCalls, hasLength(1));
-    expect(fixture.remote.reportCalls.single.commentId, _commentId('11'));
-    expect(fixture.remote.reportCalls.single.reason, CommentReportReason.spam);
-    expect(
-      fixture.remote.reportCalls.single.detail,
-      'Repeated unsolicited promotion.',
-    );
-    expect(fixture.remote.reportCalls.single.expectedAuthEpoch, 1);
-    expect(find.text('Report received. Thank you.'), findsOneWidget);
-    expect(find.text('A published observation.'), findsOneWidget);
+      expect(fixture.remote.reportCalls, hasLength(1));
+      expect(fixture.remote.reportCalls.single.commentId, _commentId('11'));
+      expect(
+        fixture.remote.reportCalls.single.reason,
+        CommentReportReason.spam,
+      );
+      expect(
+        fixture.remote.reportCalls.single.detail,
+        'Repeated unsolicited promotion.',
+      );
+      expect(fixture.remote.reportCalls.single.expectedAuthEpoch, 1);
+      expect(find.text('Report received. Thank you.'), findsOneWidget);
+      expect(find.text('A published observation.'), findsOneWidget);
 
-    await tester.tap(actions);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Block user'));
-    await tester.pumpAndSettle();
+      await tester.tap(actions);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Report user'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Block @reader_two?'), findsOneWidget);
-    expect(
-      find.textContaining('comments will disappear immediately'),
-      findsOneWidget,
-    );
-    expect(fixture.remote.blockCalls, isEmpty);
-    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
-    await tester.pumpAndSettle();
-    expect(find.text('A published observation.'), findsOneWidget);
-    expect(fixture.remote.blockCalls, isEmpty);
+      expect(find.text('Report @reader_two'), findsOneWidget);
+      expect(fixture.remote.userReportCalls, isEmpty);
+      expect(fixture.remote.blockCalls, isEmpty);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Additional detail (optional)'),
+        'This profile appears to impersonate another researcher.',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Send report'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(actions);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Block user'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Block user'));
-    await tester.pumpAndSettle();
+      expect(fixture.remote.userReportCalls, hasLength(1));
+      expect(fixture.remote.userReportCalls.single.userId, accountB);
+      expect(
+        fixture.remote.userReportCalls.single.detail,
+        'This profile appears to impersonate another researcher.',
+      );
+      expect(fixture.remote.blockCalls, isEmpty);
+      expect(find.text('A published observation.'), findsOneWidget);
+      expect(
+        find.text('User report received. No block was added.'),
+        findsOneWidget,
+      );
 
-    expect(fixture.remote.blockCalls, [accountB]);
-    expect(find.text('A published observation.'), findsNothing);
-    expect(
-      fixture.controller.state.items.where(
-        (comment) => comment.author.id == accountB,
-      ),
-      isEmpty,
-    );
-    final locallyBlocked = await CommentsDao(
-      fixture.database,
-    ).blockedUserIds(accountA);
-    expect(locallyBlocked, contains(accountB));
-  });
+      await tester.tap(actions);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Block user'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Block @reader_two?'), findsOneWidget);
+      expect(
+        find.textContaining('comments will disappear immediately'),
+        findsOneWidget,
+      );
+      expect(fixture.remote.blockCalls, isEmpty);
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.text('A published observation.'), findsOneWidget);
+      expect(fixture.remote.blockCalls, isEmpty);
+
+      await tester.tap(actions);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Block user'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Block user'));
+      await tester.pumpAndSettle();
+
+      expect(fixture.remote.blockCalls, [accountB]);
+      expect(find.text('A published observation.'), findsNothing);
+      expect(
+        fixture.controller.state.items.where(
+          (comment) => comment.author.id == accountB,
+        ),
+        isEmpty,
+      );
+      final locallyBlocked = await CommentsDao(
+        fixture.database,
+      ).blockedUserIds(accountA);
+      expect(locallyBlocked, contains(accountB));
+    },
+  );
 
   testWidgets(
     'authenticated comments stay accessible with keyboard large text and create kill',
@@ -295,7 +327,8 @@ void main() {
       );
       await tester.tap(otherMenu);
       await tester.pumpAndSettle();
-      expect(find.text('Report'), findsOneWidget);
+      expect(find.text('Report comment'), findsOneWidget);
+      expect(find.text('Report user'), findsOneWidget);
       expect(find.text('Block user'), findsOneWidget);
       await tester.tapAt(const Offset(4, 4));
       await tester.pumpAndSettle();
@@ -388,6 +421,15 @@ final class _Remote implements CommentsRemoteDataSource {
     })
   >
   reportCalls = [];
+  final List<
+    ({
+      String userId,
+      CommentReportReason reason,
+      String? detail,
+      int expectedAuthEpoch,
+    })
+  >
+  userReportCalls = [];
   final List<String> blockCalls = [];
 
   @override
@@ -436,6 +478,28 @@ final class _Remote implements CommentsRemoteDataSource {
     return CommentReportReceipt(
       id: '018f47a6-4b56-7f4c-8c7a-e2656e820099',
       commentId: commentId,
+      reason: reason,
+      status: 'open',
+      createdAt: DateTime.utc(2026, 8, 1, 13),
+    );
+  }
+
+  @override
+  Future<UserReportReceipt> reportUser({
+    required String userId,
+    required CommentReportReason reason,
+    required String? detail,
+    required int expectedAuthEpoch,
+  }) async {
+    userReportCalls.add((
+      userId: userId,
+      reason: reason,
+      detail: detail,
+      expectedAuthEpoch: expectedAuthEpoch,
+    ));
+    return UserReportReceipt(
+      id: '018f47a6-4b56-7f4c-8c7a-e2656e820098',
+      reportedUserId: userId,
       reason: reason,
       status: 'open',
       createdAt: DateTime.utc(2026, 8, 1, 13),

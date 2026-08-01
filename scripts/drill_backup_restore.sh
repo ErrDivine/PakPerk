@@ -58,7 +58,7 @@ done
 phase="${PAKPERK_RESTORE_DRILL_PHASE:-reapply}"
 environment="${APP_ENV:-}"
 ledger_environment="${ACCOUNT_DELETION_LEDGER_ENVIRONMENT_ID:-}"
-expected_migration="${PAKPERK_RESTORE_DRILL_EXPECTED_MIGRATION:-9}"
+expected_migration="${PAKPERK_RESTORE_DRILL_EXPECTED_MIGRATION:-10}"
 expected_ledger_records="$PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_RECORDS"
 worker_bin="$PAKPERK_DELETION_WORKER_BIN"
 database_name="$PAKPERK_RESTORE_DRILL_DATABASE"
@@ -157,6 +157,7 @@ missing_required_tables="$(psql_value "
     ('public.library_operations'),
     ('public.paper_comments'),
     ('public.comment_reports'),
+    ('public.user_reports'),
     ('public.user_blocks'),
     ('public.account_deletion_ledger'),
     ('public.account_deletion_jobs')
@@ -179,6 +180,7 @@ database_snapshot() {
       'library_operations', (SELECT count(*) FROM library_operations),
       'paper_comments', (SELECT count(*) FROM paper_comments),
       'comment_reports', (SELECT count(*) FROM comment_reports),
+      'user_reports', (SELECT count(*) FROM user_reports),
       'user_blocks', (SELECT count(*) FROM user_blocks),
       'ledger_records', (SELECT count(*) FROM account_deletion_ledger),
       'deletion_jobs', (SELECT count(*) FROM account_deletion_jobs),

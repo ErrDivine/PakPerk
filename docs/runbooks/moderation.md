@@ -20,28 +20,62 @@ ordinary moderation workflow.
 
 ## Queue workflow
 
-1. Review open-report count and oldest age without printing comment bodies.
-2. Select one report ID and explicitly inspect the associated record.
+1. Review comment-report and user-report queues and their combined oldest-age
+   metric without printing comment bodies or report detail. Use
+   `comments list --status open` for comment reports and
+   `user-reports list --status open` for user reports.
+2. Select one report ID. Use `comments inspect <comment-id>` for the associated
+   comment or `user-reports inspect <report-id>` for one user report.
 3. Classify using stable reason/action codes; do not copy content into chat,
    logs, shell history, or an incident title.
 4. Hide immediately when continued display creates credible harm. Restore only
    after a second look for high/critical reversals.
-5. Resolve/dismiss the report and record the action. Suspend repeat or severe
+5. Resolve/dismiss the report with `reports resolve` or
+   `user-reports resolve` and record the action. Suspend repeat or severe
    offenders; reinstate only with a recorded reason.
 6. Escalate legal requests, child-safety material, credible threats, or urgent
    privacy exposure to the configured qualified operator. Do not download or
    redistribute illegal material.
 7. Verify the audit event, queue age, and public result.
 
-Admin actor identity is explicit and actions are audited. List commands never
-print full bodies. Only an explicit inspect command may display one body, and
-operators must use an ephemeral terminal with production credentials supplied
-outside shell history.
+`pakperk-admin` derives the audit actor from a provider-authenticated operator;
+the caller cannot supply an actor label. Before invoking it, complete a recent
+OIDC authentication and place the short-lived access token in an absolute,
+owner-only (`0600`), non-symlink regular file. Configure
+`ADMIN_OIDC_ISSUER_URL`, `ADMIN_OIDC_AUDIENCE`, and
+`PAKPERK_ADMIN_ACCESS_TOKEN_FILE`. Set `ADMIN_AUTHORIZED_USER_IDS` to a
+comma-separated, change-controlled allowlist of canonical local Pakperk user
+UUIDs for current Trust & Safety operators; an authenticated account outside
+that allowlist has no admin permission. Keep `ADMIN_OIDC_ALLOWED_ALGORITHMS` at
+its `RS256` default unless the identity owner has approved another bounded
+allow list. `ADMIN_AUTH_MAX_AGE_SECONDS` defaults to 15 minutes and may be
+60–3,600 seconds. Plain HTTP discovery is forbidden except for an explicitly
+enabled loopback-only development issuer using
+`ADMIN_OIDC_ALLOW_INSECURE_HTTP=true`; never enable it in staging or
+production.
+
+At startup the CLI verifies discovery/JWKS transport, signature, issuer,
+audience, expiry, and the OIDC `auth_time` claim. Token `iat` is never accepted
+as proof of a recent interactive login. It then maps the verified
+`(issuer, subject)` to an existing active Pakperk account without provisioning
+or updating one and checks the local UUID against the operator allowlist; that
+UUID is the audited actor. Missing `auth_time`, stale, unknown, unauthorized,
+suspended, deletion-pending, unsafe-file, or otherwise invalid identity fails
+closed before any command runs. Remove the token file after the operator
+session and follow the incident runbook if it may have been exposed. Revoke an
+operator by removing the UUID from the deployment secret/configuration and
+rolling the admin job before disabling the identity-provider account.
+
+List commands never print full bodies. Only an explicit inspect command may
+display one body, and operators must use an ephemeral terminal with database
+and identity credentials supplied outside shell history. Never pass the token,
+an email address, or a self-selected actor value as a command argument or
+environment value.
 
 ## Emergency controls
 
 - Set `COMMENT_CREATION_ENABLED=false` to stop new posts while preserving
-  reading, report/block, author removal, and moderation.
+reading, comment/user reporting, blocking, author removal, and moderation.
 - Set `COMMENTS_ENABLED=false` only when the entire comments surface must be
   withdrawn; guest paper reading must remain healthy.
 - Suspected credential exposure follows the incident runbook and secret

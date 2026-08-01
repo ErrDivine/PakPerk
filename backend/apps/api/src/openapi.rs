@@ -16,6 +16,7 @@ use crate::{
         CommentReportResponse, CommentReportStatusSchema, CommentResponse, CommentStatusSchema,
         CreateCommentBody, DeletionVerificationAccount, DeletionVerificationEnvelope,
         EditCommentBody, LibrarySaveBody, PrepareBody, ProfileUpdateBody, ReportCommentBody,
+        ReportUserBody, UserReportEnvelope, UserReportResponse,
     },
     routes,
 };
@@ -51,6 +52,7 @@ use crate::{
         routes::comments::edit_comment,
         routes::comments::delete_comment,
         routes::comments::report_comment,
+        routes::comments::report_user,
         routes::comments::block_user,
         routes::comments::unblock_user,
         routes::comments::list_blocked_users,
@@ -107,6 +109,9 @@ use crate::{
         CommentReportStatusSchema,
         CommentReportResponse,
         CommentReportEnvelope,
+        ReportUserBody,
+        UserReportResponse,
+        UserReportEnvelope,
         CommentStatusSchema,
         CommentAuthorResponse,
         CommentResponse,
@@ -519,6 +524,7 @@ mod tests {
             "/v1/papers/{paper_id}/comments",
             "/v1/comments/{comment_id}",
             "/v1/comments/{comment_id}/reports",
+            "/v1/users/{user_id}/reports",
             "/v1/me/blocked-users/{user_id}",
             "/v1/me/blocked-users",
             "/v1/me/comments",
@@ -773,6 +779,7 @@ mod tests {
             ("/v1/comments/{comment_id}", "patch", "200"),
             ("/v1/comments/{comment_id}", "delete", "204"),
             ("/v1/comments/{comment_id}/reports", "post", "200"),
+            ("/v1/users/{user_id}/reports", "post", "200"),
             ("/v1/me/blocked-users/{user_id}", "put", "200"),
             ("/v1/me/blocked-users/{user_id}", "delete", "204"),
             ("/v1/me/blocked-users", "get", "200"),
@@ -839,6 +846,27 @@ mod tests {
                 "other"
             ])
         );
+        let user_report = &document["paths"]["/v1/users/{user_id}/reports"]["post"];
+        assert!(
+            user_report["description"]
+                .as_str()
+                .is_some_and(|value| value.contains("independent from blocking"))
+        );
+        let user_report_body = &document["components"]["schemas"]["ReportUserBody"];
+        assert_eq!(user_report_body["additionalProperties"], false);
+        let required = user_report_body["required"].as_array().unwrap();
+        for field in ["reason", "detail"] {
+            assert!(required.iter().any(|required| required == field));
+        }
+        assert_eq!(
+            user_report_body["properties"]["detail"]["type"],
+            json!(["string", "null"])
+        );
+        let user_report_properties =
+            &document["components"]["schemas"]["UserReportResponse"]["properties"];
+        assert!(user_report_properties["reported_user_id"].is_object());
+        assert!(user_report_properties.get("comment_id").is_none());
+        assert!(user_report_properties.get("blocked_user").is_none());
     }
 
     #[test]

@@ -4,12 +4,14 @@ Public comments must remain disabled until the release owner verifies:
 
 - comments are visibly public and plain text;
 - sign-in, handle, Terms, and Community Guidelines gate posting;
-- Report and Block are reachable from each eligible comment;
+- Report comment, Report user, and Block user are separately reachable from
+  each eligible third-party comment, and a report does not add a block;
 - moderation can hide/restore and suspend/reinstate with an audit trail;
 - creation can be disabled without breaking comment or paper reads;
 - support and account-deletion URLs are live outside the app;
 - privacy, retention, deletion, and data-safety disclosures match production;
-- reviewer credentials and exact Save/Comments/Report/Block/Delete steps are
+- reviewer credentials and exact Save/Comments/Report comment/Report
+  user/Block/Delete steps are
   supplied without real user data using
   [reviewer-notes-template.md](reviewer-notes-template.md);
 - Apple/Google UGC, violence, sexual-content, profanity, social, and web-access

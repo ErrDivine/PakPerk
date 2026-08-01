@@ -26,4 +26,5 @@ pub use deletion_config::AccountDeletionFeatureConfig;
 pub use maintenance::{
     spawn_library_maintenance, spawn_operational_telemetry, spawn_rate_limit_maintenance,
 };
+pub use middleware::RequestPrincipal;
 pub use openapi::ApiDoc;

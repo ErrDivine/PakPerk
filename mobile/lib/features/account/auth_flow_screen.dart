@@ -290,6 +290,7 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
           ],
           const SizedBox(height: 18),
           FilledButton(
+            key: const ValueKey('account-complete-setup-button'),
             onPressed: busy ? null : () => _submit(profile),
             child: busy
                 ? const SizedBox.square(
@@ -466,6 +467,7 @@ bool _requiresCommunityPolicy(AppPendingActionKind? kind) => switch (kind) {
   AppPendingActionKind.openComposer => true,
   AppPendingActionKind.savePaper ||
   AppPendingActionKind.reportComment ||
+  AppPendingActionKind.reportUser ||
   AppPendingActionKind.blockUser ||
   null => false,
 };
@@ -473,6 +475,7 @@ bool _requiresCommunityPolicy(AppPendingActionKind? kind) => switch (kind) {
 bool _bypassesPublicProfile(AppPendingActionKind? kind) => switch (kind) {
   AppPendingActionKind.savePaper ||
   AppPendingActionKind.reportComment ||
+  AppPendingActionKind.reportUser ||
   AppPendingActionKind.blockUser => true,
   AppPendingActionKind.openComposer || null => false,
 };
@@ -484,6 +487,8 @@ String _pendingFailureMessage(AppPendingActionKind kind) => switch (kind) {
     'Signed in, but the comment composer could not be opened. Try again.',
   AppPendingActionKind.reportComment =>
     'Signed in, but the report could not be opened. Try again.',
+  AppPendingActionKind.reportUser =>
+    'Signed in, but the user report could not be opened. Try again.',
   AppPendingActionKind.blockUser =>
     'Signed in, but this user could not be blocked. Try again.',
 };

@@ -120,7 +120,7 @@ final myCommentsControllerProvider =
       return controller;
     });
 
-enum CommentUiIntentKind { openComposer, reportComment, blockUser }
+enum CommentUiIntentKind { openComposer, reportComment, reportUser, blockUser }
 
 final class CommentUiIntent {
   const CommentUiIntent({required this.kind, required this.targetId});
@@ -238,6 +238,21 @@ List<Override> commentsApplicationOverrides() => [
               .show(
                 CommentUiIntent(
                   kind: CommentUiIntentKind.reportComment,
+                  targetId: action.targetId,
+                ),
+              );
+          return;
+        case AppPendingActionKind.reportUser:
+          if (!ref.read(featureFlagsProvider).comments ||
+              !_uuid.hasMatch(action.targetId) ||
+              ref.read(verifiedCommentScopeProvider) == null) {
+            throw StateError('User reporting is not available.');
+          }
+          ref
+              .read(commentUiIntentProvider.notifier)
+              .show(
+                CommentUiIntent(
+                  kind: CommentUiIntentKind.reportUser,
                   targetId: action.targetId,
                 ),
               );

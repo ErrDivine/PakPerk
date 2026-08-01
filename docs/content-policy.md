@@ -7,9 +7,10 @@ page. Pakperk is not affiliated with or endorsed by arXiv.
 
 The production migration now contains a feature-gated public paper-comment
 implementation. It includes authenticated posting, explicit Terms and
-Community Guidelines acceptance, normalized plain-text validation, reporting,
-durable user blocking, audited moderation actions, shared rate limits, and a
-stable support contract. Both comment flags remain off by default. The
+Community Guidelines acceptance, normalized plain-text validation, distinct
+comment and user reporting, durable user blocking, audited moderation actions,
+shared rate limits, and a stable support contract. Reporting never creates a
+block or changes visibility. Both comment flags remain off by default. The
 repository now supplies account deletion, hosted policy/support, retention
 enforcement, telemetry, and operational controls, but public creation remains
 prohibited until those controls are exercised in the target environment and
@@ -18,8 +19,9 @@ dark-launch capability, not a claim that public UGC is live.
 
 When comments are enabled in a production release, comments are public
 user-generated content. They are not private notes or scholarly endorsements;
-the product discloses that fact and provides report, block, support, and author
-removal routes. `COMMENT_CREATION_ENABLED=false` stops only new posts so that
+the product discloses that fact and provides separate **Report comment**,
+**Report user**, **Block user**, support, and author-removal routes.
+`COMMENT_CREATION_ENABLED=false` stops only new posts so that
 reading and safety operations remain available. The authoritative product,
 moderation, retention, and deletion requirements are in
 [the Production v0.0 plan](production-v0.0-plan.md) and

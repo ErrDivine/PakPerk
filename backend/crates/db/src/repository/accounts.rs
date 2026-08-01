@@ -306,6 +306,25 @@ impl AccountRepository {
             .transpose()
     }
 
+    /// Resolves an already-verified provider identity without provisioning or
+    /// updating it. Operational tools use this fail-closed path so possession
+    /// of a signed token can never create or reactivate an administrator.
+    pub async fn resolve_oidc_identity(
+        &self,
+        issuer: &str,
+        subject: &str,
+    ) -> Result<Option<User>, DbError> {
+        sqlx::query_as::<_, UserRow>(&format!(
+            "SELECT {USER_COLUMNS} FROM users WHERE oidc_issuer = $1 AND oidc_subject = $2"
+        ))
+        .bind(issuer)
+        .bind(subject)
+        .fetch_optional(&self.pool)
+        .await?
+        .map(User::try_from)
+        .transpose()
+    }
+
     /// Applies a profile compare-and-swap. Callers validate field values and
     /// the current terms version before entering this persistence boundary.
     pub async fn update_profile(

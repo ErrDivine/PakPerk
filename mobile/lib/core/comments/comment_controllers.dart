@@ -361,6 +361,43 @@ final class CommentThreadController extends StateNotifier<CommentThreadState> {
     }
   }
 
+  Future<bool> reportUser({
+    required String userId,
+    required CommentReportReason reason,
+    String? detail,
+  }) async {
+    if (!mounted) return false;
+    final accountId = _viewer.accountId;
+    final authEpoch = _viewer.authEpoch;
+    if (accountId == null || authEpoch == null || userId == accountId) {
+      return false;
+    }
+    try {
+      await _repository.reportUser(
+        accountId: accountId,
+        authEpoch: authEpoch,
+        reportedUserId: userId,
+        reason: reason,
+        detail: detail,
+      );
+      if (!mounted) return false;
+      state = state.copyWith(errorMessage: null);
+      return true;
+    } on CommentScopeChanged {
+      return false;
+    } on ApiException catch (error) {
+      if (!mounted) return false;
+      state = state.copyWith(errorMessage: error.message);
+      return false;
+    } on Object {
+      if (!mounted) return false;
+      state = state.copyWith(
+        errorMessage: 'The user report could not be sent.',
+      );
+      return false;
+    }
+  }
+
   Future<bool> block(CommentAuthor author) async {
     if (!mounted) return false;
     final accountId = _viewer.accountId;

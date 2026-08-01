@@ -4,7 +4,7 @@ use chrono::{TimeDelta, Utc};
 use db::{
     AdminCommentAction, AdminReportResolution, AdminUserStatusOutcome, CommentCreateOutcome,
     CommentCreateResolution, CommentMutationOutcome, CommentReadOutcome, CommentReportOutcome,
-    Database, StoredAdminActor, UserBlockOutcome,
+    Database, StoredAdminActor, UserBlockOutcome, UserReportOutcome,
 };
 use domain::{
     AccountStatus, ArxivIdentifier, Author, CommentBody, CommentReportReason, CommentStatus,
@@ -266,6 +266,46 @@ async fn postgres_comments_idempotency_permissions_pagination_and_moderation() {
             if replay.id == report.id && replay.reason == CommentReportReason::Other
     ));
 
+    let user_report = match repository
+        .report_user(reader.id, author.id, CommentReportReason::Harassment, None)
+        .await
+        .unwrap()
+    {
+        UserReportOutcome::Accepted { report, replayed } => {
+            assert!(!replayed);
+            report
+        }
+        other => panic!("expected user report, got {other:?}"),
+    };
+    assert!(matches!(
+        repository
+            .report_user(reader.id, author.id, CommentReportReason::Spam, None)
+            .await
+            .unwrap(),
+        UserReportOutcome::Accepted { report: ref replay, replayed: true }
+            if replay.id == user_report.id
+                && replay.reason == CommentReportReason::Harassment
+    ));
+    assert!(matches!(
+        repository
+            .report_user(reader.id, reader.id, CommentReportReason::Other, None)
+            .await
+            .unwrap(),
+        UserReportOutcome::CannotReportSelf
+    ));
+    let blocks_before_block: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM user_blocks WHERE blocker_user_id = $1 AND blocked_user_id = $2",
+    )
+    .bind(reader.id.into_inner())
+    .bind(author.id.into_inner())
+    .fetch_one(database.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        blocks_before_block, 0,
+        "a user report must not create a block"
+    );
+
     let block = repository.block(reader.id, author.id).await.unwrap();
     assert!(matches!(
         block,
@@ -394,6 +434,39 @@ async fn postgres_comments_idempotency_permissions_pagination_and_moderation() {
     };
     assert_eq!(hidden_edit.status, CommentStatus::PendingReview);
 
+    let user_report_queue = moderation
+        .list_user_reports("open", None, 100)
+        .await
+        .unwrap();
+    assert!(
+        user_report_queue
+            .items
+            .iter()
+            .any(|item| item.report_id == user_report.id
+                && item.reported_user_id == author.id
+                && item.reporter_user_id == reader.id)
+    );
+    let user_report_inspection = moderation
+        .inspect_user_report(user_report.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(user_report_inspection.reported_user_id, author.id);
+    assert_eq!(user_report_inspection.reporter_user_id, reader.id);
+    let resolved_user_report = moderation
+        .resolve_user_report(
+            user_report.id,
+            &actor,
+            AdminReportResolution::Reviewed,
+            "review_complete",
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        resolved_user_report,
+        db::AdminReportOutcome::Updated { .. }
+    ));
+
     let resolved = moderation
         .resolve_report(
             report.id,
@@ -425,7 +498,7 @@ async fn postgres_comments_idempotency_permissions_pagination_and_moderation() {
             .fetch_one(database.pool())
             .await
             .unwrap();
-    assert!(audit_count >= 5);
+    assert!(audit_count >= 6);
 
     let deleted = match repository.delete(author.id, first.id).await.unwrap() {
         CommentMutationOutcome::Deleted { comment, replayed } => {
@@ -454,7 +527,7 @@ async fn postgres_comments_idempotency_permissions_pagination_and_moderation() {
         SELECT string_agg(indexname, ',')
         FROM pg_indexes
         WHERE schemaname = current_schema()
-          AND tablename IN ('paper_comments', 'comment_reports', 'user_blocks')
+          AND tablename IN ('paper_comments', 'comment_reports', 'user_reports', 'user_blocks')
         ",
     )
     .fetch_one(database.pool())
@@ -464,6 +537,10 @@ async fn postgres_comments_idempotency_permissions_pagination_and_moderation() {
         "paper_comments_public_page_idx",
         "paper_comments_author_page_idx",
         "comment_reports_status_age_idx",
+        "user_reports_status_age_idx",
+        "user_reports_reported_user_idx",
+        "user_reports_reporter_user_idx",
+        "user_reports_reviewed_by_idx",
     ] {
         assert!(
             index_definitions.contains(required),

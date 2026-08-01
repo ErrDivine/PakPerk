@@ -1469,10 +1469,13 @@ dependencies = [
  "chrono",
  "db",
  "domain",
+ "reqwest",
+ "secrecy",
  "serde",
  "serde_json",
  "thiserror",
  "tokio",
+ "url",
  "uuid",
 ]
 
@@ -1631,6 +1634,7 @@ name = "pakperk-admin"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "auth",
  "chrono",
  "db",
  "domain",
@@ -1638,7 +1642,9 @@ dependencies = [
  "observability",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
+ "url",
  "uuid",
 ]
 

@@ -9,6 +9,7 @@ use axum::{
 };
 use comments::{
     CommentServiceError, CreateCommentRequest, EditCommentRequest, ReportCommentRequest,
+    ReportUserRequest,
 };
 use domain::{AccountStatus, AuthenticatedUserId};
 use observability::{OperationClass, OperationOutcome, record_operation};
@@ -20,10 +21,10 @@ use crate::{
     dto::{
         BlockedUserEnvelope, BlockedUserPageEnvelope, CommentEnvelope, CommentListParams,
         CommentPageEnvelope, CommentReportEnvelope, CreateCommentBody, EditCommentBody,
-        ReportCommentBody,
+        ReportCommentBody, ReportUserBody, UserReportEnvelope,
     },
     error::{ApiError, RequestId},
-    middleware::{AuthenticatedPrincipal, OptionalPrincipal},
+    middleware::{AuthenticatedPrincipal, RequestPrincipal},
 };
 
 const DEFAULT_PAGE_LIMIT: u32 = 50;
@@ -104,16 +105,16 @@ fn request_id(parts: &Parts) -> RequestId {
 )]
 pub(crate) async fn list_paper_comments(
     State(state): State<AppState>,
-    Extension(request_id): Extension<RequestId>,
+    principal: RequestPrincipal,
     Path(paper_id): Path<Uuid>,
-    OptionalPrincipal(principal): OptionalPrincipal,
     Query(params): Query<CommentListParams>,
 ) -> Result<Json<CommentPageEnvelope>, ApiError> {
+    let request_id = RequestId(principal.request_id);
     let (cursor, limit) = list_parameters(&params, request_id)?;
     let page = comment_service(&state, request_id)?
         .list_paper(
             paper_id,
-            principal.map(|principal| principal.user_id),
+            principal.user_id.map(AuthenticatedUserId::new),
             cursor,
             limit,
         )
@@ -303,6 +304,58 @@ pub(crate) async fn report_comment(
             principal.user_id,
             comment_id,
             ReportCommentRequest {
+                reason: body.reason.into(),
+                detail: body.detail,
+                origin_scope,
+            },
+        )
+        .await;
+    record_operation(
+        OperationClass::CommentReport,
+        comment_operation_outcome(&result),
+        started.elapsed(),
+    );
+    record_operation(
+        OperationClass::DatabaseWrite,
+        comment_operation_outcome(&result),
+        started.elapsed(),
+    );
+    let result = result.map_err(|error_value| comment_error(request_id, &error_value))?;
+    Ok(Json(result.report.into()))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/users/{user_id}/reports",
+    tag = "comments",
+    description = "Creates or returns the authenticated user's canonical report about a public user. Reporting is independent from blocking and never changes comment visibility.",
+    security(("oidcBearer" = [])),
+    params(("user_id" = Uuid, Path, description = "Local public user ID to report")),
+    request_body(content = ReportUserBody, example = json!({"reason":"impersonation","detail":"Optional bounded context"})),
+    responses(
+        (status = 200, description = "Canonical idempotent user-report receipt", body = UserReportEnvelope, headers(("Cache-Control" = String, description = "Always private, no-store"))),
+        (status = 400, description = "INVALID_REQUEST, INVALID_REPORT_DETAIL, or CANNOT_REPORT_SELF", body = crate::openapi::ErrorEnvelopeSchema),
+        (status = 401, description = "UNAUTHENTICATED or TOKEN_EXPIRED", body = crate::openapi::ErrorEnvelopeSchema, headers(("WWW-Authenticate" = String, description = "Bearer challenge"))),
+        (status = 403, description = "ACCOUNT_SUSPENDED or ACCOUNT_DELETION_PENDING", body = crate::openapi::ErrorEnvelopeSchema),
+        (status = 404, description = "USER_NOT_FOUND", body = crate::openapi::ErrorEnvelopeSchema),
+        (status = 429, description = "RATE_LIMITED", body = crate::openapi::ErrorEnvelopeSchema, headers(("Retry-After" = String, description = "Seconds until the shared account, target, or origin window resets"))),
+        (status = 503, description = "AUTHENTICATION_UNAVAILABLE or COMMENT_SERVICE_UNAVAILABLE", body = crate::openapi::ErrorEnvelopeSchema)
+    )
+)]
+pub(crate) async fn report_user(
+    State(state): State<AppState>,
+    Extension(request_id): Extension<RequestId>,
+    Path(user_id): Path<Uuid>,
+    principal: AuthenticatedPrincipal,
+    TrustedCommentOrigin(origin_scope): TrustedCommentOrigin,
+    Json(body): Json<ReportUserBody>,
+) -> Result<Json<UserReportEnvelope>, ApiError> {
+    let started = Instant::now();
+    let result = comment_service(&state, request_id)?
+        .report_user(
+            principal.user_id,
+            AuthenticatedUserId::new(user_id),
+            ReportUserRequest {
                 reason: body.reason.into(),
                 detail: body.detail,
                 origin_scope,
@@ -611,13 +664,22 @@ fn comment_error(request_id: RequestId, error_value: &CommentServiceError) -> Ap
             "An account cannot block itself.",
             false,
         ),
-        CommentServiceError::BlockTargetNotFound => ApiError::new(
+        CommentServiceError::CannotReportSelf => ApiError::new(
             request_id,
-            StatusCode::NOT_FOUND,
-            "USER_NOT_FOUND",
-            "The requested user does not exist.",
+            StatusCode::BAD_REQUEST,
+            "CANNOT_REPORT_SELF",
+            "An account cannot report itself.",
             false,
         ),
+        CommentServiceError::BlockTargetNotFound | CommentServiceError::ReportTargetNotFound => {
+            ApiError::new(
+                request_id,
+                StatusCode::NOT_FOUND,
+                "USER_NOT_FOUND",
+                "The requested user does not exist.",
+                false,
+            )
+        }
         CommentServiceError::RateLimited {
             retry_after_seconds,
         } => ApiError::new(
@@ -782,11 +844,9 @@ mod tests {
         let app = Router::new()
             .route(
                 "/comments",
-                get(
-                    |OptionalPrincipal(principal): OptionalPrincipal| async move {
-                        Json(serde_json::json!({"authenticated": principal.is_some()}))
-                    },
-                ),
+                get(|principal: RequestPrincipal| async move {
+                    Json(serde_json::json!({"authenticated": principal.user_id.is_some()}))
+                }),
             )
             .with_state(state)
             .layer(middleware::from_fn(request_id_middleware));

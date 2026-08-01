@@ -71,9 +71,12 @@
   explicit zero-count case, so an empty or wrong ledger mount cannot pass.
 
 Migration `0009_account_deletion.sql` adds deletion ledger/jobs/events/purge
-audit and moderation-retention pseudonyms. Long-running processes keep embedded
-migrations disabled in deployed values; the one-shot migration job binds its
-execution to the reviewed backup ID and expected schema version.
+audit and moderation-retention pseudonyms. Follow-on additive migration
+`0010_user_reports.sql` makes distinct account-level safety reports part of the
+restore/deletion contract, so the release schema version is now `10`.
+Long-running processes keep embedded migrations disabled in deployed values;
+the one-shot migration job binds its execution to the reviewed backup ID and
+that exact expected schema version.
 
 ## Repository verification recorded this run
 
@@ -178,9 +181,13 @@ execution to the reviewed backup ID and expected schema version.
   unexecuted for those latest changes, as detailed in the companion report.
 - Curated-site static security tests passed. CI and `scripts/check.sh` now feed
   an actual staging Helm render into the CSP/runtime-config assertion instead
-  of accepting its no-manifest skip; the targeted local run passed all five
-  static assertions. Browser-backed and container security checks must be run
-  in an allowed environment; any skip/failure remains a release blocker.
+  of accepting its no-manifest skip; the targeted local run passed the
+  then-current five static assertions. A sixth assertion now checks that the
+  published safety pages keep Report comment, Report user, and Block user
+  distinct and state that reporting neither hides content nor creates a block;
+  its browser-backed execution remains pending. Browser-backed and container
+  security checks must be run in an allowed environment; any skip/failure
+  remains a release blocker.
 
 The security workflow uses CVSS-4-capable scanner versions. The reachable
 `quick-xml` advisory found during final audit was remediated by upgrading to

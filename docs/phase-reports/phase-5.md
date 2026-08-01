@@ -15,9 +15,29 @@ flags and especially public comment creation remain off by default.
 The intended product and wire behavior is recorded in
 [Comments and moderation contract](../comments-and-moderation.md).
 
+**2026-08-01 gap-closure addendum:** the generic “reports” wording in the
+original acceptance record covered comment reports only. Production v0.0 now
+also has a distinct user-report table, repeat-safe API, combined backlog
+metrics, dedicated operator list/inspect/resolve commands, account-deletion and
+backup coverage, and an explicit mobile **Report user** action. Reporting a
+user does not create a block or alter visibility. Repository tests cover this
+separation; the protected live two-user/store-review evidence must include the
+new action before public enablement.
+
+The same closure replaces the dormant moderation seam with a runtime-selectable
+HTTPS adapter. Deterministic rules always run first; provider outages, invalid
+status/body/schema, redirects, and oversized responses hold the comment for
+review rather than publishing it. Helm mounts the distinct bearer credential
+only for the HTTP provider and binds its URL, timeout, Secret rotation, and
+reviewed API egress into the rollout contract. The admin CLI now authenticates
+the operator through an OIDC token with an explicit recent `auth_time`, requires
+the resolved local user UUID in a bounded deployment allowlist, and derives
+that UUID as the audited actor; callers cannot choose an actor label and an
+ordinary active account has no moderation permission.
+
 ## Implementation ledger
 
-- [x] PostgreSQL comments, reports, blocks, community acceptance, moderation
+- [x] PostgreSQL comments, comment reports, user reports, blocks, community acceptance, moderation
   audit, indexes, and shared UGC limits.
 - [x] Domain/service normalization, deterministic rules, pluggable moderator,
   safe outage fallback, idempotency, ownership, and version conflicts.
@@ -27,7 +47,7 @@ The intended product and wire behavior is recorded in
   content-free report age metrics.
 - [x] Drift v5 personalized comment pages, account drafts, persisted blocks,
   cleanup, and bounded eviction.
-- [x] Guest thread, gated composer, create/edit/delete/report/block, My
+- [x] Guest thread, gated composer, create/edit/delete/comment-report/user-report/block, My
   Comments, Blocked Users, pending-review, offline, accessibility, and keyboard
   states.
 - [x] Terms, Community Guidelines, Privacy, support contract, moderation
@@ -61,13 +81,15 @@ checks eligibility before provider work, then rechecks inside the final
 transaction. Edits use optimistic versions; private-resource edit/delete
 failures collapse to one public not-found response. Shared PostgreSQL buckets
 cover account, direct-origin, mutation, report, and per-target report pressure.
-The API HMACs only the directly connected peer with a validated owner-only
-secret file and never trusts forwarded-address headers.
+The API accepts forwarding metadata only from configured ingress-proxy source
+ranges, resolves the chain right-to-left, and HMACs the canonical client
+address with a validated owner-only secret before persistence.
 
 `COMMENTS_ENABLED` registers public reads and safety routes;
 `COMMENT_CREATION_ENABLED` rejects only new posts. Comment limits are asserted
-against the domain constants at startup, only the wired `rules` moderation
-provider is accepted, and a real environment-safe support URL is mandatory.
+against the domain constants at startup, `rules` and the bounded HTTPS runtime
+adapter are the only accepted moderation providers, and a real
+environment-safe support URL is mandatory.
 Deterministic high risk, provider uncertainty, and provider outage hold content
 privately. The audited `pakperk-admin` binary exposes content-free queues and
 metrics; only its explicit inspect command serializes one selected body/report.

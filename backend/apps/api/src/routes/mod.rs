@@ -29,7 +29,6 @@ use crate::{
     app::AppState,
     dto::{ChatBody, ChatResponse, FeedParams, PrepareBody},
     error::{ApiError, RequestId},
-    middleware::SESSION_ID_HEADER,
     request_rate_limit::{PublicRequestAction, PublicRequestRateLimitError},
 };
 
@@ -45,8 +44,8 @@ pub(crate) mod support;
 use support::{
     apply_processing_policy, apply_summary_policy, capability_not_ready, cursor_error,
     enforce_derived_policy, enforce_public_request_limit, internal_db_error, invalid_arxiv_id,
-    negative_exact_cache_ttl, observe_arxiv_result, optional_session_id, paper_not_found,
-    provider_error, reciprocal_rank_score, retrieval_error, valid_category,
+    negative_exact_cache_ttl, observe_arxiv_result, paper_not_found, provider_error,
+    reciprocal_rank_score, retrieval_error, valid_category,
 };
 
 pub(crate) use account::{
@@ -55,7 +54,7 @@ pub(crate) use account::{
 pub(crate) use chat::chat;
 pub(crate) use comments::{
     block_user, create_comment, delete_comment, edit_comment, list_blocked_users, list_my_comments,
-    list_paper_comments, report_comment, unblock_user,
+    list_paper_comments, report_comment, report_user, unblock_user,
 };
 pub(crate) use feed::feed;
 pub(crate) use health::{health_live, health_ready};
@@ -95,7 +94,10 @@ mod tests {
             ApiConfig, ApiEnvironment, ApiModelConfig, FeatureFlags,
             enforce_cross_process_arxiv_gate,
         },
-        middleware::{REQUEST_ID_HEADER, request_id_middleware, stable_error_middleware},
+        middleware::{
+            REQUEST_ID_HEADER, RequestPrincipal, SESSION_ID_HEADER, request_id_middleware,
+            stable_error_middleware,
+        },
     };
 
     #[test]
@@ -110,14 +112,12 @@ mod tests {
     fn chat_validation_counts_unicode_characters() {
         let request_id = RequestId(Uuid::nil());
         let session = Uuid::new_v4();
-        let mut headers = HeaderMap::new();
-        headers.insert(SESSION_ID_HEADER, session.to_string().parse().unwrap());
         let valid = ChatBody {
             thread_id: None,
             message: "安全ですか？".repeat(50),
         };
         assert_eq!(
-            validate_chat_body(request_id, &headers, Uuid::nil(), &valid).unwrap(),
+            validate_chat_body(request_id, Some(session), &valid).unwrap(),
             session
         );
         let too_long = ChatBody {
@@ -125,11 +125,50 @@ mod tests {
             message: "問".repeat(501),
         };
         assert_eq!(
-            validate_chat_body(request_id, &headers, Uuid::nil(), &too_long)
+            validate_chat_body(request_id, Some(session), &too_long)
                 .unwrap_err()
                 .status,
             StatusCode::PAYLOAD_TOO_LARGE
         );
+    }
+
+    #[test]
+    fn signed_in_chat_keeps_the_explicit_anonymous_session_scope() {
+        let user_id = Uuid::now_v7();
+        let session_id = Uuid::new_v4();
+        let principal = RequestPrincipal {
+            user_id: Some(user_id),
+            anonymous_session_id: Some(session_id),
+            request_id: Uuid::now_v7(),
+        };
+        let body = ChatBody {
+            thread_id: None,
+            message: "Keep these histories separate.".to_owned(),
+        };
+
+        assert_ne!(user_id, session_id);
+        assert_eq!(
+            validate_chat_body(
+                RequestId(principal.request_id),
+                principal.anonymous_session_id,
+                &body,
+            )
+            .unwrap(),
+            session_id
+        );
+
+        let account_only = RequestPrincipal {
+            anonymous_session_id: None,
+            ..principal
+        };
+        let error = validate_chat_body(
+            RequestId(account_only.request_id),
+            account_only.anonymous_session_id,
+            &body,
+        )
+        .unwrap_err();
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code, "INVALID_SESSION_ID");
     }
 
     #[test]

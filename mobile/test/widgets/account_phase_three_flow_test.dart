@@ -81,11 +81,18 @@ void main() {
       );
       tester.testTextInput.hide();
       await tester.pumpAndSettle();
-      final completeSetup = find.widgetWithText(
-        FilledButton,
-        'Complete account setup',
+      final onboardingScrollable = find.descendant(
+        of: find.byType(Form),
+        matching: find.byType(Scrollable),
       );
-      await tester.ensureVisible(completeSetup);
+      final completeSetup = find.byKey(
+        const ValueKey('account-complete-setup-button'),
+      );
+      await tester.scrollUntilVisible(
+        completeSetup,
+        240,
+        scrollable: onboardingScrollable,
+      );
       await tester.tap(completeSetup);
       await tester.pumpAndSettle();
       expect(
@@ -99,14 +106,22 @@ void main() {
         of: find.byKey(const ValueKey('account-community-checkbox')),
         matching: find.byType(Checkbox),
       );
-      await tester.ensureVisible(communityCheckbox);
+      await tester.scrollUntilVisible(
+        communityCheckbox,
+        240,
+        scrollable: onboardingScrollable,
+      );
       expect(find.textContaining('Comments are public.'), findsOneWidget);
       expect(find.textContaining('sexual exploitation'), findsOneWidget);
       expect(find.textContaining('copyright abuse'), findsOneWidget);
       await tester.tap(communityCheckbox);
       await tester.pumpAndSettle();
       final support = find.byKey(const ValueKey('account-community-support'));
-      await tester.ensureVisible(support);
+      await tester.scrollUntilVisible(
+        support,
+        240,
+        scrollable: onboardingScrollable,
+      );
       expect(
         find.text(
           'Support/moderation contact: https://support.test/moderation',
@@ -118,8 +133,11 @@ void main() {
       expect(find.text('Support and moderation route'), findsOneWidget);
       expect(await tester.binding.handlePopRoute(), isTrue);
       await tester.pumpAndSettle();
-      await tester.ensureVisible(completeSetup);
-      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        completeSetup,
+        240,
+        scrollable: onboardingScrollable,
+      );
       await tester.tap(completeSetup);
       await tester.pumpAndSettle();
 

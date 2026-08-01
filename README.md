@@ -28,7 +28,8 @@ remain external release blockers. Phase 3 OIDC account integration is
 [accepted](docs/phase-reports/phase-3.md), and Phase 4 To Read synchronization
 is [accepted](docs/phase-reports/phase-4.md) with its exact server/mobile
 contract in [the To Read synchronization document](docs/library-sync.md).
-Phase 5 adds the complete default-off public-comment safety boundary; its
+Phase 5 adds the complete default-off public-comment safety boundary, with
+separate comment reporting, user reporting, and blocking actions; its
 contract and acceptance evidence are in
 [Comments and moderation](docs/comments-and-moderation.md) and the
 [Phase 5 report](docs/phase-reports/phase-5.md).
@@ -60,9 +61,13 @@ flags remain off by default so deployments can dark-launch the capability.
 Phase 5 keeps flat paper comments in the same backend and PostgreSQL database.
 It requires an active account, handle, and current Terms/Community Guidelines
 before posting; applies bounded normalization, deterministic rules,
-provider-neutral moderation, shared account/origin limits, reporting, durable
-blocking, and audited moderator actions; and never places comment/report text in
-ordinary diagnostics. `COMMENTS_ENABLED` registers the surface, while
+provider-neutral moderation, shared account/origin limits, distinct repeat-safe
+comment and user reports, durable blocking, and audited moderator actions; and
+never places comment/report text in ordinary diagnostics. Reporting does not
+hide content or create a block, and blocking does not create a report. The
+operator CLI requires a recently authenticated OIDC identity whose local user
+UUID is in the deployment's explicit admin allowlist. `COMMENTS_ENABLED`
+registers the surface, while
 `COMMENT_CREATION_ENABLED` can stop only new publication without disabling
 reading, author removal, reporting, blocking, or moderation. Public deployment
 must keep creation off until its deletion, moderation, telemetry, legal,
@@ -144,10 +149,10 @@ The realm itself is documented in
 
 The reproducible Phase 5 acceptance harness starts only the missing local
 Compose services, builds three independently configured APIs plus the audited
-admin binary, creates two disposable Keycloak users, and drives genuine
-Authorization Code + S256 PKCE, comment, report, block, moderation, kill-switch,
-and provider-outage scenarios. It scans captured logs and removes every
-fixture/identity afterward:
+admin binary, creates disposable Keycloak users, and drives genuine
+Authorization Code + S256 PKCE, comment report, user report, independent block,
+authorized moderation, kill-switch, and provider-outage scenarios. It scans
+captured logs and removes every fixture/identity afterward:
 
 ```bash
 ./scripts/test_live_comments.sh
@@ -366,6 +371,7 @@ POST   /v1/papers/{paper_id}/comments
 PATCH  /v1/comments/{comment_id}
 DELETE /v1/comments/{comment_id}
 POST   /v1/comments/{comment_id}/reports
+POST   /v1/users/{user_id}/reports
 GET    /v1/me/comments
 GET    /v1/me/blocked-users
 PUT    /v1/me/blocked-users/{user_id}
@@ -374,9 +380,13 @@ DELETE /v1/me
 GET    /v1/me/deletion-verification
 ```
 
-Library, personalized comment, and deletion responses are private/no-store. Library
-mutations use an `Idempotency-Key`; comment creation carries its durable client
-request ID in the strict JSON body. Deletion routes register only when
+Library, personalized comment, and deletion responses are private/no-store.
+Library mutations use an `Idempotency-Key`; comment creation carries a durable
+client request ID in its strict JSON body, while each report or block has a
+canonical account/target identity that makes duplicate retries converge.
+Comment/user reporting and blocking are independent operations: a report does
+not change visibility and a block does not submit a moderation report. Deletion
+routes register only when
 `ACCOUNT_DELETION_ENABLED=true`; every `DELETE /v1/me` attempt, including a
 replay, requires recent authentication, while deletion verification accepts any
 currently valid access token. The durable worker/ledger/provider configuration

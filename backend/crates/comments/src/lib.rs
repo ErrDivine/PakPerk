@@ -8,5 +8,6 @@ mod service;
 pub use service::{
     BlockUserResult, CommentService, CommentServiceConfig, CommentServiceConfigError,
     CommentServiceError, CreateCommentRequest, CreateCommentResult, DeleteCommentResult,
-    EditCommentRequest, ReportCommentRequest, ReportCommentResult, UnblockUserResult,
+    EditCommentRequest, ReportCommentRequest, ReportCommentResult, ReportUserRequest,
+    ReportUserResult, UnblockUserResult,
 };

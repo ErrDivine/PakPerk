@@ -98,6 +98,16 @@ test("the production image publishes only the curated public document tree", asy
   expect(releaseScript).not.toContain("site/.well-known");
 });
 
+test("published safety documents keep reporting and blocking distinct", async () => {
+  for (const page of ["community-guidelines", "support", "terms"]) {
+    const source = await readFile(path.join(SITE_ROOT, page, "index.html"), "utf8");
+    for (const label of ["Report comment", "Report user", "Block user"]) {
+      expect(source).toContain(label);
+    }
+    expect(source).toMatch(/does not (?:itself )?hide content or create a block/i);
+  }
+});
+
 test("the rendered chart has an exact cross-origin CSP and matching public config", async () => {
   test.skip(!RENDERED_MANIFEST_PATH, "set PAKPERK_RENDERED_SITE_MANIFEST after helm template");
 

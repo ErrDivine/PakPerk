@@ -29,6 +29,7 @@ secret:
   deletionWorkerDatabaseUrlKey: DELETION_WORKER_DATABASE_URL
   migrationDatabaseUrlKey: MIGRATION_DATABASE_URL
   llmApiKeyKey: LLM_API_KEY
+  commentModerationTokenKey: COMMENT_MODERATION_TOKEN
   apiOriginHashKey: API_ORIGIN_HASH_SECRET
   identityFingerprintKeysKey: ACCOUNT_IDENTITY_FINGERPRINT_KEYS
   deletionLedgerSigningKeysKey: ACCOUNT_DELETION_LEDGER_SIGNING_KEYS
@@ -100,6 +101,11 @@ policy:
 
 api:
   replicas: 2
+  # "rules" is the deterministic built-in baseline. "http" enables the
+  # provider-neutral, fail-closed HTTPS moderation adapter.
+  commentModerationProvider: rules
+  commentModerationUrl: ""
+  commentModerationTimeoutMs: 2000
   # Source ranges actually observed by the API for the reviewed ingress proxy
   # chain. Keep this aligned with the NetworkPolicy ingress-controller boundary.
   trustedProxyCidrs: []
@@ -193,7 +199,7 @@ migration:
   enabled: true
   command: [/usr/local/bin/pakperk-migrate]
   confirmBackupId: ""
-  expectedVersion: 9
+  expectedVersion: 10
   activeDeadlineSeconds: 900
   resources:
     requests: { cpu: 50m, memory: 96Mi }

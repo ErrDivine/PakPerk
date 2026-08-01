@@ -10,9 +10,9 @@ route submissions according to the
 
 In the app:
 
-- use **Report** on a comment for spam, harassment, hate, threats, sexual
-  content, privacy, impersonation, copyright, or another rules violation;
-- use **Block author** when you no longer want to see that person's comments;
+- use **Report comment** for abusive content or **Report user** for
+  account-level behavior; neither action creates a block;
+- use **Block user** separately when you no longer want to see that person's comments;
   and
 - use the support page for account access, privacy/deletion, copyright/legal,
   accessibility, or urgent safety issues.

@@ -210,7 +210,8 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
                 ?.accountId,
             onEdit: () => _edit(state.items[index]),
             onDelete: () => _delete(state.items[index]),
-            onReport: () => _report(state.items[index]),
+            onReportComment: () => _reportComment(state.items[index]),
+            onReportUser: () => _reportUser(state.items[index].author),
             onBlock: () => _block(state.items[index].author),
           );
         },
@@ -389,7 +390,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     }
   }
 
-  Future<void> _report(PaperComment comment) async {
+  Future<void> _reportComment(PaperComment comment) async {
     if (ref.read(verifiedCommentScopeProvider) == null) {
       await _authenticateFor(AppPendingActionKind.reportComment, comment.id);
       return;
@@ -397,7 +398,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     final selection =
         await showDialog<({CommentReportReason reason, String? detail})>(
           context: context,
-          builder: (_) => const _ReportDialog(),
+          builder: (_) => const _ReportDialog(title: 'Report comment'),
         );
     if (!mounted || selection == null) return;
     final sent = await ref
@@ -415,6 +416,40 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       );
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Report received. Thank you.')),
+      );
+    }
+  }
+
+  Future<void> _reportUser(CommentAuthor author) async {
+    if (ref.read(verifiedCommentScopeProvider) == null) {
+      await _authenticateFor(AppPendingActionKind.reportUser, author.id);
+      return;
+    }
+    final selection =
+        await showDialog<({CommentReportReason reason, String? detail})>(
+          context: context,
+          builder: (_) => _ReportDialog(title: 'Report ${author.visibleName}'),
+        );
+    if (!mounted || selection == null) return;
+    final sent = await ref
+        .read(commentThreadProvider(widget.paperId).notifier)
+        .reportUser(
+          userId: author.id,
+          reason: selection.reason,
+          detail: selection.detail,
+        );
+    if (mounted && sent) {
+      emitTelemetry(
+        ref.read(telemetrySinkProvider),
+        PakPerkTelemetryEvent.userReported,
+        const {'outcome': 'accepted'},
+      );
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.clearSnackBars();
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('User report received. No block was added.'),
+        ),
       );
     }
   }
@@ -476,6 +511,11 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
         'Sign in so Pakperk can record one durable report without exposing '
             'your identity to other readers.',
       ),
+      AppPendingActionKind.reportUser => (
+        'Report this user safely',
+        'Sign in so Pakperk can record one durable user report. Reporting '
+            'does not block the user or hide their comments.',
+      ),
       AppPendingActionKind.blockUser => (
         'Hide this author',
         'Sign in to keep this author hidden across your devices.',
@@ -523,7 +563,15 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
         final comment = ref
             .read(commentThreadProvider(widget.paperId).notifier)
             .commentById(taken.targetId);
-        if (comment != null) await _report(comment);
+        if (comment != null) await _reportComment(comment);
+        return;
+      case CommentUiIntentKind.reportUser:
+        final comment = ref
+            .read(commentThreadProvider(widget.paperId))
+            .items
+            .where((item) => item.author.id == taken.targetId)
+            .firstOrNull;
+        if (comment != null) await _reportUser(comment.author);
         return;
       case CommentUiIntentKind.blockUser:
         final comment = ref
@@ -558,7 +606,8 @@ final class _CommentCard extends StatelessWidget {
     required this.currentAccountId,
     required this.onEdit,
     required this.onDelete,
-    required this.onReport,
+    required this.onReportComment,
+    required this.onReportUser,
     required this.onBlock,
   });
 
@@ -566,7 +615,8 @@ final class _CommentCard extends StatelessWidget {
   final String? currentAccountId;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
-  final VoidCallback onReport;
+  final VoidCallback onReportComment;
+  final VoidCallback onReportUser;
   final VoidCallback onBlock;
 
   @override
@@ -602,8 +652,11 @@ final class _CommentCard extends StatelessWidget {
                           case 'delete':
                             onDelete();
                             break;
-                          case 'report':
-                            onReport();
+                          case 'report-comment':
+                            onReportComment();
+                            break;
+                          case 'report-user':
+                            onReportUser();
                             break;
                           case 'block':
                             onBlock();
@@ -620,8 +673,12 @@ final class _CommentCard extends StatelessWidget {
                             ]
                           : const [
                               PopupMenuItem(
-                                value: 'report',
-                                child: Text('Report'),
+                                value: 'report-comment',
+                                child: Text('Report comment'),
+                              ),
+                              PopupMenuItem(
+                                value: 'report-user',
+                                child: Text('Report user'),
                               ),
                               PopupMenuItem(
                                 value: 'block',
@@ -656,7 +713,9 @@ final class _CommentCard extends StatelessWidget {
 }
 
 final class _ReportDialog extends StatefulWidget {
-  const _ReportDialog();
+  const _ReportDialog({required this.title});
+
+  final String title;
 
   @override
   State<_ReportDialog> createState() => _ReportDialogState();
@@ -675,7 +734,7 @@ class _ReportDialogState extends State<_ReportDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Report comment'),
+      title: Text(widget.title),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,

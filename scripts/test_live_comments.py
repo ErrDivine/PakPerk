@@ -53,6 +53,7 @@ OIDC_CLIENT_ID = os.environ.get(
 OIDC_REDIRECT_URI = os.environ.get(
     "LIVE_COMMENTS_OIDC_REDIRECT_URI", "pakperk-auth-dev://oauth/callback"
 )
+ADMIN_OIDC_AUDIENCE = required_env("LIVE_COMMENTS_ADMIN_OIDC_AUDIENCE")
 ADMIN_USERNAME = required_env("LIVE_COMMENTS_KEYCLOAK_ADMIN_USERNAME")
 ADMIN_PASSWORD = required_env("LIVE_COMMENTS_KEYCLOAK_ADMIN_PASSWORD")
 POSTGRES_USER = os.environ.get("LIVE_COMMENTS_POSTGRES_USER", "pakperk")
@@ -63,7 +64,12 @@ TOKEN_SENTINEL = required_env("LIVE_COMMENTS_TOKEN_SENTINEL")
 COMMENT_SECRET_FILE = Path(required_env("LIVE_COMMENTS_COMMENT_SECRET_FILE"))
 ADMIN_BINARY = Path(required_env("LIVE_COMMENTS_ADMIN_BINARY"))
 ADMIN_DATABASE_URL = required_env("LIVE_COMMENTS_DATABASE_URL")
-ADMIN_ACTOR = required_env("LIVE_COMMENTS_ADMIN_ACTOR")
+ADMIN_ACCESS_TOKEN_FILE = Path(
+    required_env("LIVE_COMMENTS_ADMIN_ACCESS_TOKEN_FILE")
+)
+UNAUTHORIZED_ADMIN_ACCESS_TOKEN_FILE = Path(
+    required_env("LIVE_COMMENTS_ADMIN_UNAUTHORIZED_ACCESS_TOKEN_FILE")
+)
 CURRENT_TERMS_VERSION = os.environ.get(
     "LIVE_COMMENTS_CURRENT_TERMS_VERSION", "2026-07-31"
 )
@@ -331,9 +337,48 @@ def authorization_code_pkce(username: str, password: str, expected_sub: str) -> 
         claims.get("iss") != ISSUER
         or claims.get("sub") != expected_sub
         or "pakperk-api" not in audiences
+        or ADMIN_OIDC_AUDIENCE not in audiences
+        or not isinstance(claims.get("auth_time"), int)
     ):
         raise AcceptanceError("Authorization Code + PKCE token claims are not API-bound")
     return token
+
+
+def write_private_access_token(path: Path, token: str) -> None:
+    if not path.is_absolute():
+        raise AcceptanceError("live-comments admin access-token path is not absolute")
+    if not token or len(token.encode("utf-8")) > 16 * 1024 or any(
+        character.isspace() for character in token
+    ):
+        raise AcceptanceError("OIDC access token is not safe for the admin token file")
+
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags, 0o600)
+        try:
+            os.fchmod(descriptor, 0o600)
+            with os.fdopen(
+                descriptor, "w", encoding="utf-8", closefd=False
+            ) as token_file:
+                token_file.write(token)
+                token_file.write("\n")
+                token_file.flush()
+                os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError as error:
+        raise AcceptanceError("could not create the private admin token file") from error
+
+    try:
+        mode = path.stat().st_mode
+    except OSError as error:
+        raise AcceptanceError("could not verify the private admin token file") from error
+    if mode & 0o077:
+        raise AcceptanceError("admin access-token file is not owner-only")
 
 
 def assert_user_direct_grant_disabled(username: str, password: str) -> None:
@@ -558,22 +603,43 @@ def record_comment(state: dict[str, Any], comment_id: str) -> None:
         save_state(state)
 
 
-def admin_command(*arguments: str) -> tuple[dict[str, Any], str]:
+def run_admin_process(
+    operator_user_id: str,
+    access_token_file: Path,
+    *arguments: str,
+) -> subprocess.CompletedProcess[str]:
+    issuer_scheme = urlparse(ISSUER).scheme
     environment = os.environ.copy()
     environment.update(
         {
             "DATABASE_URL": ADMIN_DATABASE_URL,
             "ADMIN_DATABASE_POOL_SIZE": "2",
-            "PAKPERK_ADMIN_ACTOR": ADMIN_ACTOR,
+            "ADMIN_OIDC_ISSUER_URL": ISSUER,
+            "ADMIN_OIDC_AUDIENCE": ADMIN_OIDC_AUDIENCE,
+            "ADMIN_OIDC_ALLOWED_ALGORITHMS": "RS256",
+            "ADMIN_OIDC_ALLOW_INSECURE_HTTP": str(
+                issuer_scheme == "http"
+            ).lower(),
+            "ADMIN_AUTH_MAX_AGE_SECONDS": "900",
+            "ADMIN_AUTHORIZED_USER_IDS": checked_uuid(operator_user_id),
+            "PAKPERK_ADMIN_ACCESS_TOKEN_FILE": str(access_token_file),
         }
     )
-    result = subprocess.run(
+    return subprocess.run(
         [str(ADMIN_BINARY), *arguments],
         capture_output=True,
         text=True,
         env=environment,
         timeout=30,
         check=False,
+    )
+
+
+def admin_command(
+    operator_user_id: str, *arguments: str
+) -> tuple[dict[str, Any], str]:
+    result = run_admin_process(
+        operator_user_id, ADMIN_ACCESS_TOKEN_FILE, *arguments
     )
     if result.returncode != 0:
         action = " ".join(arguments[:2])
@@ -587,17 +653,64 @@ def admin_command(*arguments: str) -> tuple[dict[str, Any], str]:
     return payload, result.stdout
 
 
+def assert_unallowlisted_admin_fails(
+    reader_token: str, operator_user_id: str
+) -> None:
+    if UNAUTHORIZED_ADMIN_ACCESS_TOKEN_FILE == ADMIN_ACCESS_TOKEN_FILE:
+        raise AcceptanceError("admin acceptance token fixtures must use separate files")
+    write_private_access_token(UNAUTHORIZED_ADMIN_ACCESS_TOKEN_FILE, reader_token)
+    try:
+        result = run_admin_process(
+            operator_user_id,
+            UNAUTHORIZED_ADMIN_ACCESS_TOKEN_FILE,
+            "comments",
+            "list",
+            "--status",
+            "open",
+            "--limit",
+            "1",
+        )
+    finally:
+        try:
+            UNAUTHORIZED_ADMIN_ACCESS_TOKEN_FILE.unlink(missing_ok=True)
+        except OSError as error:
+            raise AcceptanceError(
+                "could not remove the unauthorized admin token fixture"
+            ) from error
+
+    if result.returncode == 0:
+        raise AcceptanceError("a valid non-allowlisted user gained admin access")
+    captured = result.stdout + result.stderr
+    forbidden = (
+        reader_token,
+        reader_token[-32:],
+        UGC_SENTINEL,
+        TOKEN_SENTINEL,
+        '"body"',
+        '"detail"',
+    )
+    if any(value and value in captured for value in forbidden):
+        raise AcceptanceError(
+            "failed admin authorization disclosed token material or protected UGC"
+        )
+
+
 def run_admin_matrix(
     author_token: str,
     author_user_id: str,
+    operator_user_id: str,
     paper_comments_path: str,
     published_comment_id: str,
     pending_comment_id: str,
     report_id: str,
+    user_report_id: str,
 ) -> int:
     non_inspect_outputs: list[str] = []
 
-    pending_page, raw = admin_command(
+    def operator_command(*arguments: str) -> tuple[dict[str, Any], str]:
+        return admin_command(operator_user_id, *arguments)
+
+    pending_page, raw = operator_command(
         "comments", "list", "--status", "pending_review", "--limit", "100"
     )
     non_inspect_outputs.append(raw)
@@ -609,7 +722,7 @@ def run_admin_matrix(
     if pending_comment_id not in pending_ids:
         raise AcceptanceError("pakperk-admin pending queue omitted the held comment")
 
-    report_page, raw = admin_command(
+    report_page, raw = operator_command(
         "comments", "list", "--status", "open", "--limit", "100"
     )
     non_inspect_outputs.append(raw)
@@ -621,11 +734,23 @@ def run_admin_matrix(
     if report_id not in report_ids:
         raise AcceptanceError("pakperk-admin open-report queue omitted the canonical report")
 
+    user_report_page, raw = operator_command(
+        "user-reports", "list", "--status", "open", "--limit", "100"
+    )
+    non_inspect_outputs.append(raw)
+    user_report_ids = {
+        str(item.get("report_id"))
+        for item in user_report_page.get("items", [])
+        if isinstance(item, dict)
+    }
+    if user_report_id not in user_report_ids:
+        raise AcceptanceError("pakperk-admin user-report queue omitted the canonical report")
+
     for raw_output in non_inspect_outputs:
         if UGC_SENTINEL in raw_output or '"body"' in raw_output or '"detail"' in raw_output:
             raise AcceptanceError("pakperk-admin list output serialized protected UGC")
 
-    inspection, inspection_raw = admin_command(
+    inspection, inspection_raw = operator_command(
         "comments", "inspect", published_comment_id
     )
     if (
@@ -638,7 +763,17 @@ def run_admin_matrix(
     ):
         raise AcceptanceError("explicit pakperk-admin inspect omitted its selected UGC/report")
 
-    hidden, raw = admin_command(
+    user_report_inspection, user_report_inspection_raw = operator_command(
+        "user-reports", "inspect", user_report_id
+    )
+    if (
+        str(user_report_inspection.get("report_id")) != user_report_id
+        or str(user_report_inspection.get("reported_user_id")) != author_user_id
+        or '"detail"' not in user_report_inspection_raw
+    ):
+        raise AcceptanceError("explicit user-report inspect omitted its selected report")
+
+    hidden, raw = operator_command(
         "comments", "hide", published_comment_id, "--reason", "live_acceptance"
     )
     non_inspect_outputs.append(raw)
@@ -655,7 +790,7 @@ def run_admin_matrix(
     if published_comment_id in comment_ids(hidden_page.get("items")):
         raise AcceptanceError("admin-hidden comment remained publicly visible")
 
-    restored, raw = admin_command("comments", "restore", published_comment_id)
+    restored, raw = operator_command("comments", "restore", published_comment_id)
     non_inspect_outputs.append(raw)
     if restored.get("status") != "published" or restored.get("replayed") is not False:
         raise AcceptanceError("pakperk-admin restore did not apply")
@@ -673,7 +808,7 @@ def run_admin_matrix(
     if published_comment_id not in comment_ids(restored_page.get("items")):
         raise AcceptanceError("admin-restored comment did not become publicly visible")
 
-    suspended, raw = admin_command(
+    suspended, raw = operator_command(
         "users", "suspend", author_user_id, "--reason", "live_acceptance"
     )
     non_inspect_outputs.append(raw)
@@ -684,7 +819,7 @@ def run_admin_matrix(
     if error_code(suspended_me) != "ACCOUNT_SUSPENDED":
         raise AcceptanceError("admin suspension did not fail API account access closed")
 
-    reinstated, raw = admin_command("users", "reinstate", author_user_id)
+    reinstated, raw = operator_command("users", "reinstate", author_user_id)
     non_inspect_outputs.append(raw)
     if reinstated.get("status") != "active" or reinstated.get("replayed") is not False:
         raise AcceptanceError("pakperk-admin user reinstatement did not apply")
@@ -694,7 +829,7 @@ def run_admin_matrix(
         "API account access after admin reinstatement",
     )
 
-    resolved, raw = admin_command(
+    resolved, raw = operator_command(
         "reports", "resolve", report_id, "--action", "dismissed"
     )
     non_inspect_outputs.append(raw)
@@ -706,6 +841,21 @@ def run_admin_matrix(
     ) != "dismissed":
         raise AcceptanceError("admin report resolution was not durable")
 
+    resolved_user_report, raw = operator_command(
+        "user-reports", "resolve", user_report_id, "--action", "dismissed"
+    )
+    non_inspect_outputs.append(raw)
+    if (
+        resolved_user_report.get("status") != "dismissed"
+        or resolved_user_report.get("replayed") is not False
+    ):
+        raise AcceptanceError("pakperk-admin user-report resolution did not apply")
+    if psql(
+        "SELECT status FROM user_reports WHERE id = "
+        f"{sql_literal(checked_uuid(user_report_id))}::uuid;"
+    ) != "dismissed":
+        raise AcceptanceError("admin user-report resolution was not durable")
+
     for raw_output in non_inspect_outputs:
         if UGC_SENTINEL in raw_output or '"body"' in raw_output or '"detail"' in raw_output:
             raise AcceptanceError("non-inspect pakperk-admin output serialized protected UGC")
@@ -713,7 +863,8 @@ def run_admin_matrix(
     audit_json = psql(
         "SELECT COALESCE(json_agg(action ORDER BY created_at, id)::text, '[]') "
         "FROM comment_moderation_events WHERE actor_kind = 'admin' "
-        f"AND actor_label = {sql_literal(ADMIN_ACTOR)};"
+        f"AND actor_user_id = {sql_literal(checked_uuid(operator_user_id))}::uuid "
+        "AND actor_label IS NULL;"
     )
     try:
         audit_actions = json.loads(audit_json)
@@ -723,6 +874,7 @@ def run_admin_matrix(
         "admin_hide",
         "admin_restore",
         "report_resolved",
+        "user_report_resolved",
         "user_suspended",
         "user_reinstated",
     }
@@ -732,7 +884,9 @@ def run_admin_matrix(
         "SELECT COALESCE(json_agg(json_build_object("
         "'action', action, 'reason_code', reason_code, 'metadata', metadata) "
         "ORDER BY created_at, id)::text, '[]') FROM comment_moderation_events "
-        f"WHERE actor_kind = 'admin' AND actor_label = {sql_literal(ADMIN_ACTOR)};"
+        "WHERE actor_kind = 'admin' "
+        f"AND actor_user_id = {sql_literal(checked_uuid(operator_user_id))}::uuid "
+        "AND actor_label IS NULL;"
     )
     if UGC_SENTINEL in audit_serialized:
         raise AcceptanceError("admin audit rows persisted protected UGC")
@@ -743,6 +897,7 @@ def run_http_matrix(
     author_token: str,
     reader_token: str,
     author_user_id: str,
+    operator_user_id: str,
     paper_id: str,
     state: dict[str, Any],
 ) -> list[str]:
@@ -878,6 +1033,55 @@ def run_http_matrix(
         raise AcceptanceError("report replay did not preserve its canonical first reason")
     results.append("canonical report replay despite a different replayed reason")
 
+    first_user_report_response = expect_status(
+        api_request(
+            "POST",
+            WRITE_API,
+            f"/v1/users/{author_user_id}/reports",
+            token=reader_token,
+            json_body={
+                "reason": "impersonation",
+                "detail": "Bounded account-level acceptance context.",
+            },
+        ),
+        200,
+        "first user report",
+    )
+    first_user_report = response_json(
+        first_user_report_response, "first user report"
+    ).get("report")
+    second_user_report = response_json(
+        expect_status(
+            api_request(
+                "POST",
+                READ_ONLY_API,
+                f"/v1/users/{author_user_id}/reports",
+                token=reader_token,
+                json_body={"reason": "spam", "detail": None},
+            ),
+            200,
+            "canonical user-report replay",
+        ),
+        "canonical user-report replay",
+    ).get("report")
+    if (
+        not isinstance(first_user_report, dict)
+        or second_user_report != first_user_report
+        or first_user_report.get("reported_user_id") != author_user_id
+        or first_user_report.get("reason") != "impersonation"
+    ):
+        raise AcceptanceError("user-report replay did not preserve its canonical record")
+    if int(
+        psql(
+            "SELECT count(*) FROM user_blocks WHERE blocker_user_id = "
+            f"(SELECT reporter_user_id FROM user_reports WHERE id = "
+            f"{sql_literal(checked_uuid(str(first_user_report.get('id', ''))))}::uuid) "
+            f"AND blocked_user_id = {sql_literal(author_user_id)}::uuid;"
+        )
+    ) != 0:
+        raise AcceptanceError("submitting a user report unexpectedly created a block")
+    results.append("canonical user report remains independent from user block")
+
     block_response = expect_status(
         api_request(
             "PUT",
@@ -995,13 +1199,16 @@ def run_http_matrix(
     results.append("deterministic high-risk content remains private pending review")
 
     report_id = checked_uuid(str(first_report.get("id", "")))
+    user_report_id = checked_uuid(str(first_user_report.get("id", "")))
     current_version = run_admin_matrix(
         author_token,
         author_user_id,
+        operator_user_id,
         comments_path,
         comment_id,
         risky_id,
         report_id,
+        user_report_id,
     )
     results.append(
         "content-free admin queues, explicit inspect, hide/restore, report resolution, suspend/reinstate, and audit"
@@ -1070,6 +1277,30 @@ def run_http_matrix(
         or replay_off.get("status") != "dismissed"
     ):
         raise AcceptanceError("creation-disabled API changed the canonical safety report")
+    replay_user_report_off = response_json(
+        expect_status(
+            api_request(
+                "POST",
+                READ_ONLY_API,
+                f"/v1/users/{author_user_id}/reports",
+                token=reader_token,
+                json_body={"reason": "privacy", "detail": None},
+            ),
+            200,
+            "user-report safety route through creation-disabled API",
+        ),
+        "user-report safety route through creation-disabled API",
+    ).get("report")
+    if (
+        not isinstance(replay_user_report_off, dict)
+        or replay_user_report_off.get("id") != user_report_id
+        or replay_user_report_off.get("reported_user_id") != author_user_id
+        or replay_user_report_off.get("reason") != first_user_report.get("reason")
+        or replay_user_report_off.get("status") != "dismissed"
+    ):
+        raise AcceptanceError(
+            "creation-disabled API changed the canonical user-report safety record"
+        )
     expect_status(
         api_request(
             "PUT",
@@ -1296,7 +1527,11 @@ def run_acceptance() -> None:
         paper_id = seed_paper(state)
         before_preparation = preparation_snapshot(paper_id)
 
-        usernames = [f"lc_{RUN_ID[:12]}_a", f"lc_{RUN_ID[:12]}_b"]
+        usernames = [
+            f"lc_{RUN_ID[:12]}_a",
+            f"lc_{RUN_ID[:12]}_b",
+            f"lc_{RUN_ID[:12]}_operator",
+        ]
         passwords = [secrets.token_urlsafe(32) + "Aa1!" for _ in usernames]
         keycloak_ids = [
             create_keycloak_user(username, password, state)
@@ -1309,18 +1544,27 @@ def run_acceptance() -> None:
             )
         ]
         assert_user_direct_grant_disabled(usernames[0], passwords[0])
-        print("PASS two disposable users authenticated only through Authorization Code + PKCE")
+        print("PASS three disposable users authenticated only through Authorization Code + PKCE")
 
         local_ids = [
             onboard(token, f"lc{RUN_ID[:10]}{suffix}", state)
-            for token, suffix in zip(tokens, ("a", "b"), strict=True)
+            for token, suffix in zip(tokens, ("a", "b", "o"), strict=True)
         ]
-        if local_ids[0] == local_ids[1]:
-            raise AcceptanceError("two OIDC subjects resolved to the same local account")
-        print("PASS handle, Terms, and Community Guidelines onboarding for both users")
+        if len(set(local_ids)) != len(local_ids):
+            raise AcceptanceError("distinct OIDC subjects resolved to the same local account")
+        print("PASS handle, Terms, and Community Guidelines onboarding for all users")
+
+        # Keep the bearer token out of argv, shell history, logs, and persisted
+        # harness state. A dedicated third account is the operator so moderation
+        # never grants privileged authority to the author or reporting reader,
+        # and suspending the author cannot lock out later CLI invocations.
+        assert_unallowlisted_admin_fails(tokens[1], local_ids[2])
+        print("PASS valid non-allowlisted identity failed admin authorization closed")
+        write_private_access_token(ADMIN_ACCESS_TOKEN_FILE, tokens[2])
+        print("PASS provisioned operator token installed in an owner-only file")
 
         for result in run_http_matrix(
-            tokens[0], tokens[1], local_ids[0], paper_id, state
+            tokens[0], tokens[1], local_ids[0], local_ids[2], paper_id, state
         ):
             print(f"PASS {result}")
 

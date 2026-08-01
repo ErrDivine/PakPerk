@@ -8,14 +8,15 @@ use db::{
     CommentCreateOutcome, CommentCreatePrecondition, CommentCreateResolution,
     CommentDeleteResolution, CommentEditResolution, CommentMutationOutcome, CommentReadOutcome,
     CommentReportOutcome, CommentReportResolution, CommentRepository, DbError,
-    RateLimitConfigError, RateLimitRepository, RateLimitRequest, StoredReport, UserBlockOutcome,
-    UserBlockResolution, UserUnblockResolution,
+    RateLimitConfigError, RateLimitRepository, RateLimitRequest, StoredReport, StoredUserReport,
+    UserBlockOutcome, UserBlockResolution, UserReportOutcome, UserReportResolution,
+    UserUnblockResolution,
 };
 use domain::{
     AccountStatus, AuthenticatedUserId, BlockedUser, BlockedUserPage, CommentBody,
     CommentBodyValidationError, CommentPage, CommentReportReason, CommentReportReceipt,
     CommunityGuidelinesVersion, PaperComment, PaperId, ReportDetail, ReportDetailValidationError,
-    TermsVersion,
+    TermsVersion, UserReportReceipt,
 };
 use moderation::{ContentModerator, ModerationDecision, ModerationInput, ModerationReasonCode};
 use observability::{ModerationDecisionOutcome, record_moderation_decision};
@@ -189,6 +190,24 @@ pub struct ReportCommentRequest {
     pub origin_scope: String,
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub struct ReportUserRequest {
+    pub reason: CommentReportReason,
+    pub detail: Option<String>,
+    pub origin_scope: String,
+}
+
+impl fmt::Debug for ReportUserRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ReportUserRequest")
+            .field("reason", &self.reason)
+            .field("detail", &self.detail.as_ref().map(|_| "[redacted]"))
+            .field("origin_scope", &"[redacted hash]")
+            .finish()
+    }
+}
+
 impl fmt::Debug for ReportCommentRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -216,6 +235,12 @@ pub struct DeleteCommentResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ReportCommentResult {
     pub report: CommentReportReceipt,
+    pub replayed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ReportUserResult {
+    pub report: UserReportReceipt,
     pub replayed: bool,
 }
 
@@ -272,6 +297,10 @@ pub enum CommentServiceError {
     CannotBlockSelf,
     #[error("blocked account was not found")]
     BlockTargetNotFound,
+    #[error("an account cannot report itself")]
+    CannotReportSelf,
+    #[error("reported account was not found")]
+    ReportTargetNotFound,
     #[error("comment write is rate limited; retry after {retry_after_seconds} seconds")]
     RateLimited { retry_after_seconds: u64 },
     #[error("comment storage is unavailable")]
@@ -686,6 +715,97 @@ impl CommentService {
     }
 
     #[allow(clippy::similar_names)]
+    pub async fn report_user(
+        &self,
+        reporter_user_id: AuthenticatedUserId,
+        reported_user_id: AuthenticatedUserId,
+        request: ReportUserRequest,
+    ) -> Result<ReportUserResult, CommentServiceError> {
+        if reporter_user_id == reported_user_id {
+            return Err(CommentServiceError::CannotReportSelf);
+        }
+        let origin_scope = validate_origin_scope(&request.origin_scope)?;
+        let coordination = self
+            .comments
+            .coordinate_user_report(reporter_user_id, reported_user_id)
+            .await?;
+        let result = self
+            .report_user_coordinated(reporter_user_id, reported_user_id, request, origin_scope)
+            .await;
+        finish_coordinated(result, coordination.release().await)
+    }
+
+    #[allow(clippy::similar_names)]
+    async fn report_user_coordinated(
+        &self,
+        reporter_user_id: AuthenticatedUserId,
+        reported_user_id: AuthenticatedUserId,
+        request: ReportUserRequest,
+        origin_scope: String,
+    ) -> Result<ReportUserResult, CommentServiceError> {
+        if let Some(result) = map_user_report_resolution(
+            self.comments
+                .resolve_user_report(reporter_user_id, reported_user_id)
+                .await?,
+        ) {
+            return result;
+        }
+        let detail = request
+            .detail
+            .as_deref()
+            .map(ReportDetail::parse)
+            .transpose()?;
+        for limit in [
+            RateLimitRequest::comment_origin(
+                origin_scope,
+                self.config.origin_limit,
+                self.config.origin_window,
+            ),
+            RateLimitRequest::user_report(
+                reporter_user_id,
+                self.config.report_limit,
+                self.config.report_window,
+            ),
+            RateLimitRequest::user_report_target(
+                reported_user_id,
+                self.config.report_limit,
+                self.config.report_window,
+            ),
+        ] {
+            if let Err(error) = self.check_rate_limit(limit).await {
+                if matches!(error, CommentServiceError::RateLimited { .. })
+                    && let Some(result) = map_user_report_resolution(
+                        self.comments
+                            .resolve_user_report(reporter_user_id, reported_user_id)
+                            .await?,
+                    )
+                {
+                    return result;
+                }
+                return Err(error);
+            }
+        }
+        match self
+            .comments
+            .report_user(
+                reporter_user_id,
+                reported_user_id,
+                request.reason,
+                detail.as_ref(),
+            )
+            .await?
+        {
+            UserReportOutcome::Accepted { report, replayed } => {
+                Ok(user_report_result(&report, replayed))
+            }
+            UserReportOutcome::AccountNotFound => Err(CommentServiceError::AccountNotFound),
+            UserReportOutcome::Inactive(status) => Err(CommentServiceError::Inactive(status)),
+            UserReportOutcome::TargetNotFound => Err(CommentServiceError::ReportTargetNotFound),
+            UserReportOutcome::CannotReportSelf => Err(CommentServiceError::CannotReportSelf),
+        }
+    }
+
+    #[allow(clippy::similar_names)]
     pub async fn block(
         &self,
         blocker_user_id: AuthenticatedUserId,
@@ -919,6 +1039,19 @@ fn report_result(report: &StoredReport, replayed: bool) -> ReportCommentResult {
     }
 }
 
+fn user_report_result(report: &StoredUserReport, replayed: bool) -> ReportUserResult {
+    ReportUserResult {
+        report: UserReportReceipt {
+            id: report.id,
+            reported_user_id: report.reported_user_id,
+            reason: report.reason,
+            status: report.status,
+            created_at: report.created_at,
+        },
+        replayed,
+    }
+}
+
 fn validate_origin_scope(value: &str) -> Result<String, CommentServiceError> {
     if value.len() != 64
         || !value
@@ -1017,6 +1150,21 @@ fn map_report_resolution(
     }
 }
 
+fn map_user_report_resolution(
+    resolution: UserReportResolution,
+) -> Option<Result<ReportUserResult, CommentServiceError>> {
+    match resolution {
+        UserReportResolution::Unknown => None,
+        UserReportResolution::Replay(report) => Some(Ok(user_report_result(&report, true))),
+        UserReportResolution::AccountNotFound => Some(Err(CommentServiceError::AccountNotFound)),
+        UserReportResolution::Inactive(status) => Some(Err(CommentServiceError::Inactive(status))),
+        UserReportResolution::TargetNotFound => {
+            Some(Err(CommentServiceError::ReportTargetNotFound))
+        }
+        UserReportResolution::CannotReportSelf => Some(Err(CommentServiceError::CannotReportSelf)),
+    }
+}
+
 fn map_block_resolution(
     resolution: UserBlockResolution,
 ) -> Option<Result<BlockUserResult, CommentServiceError>> {
@@ -1106,8 +1254,14 @@ mod tests {
             detail: Some("secret detail".to_owned()),
             origin_scope: "b".repeat(64),
         };
+        let user_report = ReportUserRequest {
+            reason: CommentReportReason::Impersonation,
+            detail: Some("secret user detail".to_owned()),
+            origin_scope: "c".repeat(64),
+        };
         assert!(!format!("{create:?}").contains("secret comment"));
         assert!(!format!("{report:?}").contains("secret detail"));
+        assert!(!format!("{user_report:?}").contains("secret user detail"));
     }
 
     #[test]
@@ -1155,6 +1309,10 @@ mod tests {
         assert!(matches!(
             map_block_resolution(UserBlockResolution::CannotBlockSelf),
             Some(Err(CommentServiceError::CannotBlockSelf))
+        ));
+        assert!(matches!(
+            map_user_report_resolution(UserReportResolution::CannotReportSelf),
+            Some(Err(CommentServiceError::CannotReportSelf))
         ));
     }
 

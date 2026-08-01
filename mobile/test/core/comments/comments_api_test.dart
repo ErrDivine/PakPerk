@@ -45,6 +45,42 @@ void main() {
       expect(adapter.bodies.last, adapter.bodies.first);
     },
   );
+
+  test(
+    'user report has one protected replay and validates target identity',
+    () async {
+      const userId = '018f47a6-4b56-7f4c-8c7a-e2656e820002';
+      final tokens = _TokenSource();
+      final adapter = _UserReportAdapter(userId);
+      final dio = Dio(BaseOptions(baseUrl: 'https://api.pakperk.app'))
+        ..httpClientAdapter = adapter;
+      dio.interceptors.add(
+        AuthInterceptor(
+          dio: dio,
+          apiBaseUri: Uri.parse('https://api.pakperk.app'),
+          tokenSource: tokens,
+        ),
+      );
+
+      final receipt = await CommentsApi(dio).reportUser(
+        userId: userId,
+        reason: CommentReportReason.impersonation,
+        detail: '  Profile context  ',
+        expectedAuthEpoch: 7,
+      );
+
+      expect(receipt.reportedUserId, userId);
+      expect(receipt.reason, CommentReportReason.spam);
+      expect(tokens.refreshCalls, 1);
+      expect(adapter.idempotencyKeys, hasLength(2));
+      expect(adapter.idempotencyKeys.first, adapter.idempotencyKeys.last);
+      expect(jsonDecode(adapter.bodies.first), {
+        'reason': 'impersonation',
+        'detail': 'Profile context',
+      });
+      expect(adapter.bodies.last, adapter.bodies.first);
+    },
+  );
 }
 
 final class _TokenSource implements AuthTokenSource {
@@ -113,6 +149,61 @@ final class _ReportAdapter implements HttpClientAdapter {
           'comment_id': commentId,
           // A duplicate reporter/comment pair returns the first canonical
           // reason, which may differ from this retry's submitted reason.
+          'reason': 'spam',
+          'status': 'open',
+          'created_at': '2026-07-30T10:00:00Z',
+        },
+      }),
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+final class _UserReportAdapter implements HttpClientAdapter {
+  _UserReportAdapter(this.userId);
+
+  final String userId;
+  final List<String?> idempotencyKeys = [];
+  final List<String> bodies = [];
+  var calls = 0;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    expect(options.method, 'POST');
+    expect(options.path, '/v1/users/$userId/reports');
+    idempotencyKeys.add(options.headers['Idempotency-Key'] as String?);
+    final bytes = <int>[];
+    if (requestStream != null) {
+      await for (final chunk in requestStream) {
+        bytes.addAll(chunk);
+      }
+    }
+    bodies.add(utf8.decode(bytes));
+    calls += 1;
+    if (calls == 1) {
+      return ResponseBody.fromString(
+        jsonEncode(const {'error': 'unauthorized'}),
+        401,
+        headers: {
+          Headers.contentTypeHeader: ['application/json'],
+        },
+      );
+    }
+    return ResponseBody.fromString(
+      jsonEncode({
+        'report': {
+          'id': '018f47a6-4b56-7f4c-8c7a-e2656e820032',
+          'reported_user_id': userId,
           'reason': 'spam',
           'status': 'open',
           'created_at': '2026-07-30T10:00:00Z',

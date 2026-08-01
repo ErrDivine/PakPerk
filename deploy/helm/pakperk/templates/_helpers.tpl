@@ -118,9 +118,13 @@ app.kubernetes.io/component: {{ .component }}
       # by 10001 until this ownership transition has happened.
       chown 0:0 /work
       chmod 0700 /work
-      rm -f /work/LLM_API_KEY /work/API_ORIGIN_HASH_SECRET /work/ACCOUNT_IDENTITY_FINGERPRINT_KEYS /work/ACCOUNT_DELETION_LEDGER_SIGNING_KEYS /work/ACCOUNT_DELETION_PROVIDER_IDENTITY_KEYS
+      rm -f /work/LLM_API_KEY /work/COMMENT_MODERATION_TOKEN /work/API_ORIGIN_HASH_SECRET /work/ACCOUNT_IDENTITY_FINGERPRINT_KEYS /work/ACCOUNT_DELETION_LEDGER_SIGNING_KEYS /work/ACCOUNT_DELETION_PROVIDER_IDENTITY_KEYS
       install -m 0400 /source/LLM_API_KEY /work/LLM_API_KEY
       chown 10001:10001 /work/LLM_API_KEY
+      {{- if eq .Values.api.commentModerationProvider "http" }}
+      install -m 0400 /source/COMMENT_MODERATION_TOKEN /work/COMMENT_MODERATION_TOKEN
+      chown 10001:10001 /work/COMMENT_MODERATION_TOKEN
+      {{- end }}
       install -m 0400 /source/API_ORIGIN_HASH_SECRET /work/API_ORIGIN_HASH_SECRET
       chown 10001:10001 /work/API_ORIGIN_HASH_SECRET
       {{- if .Values.features.accounts }}
@@ -155,6 +159,9 @@ app.kubernetes.io/component: {{ .component }}
     defaultMode: 0400
     items:
       - { key: {{ .Values.secret.llmApiKeyKey }}, path: LLM_API_KEY }
+      {{- if eq .Values.api.commentModerationProvider "http" }}
+      - { key: {{ .Values.secret.commentModerationTokenKey }}, path: COMMENT_MODERATION_TOKEN }
+      {{- end }}
       - { key: {{ .Values.secret.apiOriginHashKey }}, path: API_ORIGIN_HASH_SECRET }
       {{- if .Values.features.accounts }}
       - { key: {{ .Values.secret.identityFingerprintKeysKey }}, path: ACCOUNT_IDENTITY_FINGERPRINT_KEYS }
