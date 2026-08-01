@@ -1,7 +1,7 @@
 # Phase 6 mobile release-candidate evidence
 
 **Code version:** `0.2.0+2`
-**Evidence date:** 2026-08-01
+**Evidence date:** 2026-08-02
 **Scope:** Flutter client and native Android/iOS hosts
 
 ## Implemented
@@ -60,6 +60,16 @@
 
 ## Executed verification
 
+The 2026-08-02 repository-closure audit added shared raw-transport
+connectivity, one-shot pending authenticated actions, conservative comment
+count completeness, shared save-control state, environment-relative moderation
+support links, build-bound Terms/Community Guidelines acceptance, post-`401`
+response provenance, and bounded safety-intent recovery after authenticated
+thread rehydration. Legal-document futures are cached by loader, kind, and
+policy version instead of being recreated during rebuilds. Final Flutter
+analysis and all 537 locked tests passed after these changes. No new device or
+signed artifact build was executed on this final tree.
+
 At the Phase 6 implementation checkpoint, the full Flutter analyzer and 437
 tests, the focused account-deletion/auth/error-mapper/telemetry/config suites,
 all three Android debug flavors, all three iOS simulator flavors, strict asset
@@ -82,10 +92,9 @@ A strict repository-closure audit then made account deletion discoverable at
 made save/removal outbox draining plus Undo independent of widget disposal or
 haptic and semantics platform failures. Direct Dart format and analysis passed
 on that resulting tree. Focused widget coverage passed for the shared
-save-control Undo path before the final widget-lifecycle hardening; the new
-Settings visibility/routing and haptic-failure regression cases are checked in
-for the next complete Flutter CI lane. This report does not infer a full
-post-change widget or device run.
+save-control Undo path before the final widget-lifecycle hardening; those later
+Settings, lifecycle, and haptic regressions are included in the final 537-test
+run recorded above. This report does not infer a final-tree device run.
 
 The subsequent startup/accessibility hardening described above is newer than
 that direct-analysis checkpoint. Checked-in regressions cover concurrent local
@@ -95,8 +104,8 @@ replacement waiting for leased session store use, active reduced-motion
 changes, one settled page-commit haptic, unavailable haptics, canonical arXiv
 links, contrast, and 200% stage labels. Direct Dart formatting and analysis
 passed on the settled current tree. The complete locked Flutter/widget suite
-has not run on those newest changes, so the direct static pass is not presented
-as widget or device evidence.
+subsequently passed on those changes; that headless evidence remains distinct
+from physical-device and signed-build evidence.
 
 Repository supply-chain validators and tamper regressions passed for the exact
 mobile-release source/toolchain contract, including the pre-dependency MRI Ruby

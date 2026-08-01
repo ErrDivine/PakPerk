@@ -2,7 +2,7 @@
 
 **Status:** authoritative implementation plan and repository status entrypoint
 **Milestone:** Production v0.0
-**Last synchronized:** 2026-08-01
+**Last synchronized:** 2026-08-02
 
 This document is the documentation entrypoint for the Production v0.0 plan.
 The complete normative plan is maintained at the repository root in
@@ -140,12 +140,25 @@ recorded in the
 [Phase 6 report](phase-reports/phase-6.md) and
 [mobile Phase 6 report](phase-reports/phase-6-mobile.md).
 
+The 2026-08-02 closure audit also replaced readable pagination coordinates
+with rotation-aware authenticated-encryption tokens bound to each list's
+purpose and viewer/filter scope, bound feed validators to the active cursor-key
+epoch, made shared mobile connectivity state depend on raw transport outcomes,
+preserved real `401` reachability through failed refreshes, enforced one-shot
+authenticated handoffs, bounded safety-intent recovery after authenticated
+comment reload, hid comment totals until a network-backed page is known
+complete, and bound policy acceptance to the exact documents in each signed
+build. CI now parses every shell script independently rather than relying on
+Bash's multi-argument behavior. Final Flutter analysis and all 537 locked tests
+passed. These are repository hardening changes; they do not alter the external
+release-gate status below.
+
 Phase 6 is not accepted as a public/store release from source evidence alone.
 The disposable reference-provider workflow does not replace protected staging
 deletion against the real secret manager, external ledger, backup inventory,
 and alert route; the bounded load harness does not replace a successful
-protected staging run. Final direct Dart formatting and analysis passed, while
-the current-tree locked Flutter/widget verification remains unrecorded. An
+protected staging run. Final formatting, Flutter analysis, and the current-tree
+locked Flutter/widget suite passed. An
 actual isolated backup/PITR restore and deletion replay, migration/rollback
 exercise, deployed staging/production telemetry sink/retention and alert-
 adapter/receiver/canary checks, current networked advisory/container scans,

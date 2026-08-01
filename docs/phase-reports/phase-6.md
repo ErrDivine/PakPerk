@@ -1,7 +1,7 @@
 # Phase 6 implementation and release-gate report
 
 **Status:** repository implementation present; public/store release not accepted
-**Report date:** 2026-08-01
+**Report date:** 2026-08-02
 **Companion:** [mobile evidence](phase-6-mobile.md)
 
 ## Delivered repository boundaries
@@ -104,6 +104,51 @@ the one-shot migration job binds its execution to the reviewed backup ID and
 that exact expected schema version.
 
 ## Repository verification recorded this run
+
+- The final repository-closure audit replaced readable feed, library, comment,
+  block, and moderation pagination payloads with bounded AES-256-GCM tokens.
+  Tokens are versioned, randomized, and authenticated against an exact purpose
+  plus category/account/viewer/status scope. A rotation-ordered owner-only
+  keyring is shared by API replicas and moderator tooling; its documented
+  append-then-promote two-rollout procedure keeps mixed replicas interoperable.
+  A domain-separated, non-secret active-key epoch participates in first-page
+  feed validators, so key promotion or same-ID rekeying invalidates stale
+  `304` responses before retained decrypt-only keys are retired.
+  Public comment regressions specifically reject a guest token for an account,
+  an account token for a guest, and a token from another viewer whose block
+  filter can produce a different result set. The complete locked Rust
+  workspace test command, formatting, check, and warning-denying all-feature
+  Clippy passed after this change. Database-backed tests were invoked but keep
+  their documented early-return/ignore boundary without `TEST_DATABASE_URL`;
+  this local run is not live PostgreSQL evidence.
+- Mobile closure checks now use one process-wide transport status for anonymous
+  and authenticated requests. Only a raw response-bearing Dio result can mark
+  the service online; local authentication/input failures cannot erase an
+  offline result, and a post-`401` refresh failure preserves and forwards the
+  real response through that observer. Authenticated handoffs are consumed
+  exactly once even when their executor fails; comment safety intents survive
+  authenticated thread rehydration, search at most three additional pages,
+  and fail once with visible copy when their target is gone. Comment totals
+  remain hidden for incomplete or cached pages, and two visible save controls
+  observe the same saved-state stream.
+  Acceptance UI is disabled when server policy versions differ from the exact
+  bundled Terms or Community Guidelines marker, and signed staging/production
+  evidence binds both markers to the protected public-document version. Legal
+  document loads are stable across rebuilds. Full Flutter analysis and all 537
+  locked tests passed on the final tree.
+- The public deletion page now retains signed deletion authority through both
+  the 400-day minimum and the no-recoverable-backup condition. The environment-
+  relative bundled moderation support link resolves to the staging or
+  production site origin. All 31 static and browser site tests passed against
+  a staging Helm render.
+- CI and `scripts/check.sh` now invoke a tested validator that runs `bash -n`
+  independently for all 27 top-level shell scripts and rejects an empty,
+  symlinked, or syntactically invalid input set. The validator's four
+  regressions and the complete shell set passed.
+- The full production Helm contract passed with the official checksum-verified
+  Helm 3.18.6 binary. The regenerated OpenAPI contract and the 39 signed-mobile
+  workflow validation regressions also passed. All nine bounded backend-load
+  contract tests passed against their local content-redacted mock server.
 
 - Trusted-proxy client-origin unit tests passed, including right-to-left chain,
   spoof resistance, malformed fallback, canonical CIDRs, and keyed address
