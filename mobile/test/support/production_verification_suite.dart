@@ -105,7 +105,7 @@ void registerProductionVerificationTests({bool physicalDevice = false}) {
       } else {
         controller.jumpToPage(index);
         controllerCommitCount += 1;
-        await tester.pump();
+        await tester.pumpAndSettle();
       }
       expect(
         container.read(appRestorationControllerProvider).feedIndex,
@@ -408,7 +408,10 @@ void registerProductionVerificationTests({bool physicalDevice = false}) {
         preferences: preferences,
         database: PakPerkDatabase(NativeDatabase.memory()),
       );
-      addTearDown(store.close);
+      // This spy never opens the lazy in-memory executor, so there is no
+      // native handle to release. Closing an unopened executor from a widget
+      // test's fake-async teardown can wait forever for an isolate that was
+      // never started.
 
       store.didChangeAppLifecycleState(AppLifecycleState.resumed);
       await tester.pump();

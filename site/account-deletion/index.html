@@ -18,9 +18,9 @@
           <li>revokes identity-provider sessions and deletes the provider identity;</li>
           <li>removes your profile, To Read list, blocks, comments, reports, and pending account-owned operations;</li>
           <li>clears account-owned data from the app after it receives acceptance; and</li>
-          <li>retains anonymized security records for 90 days and signed deletion authority, including encrypted provider recovery coordinates, for at least 400 days so backups cannot restore the account.</li>
+          <li>retains anonymized security records for 90 days and signed deletion authority, including encrypted provider recovery coordinates, for at least 400 days and until no recoverable backup can recreate the account.</li>
         </ul>
-        <p>After the 35-day backup window has expired and restore safety is verified, an operator-controlled final purge removes the deletion authority and encrypted coordinates. Account deletion cannot be undone. Paper metadata that is public and not account-owned may remain.</p>
+        <p>After both the 400-day minimum has elapsed and no recoverable backup can recreate the account, an operator-controlled final purge removes the deletion authority and encrypted coordinates. Account deletion cannot be undone. Paper metadata that is public and not account-owned may remain.</p>
       </div>
       <label class="check-row"><input id="confirm-deletion" type="checkbox"><span>I understand that account and public-comment deletion is permanent.</span></label>
       <button class="danger" id="start-deletion" type="button" disabled>Sign in and request deletion</button>

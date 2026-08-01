@@ -9,6 +9,7 @@ import '../core/api/api_client.dart';
 import '../core/api/auth_interceptor.dart';
 import '../core/api/http_telemetry_interceptor.dart';
 import '../core/api/safe_retry_interceptor.dart';
+import '../core/api/transport_network_status.dart';
 import '../core/auth/auth.dart';
 import '../core/cache/drift_local_store.dart';
 import '../core/database/account_cache_dao.dart';
@@ -81,6 +82,11 @@ final pakPerkDioProvider = Provider<Dio>((ref) {
     HttpTelemetryInterceptor(
       apiBaseUri: config.apiBaseUri,
       telemetry: ref.watch(telemetrySinkProvider),
+    ),
+  );
+  dio.interceptors.add(
+    TransportNetworkStatusInterceptor(
+      ref.watch(transportNetworkStatusProvider),
     ),
   );
   ref.onDispose(() => dio.close(force: true));
@@ -399,6 +405,7 @@ List<Override> accountApplicationOverrides(
       baseUrl: ref.watch(appBuildConfigProvider).apiBaseUri.toString(),
       sessionId: ref.watch(anonymousSessionIdProvider),
       dio: ref.watch(pakPerkDioProvider),
+      networkStatus: ref.watch(transportNetworkStatusProvider),
     );
     // Injected transports are non-owned by ApiClient; this releases only the
     // facade while [pakPerkDioProvider] remains the sole transport owner.

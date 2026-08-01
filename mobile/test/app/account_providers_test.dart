@@ -12,6 +12,7 @@ import 'package:pakperk/core/account_deletion/account_deletion.dart';
 import 'package:pakperk/core/api/auth_interceptor.dart';
 import 'package:pakperk/core/api/http_telemetry_interceptor.dart';
 import 'package:pakperk/core/api/safe_retry_interceptor.dart';
+import 'package:pakperk/core/api/transport_network_status.dart';
 import 'package:pakperk/core/auth/auth.dart';
 import 'package:pakperk/core/providers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -67,6 +68,7 @@ void main() {
       PakPerkRequestIdInterceptor,
       SafeRetryInterceptor,
       HttpTelemetryInterceptor,
+      TransportNetworkStatusInterceptor,
     ]);
 
     final firstClient = container.read(apiClientProvider);
@@ -79,6 +81,53 @@ void main() {
     expect(container.read(pakPerkDioProvider), same(dio));
     expect(adapter.paths, ['/health/ready', '/health/ready']);
   });
+
+  test(
+    'root transport shares offline recovery with paper repository',
+    () async {
+      final delegate = _StartupDelegate();
+      final store = MemoryLocalStore();
+      final container = ProviderContainer(
+        overrides: [
+          appBuildConfigProvider.overrideWithValue(_accountConfig()),
+          localStoreProvider.overrideWithValue(store),
+          initialAnonymousSessionIdProvider.overrideWithValue(
+            await store.getOrCreateSessionId(),
+          ),
+          oidcClientProvider.overrideWithValue(FakeOidcClient()),
+          secureTokenStoreProvider.overrideWithValue(MemorySecureTokenStore()),
+          ...accountApplicationOverrides(delegate),
+        ],
+      );
+      addTearDown(container.dispose);
+      final adapter = _ConnectivityAdapter(offline: true);
+      final dio = container.read(pakPerkDioProvider)
+        ..httpClientAdapter = adapter;
+      final status = container.read(transportNetworkStatusProvider);
+      final repository = container.read(paperRepositoryProvider);
+      final changes = <bool>[];
+      final subscription = status.changes.listen(changes.add);
+      addTearDown(subscription.cancel);
+
+      await expectLater(
+        dio.post<void>('/v1/connectivity-probe', data: const {'probe': true}),
+        throwsA(isA<DioException>()),
+      );
+
+      expect(status.isOffline, isTrue);
+      expect(repository.isOffline, isTrue);
+
+      adapter.offline = false;
+      await dio.post<void>(
+        '/v1/connectivity-probe',
+        data: const {'probe': true},
+      );
+
+      expect(status.isOffline, isFalse);
+      expect(repository.isOffline, isFalse);
+      expect(changes, [true, false]);
+    },
+  );
 
   test(
     'startup inspects locally then restores and loads account post-ready',
@@ -109,6 +158,7 @@ void main() {
         AuthInterceptor,
         SafeRetryInterceptor,
         HttpTelemetryInterceptor,
+        TransportNetworkStatusInterceptor,
       ]);
 
       final startup = container.read(startupBootstrapperProvider);
@@ -304,7 +354,8 @@ List<Type> _pakPerkInterceptorTypes(Dio dio) => dio.interceptors
           interceptor is PakPerkRequestIdInterceptor ||
           interceptor is AuthInterceptor ||
           interceptor is SafeRetryInterceptor ||
-          interceptor is HttpTelemetryInterceptor,
+          interceptor is HttpTelemetryInterceptor ||
+          interceptor is TransportNetworkStatusInterceptor,
     )
     .map((interceptor) => interceptor.runtimeType)
     .toList(growable: false);
@@ -444,6 +495,31 @@ final class _AccountAdapter implements HttpClientAdapter {
         'etag': ['"profile-1"'],
       },
     );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+final class _ConnectivityAdapter implements HttpClientAdapter {
+  _ConnectivityAdapter({required this.offline});
+
+  bool offline;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    if (offline) {
+      throw DioException(
+        requestOptions: options,
+        type: DioExceptionType.connectionError,
+        error: StateError('Network unavailable in test.'),
+      );
+    }
+    return ResponseBody.fromString('', 204);
   }
 
   @override

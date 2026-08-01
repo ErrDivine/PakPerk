@@ -17,6 +17,9 @@ enum AppEnvironment {
   bool get isProductionLike => this != AppEnvironment.development;
 }
 
+const bundledTermsDocumentVersion = '2026-07-31';
+const bundledCommunityGuidelinesDocumentVersion = '2026-07-31';
+
 class FeatureFlags {
   const FeatureFlags({
     required this.accounts,
@@ -54,6 +57,8 @@ class AppBuildConfig {
     required this.environment,
     required this.apiBaseUri,
     required this.fulltextPolicy,
+    required this.termsDocumentVersion,
+    required this.communityGuidelinesDocumentVersion,
     required this.features,
     required this.oidcIssuerUri,
     required this.oidcClientId,
@@ -71,6 +76,9 @@ class AppBuildConfig {
   static const _environmentKey = 'PAKPERK_ENV';
   static const _apiBaseUrlKey = 'PAKPERK_API_BASE_URL';
   static const _fulltextPolicyKey = 'PAKPERK_FULLTEXT_POLICY';
+  static const _termsDocumentVersionKey = 'PAKPERK_TERMS_DOCUMENT_VERSION';
+  static const _communityGuidelinesDocumentVersionKey =
+      'PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION';
   static const _accountsEnabledKey = 'PAKPERK_ACCOUNTS_ENABLED';
   static const _libraryEnabledKey = 'PAKPERK_LIBRARY_ENABLED';
   static const _commentsEnabledKey = 'PAKPERK_COMMENTS_ENABLED';
@@ -105,6 +113,14 @@ class AppBuildConfig {
     _fulltextPolicyKey: const String.fromEnvironment(
       _fulltextPolicyKey,
       defaultValue: 'prototype',
+    ),
+    _termsDocumentVersionKey: const String.fromEnvironment(
+      _termsDocumentVersionKey,
+      defaultValue: bundledTermsDocumentVersion,
+    ),
+    _communityGuidelinesDocumentVersionKey: const String.fromEnvironment(
+      _communityGuidelinesDocumentVersionKey,
+      defaultValue: bundledCommunityGuidelinesDocumentVersion,
     ),
     _accountsEnabledKey: const String.fromEnvironment(
       _accountsEnabledKey,
@@ -177,6 +193,30 @@ class AppBuildConfig {
         fulltextPolicy != 'strict') {
       throw BuildConfigurationException(
         'Production builds require PAKPERK_FULLTEXT_POLICY=strict.',
+      );
+    }
+    final termsDocumentVersion = _parseDocumentVersion(
+      _value(
+        values,
+        _termsDocumentVersionKey,
+        fallback: bundledTermsDocumentVersion,
+      ),
+      _termsDocumentVersionKey,
+    );
+    final communityGuidelinesDocumentVersion = _parseDocumentVersion(
+      _value(
+        values,
+        _communityGuidelinesDocumentVersionKey,
+        fallback: bundledCommunityGuidelinesDocumentVersion,
+      ),
+      _communityGuidelinesDocumentVersionKey,
+    );
+    if (termsDocumentVersion != bundledTermsDocumentVersion ||
+        communityGuidelinesDocumentVersion !=
+            bundledCommunityGuidelinesDocumentVersion) {
+      throw BuildConfigurationException(
+        'Configured policy versions must match the documents bundled in this '
+        'application build.',
       );
     }
 
@@ -345,6 +385,8 @@ class AppBuildConfig {
       environment: environment,
       apiBaseUri: apiBaseUri,
       fulltextPolicy: fulltextPolicy,
+      termsDocumentVersion: termsDocumentVersion,
+      communityGuidelinesDocumentVersion: communityGuidelinesDocumentVersion,
       features: features,
       oidcIssuerUri: oidcIssuerUri,
       oidcClientId: oidcClientId?.isEmpty == true ? null : oidcClientId,
@@ -363,6 +405,8 @@ class AppBuildConfig {
   final AppEnvironment environment;
   final Uri apiBaseUri;
   final String fulltextPolicy;
+  final String termsDocumentVersion;
+  final String communityGuidelinesDocumentVersion;
   final FeatureFlags features;
   final Uri? oidcIssuerUri;
   final String? oidcClientId;
@@ -421,6 +465,21 @@ class AppBuildConfig {
       'false' || '' => false,
       _ => throw BuildConfigurationException('$key must be true or false.'),
     };
+  }
+
+  static String _parseDocumentVersion(String value, String key) {
+    final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value);
+    if (match == null) {
+      throw BuildConfigurationException('$key must be an ISO calendar date.');
+    }
+    final year = int.parse(match.group(1)!);
+    final month = int.parse(match.group(2)!);
+    final day = int.parse(match.group(3)!);
+    final parsed = DateTime.utc(year, month, day);
+    if (parsed.year != year || parsed.month != month || parsed.day != day) {
+      throw BuildConfigurationException('$key must be an ISO calendar date.');
+    }
+    return value;
   }
 
   static Uri? _optionalUri(

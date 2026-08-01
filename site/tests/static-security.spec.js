@@ -108,6 +108,21 @@ test("published safety documents keep reporting and blocking distinct", async ()
   }
 });
 
+test("the published deletion policy keeps authority through both retention safeguards", async () => {
+  const source = await readFile(
+    path.join(SITE_ROOT, "account-deletion", "index.html"),
+    "utf8",
+  );
+  const text = source.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+
+  expect(text).toContain(
+    "for at least 400 days and until no recoverable backup can recreate the account",
+  );
+  expect(text).toContain(
+    "After both the 400-day minimum has elapsed and no recoverable backup can recreate the account",
+  );
+});
+
 test("the rendered chart has an exact cross-origin CSP and matching public config", async () => {
   test.skip(!RENDERED_MANIFEST_PATH, "set PAKPERK_RENDERED_SITE_MANIFEST after helm template");
 

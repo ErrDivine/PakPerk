@@ -81,10 +81,9 @@ void main() {
       );
       tester.testTextInput.hide();
       await tester.pumpAndSettle();
-      final onboardingScrollable = find.descendant(
-        of: find.byType(Form),
-        matching: find.byType(Scrollable),
-      );
+      final onboardingScrollable = find
+          .descendant(of: find.byType(Form), matching: find.byType(Scrollable))
+          .first;
       final completeSetup = find.byKey(
         const ValueKey('account-complete-setup-button'),
       );
@@ -152,13 +151,89 @@ void main() {
       expect(jsonDecode(adapter.bodies.last), {
         'handle': 'ada_reader',
         'display_name': 'Ada Reader',
-        'accept_terms_version': '2026-07',
-        'accept_community_guidelines_version': '2026-07',
+        'accept_terms_version': '2026-07-31',
+        'accept_community_guidelines_version': '2026-07-31',
       });
       expect(secureStore.record?.accountId, _accountId);
       expect(controllers.account.state.profile?.isProfileComplete, isTrue);
     },
   );
+
+  testWidgets('outdated bundled policies cannot be accepted', (tester) async {
+    final adapter = _ProfileAdapter(
+      completeOnGet: false,
+      policyVersion: '2026-08-01',
+    );
+    final controllers = _controllers(
+      oidc: FakeOidcClient(),
+      secureStore: MemorySecureTokenStore(),
+      adapter: adapter,
+    );
+    final pending =
+        PendingAuthenticatedActionController<AppPendingAuthenticatedAction>()
+          ..replace(
+            AppPendingAuthenticatedAction(
+              kind: AppPendingActionKind.openComposer,
+              targetId: '17060376-2000-4000-8000-000000000001',
+            ),
+          );
+    final router = _authRouter();
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appBuildConfigProvider.overrideWithValue(_accountConfig()),
+          authSessionProvider.overrideWith((ref) => controllers.auth),
+          currentAccountProvider.overrideWith((ref) => controllers.account),
+          pendingAuthenticatedActionProvider.overrideWith((ref) => pending),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final onboardingScrollable = find
+        .descendant(of: find.byType(Form), matching: find.byType(Scrollable))
+        .first;
+    final termsFinder = find.descendant(
+      of: find.byKey(const ValueKey('account-terms-checkbox')),
+      matching: find.byType(Checkbox),
+    );
+    await tester.scrollUntilVisible(
+      termsFinder,
+      240,
+      scrollable: onboardingScrollable,
+    );
+    final terms = tester.widget<Checkbox>(termsFinder);
+    expect(terms.onChanged, isNull);
+    expect(
+      find.text('Update Pakperk before accepting the current terms.'),
+      findsOneWidget,
+    );
+
+    final guidelinesFinder = find.descendant(
+      of: find.byKey(const ValueKey('account-community-checkbox')),
+      matching: find.byType(Checkbox),
+    );
+    await tester.scrollUntilVisible(
+      guidelinesFinder,
+      240,
+      scrollable: onboardingScrollable,
+    );
+    final guidelines = tester.widget<Checkbox>(guidelinesFinder);
+    expect(guidelines.onChanged, isNull);
+    final guidelinesUpdateMessage = find.text(
+      'Update Pakperk before accepting the current Community Guidelines.',
+    );
+    await tester.scrollUntilVisible(
+      guidelinesUpdateMessage,
+      120,
+      scrollable: onboardingScrollable,
+    );
+    expect(guidelinesUpdateMessage, findsOneWidget);
+    expect(adapter.requests.map((request) => request.method), ['GET']);
+  });
 
   testWidgets(
     'pending save resumes after active account without profile onboarding',
@@ -210,7 +285,7 @@ void main() {
     },
   );
 
-  testWidgets('pending save failure is visible after successful sign-in', (
+  testWidgets('pending save failure is visible and the action stays consumed', (
     tester,
   ) async {
     final controllers = _controllers(
@@ -250,10 +325,14 @@ void main() {
 
     expect(find.text('Save could not be completed'), findsOneWidget);
     expect(
-      find.text('You are signed in, but this paper was not saved. Try again.'),
+      find.text(
+        'You are signed in, but this paper was not saved. Return and try '
+        'again.',
+      ),
       findsOneWidget,
     );
-    expect(pending.state?.kind, AppPendingActionKind.savePaper);
+    expect(find.widgetWithText(FilledButton, 'Return'), findsOneWidget);
+    expect(pending.state, isNull);
 
     expect(await tester.binding.handlePopRoute(), isTrue);
     await tester.pumpAndSettle();
@@ -495,9 +574,13 @@ AppBuildConfig _accountConfig() => AppBuildConfig.fromValues(const {
 const _accountId = '018f47a6-4b56-7f4c-8c7a-e2656e820001';
 
 final class _ProfileAdapter implements HttpClientAdapter {
-  _ProfileAdapter({this.completeOnGet = true});
+  _ProfileAdapter({
+    this.completeOnGet = true,
+    this.policyVersion = bundledTermsDocumentVersion,
+  });
 
   final bool completeOnGet;
+  final String policyVersion;
   final List<RequestOptions> requests = [];
   final List<String> bodies = [];
 
@@ -520,7 +603,11 @@ final class _ProfileAdapter implements HttpClientAdapter {
     final version = patched ? 2 : 1;
     return ResponseBody.fromString(
       jsonEncode({
-        'account': _profileJson(complete: complete, version: version),
+        'account': _profileJson(
+          complete: complete,
+          version: version,
+          policyVersion: policyVersion,
+        ),
       }),
       200,
       headers: {
@@ -537,6 +624,7 @@ final class _ProfileAdapter implements HttpClientAdapter {
 Map<String, Object?> _profileJson({
   required bool complete,
   int version = 1,
+  String policyVersion = bundledTermsDocumentVersion,
 }) => {
   'id': _accountId,
   'handle': complete ? 'ada_reader' : null,
@@ -544,13 +632,13 @@ Map<String, Object?> _profileJson({
   'status': 'active',
   'profile_version': version,
   'profile_complete': complete,
-  'terms_version': complete ? '2026-07' : null,
+  'terms_version': complete ? policyVersion : null,
   'terms_accepted_at': complete ? '2026-07-30T12:00:00Z' : null,
-  'current_terms_version': '2026-07',
+  'current_terms_version': policyVersion,
   'terms_current': complete,
-  'community_guidelines_version': complete ? '2026-07' : null,
+  'community_guidelines_version': complete ? policyVersion : null,
   'community_guidelines_accepted_at': complete ? '2026-07-30T12:00:00Z' : null,
-  'current_community_guidelines_version': '2026-07',
+  'current_community_guidelines_version': policyVersion,
   'community_guidelines_current': complete,
   'created_at': '2026-07-30T10:00:00Z',
   'updated_at': complete ? '2026-07-30T12:00:00Z' : '2026-07-30T11:00:00Z',

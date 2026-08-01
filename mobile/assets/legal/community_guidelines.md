@@ -28,9 +28,8 @@ Use **Report comment** for content problems and **Report user** for account-leve
 behavior. A report is private to the moderation team and does not block anyone.
 Use **Block user** separately to remove an author from your own view. For urgent
 safety, privacy, copyright,
-or legal issues, contact Pakperk support and moderation at
-<https://pakperk.app/support/>. Include the comment ID—not the full harmful
-comment body—when possible.
+or legal issues, contact [Pakperk support and moderation](/support). Include the
+comment ID—not the full harmful comment body—when possible.
 
 Moderators may reject, hold, hide, restore, or delete comments and may suspend
 or reinstate accounts. Actions are audited. Repeated or severe violations can

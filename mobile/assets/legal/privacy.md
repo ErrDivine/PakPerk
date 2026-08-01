@@ -26,8 +26,9 @@ security/access logs may separately retain a source network address for up to
 30 days. These identifiers are not used for advertising or tracking and are
 separate from identifier-free mobile telemetry.
 
-Account deletion disables access immediately. The deletion worker removes the
-provider identity, including its verified email, library, drafts, blocks, and
+Account deletion disables access immediately. The app clears local credentials
+and account-scoped data, including comment drafts. The deletion worker removes
+the provider identity, including its verified email, library, blocks, and
 authored comments. Narrow security and moderation records are retained in
 anonymized form for 90 days. Recoverable database/identity backups and PITR
 history expire within 35 days. Content-free operational telemetry and

@@ -15,6 +15,7 @@ final class CommentThreadState {
     this.sending = false,
     this.creationDisabled = false,
     this.showingCached = false,
+    this.initialLoadSettled = false,
     this.errorMessage,
   });
 
@@ -27,6 +28,7 @@ final class CommentThreadState {
   final bool sending;
   final bool creationDisabled;
   final bool showingCached;
+  final bool initialLoadSettled;
   final String? errorMessage;
 
   CommentThreadState copyWith({
@@ -39,6 +41,7 @@ final class CommentThreadState {
     bool? sending,
     bool? creationDisabled,
     bool? showingCached,
+    bool? initialLoadSettled,
     Object? errorMessage = _unset,
   }) => CommentThreadState(
     items: items ?? this.items,
@@ -52,6 +55,7 @@ final class CommentThreadState {
     sending: sending ?? this.sending,
     creationDisabled: creationDisabled ?? this.creationDisabled,
     showingCached: showingCached ?? this.showingCached,
+    initialLoadSettled: initialLoadSettled ?? this.initialLoadSettled,
     errorMessage: identical(errorMessage, _unset)
         ? this.errorMessage
         : errorMessage as String?,
@@ -136,6 +140,7 @@ final class CommentThreadController extends StateNotifier<CommentThreadState> {
         loadingInitial: false,
         refreshing: false,
         showingCached: false,
+        initialLoadSettled: true,
       );
     } on CommentScopeChanged {
       return;
@@ -144,6 +149,7 @@ final class CommentThreadController extends StateNotifier<CommentThreadState> {
       state = state.copyWith(
         loadingInitial: false,
         refreshing: false,
+        initialLoadSettled: true,
         errorMessage: error.isOffline && state.items.isNotEmpty
             ? 'Offline · showing saved comments'
             : error.message,
@@ -153,6 +159,7 @@ final class CommentThreadController extends StateNotifier<CommentThreadState> {
       state = state.copyWith(
         loadingInitial: false,
         refreshing: false,
+        initialLoadSettled: true,
         errorMessage: 'Comments could not be refreshed.',
       );
     }

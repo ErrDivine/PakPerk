@@ -132,12 +132,31 @@ final class CommentUiIntent {
 final class CommentUiIntentController extends StateNotifier<CommentUiIntent?> {
   CommentUiIntentController() : super(null);
 
-  void show(CommentUiIntent value) => state = value;
+  static const maximumResumePageLoads = 3;
+
+  int _remainingPageLoads = 0;
+
+  void show(CommentUiIntent value) {
+    _remainingPageLoads = maximumResumePageLoads;
+    state = value;
+  }
 
   CommentUiIntent? take() {
     final value = state;
+    _remainingPageLoads = 0;
     state = null;
     return value;
+  }
+
+  CommentUiIntent? takeIfCurrent(CommentUiIntent expected) {
+    if (!identical(state, expected)) return null;
+    return take();
+  }
+
+  bool claimTargetPageLoad(CommentUiIntent expected) {
+    if (!identical(state, expected) || _remainingPageLoads <= 0) return false;
+    _remainingPageLoads -= 1;
+    return true;
   }
 }
 

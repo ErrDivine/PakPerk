@@ -28,13 +28,6 @@ final class PendingAuthenticatedActionController<
     return pending;
   }
 
-  /// Restores a taken action only when no newer user intent has replaced it.
-  /// This lets a failed handoff remain retryable without overwriting a newer
-  /// action that arrived while the original executor was running.
-  void restoreIfEmpty(T action) {
-    if (state == null) state = action;
-  }
-
   void clear() {
     state = null;
   }

@@ -5,9 +5,11 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pakperk/core/api/api_exception.dart';
 import 'package:pakperk/core/api/auth_interceptor.dart';
 import 'package:pakperk/core/api/http_telemetry_interceptor.dart';
 import 'package:pakperk/core/api/safe_retry_interceptor.dart';
+import 'package:pakperk/core/api/transport_network_status.dart';
 import 'package:pakperk/core/auth/auth.dart';
 import 'package:pakperk/core/telemetry/telemetry.dart';
 
@@ -323,6 +325,132 @@ void main() {
   });
 
   test(
+    'network status ignores local auth failures but tracks transport outcomes',
+    () async {
+      final status = TransportNetworkStatus();
+      addTearDown(status.dispose);
+      final tokens = _MutableTokenSource('access-token');
+      final adapter = _SequenceAdapter(const [
+        _Attempt.failure(DioExceptionType.connectionError),
+        _Attempt.response(401),
+      ]);
+      final dio = Dio(
+        BaseOptions(baseUrl: 'https://api.pakperk.app', followRedirects: false),
+      )..httpClientAdapter = adapter;
+      dio.interceptors
+        ..add(
+          AuthInterceptor(
+            dio: dio,
+            apiBaseUri: Uri.parse('https://api.pakperk.app'),
+            tokenSource: tokens,
+          ),
+        )
+        ..add(TransportNetworkStatusInterceptor(status));
+      addTearDown(() => dio.close(force: true));
+      final changes = <bool>[];
+      final subscription = status.changes.listen(changes.add);
+      addTearDown(subscription.cancel);
+      final options = pakPerkRequestOptions(
+        auth: RequestAuthPolicy.required,
+        expectedAuthEpoch: 1,
+      );
+
+      await expectLater(
+        dio.get<Object?>('/v1/me', options: options),
+        throwsA(isA<DioException>()),
+      );
+      expect(status.isOffline, isTrue);
+      expect(changes, [true]);
+
+      status.observeApiException(
+        const ApiException(
+          code: 'UNAUTHENTICATED',
+          message: 'Sign in again to continue.',
+          statusCode: 401,
+        ),
+      );
+      expect(status.isOffline, isTrue);
+      expect(changes, [true]);
+
+      tokens.token = null;
+      await expectLater(
+        dio.get<Object?>('/v1/me', options: options),
+        throwsA(
+          isA<DioException>().having(
+            (error) => (error.error! as AuthRequestFailure).code,
+            'safe auth code',
+            'UNAUTHENTICATED',
+          ),
+        ),
+      );
+      expect(adapter.requests, 1, reason: 'auth failure must remain local');
+      expect(status.isOffline, isTrue);
+      expect(changes, [true]);
+
+      tokens.token = 'access-token';
+      await expectLater(
+        dio.get<Object?>('/v1/me', options: options),
+        throwsA(
+          isA<DioException>().having(
+            (error) => error.response?.statusCode,
+            'status',
+            401,
+          ),
+        ),
+      );
+      expect(status.isOffline, isFalse);
+      expect(changes, [true, false]);
+    },
+  );
+
+  test('post-401 local auth failure retains HTTP reachability', () async {
+    final status = TransportNetworkStatus()..markOffline();
+    addTearDown(status.dispose);
+    final tokens = _MutableTokenSource('access-token')..rejectRefresh = true;
+    final adapter = _SequenceAdapter(const [_Attempt.response(401)]);
+    final dio = Dio(
+      BaseOptions(baseUrl: 'https://api.pakperk.app', followRedirects: false),
+    )..httpClientAdapter = adapter;
+    dio.interceptors
+      ..add(
+        AuthInterceptor(
+          dio: dio,
+          apiBaseUri: Uri.parse('https://api.pakperk.app'),
+          tokenSource: tokens,
+        ),
+      )
+      ..add(TransportNetworkStatusInterceptor(status));
+    addTearDown(() => dio.close(force: true));
+
+    await expectLater(
+      dio.get<Object?>(
+        '/v1/me',
+        options: pakPerkRequestOptions(
+          auth: RequestAuthPolicy.required,
+          retry: AuthRetryPolicy.safe,
+          expectedAuthEpoch: 1,
+        ),
+      ),
+      throwsA(
+        isA<DioException>()
+            .having(
+              (error) => (error.error! as AuthRequestFailure).code,
+              'safe auth code',
+              'UNAUTHENTICATED',
+            )
+            .having(
+              (error) => error.response?.statusCode,
+              'original status',
+              401,
+            ),
+      ),
+    );
+
+    expect(adapter.requests, 1);
+    expect(status.isOffline, isFalse);
+  });
+
+  test(
     'HTTP telemetry emits one closed, content-free event after retry',
     () async {
       final delegate = _RecordingTelemetrySink();
@@ -556,6 +684,26 @@ final class _SequenceAdapter implements HttpClientAdapter {
 
 final class _PrivateTransportFailure implements Exception {
   const _PrivateTransportFailure();
+}
+
+final class _MutableTokenSource implements AuthTokenSource {
+  _MutableTokenSource(this.token);
+
+  String? token;
+  bool rejectRefresh = false;
+
+  @override
+  bool isCurrentEpoch(int expectedAuthEpoch) => expectedAuthEpoch == 1;
+
+  @override
+  Future<String?> accessTokenForRequest({int? expectedAuthEpoch}) async =>
+      token;
+
+  @override
+  Future<String?> refreshAfterUnauthorized({
+    required String rejectedAccessToken,
+    int? expectedAuthEpoch,
+  }) async => rejectRefresh ? null : token;
 }
 
 final class _StrictTokenSource implements AuthTokenSource {

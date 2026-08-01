@@ -290,7 +290,10 @@ final class AuthInterceptor extends Interceptor {
     }
     final expectedAuthEpoch = _expectedAuthEpoch(options);
     if (expectedAuthEpoch == null) {
-      handler.reject(_authFailure(options, 'AUTH_EPOCH_REQUIRED'));
+      handler.reject(
+        _authFailure(options, 'AUTH_EPOCH_REQUIRED', response: err.response),
+        true,
+      );
       return;
     }
     try {
@@ -299,7 +302,10 @@ final class AuthInterceptor extends Interceptor {
         expectedAuthEpoch: expectedAuthEpoch,
       );
       if (token == null || token.isEmpty) {
-        handler.reject(_authFailure(options, 'UNAUTHENTICATED'));
+        handler.reject(
+          _authFailure(options, 'UNAUTHENTICATED', response: err.response),
+          true,
+        );
         return;
       }
       final retried = options.copyWith(
@@ -309,11 +315,17 @@ final class AuthInterceptor extends Interceptor {
       // Preserve the original plain/bytes/JSON response mode on auth replay.
       handler.resolve(await _dio.fetch<dynamic>(retried));
     } on AuthFailure catch (failure) {
-      handler.reject(_authFailure(options, _safeAuthCode(failure)));
+      handler.reject(
+        _authFailure(options, _safeAuthCode(failure), response: err.response),
+        true,
+      );
     } on DioException catch (retryError) {
       handler.next(retryError);
     } on Object {
-      handler.reject(_authFailure(options, 'AUTH_UNAVAILABLE'));
+      handler.reject(
+        _authFailure(options, 'AUTH_UNAVAILABLE', response: err.response),
+        true,
+      );
     }
   }
 
@@ -382,8 +394,13 @@ final class AuthRequestFailure implements Exception {
   String toString() => 'AuthRequestFailure($code)';
 }
 
-DioException _authFailure(RequestOptions request, String code) => DioException(
+DioException _authFailure(
+  RequestOptions request,
+  String code, {
+  Response<dynamic>? response,
+}) => DioException(
   requestOptions: request,
+  response: response,
   type: DioExceptionType.unknown,
   error: AuthRequestFailure(code),
 );

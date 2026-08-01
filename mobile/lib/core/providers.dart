@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../app/feature_flags.dart';
 import 'api/api_client.dart';
+import 'api/transport_network_status.dart';
 import 'cache/demo_asset_store.dart';
 import 'cache/feed_cache_persistence.dart';
 import 'cache/local_store.dart';
@@ -89,10 +90,17 @@ final demoContentStoreProvider = Provider<DemoContentStore>(
   (ref) => BundleDemoContentStore(),
 );
 
+final transportNetworkStatusProvider = Provider<TransportNetworkStatus>((ref) {
+  final status = TransportNetworkStatus();
+  ref.onDispose(status.dispose);
+  return status;
+});
+
 final apiClientProvider = Provider<ApiClient>((ref) {
   final client = ApiClient(
     baseUrl: ref.watch(appBuildConfigProvider).apiBaseUri.toString(),
     sessionId: ref.watch(anonymousSessionIdProvider),
+    networkStatus: ref.watch(transportNetworkStatusProvider),
   );
   ref.onDispose(client.dispose);
   return client;
@@ -104,6 +112,7 @@ final paperRepositoryProvider = Provider<PaperDataSource>((ref) {
     localStore: ref.watch(localStoreProvider),
     demoContent: ref.watch(demoContentStoreProvider),
     fulltextPolicy: ref.watch(clientFulltextPolicyProvider),
+    networkStatus: ref.watch(transportNetworkStatusProvider),
   );
   ref.onDispose(repository.dispose);
   return repository;

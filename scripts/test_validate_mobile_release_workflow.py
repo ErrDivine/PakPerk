@@ -178,6 +178,18 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
             "  FLUTTER_VERSION: 3.44.8", "  FLUTTER_VERSION: 3.44.9"
         )
 
+    def test_policy_version_evidence_cannot_be_removed(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            '                      "termsDocumentVersion": config["PAKPERK_TERMS_DOCUMENT_VERSION"],\n',
+            "",
+        )
+
+    def test_protected_public_policy_binding_cannot_be_removed(self) -> None:
+        self._assert_mobile_tamper_rejected(
+            "          RELEASE_DOCUMENT_VERSION: ${{ vars.PAKPERK_PUBLIC_DOCUMENT_VERSION }}\n",
+            "",
+        )
+
     def test_mobile_flutter_action_tamper_is_rejected(self) -> None:
         self._assert_mobile_tamper_rejected(
             "flutter-version: ${{ env.FLUTTER_VERSION }}",

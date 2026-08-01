@@ -1,8 +1,7 @@
-import 'dart:async';
-
 import '../api/api_client.dart';
 import '../api/api_exception.dart';
 import '../api/request_cancellation.dart';
+import '../api/transport_network_status.dart';
 import '../cache/demo_asset_store.dart';
 import '../cache/feed_cache_persistence.dart';
 import '../cache/local_store.dart';
@@ -85,25 +84,29 @@ class PaperRepository implements PaperDataSource {
     required LocalStore localStore,
     required DemoContentStore demoContent,
     this.fulltextPolicy = ClientFulltextPolicy.prototype,
+    TransportNetworkStatus? networkStatus,
   }) : _api = api,
        _localStore = localStore,
-       _demoContent = demoContent;
+       _demoContent = demoContent,
+       _networkStatus = networkStatus ?? TransportNetworkStatus(),
+       _ownsNetworkStatus = networkStatus == null;
 
   final ApiClient _api;
   final LocalStore _localStore;
   final DemoContentStore _demoContent;
   final ClientFulltextPolicy fulltextPolicy;
-  final StreamController<bool> _offlineController =
-      StreamController<bool>.broadcast(sync: true);
-  bool _offline = false;
+  final TransportNetworkStatus _networkStatus;
+  final bool _ownsNetworkStatus;
 
   @override
-  bool get isOffline => _offline;
+  bool get isOffline => _networkStatus.isOffline;
 
   @override
-  Stream<bool> get offlineChanges => _offlineController.stream;
+  Stream<bool> get offlineChanges => _networkStatus.changes;
 
-  void dispose() => _offlineController.close();
+  void dispose() {
+    if (_ownsNetworkStatus) _networkStatus.dispose();
+  }
 
   @override
   Future<RepositoryValue<FeedPage>> getCachedFeed({String? category}) async {
@@ -157,7 +160,7 @@ class PaperRepository implements PaperDataSource {
     return RepositoryValue(
       value: fulltextPolicy.maskCachedFeed(filtered),
       origin: useCached ? DataOrigin.deviceCache : DataOrigin.bundledDemo,
-      offline: _offline,
+      offline: isOffline,
     );
   }
 
@@ -318,7 +321,7 @@ class PaperRepository implements PaperDataSource {
         return RepositoryValue(
           value: fulltextPolicy.maskCachedPaper(cached),
           origin: DataOrigin.deviceCache,
-          offline: _offline,
+          offline: isOffline,
         );
       }
       final bundled = await _demoContent.findFallbackPaper(paperId);
@@ -326,7 +329,7 @@ class PaperRepository implements PaperDataSource {
         return RepositoryValue(
           value: fulltextPolicy.maskCachedPaper(bundled),
           origin: DataOrigin.bundledDemo,
-          offline: _offline,
+          offline: isOffline,
         );
       }
       rethrow;
@@ -376,7 +379,7 @@ class PaperRepository implements PaperDataSource {
         return RepositoryValue(
           value: fulltextPolicy.maskCachedPaper(cached),
           origin: DataOrigin.deviceCache,
-          offline: _offline,
+          offline: isOffline,
         );
       }
       final bundled = await _demoContent.findFallbackPaperByArxiv(
@@ -386,7 +389,7 @@ class PaperRepository implements PaperDataSource {
         return RepositoryValue(
           value: fulltextPolicy.maskCachedPaper(bundled),
           origin: DataOrigin.bundledDemo,
-          offline: _offline,
+          offline: isOffline,
         );
       }
       rethrow;
@@ -467,7 +470,7 @@ class PaperRepository implements PaperDataSource {
       return RepositoryValue(
         value: fulltextPolicy.maskCachedProcessing(cached),
         origin: DataOrigin.deviceCache,
-        offline: _offline,
+        offline: isOffline,
       );
     }
 
@@ -505,7 +508,7 @@ class PaperRepository implements PaperDataSource {
     return RepositoryValue(
       value: processing,
       origin: DataOrigin.bundledDemo,
-      offline: _offline,
+      offline: isOffline,
     );
   }
 
@@ -558,7 +561,7 @@ class PaperRepository implements PaperDataSource {
         return RepositoryValue(
           value: cached,
           origin: DataOrigin.deviceCache,
-          offline: _offline,
+          offline: isOffline,
         );
       }
       if (!await _bundledVersionMatches(paperId)) rethrow;
@@ -569,7 +572,7 @@ class PaperRepository implements PaperDataSource {
         return RepositoryValue(
           value: bundled,
           origin: DataOrigin.bundledDemo,
-          offline: _offline,
+          offline: isOffline,
         );
       }
       rethrow;
@@ -625,7 +628,7 @@ class PaperRepository implements PaperDataSource {
         return RepositoryValue(
           value: cached,
           origin: DataOrigin.deviceCache,
-          offline: _offline,
+          offline: isOffline,
         );
       }
       if (!await _bundledVersionMatches(paperId)) rethrow;
@@ -636,7 +639,7 @@ class PaperRepository implements PaperDataSource {
         return RepositoryValue(
           value: bundled,
           origin: DataOrigin.bundledDemo,
-          offline: _offline,
+          offline: isOffline,
         );
       }
       rethrow;
@@ -810,16 +813,10 @@ class PaperRepository implements PaperDataSource {
   }
 
   void _markFrom(ApiException error) {
-    if (error.isOffline) _setOffline(true);
+    _networkStatus.observeApiException(error);
   }
 
-  void _markOnline() => _setOffline(false);
-
-  void _setOffline(bool value) {
-    if (_offline == value) return;
-    _offline = value;
-    _offlineController.add(value);
-  }
+  void _markOnline() => _networkStatus.markOnline();
 }
 
 enum _GenerationRelation { unknown, current, responseNewer, responseOlder }

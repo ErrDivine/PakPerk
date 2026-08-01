@@ -337,6 +337,24 @@ def validate(
     flutter_gate = source.index("Verify and record the exact reviewed Flutter SDK")
     ruby_gate = source.index("Select, verify, and record the reviewed Ruby runtime")
     protected_inputs = source.index("Materialize protected mobile feature flags")
+    protected_inputs_step = _step_block(
+        source,
+        "Materialize protected mobile feature flags",
+        "signed mobile workflow",
+    )
+    _require_fragments(
+        protected_inputs_step,
+        (
+            '"schema": 2',
+            "RELEASE_DOCUMENT_VERSION: ${{ vars.PAKPERK_PUBLIC_DOCUMENT_VERSION }}",
+            'expected_document_version = os.environ.get("RELEASE_DOCUMENT_VERSION", "")',
+            'config[key] != expected_document_version',
+            '"termsDocumentVersion": config["PAKPERK_TERMS_DOCUMENT_VERSION"]',
+            '"communityGuidelinesDocumentVersion": config["PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION"]',
+            ' / "evidence" / "mobile-feature-flags.json"',
+        ),
+        "signed mobile policy-version evidence",
+    )
     flutter_dependencies = source.index("Resolve locked Flutter dependencies")
     bundler_install = source.index("Install and record the pinned store upload client")
     if source_gate >= protected_inputs:

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -87,6 +89,245 @@ void main() {
     expect(find.text('Secure auth route'), findsOneWidget);
     expect(pending.state?.kind, AppPendingActionKind.openComposer);
     expect(pending.state?.targetId, samplePaper.paperId);
+  });
+
+  testWidgets(
+    'authenticated report intent waits for its reloaded comment target',
+    (tester) async {
+      final fixture = await _fixture(
+        viewerAccountId: accountA,
+        page: CommentPage(
+          items: [_comment(authorId: accountB, idSuffix: '11')],
+          nextCursor: null,
+        ),
+        load: false,
+      );
+      addTearDown(fixture.database.close);
+      final loadGate = Completer<void>();
+      fixture.remote.listGate = loadGate;
+      final intents = CommentUiIntentController();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            commentViewerScopeProvider.overrideWithValue(
+              const CommentViewerScope.authenticated(
+                accountId: accountA,
+                authEpoch: 1,
+              ),
+            ),
+            commentComposerEligibleProvider.overrideWithValue(true),
+            verifiedCommentScopeProvider.overrideWithValue(const (
+              accountId: accountA,
+              authEpoch: 1,
+            )),
+            commentThreadProvider.overrideWith(
+              (ref, paperId) => fixture.controller,
+            ),
+            commentUiIntentProvider.overrideWith((ref) => intents),
+            networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
+          ],
+          child: MaterialApp(
+            home: CommentsScreen(
+              paperId: samplePaper.paperId,
+              paperTitle: samplePaper.title,
+              onClose: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final load = fixture.controller.load();
+      await tester.pump();
+
+      final intent = CommentUiIntent(
+        kind: CommentUiIntentKind.reportComment,
+        targetId: _commentId('11'),
+      );
+      intents.show(intent);
+      await tester.pump();
+
+      expect(intents.state, same(intent));
+      expect(find.widgetWithText(AlertDialog, 'Report comment'), findsNothing);
+
+      loadGate.complete();
+      await load;
+      await tester.pumpAndSettle();
+
+      expect(intents.state, isNull);
+      expect(
+        find.widgetWithText(AlertDialog, 'Report comment'),
+        findsOneWidget,
+      );
+      expect(fixture.remote.reportCalls, isEmpty);
+    },
+  );
+
+  testWidgets('missing resumed target fails once with a visible explanation', (
+    tester,
+  ) async {
+    final fixture = await _fixture(
+      viewerAccountId: accountA,
+      page: const CommentPage(items: [], nextCursor: null),
+    );
+    addTearDown(fixture.database.close);
+    final intents = CommentUiIntentController();
+    intents.show(
+      CommentUiIntent(kind: CommentUiIntentKind.blockUser, targetId: accountB),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          commentViewerScopeProvider.overrideWithValue(
+            const CommentViewerScope.authenticated(
+              accountId: accountA,
+              authEpoch: 1,
+            ),
+          ),
+          commentComposerEligibleProvider.overrideWithValue(true),
+          verifiedCommentScopeProvider.overrideWithValue(const (
+            accountId: accountA,
+            authEpoch: 1,
+          )),
+          commentThreadProvider.overrideWith(
+            (ref, paperId) => fixture.controller,
+          ),
+          commentUiIntentProvider.overrideWith((ref) => intents),
+          networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
+        ],
+        child: MaterialApp(
+          home: CommentsScreen(
+            paperId: samplePaper.paperId,
+            paperTitle: samplePaper.title,
+            onClose: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(intents.state, isNull);
+    expect(
+      find.text('The user is no longer available to block.'),
+      findsOneWidget,
+    );
+    expect(fixture.remote.blockCalls, isEmpty);
+  });
+
+  testWidgets('header reveals a count only after pagination is complete', (
+    tester,
+  ) async {
+    final fixture = await _fixture(
+      viewerAccountId: null,
+      page: CommentPage(
+        items: [_comment(authorId: accountB, idSuffix: '11')],
+        nextCursor: 'page-2',
+      ),
+    );
+    addTearDown(fixture.database.close);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          commentViewerScopeProvider.overrideWithValue(
+            const CommentViewerScope.guest(),
+          ),
+          commentComposerEligibleProvider.overrideWithValue(false),
+          verifiedCommentScopeProvider.overrideWithValue(null),
+          commentThreadProvider.overrideWith(
+            (ref, paperId) => fixture.controller,
+          ),
+          networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
+        ],
+        child: MaterialApp(
+          home: CommentsScreen(
+            paperId: samplePaper.paperId,
+            paperTitle: samplePaper.title,
+            onClose: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(samplePaper.title), findsOneWidget);
+    expect(find.text('1 comment'), findsNothing);
+
+    fixture.remote.page = CommentPage(
+      items: [
+        _comment(authorId: accountB, idSuffix: '11'),
+        _comment(authorId: accountA, idSuffix: '12'),
+      ],
+      nextCursor: null,
+    );
+    await fixture.controller.refresh();
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 comments'), findsOneWidget);
+  });
+
+  testWidgets('header hides a count for a cached page after refresh fails', (
+    tester,
+  ) async {
+    final fixture = await _fixture(
+      viewerAccountId: null,
+      page: CommentPage(
+        items: [
+          _comment(authorId: accountB, idSuffix: '11'),
+          _comment(authorId: accountA, idSuffix: '12'),
+        ],
+        nextCursor: null,
+      ),
+    );
+    addTearDown(fixture.database.close);
+    addTearDown(fixture.controller.dispose);
+    await fixture.repository.cacheVisibleFirstPage(
+      paperId: samplePaper.paperId,
+      viewer: const CommentViewerScope.guest(),
+      page: CommentPage(
+        items: [_comment(authorId: accountB, idSuffix: '11')],
+        nextCursor: null,
+      ),
+    );
+    fixture.remote.listError = const ApiException(
+      code: 'OFFLINE',
+      message: 'You appear to be offline.',
+    );
+    final restarted = CommentThreadController(
+      repository: fixture.repository,
+      paperId: samplePaper.paperId,
+      viewer: const CommentViewerScope.guest(),
+    );
+    await restarted.load();
+
+    expect(restarted.state.showingCached, isTrue);
+    expect(restarted.state.items, hasLength(1));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          commentViewerScopeProvider.overrideWithValue(
+            const CommentViewerScope.guest(),
+          ),
+          commentComposerEligibleProvider.overrideWithValue(false),
+          verifiedCommentScopeProvider.overrideWithValue(null),
+          commentThreadProvider.overrideWith((ref, paperId) => restarted),
+          networkOfflineProvider.overrideWith((ref) => Stream.value(true)),
+        ],
+        child: MaterialApp(
+          home: CommentsScreen(
+            paperId: samplePaper.paperId,
+            paperTitle: samplePaper.title,
+            onClose: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('A published observation.'), findsOneWidget);
+    expect(find.text('1 comment'), findsNothing);
   });
 
   testWidgets(
@@ -368,6 +609,7 @@ Future<
   ({
     PakPerkDatabase database,
     CommentThreadController controller,
+    CommentRepository repository,
     _Remote remote,
   })
 >
@@ -375,6 +617,7 @@ _fixture({
   required String? viewerAccountId,
   required CommentPage page,
   bool creationDisabled = false,
+  bool load = true,
 }) async {
   final database = PakPerkDatabase(NativeDatabase.memory());
   await PaperCacheDao(database).save(samplePaper);
@@ -403,15 +646,23 @@ _fixture({
     paperId: samplePaper.paperId,
     viewer: viewer,
   );
-  await controller.load();
-  return (database: database, controller: controller, remote: remote);
+  if (load) await controller.load();
+  return (
+    database: database,
+    controller: controller,
+    repository: repository,
+    remote: remote,
+  );
 }
 
 final class _Remote implements CommentsRemoteDataSource {
   _Remote({required this.page, required this.creationDisabled});
 
-  final CommentPage page;
+  CommentPage page;
   final bool creationDisabled;
+  ApiException? listError;
+  Completer<void>? listGate;
+  int listCalls = 0;
   final List<
     ({
       String commentId,
@@ -438,7 +689,12 @@ final class _Remote implements CommentsRemoteDataSource {
     required int? expectedAuthEpoch,
     String? cursor,
     int limit = 50,
-  }) async => page;
+  }) async {
+    listCalls += 1;
+    await listGate?.future;
+    if (listError case final error?) throw error;
+    return page;
+  }
 
   @override
   Future<PaperComment> create({

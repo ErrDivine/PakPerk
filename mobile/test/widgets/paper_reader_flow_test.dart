@@ -275,7 +275,12 @@ void main() {
     await tester.scrollUntilVisible(
       openRecord,
       280,
-      scrollable: find.byKey(const PageStorageKey('abstract-scroll')),
+      scrollable: find
+          .descendant(
+            of: find.byKey(const PageStorageKey('abstract-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
     await tester.tap(openRecord);
     await tester.pump();
@@ -287,7 +292,12 @@ void main() {
     await tester.scrollUntilVisible(
       openPdf,
       280,
-      scrollable: find.byKey(const PageStorageKey('introduction-scroll')),
+      scrollable: find
+          .descendant(
+            of: find.byKey(const PageStorageKey('introduction-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
     await tester.tap(openPdf);
     await tester.pump();

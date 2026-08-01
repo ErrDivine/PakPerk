@@ -42,7 +42,7 @@ final legalDocumentLoaderProvider = Provider<LegalDocumentLoader>(
       (path) => loadBundledLegalDocument(rootBundle, path),
 );
 
-final class LegalDocumentScreen extends ConsumerWidget {
+final class LegalDocumentScreen extends ConsumerStatefulWidget {
   const LegalDocumentScreen({
     required this.kind,
     required this.onClose,
@@ -53,33 +53,60 @@ final class LegalDocumentScreen extends ConsumerWidget {
   final VoidCallback onClose;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LegalDocumentScreen> createState() =>
+      _LegalDocumentScreenState();
+}
+
+final class _LegalDocumentScreenState
+    extends ConsumerState<LegalDocumentScreen> {
+  LegalDocumentKind? _loadedKind;
+  LegalDocumentLoader? _loadedWith;
+  String? _loadedVersion;
+  Future<String>? _document;
+
+  @override
+  Widget build(BuildContext context) {
     final config = ref.watch(appBuildConfigProvider);
-    final publishedUri = switch (kind) {
+    final loader = ref.watch(legalDocumentLoaderProvider);
+    final expectedVersion = switch (widget.kind) {
+      LegalDocumentKind.terms => config.termsDocumentVersion,
+      LegalDocumentKind.communityGuidelines =>
+        config.communityGuidelinesDocumentVersion,
+      _ => null,
+    };
+    if (_loadedKind != widget.kind ||
+        !identical(_loadedWith, loader) ||
+        _loadedVersion != expectedVersion) {
+      _loadedKind = widget.kind;
+      _loadedWith = loader;
+      _loadedVersion = expectedVersion;
+      _document = _loadVersionBoundDocument(loader, widget.kind, config);
+    }
+    final publishedUri = switch (widget.kind) {
       LegalDocumentKind.support => config.supportUri,
       LegalDocumentKind.accountDeletion => config.accountDeletionUri,
-      _ => config.legalUri(kind.publicPath),
+      _ => config.legalUri(widget.kind.publicPath),
     };
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          tooltip: 'Close ${kind.title}',
-          onPressed: onClose,
+          tooltip: 'Close ${widget.kind.title}',
+          onPressed: widget.onClose,
           icon: const Icon(Icons.close),
         ),
-        title: Text(kind.title),
+        title: Text(widget.kind.title),
       ),
       body: SafeArea(
         top: false,
         child: FutureBuilder<String>(
-          future: ref.read(legalDocumentLoaderProvider)(kind.assetPath),
+          future: _document,
           builder: (context, snapshot) => ListView(
-            key: ValueKey('legal-${kind.name}'),
+            key: ValueKey('legal-${widget.kind.name}'),
             padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
             children: [
               if (snapshot.hasData)
                 MarkdownBody(
-                  key: ValueKey('legal-${kind.name}-markdown'),
+                  key: ValueKey('legal-${widget.kind.name}-markdown'),
                   data: snapshot.data!,
                   selectable: true,
                   styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context))
@@ -103,11 +130,13 @@ final class LegalDocumentScreen extends ConsumerWidget {
                 const Center(child: CircularProgressIndicator()),
               const SizedBox(height: 24),
               FilledButton.icon(
-                key: ValueKey('legal-${kind.name}-published'),
+                key: ValueKey('legal-${widget.kind.name}-published'),
                 onPressed: () =>
                     ref.read(externalLinkOpenerProvider).open(publishedUri),
                 icon: const Icon(Icons.open_in_new),
-                label: Text('Open published ${kind.title.toLowerCase()}'),
+                label: Text(
+                  'Open published ${widget.kind.title.toLowerCase()}',
+                ),
               ),
               const SizedBox(height: 8),
               Text(
@@ -127,6 +156,32 @@ Future<String> loadBundledLegalDocument(AssetBundle bundle, String path) async {
   final text = await bundle.loadString(path, cache: true);
   if (text.isEmpty || text.length > 64 * 1024 || text.contains('\u0000')) {
     throw const FormatException('Invalid bundled legal document.');
+  }
+  return text;
+}
+
+Future<String> _loadVersionBoundDocument(
+  LegalDocumentLoader loader,
+  LegalDocumentKind kind,
+  AppBuildConfig config,
+) async {
+  final text = await loader(kind.assetPath);
+  final expectedVersion = switch (kind) {
+    LegalDocumentKind.terms => config.termsDocumentVersion,
+    LegalDocumentKind.communityGuidelines =>
+      config.communityGuidelinesDocumentVersion,
+    _ => null,
+  };
+  if (expectedVersion == null) return text;
+  final marker = 'Publication version: $expectedVersion.';
+  final markerCount = RegExp(
+    '^${RegExp.escape(marker)}\$',
+    multiLine: true,
+  ).allMatches(text).length;
+  if (markerCount != 1) {
+    throw const FormatException(
+      'Bundled legal document does not match the configured version.',
+    );
   }
   return text;
 }

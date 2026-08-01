@@ -209,6 +209,7 @@ jobs:
           RELEASE_ACCOUNTS_ENABLED: ${{ vars.PAKPERK_ACCOUNTS_ENABLED }}
           RELEASE_LIBRARY_ENABLED: ${{ vars.PAKPERK_LIBRARY_ENABLED }}
           RELEASE_COMMENTS_ENABLED: ${{ vars.PAKPERK_COMMENTS_ENABLED }}
+          RELEASE_DOCUMENT_VERSION: ${{ vars.PAKPERK_PUBLIC_DOCUMENT_VERSION }}
         run: |
           mkdir -p "$RUNNER_TEMP/evidence"
           python3 - <<'PY'
@@ -223,6 +224,21 @@ jobs:
           config = json.loads(source.read_text(encoding="utf-8"))
 
           if os.environ["RELEASE_ENVIRONMENT"] != "development":
+              expected_document_version = os.environ.get("RELEASE_DOCUMENT_VERSION", "")
+              if not expected_document_version:
+                  raise SystemExit(
+                      "Protected PAKPERK_PUBLIC_DOCUMENT_VERSION is required"
+                  )
+              if any(
+                  config[key] != expected_document_version
+                  for key in (
+                      "PAKPERK_TERMS_DOCUMENT_VERSION",
+                      "PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION",
+                  )
+              ):
+                  raise SystemExit(
+                      "Bundled mobile policies do not match the protected public document version"
+                  )
               protected = {}
               for short_name, config_name in (
                   ("ACCOUNTS", "PAKPERK_ACCOUNTS_ENABLED"),
@@ -248,11 +264,13 @@ jobs:
           evidence.write_text(
               json.dumps(
                   {
-                      "schema": 1,
+                      "schema": 2,
                       "environment": os.environ["RELEASE_ENVIRONMENT"],
                       "accounts": config["PAKPERK_ACCOUNTS_ENABLED"] == "true",
                       "library": config["PAKPERK_LIBRARY_ENABLED"] == "true",
                       "comments": config["PAKPERK_COMMENTS_ENABLED"] == "true",
+                      "termsDocumentVersion": config["PAKPERK_TERMS_DOCUMENT_VERSION"],
+                      "communityGuidelinesDocumentVersion": config["PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION"],
                   },
                   indent=2,
                   sort_keys=True,

@@ -46,6 +46,7 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
   bool _termsAccepted = false;
   bool _guidelinesAccepted = false;
   String? _safeError;
+  AppPendingActionKind? _failedPendingKind;
   String? _initializedProfileId;
 
   @override
@@ -66,6 +67,7 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
     final account = ref.watch(currentAccountProvider);
     final profile = account.profile;
     final pending = ref.watch(pendingAuthenticatedActionProvider);
+    final actionKind = pending?.kind ?? _failedPendingKind;
     if (profile != null && _initializedProfileId != profile.id) {
       _initializedProfileId = profile.id;
       _handle.text = profile.handle ?? '';
@@ -74,8 +76,8 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
       _guidelinesAccepted = profile.communityGuidelinesCurrent;
     }
 
-    final requiresCommunity = _requiresCommunityPolicy(pending?.kind);
-    final bypassesPublicProfile = _bypassesPublicProfile(pending?.kind);
+    final requiresCommunity = _requiresCommunityPolicy(actionKind);
+    final bypassesPublicProfile = _bypassesPublicProfile(actionKind);
     final needsSetup =
         profile != null &&
         profile.isActive &&
@@ -120,8 +122,11 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
         ),
       );
     }
-    final pendingKind = ref.watch(pendingAuthenticatedActionProvider)?.kind;
+    final pendingKind =
+        _failedPendingKind ??
+        ref.watch(pendingAuthenticatedActionProvider)?.kind;
     final saveFailed = pendingKind == AppPendingActionKind.savePaper;
+    final actionFailed = _failedPendingKind != null;
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -145,9 +150,13 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
             Text(error, textAlign: TextAlign.center),
             const SizedBox(height: 18),
             FilledButton.icon(
-              onPressed: _running ? null : _begin,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Try again'),
+              onPressed: _running
+                  ? null
+                  : actionFailed
+                  ? _close
+                  : _begin,
+              icon: Icon(actionFailed ? Icons.arrow_back : Icons.refresh),
+              label: Text(actionFailed ? 'Return' : 'Try again'),
             ),
             TextButton(onPressed: _cancelAndClose, child: const Text('Cancel')),
           ],
@@ -158,7 +167,13 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
 
   Widget _buildOnboarding(AccountProfile profile) {
     final account = ref.watch(currentAccountProvider);
+    final config = ref.watch(appBuildConfigProvider);
     final busy = _running || account.phase == CurrentAccountPhase.updating;
+    final termsDocumentMatches =
+        profile.currentTermsVersion == config.termsDocumentVersion;
+    final guidelinesDocumentMatches =
+        profile.currentCommunityGuidelinesVersion ==
+        config.communityGuidelinesDocumentVersion;
     return Form(
       key: _formKey,
       child: ListView(
@@ -209,7 +224,7 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
           CheckboxListTile(
             key: const ValueKey('account-terms-checkbox'),
             value: _termsAccepted,
-            onChanged: busy
+            onChanged: busy || (!profile.termsCurrent && !termsDocumentMatches)
                 ? null
                 : (value) => setState(() => _termsAccepted = value ?? false),
             controlAffinity: ListTileControlAffinity.leading,
@@ -217,7 +232,11 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
             title: Text(
               'I accept terms version ${profile.currentTermsVersion}.',
             ),
-            subtitle: const Text('Required to complete your public profile.'),
+            subtitle: Text(
+              !profile.termsCurrent && !termsDocumentMatches
+                  ? 'Update Pakperk before accepting the current terms.'
+                  : 'Required to complete your public profile.',
+            ),
           ),
           Align(
             alignment: Alignment.centerLeft,
@@ -235,7 +254,10 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
             CheckboxListTile(
               key: const ValueKey('account-community-checkbox'),
               value: _guidelinesAccepted,
-              onChanged: busy
+              onChanged:
+                  busy ||
+                      (!profile.communityGuidelinesCurrent &&
+                          !guidelinesDocumentMatches)
                   ? null
                   : (value) =>
                         setState(() => _guidelinesAccepted = value ?? false),
@@ -251,6 +273,15 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
                 'copyright abuse are prohibited.',
               ),
             ),
+            if (!profile.communityGuidelinesCurrent &&
+                !guidelinesDocumentMatches)
+              const Padding(
+                padding: EdgeInsets.only(left: 12),
+                child: Text(
+                  'Update Pakperk before accepting the current Community '
+                  'Guidelines.',
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.only(left: 12),
               child: Text(
@@ -309,6 +340,7 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
     setState(() {
       _running = true;
       _safeError = null;
+      _failedPendingKind = null;
     });
     final auth = ref.read(authSessionProvider);
     var signedIn = auth.isAuthenticated;
@@ -368,6 +400,14 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
 
   Future<void> _submit(AccountProfile profile) async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    final config = ref.read(appBuildConfigProvider);
+    if (!profile.termsCurrent &&
+        profile.currentTermsVersion != config.termsDocumentVersion) {
+      setState(
+        () => _safeError = 'Update Pakperk before accepting the current terms.',
+      );
+      return;
+    }
     if (!_termsAccepted) {
       setState(() => _safeError = 'Accept the current terms to continue.');
       return;
@@ -375,6 +415,17 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
     final requiresCommunity = _requiresCommunityPolicy(
       ref.read(pendingAuthenticatedActionProvider)?.kind,
     );
+    if (requiresCommunity &&
+        !profile.communityGuidelinesCurrent &&
+        profile.currentCommunityGuidelinesVersion !=
+            config.communityGuidelinesDocumentVersion) {
+      setState(
+        () => _safeError =
+            'Update Pakperk before accepting the current Community '
+            'Guidelines.',
+      );
+      return;
+    }
     if (requiresCommunity && !_guidelinesAccepted) {
       setState(
         () =>
@@ -437,10 +488,10 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
     try {
       await executor(pending);
     } on Object {
-      pendingController.restoreIfEmpty(pending);
       if (mounted) {
         setState(() {
           _running = false;
+          _failedPendingKind = pending.kind;
           _safeError = _pendingFailureMessage(pending.kind);
         });
       }
@@ -482,13 +533,14 @@ bool _bypassesPublicProfile(AppPendingActionKind? kind) => switch (kind) {
 
 String _pendingFailureMessage(AppPendingActionKind kind) => switch (kind) {
   AppPendingActionKind.savePaper =>
-    'You are signed in, but this paper was not saved. Try again.',
+    'You are signed in, but this paper was not saved. Return and try again.',
   AppPendingActionKind.openComposer =>
-    'Signed in, but the comment composer could not be opened. Try again.',
+    'Signed in, but the comment composer could not be opened. Return and try '
+        'again.',
   AppPendingActionKind.reportComment =>
-    'Signed in, but the report could not be opened. Try again.',
+    'Signed in, but the report could not be opened. Return and try again.',
   AppPendingActionKind.reportUser =>
-    'Signed in, but the user report could not be opened. Try again.',
+    'Signed in, but the user report could not be opened. Return and try again.',
   AppPendingActionKind.blockUser =>
-    'Signed in, but this user could not be blocked. Try again.',
+    'Signed in, but this user could not be blocked. Return and try again.',
 };

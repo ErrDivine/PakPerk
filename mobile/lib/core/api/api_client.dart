@@ -10,26 +10,35 @@ import 'api_error_mapper.dart';
 import 'api_exception.dart';
 import 'feed_http_result.dart';
 import 'request_cancellation.dart';
+import 'transport_network_status.dart';
 
 class ApiClient {
-  ApiClient({required String baseUrl, required String sessionId, Dio? dio})
-    : _sessionId = sessionId,
-      _ownsDio = dio == null,
-      _dio =
-          dio ??
-          Dio(
-            BaseOptions(
-              baseUrl: baseUrl,
-              connectTimeout: const Duration(seconds: 5),
-              receiveTimeout: const Duration(seconds: 20),
-              sendTimeout: const Duration(seconds: 10),
-              followRedirects: false,
-              headers: const {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-              },
-            ),
-          );
+  ApiClient({
+    required String baseUrl,
+    required String sessionId,
+    Dio? dio,
+    TransportNetworkStatus? networkStatus,
+  }) : _sessionId = sessionId,
+       _ownsDio = dio == null,
+       _dio =
+           dio ??
+           Dio(
+             BaseOptions(
+               baseUrl: baseUrl,
+               connectTimeout: const Duration(seconds: 5),
+               receiveTimeout: const Duration(seconds: 20),
+               sendTimeout: const Duration(seconds: 10),
+               followRedirects: false,
+               headers: const {
+                 'Accept': 'application/json',
+                 'Content-Type': 'application/json',
+               },
+             ),
+           ) {
+    if (_ownsDio && networkStatus != null) {
+      _dio.interceptors.add(TransportNetworkStatusInterceptor(networkStatus));
+    }
+  }
 
   final Dio _dio;
   final bool _ownsDio;

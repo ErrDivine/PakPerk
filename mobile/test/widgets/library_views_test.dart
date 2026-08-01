@@ -105,6 +105,81 @@ void main() {
     expect(find.byKey(const ValueKey('save-sync-pending')), findsOneWidget);
   });
 
+  testWidgets(
+    'two save controls stay consistent through one saved-state stream',
+    (tester) async {
+      final paper = _paper('Shared state paper', 6);
+      final database = PakPerkDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final repository = LibraryRepository(
+        local: LibraryDao(
+          database,
+          clock: () => DateTime.utc(2026, 8, 1, 12),
+          operationId: () => _dualControlOperationId,
+        ),
+        remote: _UnusedLibraryRemote(),
+        sessionScope: () => (accountId: _accountId, authEpoch: 7),
+        verifiedScope: () => (accountId: _accountId, authEpoch: 7),
+      );
+      var savedStateStreams = 0;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            featureFlagsProvider.overrideWithValue(_libraryFlags),
+            libraryDisplayScopeProvider.overrideWithValue(const (
+              accountId: _accountId,
+              authEpoch: 7,
+            )),
+            libraryRepositoryProvider.overrideWithValue(repository),
+            paperSavedStateProvider.overrideWith((ref, paperId) {
+              savedStateStreams += 1;
+              return repository.watchSavedState(_accountId, paperId);
+            }),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: Column(
+                children: [
+                  PaperSaveControl(paper: paper),
+                  PaperSaveControl(paper: paper),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      final controls = find.byKey(const ValueKey('paper-save-control'));
+      await _pumpUntil(
+        tester,
+        () =>
+            controls.evaluate().length == 2 &&
+            tester
+                .widgetList<InkWell>(controls)
+                .every((control) => control.onTap != null),
+      );
+
+      expect(find.bySemanticsLabel('Save to To Read'), findsNWidgets(2));
+      expect(savedStateStreams, 1);
+      await tester.tap(controls.first);
+      await _pumpUntil(
+        tester,
+        () =>
+            find.bySemanticsLabel('Remove from To Read').evaluate().length == 2,
+      );
+
+      expect(find.bySemanticsLabel('Remove from To Read'), findsNWidgets(2));
+      expect(savedStateStreams, 1);
+      expect(
+        await repository.watchSavedState(_accountId, paper.paperId).first,
+        const LibrarySavedState(saved: true, syncPending: true),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 1));
+    },
+  );
+
   testWidgets('shared unsave offers Undo as a fresh saved operation', (
     tester,
   ) async {
@@ -449,6 +524,7 @@ final class _RecordingLibraryRemote implements LibraryRemoteDataSource {
 }
 
 const _accountId = '018f47a6-4b56-7f4c-8c7a-e2656e820001';
+const _dualControlOperationId = '018f47a6-4b56-7f4c-8c7a-e2656e820200';
 const _seedOperationId = '018f47a6-4b56-7f4c-8c7a-e2656e820201';
 const _removeOperationId = '018f47a6-4b56-7f4c-8c7a-e2656e820202';
 const _undoOperationId = '018f47a6-4b56-7f4c-8c7a-e2656e820203';

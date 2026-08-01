@@ -28,9 +28,33 @@ void main() {
           reason: 'a zero-config debug build must not contact production',
         );
         expect(config.fulltextPolicy, 'prototype');
+        expect(config.termsDocumentVersion, bundledTermsDocumentVersion);
+        expect(
+          config.communityGuidelinesDocumentVersion,
+          bundledCommunityGuidelinesDocumentVersion,
+        );
         expect(config.features, const FeatureFlags.disabled());
       },
     );
+
+    test('policy versions are valid dates bound to bundled documents', () {
+      for (final version in ['2026-02-30', '2026-7-31', 'release-latest']) {
+        expect(
+          () => AppBuildConfig.fromValues({
+            'PAKPERK_TERMS_DOCUMENT_VERSION': version,
+          }),
+          throwsA(isA<BuildConfigurationException>()),
+          reason: version,
+        );
+      }
+      expect(
+        () => AppBuildConfig.fromValues(const {
+          'PAKPERK_TERMS_DOCUMENT_VERSION': '2026-08-01',
+          'PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION': '2026-08-01',
+        }),
+        throwsA(isA<BuildConfigurationException>()),
+      );
+    });
 
     test('accepts a complete strict production configuration', () {
       final config = AppBuildConfig.fromValues(const {

@@ -121,6 +121,15 @@ flavor intentionally retains reviewed demo-derived fallbacks and is not a
 strict artifact. Signed-artifact verification additionally requires the iOS
 1024x1024 marketing rendition to be opaque.
 
+`PAKPERK_TERMS_DOCUMENT_VERSION` and
+`PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION` in each flavor configuration
+are build-time bindings to the publication markers in the bundled acceptance
+documents. A mismatched build configuration is rejected, a server advertising
+a newer version disables acceptance until an updated app is installed, and the
+signed-release evidence records both exact versions. Staging and production
+signing also require both bundled versions to equal the protected
+`PAKPERK_PUBLIC_DOCUMENT_VERSION` used by public-edge verification.
+
 Run the native iOS protection test on an available simulator (replace the
 destination ID):
 

@@ -33,6 +33,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   final _composer = TextEditingController();
   final _composerFocus = FocusNode();
   final _scroll = ScrollController();
+  bool _intentResumeScheduled = false;
 
   @override
   void initState() {
@@ -70,6 +71,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     final offline = ref
         .watch(networkOfflineProvider)
         .maybeWhen(data: (value) => value, orElse: () => false);
+    final commentCountLabel = _knownCommentCountLabel(state);
 
     ref.listen<CommentThreadState>(commentThreadProvider(widget.paperId), (
       previous,
@@ -83,13 +85,21 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
           selection: TextSelection.collapsed(offset: next.draft.length),
         );
       }
+      if (next.initialLoadSettled &&
+          ref.read(commentUiIntentProvider) != null) {
+        _scheduleResumeIntent();
+      }
     });
     ref.listen<CommentUiIntent?>(commentUiIntentProvider, (_, intent) {
       if (intent == null) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _resumeIntent();
-      });
+      _scheduleResumeIntent();
     });
+    // The executor can publish while this route is covered by the auth route.
+    // A rebuilt screen must also observe that already-present one-shot value;
+    // Riverpod listeners intentionally do not fire for prior state by default.
+    if (state.initialLoadSettled && ref.read(commentUiIntentProvider) != null) {
+      _scheduleResumeIntent();
+    }
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -110,10 +120,11 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.titleMedium,
             ),
-            Text(
-              '${state.items.length} ${state.items.length == 1 ? 'comment' : 'comments'}',
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
+            if (commentCountLabel != null)
+              Text(
+                commentCountLabel,
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
           ],
         ),
       ),
@@ -553,39 +564,106 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   }
 
   Future<void> _resumeIntent() async {
-    final taken = ref.read(commentUiIntentProvider.notifier).take();
-    if (taken == null) return;
-    switch (taken.kind) {
+    final intent = ref.read(commentUiIntentProvider);
+    if (intent == null) return;
+    final intents = ref.read(commentUiIntentProvider.notifier);
+    switch (intent.kind) {
       case CommentUiIntentKind.openComposer:
-        if (taken.targetId == widget.paperId) _composerFocus.requestFocus();
-        return;
-      case CommentUiIntentKind.reportComment:
-        final comment = ref
-            .read(commentThreadProvider(widget.paperId).notifier)
-            .commentById(taken.targetId);
-        if (comment != null) await _reportComment(comment);
-        return;
-      case CommentUiIntentKind.reportUser:
-        final comment = ref
-            .read(commentThreadProvider(widget.paperId))
-            .items
-            .where((item) => item.author.id == taken.targetId)
-            .firstOrNull;
-        if (comment != null) await _reportUser(comment.author);
-        return;
-      case CommentUiIntentKind.blockUser:
-        final comment = ref
-            .read(commentThreadProvider(widget.paperId))
-            .items
-            .where((item) => item.author.id == taken.targetId)
-            .firstOrNull;
-        if (comment != null) {
-          await ref
-              .read(commentThreadProvider(widget.paperId).notifier)
-              .block(comment.author);
+        if (intents.takeIfCurrent(intent) == null) return;
+        if (intent.targetId == widget.paperId) {
+          _composerFocus.requestFocus();
+        } else {
+          _showUnavailableIntent(intent.kind);
         }
         return;
+      case CommentUiIntentKind.reportComment:
+        final comment = await _targetComment(intent, authorTarget: false);
+        if (comment == null || !mounted) return;
+        if (intents.takeIfCurrent(intent) == null) return;
+        await _reportComment(comment);
+        return;
+      case CommentUiIntentKind.reportUser:
+        final comment = await _targetComment(intent, authorTarget: true);
+        if (comment == null || !mounted) return;
+        if (intents.takeIfCurrent(intent) == null) return;
+        await _reportUser(comment.author);
+        return;
+      case CommentUiIntentKind.blockUser:
+        final comment = await _targetComment(intent, authorTarget: true);
+        if (comment == null || !mounted) return;
+        if (intents.takeIfCurrent(intent) == null) return;
+        await ref
+            .read(commentThreadProvider(widget.paperId).notifier)
+            .block(comment.author);
+        return;
     }
+  }
+
+  Future<PaperComment?> _targetComment(
+    CommentUiIntent intent, {
+    required bool authorTarget,
+  }) async {
+    final provider = commentThreadProvider(widget.paperId);
+    var thread = ref.read(provider);
+    if (!thread.initialLoadSettled ||
+        thread.loadingInitial ||
+        thread.refreshing ||
+        thread.loadingMore) {
+      return null;
+    }
+    PaperComment? target() => authorTarget
+        ? thread.items
+              .where((item) => item.author.id == intent.targetId)
+              .firstOrNull
+        : thread.items.where((item) => item.id == intent.targetId).firstOrNull;
+    var comment = target();
+    if (comment != null) return comment;
+
+    final cursor = thread.nextCursor;
+    final intents = ref.read(commentUiIntentProvider.notifier);
+    if (cursor != null && intents.claimTargetPageLoad(intent)) {
+      await ref.read(provider.notifier).loadMore();
+      if (!mounted || !identical(ref.read(commentUiIntentProvider), intent)) {
+        return null;
+      }
+      thread = ref.read(provider);
+      comment = target();
+      if (comment != null) return comment;
+      if (thread.errorMessage == null) {
+        _scheduleResumeIntent();
+        return null;
+      }
+    }
+
+    if (intents.takeIfCurrent(intent) != null && mounted) {
+      _showUnavailableIntent(intent.kind);
+    }
+    return null;
+  }
+
+  void _scheduleResumeIntent() {
+    if (_intentResumeScheduled) return;
+    _intentResumeScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _intentResumeScheduled = false;
+      if (mounted) unawaited(_resumeIntent());
+    });
+  }
+
+  void _showUnavailableIntent(CommentUiIntentKind kind) {
+    final message = switch (kind) {
+      CommentUiIntentKind.openComposer =>
+        'The requested paper discussion is no longer available.',
+      CommentUiIntentKind.reportComment =>
+        'The comment is no longer available to report.',
+      CommentUiIntentKind.reportUser =>
+        'The user is no longer available to report.',
+      CommentUiIntentKind.blockUser =>
+        'The user is no longer available to block.',
+    };
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _maybeLoadMore() {
@@ -777,6 +855,17 @@ class _ReportDialogState extends State<_ReportDialog> {
       ],
     );
   }
+}
+
+String? _knownCommentCountLabel(CommentThreadState state) {
+  if (state.loadingInitial ||
+      state.showingCached ||
+      state.nextCursor != null ||
+      (state.items.isEmpty && state.errorMessage != null)) {
+    return null;
+  }
+  final count = state.items.length;
+  return '$count ${count == 1 ? 'comment' : 'comments'}';
 }
 
 final class _ThreadNotice extends StatelessWidget {

@@ -158,23 +158,23 @@ void main() {
     await _pumpDirectFeed(tester, _repositoryFor(papers));
     expect(hapticCalls, 0, reason: 'initial positioning is not a commit');
 
+    final stage = find.byKey(const ValueKey('stage-abstractView'));
+    final stageBounds = tester.getRect(stage);
     final gesture = await tester.startGesture(
-      tester.getCenter(find.byKey(const ValueKey('stage-abstractView'))),
+      Offset(stageBounds.center.dx, stageBounds.bottom - 40),
     );
-    await gesture.moveBy(const Offset(0, -520));
-    await tester.pump();
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(FeedScreen)),
-    );
-    expect(
-      container.read(appRestorationControllerProvider).feedIndex,
-      1,
-      reason: 'the drag crossed the page threshold before it settled',
-    );
+    for (var movement = 0; movement < 4; movement += 1) {
+      await gesture.moveBy(const Offset(0, -120));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
     expect(hapticCalls, 0, reason: 'drag updates must remain silent');
 
     await gesture.up();
     await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FeedScreen)),
+    );
+    expect(container.read(appRestorationControllerProvider).feedIndex, 1);
     expect(hapticCalls, 1);
   });
 
@@ -252,13 +252,14 @@ void main() {
 
 List<PaperSummary> _papers([int count = 3]) => List.generate(count, (index) {
   final number = index + 1;
+  final arxivId = '1706.${(3760 + number).toString().padLeft(5, '0')}v1';
   final json = samplePaper.toJson()
     ..['paper_id'] =
         '17060376-2000-4000-8000-${number.toString().padLeft(12, '0')}'
-    ..['arxiv_id'] = '1706.0376${number}v1'
+    ..['arxiv_id'] = arxivId
     ..['title'] = 'Gesture paper $number'
-    ..['abs_url'] = 'https://arxiv.org/abs/1706.0376${number}v1'
-    ..['pdf_url'] = 'https://arxiv.org/pdf/1706.0376${number}v1';
+    ..['abs_url'] = 'https://arxiv.org/abs/$arxivId'
+    ..['pdf_url'] = 'https://arxiv.org/pdf/$arxivId';
   return PaperSummary.fromJson(json);
 });
 
