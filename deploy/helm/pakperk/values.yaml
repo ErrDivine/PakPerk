@@ -17,6 +17,8 @@ siteImage:
 
 secret:
   # Created by the deployment platform, never by this chart.
+  # Every key below must be unique so each role and credential can be granted
+  # and rotated independently.
   existingSecret: ""
   # Increment whenever the external Secret changes so copied/subPath-backed
   # material is rolled into fresh pods.
@@ -44,6 +46,7 @@ public:
   oidcWebClientId: ""
   oidcNativeClientId: ""
   supportEmail: ""
+  # Must exactly equal both policy acceptance versions below.
   documentVersion: ""
 
 mobileAssociations:
@@ -55,15 +58,19 @@ mobileAssociations:
   appleBundleId: ""
 
 features:
-  accounts: true
-  library: true
-  libraryWrites: true
-  comments: true
-  commentCreation: true
-  accountDeletion: true
+  # Protected environment values opt into each production capability only
+  # after that phase's smoke/evidence gate. Repository defaults stay dark.
+  accounts: false
+  library: false
+  libraryWrites: false
+  comments: false
+  commentCreation: false
+  accountDeletion: false
 
 policy:
   fulltext: strict
+  # The public legal document and both accepted policy versions are released
+  # as one reviewed version by this chart.
   termsVersion: ""
   communityGuidelinesVersion: ""
   operationalTelemetryRetentionDays: 30
@@ -80,6 +87,11 @@ api:
   requestTimeoutSeconds: 30
   chatTimeoutSeconds: 70
   maxRequestBytes: 65536
+  # Coarse per-client ingress protection. Shared database-backed application
+  # quotas remain authoritative for prepare/chat/comment operations.
+  edgeRateLimitRps: 20
+  edgeBurstMultiplier: 2
+  edgeConnectionLimit: 40
   terminationGracePeriodSeconds: 45
   service:
     port: 8080
@@ -186,7 +198,7 @@ grobid:
   enabled: true
   image:
     repository: grobid/grobid
-    digest: ""
+    digest: sha256:24ba90eb1c959f65d812bcdb2cf79c677fa5fd7b95235de616b8bc9fa1317849
     pullPolicy: IfNotPresent
   resources:
     requests: { cpu: "1", memory: 2Gi }
@@ -219,6 +231,8 @@ ingress:
 networkPolicy:
   enabled: true
   ingressController:
+    # Both exact-match selector maps must remain non-empty. An empty selector
+    # would admit every namespace or Pod to the public service ports.
     namespaceSelector:
       kubernetes.io/metadata.name: ingress-nginx
     podSelector:
@@ -226,7 +240,11 @@ networkPolicy:
   # Standard Kubernetes NetworkPolicy has no portable FQDN selector. Resolve
   # and review these ranges for each managed environment before deployment.
   apiHttpsCidrs: []
-  paperHttpsCidrs: []
+  # arXiv, model-provider, and identity-admin ranges must be canonical IPv4
+  # CIDRs with no equality, overlap, or containment across the three lists.
+  # The split keeps the metadata-only CronJob unable to reach the model API.
+  arxivHttpsCidrs: []
+  modelHttpsCidrs: []
   identityAdminHttpsCidrs: []
   databaseCidrs: []
   databasePort: 5432
@@ -238,6 +256,9 @@ networkPolicy:
     k8s-app: kube-dns
 
 serviceAccount:
+  # The chart creates one token-less ServiceAccount per workload. `name`, when
+  # set, is a base prefix; when create=false the platform must pre-create each
+  # derived <base>-<component> identity with no RBAC grants by default.
   create: true
   name: ""
   annotations: {}

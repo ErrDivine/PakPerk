@@ -229,6 +229,88 @@ counts plus `android_native_elf_load_alignment=16384`. The signed Apple
 evidence must retain the emitted Xcode/SDK/minimum-OS values, provisioning
 profile expiration, entitlement result, and packaged privacy-manifest result.
 
+### Protected mobile feature flags
+
+Staging and production config files keep accounts, library, and comments off
+by default. The signed-candidate workflow materializes its temporary build
+config from these GitHub environment variables:
+
+- `PAKPERK_ACCOUNTS_ENABLED`
+- `PAKPERK_LIBRARY_ENABLED`
+- `PAKPERK_COMMENTS_ENABLED`
+
+Each value must be exactly `true` or `false`; an absent value resolves to
+`false`. Library or comments cannot be enabled unless accounts is also true.
+Define them on the protected `staging` and `production` environments, require
+release reviewers/branch restrictions there, and change them only through the
+release approval record. They are non-secret variables, never dispatch inputs
+or repository defaults. The workflow retains their three booleans in
+`mobile-feature-flags.json` and builds both platforms from that same generated
+config. Keep the independently controlled backend read/write/creation flags
+compatible; a mobile flag does not authorize a server capability.
+
+## Mobile verification lanes
+
+The ordinary CI and signed-candidate workflow run `dart format`,
+`flutter analyze`, and the complete `flutter test` suite. That suite includes
+the headless deterministic production harness. It proves local state-machine,
+cache, outbox, paging, policy, and bounded-widget invariants with controlled
+fixtures; it is not physical-device or deployed-service evidence.
+
+The manually dispatched `mobile-device-integration` workflow runs the same
+deterministic harness in profile mode on an explicitly selected physical
+Android or iOS device. The protected runner rejects emulators and retains a
+closed platform/OS-version record, at least 20 engine frame samples, a
+30-record cached first page plus six deterministic cursor pages covering
+exactly 200 records, 10 generated Flutter drags and 10 generated Flutter
+flings, a file-backed 500-paper/100-save SQLite measurement including its
+WAL/SHM files, and a machine-readable scope file. It never uploads the raw
+Flutter log, device ID, or user-assigned device name; the dispatch ID is masked
+in workflow output. Generated `WidgetTester` gestures exercise Flutter's
+pointer, gesture-arena, scrolling, and page-commit paths on the selected
+device, but do not count as operator/OS-driver gestures under representative
+network conditions. Its performance JSON is classified as a fixture workload
+and must not be used as staging p95 or signed-candidate evidence. Configure
+required reviewers and deployment-branch restrictions on the fixed
+`mobile-device-verification` GitHub environment before attaching a runner; the
+YAML name alone does not make an environment protected. Store the exact Flutter
+device identifier only as that environment's `PAKPERK_MOBILE_DEVICE_ID` secret;
+never pass it as a workflow-dispatch input because run metadata retains inputs
+outside log masks.
+
+A release owner must separately execute the plan's live manual/staging lane on
+the exact signed candidate:
+
+1. Cold launch from populated local cache and collect first-readable-frame and
+   native-launch continuity measurements.
+2. Vertically swipe through at least 20 papers under controlled latency and
+   packet loss; record blank cards and sequential cache hits.
+3. Confirm Introduction preparation begins only after explicit horizontal
+   intent.
+4. Switch Read -> You -> Read and restore the exact paper, stage, and offsets.
+5. Complete system-browser OIDC with PKCE against the release tenant.
+6. Save, terminate/relaunch the installed app, reconnect, and verify sync.
+7. Verify the same save on a second independently installed test device.
+8. Post, edit, and delete a comment against staging.
+9. Report and block another dedicated test account, confirming immediate and
+   server-persisted hiding.
+10. Expire the real access token, verify one refresh, and continue the action.
+11. Reauthenticate for account deletion and verify immediate deactivation,
+    session revocation, provider cleanup, and the deletion status path.
+12. Read and save offline, terminate/relaunch if part of the test matrix, then
+    verify same-UUID outbox recovery after connectivity returns.
+13. Repeat cold/warm startup with reduced motion and verify stationary bounded
+    transitions.
+14. Use the strict signed flavor and verify metadata/save/comments/original
+    arXiv links remain while every cached derived fallback stays masked.
+
+Attach source revision, signed build/version, device model and OS/build,
+staging endpoint/tenant, UTC test window, result for every path, sanitized
+logs/screenshots, measured sample sizes, and release-owner approval. Never put
+tokens, device serials, private query/comment content, handles, or real-user
+data in the evidence bundle. A repository test, simulator, workflow dispatch,
+or operator statement without those artifacts does not complete this lane.
+
 ## Telemetry and release-candidate gates
 
 Production telemetry uses only the exact HTTPS `/v1/logs` OTLP endpoint. The

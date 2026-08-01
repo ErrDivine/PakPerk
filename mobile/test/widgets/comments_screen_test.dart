@@ -89,6 +89,113 @@ void main() {
     expect(pending.state?.targetId, samplePaper.paperId);
   });
 
+  testWidgets('report and block actions confirm, call controllers, and hide', (
+    tester,
+  ) async {
+    final fixture = await _fixture(
+      viewerAccountId: accountA,
+      page: CommentPage(
+        items: [_comment(authorId: accountB, idSuffix: '11')],
+        nextCursor: null,
+      ),
+    );
+    addTearDown(fixture.database.close);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          commentViewerScopeProvider.overrideWithValue(
+            const CommentViewerScope.authenticated(
+              accountId: accountA,
+              authEpoch: 1,
+            ),
+          ),
+          commentComposerEligibleProvider.overrideWithValue(true),
+          verifiedCommentScopeProvider.overrideWithValue(const (
+            accountId: accountA,
+            authEpoch: 1,
+          )),
+          commentThreadProvider.overrideWith(
+            (ref, paperId) => fixture.controller,
+          ),
+          networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
+        ],
+        child: MaterialApp(
+          home: CommentsScreen(
+            paperId: samplePaper.paperId,
+            paperTitle: samplePaper.title,
+            onClose: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final actions = find.byKey(
+      const ValueKey('comment-actions-018f47a6-4b56-7f4c-8c7a-e2656e820011'),
+    );
+    await tester.tap(actions);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Report'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Report comment'), findsOneWidget);
+    expect(fixture.remote.reportCalls, isEmpty);
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Additional detail (optional)'),
+      'Repeated unsolicited promotion.',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Send report'));
+    await tester.pumpAndSettle();
+
+    expect(fixture.remote.reportCalls, hasLength(1));
+    expect(fixture.remote.reportCalls.single.commentId, _commentId('11'));
+    expect(fixture.remote.reportCalls.single.reason, CommentReportReason.spam);
+    expect(
+      fixture.remote.reportCalls.single.detail,
+      'Repeated unsolicited promotion.',
+    );
+    expect(fixture.remote.reportCalls.single.expectedAuthEpoch, 1);
+    expect(find.text('Report received. Thank you.'), findsOneWidget);
+    expect(find.text('A published observation.'), findsOneWidget);
+
+    await tester.tap(actions);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Block user'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Block @reader_two?'), findsOneWidget);
+    expect(
+      find.textContaining('comments will disappear immediately'),
+      findsOneWidget,
+    );
+    expect(fixture.remote.blockCalls, isEmpty);
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('A published observation.'), findsOneWidget);
+    expect(fixture.remote.blockCalls, isEmpty);
+
+    await tester.tap(actions);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Block user'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Block user'));
+    await tester.pumpAndSettle();
+
+    expect(fixture.remote.blockCalls, [accountB]);
+    expect(find.text('A published observation.'), findsNothing);
+    expect(
+      fixture.controller.state.items.where(
+        (comment) => comment.author.id == accountB,
+      ),
+      isEmpty,
+    );
+    final locallyBlocked = await CommentsDao(
+      fixture.database,
+    ).blockedUserIds(accountA);
+    expect(locallyBlocked, contains(accountB));
+  });
+
   testWidgets(
     'authenticated comments stay accessible with keyboard large text and create kill',
     (tester) async {
@@ -224,7 +331,13 @@ void main() {
   );
 }
 
-Future<({PakPerkDatabase database, CommentThreadController controller})>
+Future<
+  ({
+    PakPerkDatabase database,
+    CommentThreadController controller,
+    _Remote remote,
+  })
+>
 _fixture({
   required String? viewerAccountId,
   required CommentPage page,
@@ -232,10 +345,11 @@ _fixture({
 }) async {
   final database = PakPerkDatabase(NativeDatabase.memory());
   await PaperCacheDao(database).save(samplePaper);
+  final remote = _Remote(page: page, creationDisabled: creationDisabled);
   final repository = CommentRepository(
     cache: CommentCacheDao(database),
     local: CommentsDao(database),
-    remote: _Remote(page: page, creationDisabled: creationDisabled),
+    remote: remote,
     accountWrites: AccountDataWriteBarrier(),
     sessionScope: () => (
       accountId: viewerAccountId,
@@ -257,14 +371,24 @@ _fixture({
     viewer: viewer,
   );
   await controller.load();
-  return (database: database, controller: controller);
+  return (database: database, controller: controller, remote: remote);
 }
 
 final class _Remote implements CommentsRemoteDataSource {
-  const _Remote({required this.page, required this.creationDisabled});
+  _Remote({required this.page, required this.creationDisabled});
 
   final CommentPage page;
   final bool creationDisabled;
+  final List<
+    ({
+      String commentId,
+      CommentReportReason reason,
+      String? detail,
+      int expectedAuthEpoch,
+    })
+  >
+  reportCalls = [];
+  final List<String> blockCalls = [];
 
   @override
   Future<CommentPage> listPaper({
@@ -297,10 +421,50 @@ final class _Remote implements CommentsRemoteDataSource {
   }
 
   @override
+  Future<CommentReportReceipt> report({
+    required String commentId,
+    required CommentReportReason reason,
+    required String? detail,
+    required int expectedAuthEpoch,
+  }) async {
+    reportCalls.add((
+      commentId: commentId,
+      reason: reason,
+      detail: detail,
+      expectedAuthEpoch: expectedAuthEpoch,
+    ));
+    return CommentReportReceipt(
+      id: '018f47a6-4b56-7f4c-8c7a-e2656e820099',
+      commentId: commentId,
+      reason: reason,
+      status: 'open',
+      createdAt: DateTime.utc(2026, 8, 1, 13),
+    );
+  }
+
+  @override
+  Future<BlockedUser> block({
+    required String userId,
+    required int expectedAuthEpoch,
+  }) async {
+    blockCalls.add(userId);
+    return BlockedUser(
+      user: CommentAuthor(
+        id: userId,
+        handle: 'reader_two',
+        status: CommentAccountStatus.active,
+      ),
+      createdAt: DateTime.utc(2026, 8, 1, 13),
+    );
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 const accountA = '018f47a6-4b56-7f4c-8c7a-e2656e820001';
+
+String _commentId(String suffix) => '018f47a6-4b56-7f4c-8c7a-e2656e8200$suffix';
 
 PaperComment _comment({
   required String authorId,
@@ -308,7 +472,7 @@ PaperComment _comment({
   bool pending = false,
   String body = 'A published observation.',
 }) => PaperComment(
-  id: '018f47a6-4b56-7f4c-8c7a-e2656e8200$idSuffix',
+  id: _commentId(idSuffix),
   paperId: samplePaper.paperId,
   author: CommentAuthor(
     id: authorId,

@@ -29,6 +29,9 @@ for raw_path in sys.argv[1:]:
 PY
 python3 "$project_dir/scripts/validate_workflow_pins.py"
 python3 "$project_dir/scripts/test_validate_workflow_pins.py"
+python3 "$project_dir/scripts/validate_external_image_scan_pins.py"
+python3 "$project_dir/scripts/test_validate_external_image_scan_pins.py"
+python3 "$project_dir/scripts/validate_metadata_sync_boundary.py"
 python3 "$project_dir/scripts/validate_dockerignore.py"
 python3 "$project_dir/scripts/validate_gradle_wrapper.py"
 python3 "$project_dir/scripts/test_verify_android_elf_alignment.py"
@@ -50,6 +53,7 @@ jq empty \
   "$project_dir/deploy/helm/pakperk/values.schema.json"
 "$project_dir/scripts/validate_keycloak_realm.sh"
 "$project_dir/scripts/verify_mobile_associations.sh" --help >/dev/null
+"$project_dir/scripts/verify_public_edge.sh" --help >/dev/null
 PAKPERK_USE_DOCKER=0 "$project_dir/scripts/validate_demo_content.sh"
 
 echo "== Rust workspace =="
@@ -109,10 +113,15 @@ if command -v flutter >/dev/null 2>&1; then
       echo "Mobile artifact builds skipped by PAKPERK_BUILD_MOBILE_ARTIFACTS=0." >&2
     fi
 
-    if [[ "${PAKPERK_RUN_DEVICE_INTEGRATION_TESTS:-0}" == "1" ]]; then
-      flutter test integration_test/demo_flows_test.dart
+    if [[ -n "${PAKPERK_MOBILE_DEVICE_ID:-}" ]]; then
+      if ! [[ "$PAKPERK_MOBILE_DEVICE_ID" =~ ^[A-Za-z0-9._:-]{1,128}$ ]]; then
+        echo "PAKPERK_MOBILE_DEVICE_ID contains unsupported characters." >&2
+        exit 2
+      fi
+      flutter test integration_test/production_verification_test.dart \
+        --profile -d "$PAKPERK_MOBILE_DEVICE_ID"
     else
-      echo "Device integration tests skipped; set PAKPERK_RUN_DEVICE_INTEGRATION_TESTS=1 with a target device." >&2
+      echo "Physical-device verification NOT RUN. The deterministic production harness ran headlessly in flutter test; set PAKPERK_MOBILE_DEVICE_ID or dispatch mobile-device-integration for the device probe." >&2
     fi
   )
 else

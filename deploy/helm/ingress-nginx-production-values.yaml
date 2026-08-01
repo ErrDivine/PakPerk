@@ -1,0 +1,10 @@
+# Apply this overlay to the separately pinned ingress-nginx controller release
+# that terminates Pakperk staging/production TLS. Pakperk's chart does not own
+# the cluster-scoped controller, so a release is blocked unless these exact
+# settings are present and scripts/verify_public_edge.sh passes.
+controller:
+  config:
+    hsts: "true"
+    hsts-include-subdomains: "true"
+    hsts-max-age: "63072000"
+    hsts-preload: "true"

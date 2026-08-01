@@ -52,7 +52,6 @@ class AccountCacheDao {
     required DateTime createdAt,
     required DateTime updatedAt,
     String? accountId,
-    String? parentCommentId,
   }) => database
       .into(database.commentDrafts)
       .insertOnConflictUpdate(
@@ -60,7 +59,6 @@ class AccountCacheDao {
           draftId: draftId,
           accountId: Value(accountId),
           paperId: paperId,
-          parentCommentId: Value(parentCommentId),
           body: body,
           createdAt: createdAt.toUtc(),
           updatedAt: updatedAt.toUtc(),

@@ -152,7 +152,8 @@ fail-closed until deletion authority is reapplied.
   retention, access, and processor-role verification: **pending**
 - App Store Connect answers/version and approver: **pending**
 - Play Console Data Safety answers/version and approver: **pending**
-- UGC/age-rating worksheet and reviewer instructions: **pending**
+- UGC/age-rating worksheet and completed
+  [reviewer instructions](reviewer-notes-template.md): **pending**
 
 Pending means release-blocking; it must not be converted to “passed” from this
 worksheet alone.

@@ -65,6 +65,8 @@ jobs:
       - run: bash -n scripts/*.sh
       - run: ./scripts/drill_backup_restore.sh --self-test
       - run: python3 -m py_compile scripts/*.py
+      - name: Verify metadata-only Compose and seed privilege boundary
+        run: python3 scripts/validate_metadata_sync_boundary.py
       - name: Verify immutable workflow references
         run: |
           python3 scripts/test_validate_workflow_pins.py
@@ -137,7 +139,8 @@ jobs:
         run: dart format --output=none --set-exit-if-changed .
       - working-directory: mobile
         run: flutter analyze
-      - working-directory: mobile
+      - name: Run the complete Flutter suite, including production verification
+        working-directory: mobile
         run: flutter test
       - name: Build every Android debug flavor with its exact Dart environment
         working-directory: mobile

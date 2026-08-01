@@ -5,8 +5,12 @@ site, isolated GROBID service, scheduled metadata sync, migration job, and an
 OpenTelemetry Collector. PostgreSQL, OIDC, TLS, the deletion-ledger RWX volume,
 and secret material are deliberately external.
 
-The external Secret must expose distinct component database URLs plus the
-mapped model/comment credentials. When account deletion is enabled it must
+The external Secret must expose a different key for every component database
+URL and every purpose-specific credential; reusing one key for two consumers
+is rejected even when neither value is a database URL. This keeps database,
+model, request-origin, identity, deletion-ledger, provider-encryption, OIDC
+admin, and telemetry credentials independently grantable and rotatable. When
+account deletion is enabled the Secret must
 also contain rotation-ordered owner-only keyrings for identity fingerprints,
 ledger signing, and provider-coordinate encryption
 (`ACCOUNT_DELETION_PROVIDER_IDENTITY_KEYS`, formatted as up to eight
@@ -46,11 +50,14 @@ Render the structural fixture with the repository-pinned validation command:
 helm lint deploy/helm/pakperk -f deploy/helm/pakperk/ci/staging-values.yaml
 helm template pakperk deploy/helm/pakperk \
   -f deploy/helm/pakperk/ci/staging-values.yaml
+helm template pakperk deploy/helm/pakperk \
+  -f deploy/helm/pakperk/ci/staging-values.yaml \
+  -f deploy/helm/pakperk/ci/production-render-values.yaml
 ```
 
-The fixture uses non-deployable staging hostnames, documentation IP ranges, and
-fake application digests. It is only for rendering tests and must never be
-applied.
+The fixtures use non-deployable hostnames or private/documentation ranges plus
+deterministic signing, backup, and application-digest values. They exist only
+to exercise staging and production render contracts and must never be applied.
 Create an environment-owned values file from a release manifest containing the
 actual signed image digests, provider CIDRs, secret/PVC names, domains, models,
 and pre-deploy backup identifier. The chart never creates a Secret or database.
@@ -59,6 +66,29 @@ Apply migrations only after the backup verification and restore-readiness gate.
 Use feature flags for application rollback; never automate destructive SQL
 downgrades. See [release](../../../docs/runbooks/release.md) and
 [backup/restore](../../../docs/runbooks/backup-restore.md).
+
+The migration Job is a `pre-install,pre-upgrade` hook and never uses the
+namespace's default ServiceAccount. Helm first creates a token-less dedicated
+ServiceAccount at hook weight `-30`, then its deny-by-default NetworkPolicy at
+`-20`, and only then creates the Job at `-10`. The prerequisite hooks use only
+`before-hook-creation` deletion so they stay effective for the whole Job; the
+next upgrade replaces them before launching another migration. Because Helm
+does not manage hook resources as ordinary release objects, an environment
+decommission must delete the release-labeled migration ServiceAccount and
+NetworkPolicy after confirming no migration Pod remains.
+
+Every long-running or scheduled component likewise uses its own token-less
+ServiceAccount and receives no chart-created RBAC grant. With
+`serviceAccount.create=true`, the chart derives one `<base>-<component>` name
+for API, site, telemetry gateway, paper worker, metadata sync, deletion worker,
+GROBID, and the Collector. With `create=false`, `serviceAccount.name` is the
+required base prefix and the platform must pre-create every derived identity;
+it must not bind one shared account to multiple workloads. The base is one DNS
+label (dots are rejected), so suffixing and length bounding cannot truncate at
+an invalid label boundary.
+Custom Pod metadata cannot replace chart-owned workload identity labels or any
+`checksum/*` rollout annotation; such values are rejected before rendering so
+selectors, NetworkPolicies, and Secret/config rotation remain authoritative.
 
 ## Database and provider grant matrix
 
@@ -71,7 +101,7 @@ the same login.
 | migration Job | connect plus reviewed schema DDL/migration ownership | identity-provider administration, application serving |
 | API | serving DML for paper/account/library/comment/deletion request and shared-limit tables | schema ownership/DDL, Keycloak admin credentials |
 | paper worker | paper/job/cache/provider-result DML and shared arXiv gate | account-deletion/provider-admin tables and credentials |
-| metadata sync | bounded metadata/job ingestion and arXiv gate | account, UGC, deletion, DDL |
+| metadata sync | bounded metadata ingestion/cache and shared arXiv gate | model key, GROBID, full-text/embedding pipeline, account, UGC, deletion, DDL |
 | deletion worker | deletion/jobs/ledger binding, account-owned purge and retention DML | schema DDL, paper-provider/model credentials |
 | Keycloak | its separate Keycloak database only | Pakperk application database |
 
@@ -111,6 +141,42 @@ the API separately accepts `X-Forwarded-For` only when its direct peer falls in
 test a spoofed leftmost entry before enabling comment or anonymous
 prepare/chat traffic.
 
+The API Ingress also applies the configurable `api.edgeRateLimitRps`,
+`api.edgeBurstMultiplier`, and `api.edgeConnectionLimit` per-client controls
+for obvious broad abuse. These coarse edge limits complement rather than
+replace the shared PostgreSQL-backed prepare/chat/comment quotas. Tune them
+only from observed staging traffic, retain a finite value, and verify that the
+controller's real-IP boundary prevents an attacker from selecting the limit
+key through a spoofed forwarding header.
+
+The cluster-scoped ingress-nginx release must also apply
+`deploy/helm/ingress-nginx-production-values.yaml`: HSTS is enabled for two
+years with `includeSubDomains` and `preload`. The site, API, and telemetry
+origins repeat the exact header as defense in depth, but that does not replace
+TLS-edge enforcement. After every controller or public-ingress change, run
+`scripts/verify_public_edge.sh SITE_ORIGIN API_ORIGIN TELEMETRY_ORIGIN`; any
+redirect, duplicate/missing header, or value mismatch blocks rollout. Pin and
+review the ingress-nginx chart/image separately; this application chart does
+not take ownership of the shared controller.
+
+`networkPolicy.ingressController.namespaceSelector` and `podSelector` must
+each contain at least one non-empty exact-match label. Empty selectors would
+select every namespace or Pod and are rejected by both the values schema and
+the render-time contract. arXiv, model-provider, and identity-admin egress
+lists are restricted to canonical IPv4 CIDRs and may not overlap in either
+direction, including an equal range or one range containing another. This is a
+security boundary: the paper worker receives arXiv plus model egress, while the
+metadata-only CronJob receives arXiv egress only. Do not place a shared proxy
+address in multiple lists. Every chart CIDR, including trusted proxy, database,
+and telemetry ranges, must be canonical IPv4 with a `/8` through `/32` prefix;
+IPv6 is rejected until the chart has an equally strict canonical parser and
+minimum-prefix contract.
+
+The metadata-sync CronJob has only its database role, exact arXiv HTTPS egress,
+and OTLP egress. It does not mount the model Secret and cannot reach GROBID;
+the runtime also refuses to start if an LLM key or GROBID coordinate is
+injected accidentally.
+
 The Collector DaemonSet reads `/var/log/pods` through a read-only hostPath. The
 cluster owner must approve its node coverage, taints/tolerations, restricted Pod
 Security exception if needed, rotation bounds, and upstream egress. Offsets are
@@ -118,3 +184,17 @@ in-memory, so restart may replay bounded retained files; verify sink behavior
 and do not use log events as unique session counts. See
 [the observability runbook](../../../docs/runbooks/observability.md) for redaction, replay, alert, and 30-day sink
 retention checks.
+
+Every application `OTEL_SERVICE_NAME` ends in the canonical environment, for
+example `pakperk-api-staging` and `pakperk-metadata-sync-production`. Keep that
+suffix when defining dashboards and alerts so staging and production cannot be
+silently combined by an upstream collector.
+
+## Legal document release invariant
+
+`public.documentVersion`, `policy.termsVersion`, and
+`policy.communityGuidelinesVersion` are one reviewed release date and must be
+identical. That value configures the public legal-site disclosure and both API
+acceptance gates, so the chart rejects a rollout that could record acceptance
+for text different from the published document. Update the published files,
+their reviewed version, and all three values in the same release.

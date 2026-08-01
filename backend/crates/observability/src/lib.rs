@@ -520,7 +520,6 @@ pub enum OperationOutcome {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BacklogClass {
-    MobileOutbox,
     ModerationReports,
     AccountDeletion,
 }
@@ -528,7 +527,6 @@ pub enum BacklogClass {
 impl BacklogClass {
     const fn as_str(self) -> &'static str {
         match self {
-            Self::MobileOutbox => "mobile_outbox",
             Self::ModerationReports => "moderation_reports",
             Self::AccountDeletion => "account_deletion",
         }

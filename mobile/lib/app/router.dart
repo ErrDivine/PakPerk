@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -26,6 +28,7 @@ import '../features/paper_reader/paper_metadata_controller.dart';
 import '../features/paper_reader/paper_reader.dart';
 import '../features/paper_reader/reader_navigation_controller.dart';
 import '../features/placeholders/phase_one_placeholder_screens.dart';
+import '../features/settings/public_settings_screen.dart';
 
 abstract final class PakPerkRoutes {
   static const read = '/read';
@@ -267,6 +270,17 @@ Future<void> openPaperComments(
   );
 }
 
+/// Imperative push is intentional: it retains the You branch match below the
+/// Read destination so a normal platform back action returns to the exact
+/// saved-list route. [PakPerkAppShell] derives the visible branch from the
+/// current route because go_router keeps an imperative cross-branch match on
+/// the originating branch's navigator stack.
+void openSavedPaperFromLibrary(BuildContext context, PaperSummary paper) {
+  unawaited(
+    context.push<void>(PakPerkRoutes.paper(paper.paperId), extra: paper),
+  );
+}
+
 void closePakPerkRootRoute(
   BuildContext context, {
   String fallbackLocation = PakPerkRoutes.read,
@@ -466,7 +480,10 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                 routes: [
                   GoRoute(
                     path: 'library',
-                    builder: (_, __) => const ToReadScreen(),
+                    builder: (context, _) => ToReadScreen(
+                      onOpenPaper: (paper) =>
+                          openSavedPaperFromLibrary(context, paper),
+                    ),
                   ),
                   GoRoute(
                     path: 'comments',
@@ -588,49 +605,81 @@ class PakPerkAppShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final restoredBranch = ref.watch(activeAppBranchProvider);
-    if (restoredBranch.index != navigationShell.currentIndex) {
-      final controller = ref.read(appRestorationControllerProvider.notifier);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) {
-          controller.setActiveBranch(navigationShell.currentIndex);
+    // The child Builder establishes a dependency on go_router's route-state
+    // registry. RouterDelegate itself does not notify for an imperative match
+    // pushed across StatefulShellRoute branches.
+    return Builder(
+      builder: (context) {
+        final routerPath = GoRouterState.of(context).uri.path;
+        final visibleBranchIndex = pakPerkVisibleBranchIndex(
+          routerPath: routerPath,
+          shellBranchIndex: navigationShell.currentIndex,
+        );
+        if (restoredBranch.index != visibleBranchIndex) {
+          final controller = ref.read(
+            appRestorationControllerProvider.notifier,
+          );
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) {
+              controller.setActiveBranch(visibleBranchIndex);
+            }
+          });
         }
-      });
-    }
-    return Scaffold(
-      body: navigationShell,
-      bottomNavigationBar: NavigationBar(
-        key: const ValueKey<String>('primary-navigation'),
-        selectedIndex: navigationShell.currentIndex,
-        onDestinationSelected: (index) =>
-            _selectDestination(context, ref, index),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.auto_stories_outlined),
-            selectedIcon: Icon(Icons.auto_stories),
-            label: 'Read',
+        return Scaffold(
+          body: navigationShell,
+          bottomNavigationBar: NavigationBar(
+            key: const ValueKey<String>('primary-navigation'),
+            selectedIndex: visibleBranchIndex,
+            onDestinationSelected: (index) => _selectDestination(
+              context,
+              ref,
+              index,
+              visibleBranchIndex: visibleBranchIndex,
+            ),
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.auto_stories_outlined),
+                selectedIcon: Icon(Icons.auto_stories),
+                label: 'Read',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.person_outline),
+                selectedIcon: Icon(Icons.person),
+                label: 'You',
+              ),
+            ],
           ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'You',
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  void _selectDestination(BuildContext context, WidgetRef ref, int index) {
-    final currentIndex = navigationShell.currentIndex;
+  void _selectDestination(
+    BuildContext context,
+    WidgetRef ref,
+    int index, {
+    required int visibleBranchIndex,
+  }) {
     emitTelemetry(
       ref.read(telemetrySinkProvider),
       PakPerkTelemetryEvent.shellDestinationSelected,
       {
         'destination': index == AppBranch.read.index ? 'read' : 'you',
-        'reselected': index == currentIndex,
+        'reselected': index == visibleBranchIndex,
       },
     );
     final controller = ref.read(appRestorationControllerProvider.notifier);
-    if (index == currentIndex) {
+    if (index == navigationShell.currentIndex &&
+        index != visibleBranchIndex &&
+        context.canPop()) {
+      // A saved-paper route is an imperative Read match above the retained You
+      // branch. goBranch(You) would be a no-op because the shell already owns
+      // that underlying branch, so close the cross-branch match explicitly.
+      context.pop();
+      controller.setActiveBranch(index);
+      return;
+    }
+    if (index == visibleBranchIndex) {
       if (index != AppBranch.read.index) return;
       final restoration = ref.read(appRestorationControllerProvider);
       final routerPath = GoRouter.of(
@@ -645,6 +694,23 @@ class PakPerkAppShell extends ConsumerWidget {
     navigationShell.goBranch(index);
     controller.setActiveBranch(index);
   }
+}
+
+@visibleForTesting
+int pakPerkVisibleBranchIndex({
+  required String routerPath,
+  required int shellBranchIndex,
+}) {
+  if (routerPath == PakPerkRoutes.read ||
+      routerPath.startsWith('${PakPerkRoutes.read}/') ||
+      routerPath.startsWith('/arxiv/')) {
+    return AppBranch.read.index;
+  }
+  if (routerPath == PakPerkRoutes.you ||
+      routerPath.startsWith('${PakPerkRoutes.you}/')) {
+    return AppBranch.you.index;
+  }
+  return shellBranchIndex;
 }
 
 class ReadBranchNavigator extends ConsumerWidget {

@@ -889,6 +889,19 @@ impl AccountFeatureConfig {
     }
 }
 
+fn validate_database_pool_capacity(
+    features: FeatureFlags,
+    database_pool_size: u32,
+) -> anyhow::Result<()> {
+    if database_pool_size == 0 {
+        anyhow::bail!("DATABASE_POOL_SIZE must be greater than zero");
+    }
+    if features.comments && database_pool_size < 2 {
+        anyhow::bail!("DATABASE_POOL_SIZE must be at least two when comments are enabled");
+    }
+    Ok(())
+}
+
 impl ApiConfig {
     #[allow(clippy::too_many_lines)]
     pub fn from_env() -> anyhow::Result<Self> {
@@ -1028,9 +1041,7 @@ impl ApiConfig {
         self.features.validate()?;
         self.request_origin.validate(self.environment)?;
         self.validate_feature_configs()?;
-        if self.database_pool_size == 0 {
-            anyhow::bail!("DATABASE_POOL_SIZE must be greater than zero");
-        }
+        validate_database_pool_capacity(self.features, self.database_pool_size)?;
         if self.max_request_bytes == 0 {
             anyhow::bail!("API_MAX_REQUEST_BYTES must be greater than zero");
         }
@@ -1924,6 +1935,26 @@ mod tests {
             embedding_dimension: 8,
         });
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn comments_reserve_capacity_for_the_coordination_and_write_paths() {
+        let features = FeatureFlags {
+            accounts: true,
+            library: false,
+            library_writes: false,
+            comments: true,
+            comment_creation: false,
+            account_deletion: false,
+        };
+
+        assert_eq!(
+            validate_database_pool_capacity(features, 1)
+                .unwrap_err()
+                .to_string(),
+            "DATABASE_POOL_SIZE must be at least two when comments are enabled",
+        );
+        assert!(validate_database_pool_capacity(features, 2).is_ok());
     }
 
     fn production_config() -> ApiConfig {

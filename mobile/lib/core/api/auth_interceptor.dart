@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../auth/auth.dart';
+import 'http_telemetry_interceptor.dart';
 
 enum RequestAuthPolicy { none, optional, required, recent }
 
@@ -207,6 +208,7 @@ final class AuthInterceptor extends Interceptor {
       );
       return;
     }
+    startPakPerkHttpTelemetryTrace(options);
     try {
       final responseBody = await _dio.httpClientAdapter.fetch(
         options,
@@ -304,7 +306,8 @@ final class AuthInterceptor extends Interceptor {
         headers: {...options.headers, _authorizationHeader: 'Bearer $token'},
         extra: {...options.extra, _authRetriedKey: true},
       );
-      handler.resolve(await _dio.fetch<Object?>(retried));
+      // Preserve the original plain/bytes/JSON response mode on auth replay.
+      handler.resolve(await _dio.fetch<dynamic>(retried));
     } on AuthFailure catch (failure) {
       handler.reject(_authFailure(options, _safeAuthCode(failure)));
     } on DioException catch (retryError) {

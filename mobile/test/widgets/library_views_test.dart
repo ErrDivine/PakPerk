@@ -1,3 +1,6 @@
+import 'dart:collection';
+
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,7 +9,11 @@ import 'package:pakperk/app/account_providers.dart';
 import 'package:pakperk/app/feature_flags.dart';
 import 'package:pakperk/app/library_providers.dart';
 import 'package:pakperk/core/auth/auth.dart';
+import 'package:pakperk/core/database/app_database.dart';
+import 'package:pakperk/core/database/library_dao.dart';
+import 'package:pakperk/core/library/library_api.dart';
 import 'package:pakperk/core/library/library_models.dart';
+import 'package:pakperk/core/library/library_repository.dart';
 import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/providers.dart';
 import 'package:pakperk/features/library/paper_save_control.dart';
@@ -92,6 +99,81 @@ void main() {
     );
     expect(find.bySemanticsLabel('Remove from To Read'), findsOneWidget);
     expect(find.byKey(const ValueKey('save-sync-pending')), findsOneWidget);
+  });
+
+  testWidgets('shared unsave offers Undo as a fresh saved operation', (
+    tester,
+  ) async {
+    final paper = _paper('Undo paper', 4);
+    final database = PakPerkDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final operationIds = Queue.of([
+      _seedOperationId,
+      _removeOperationId,
+      _undoOperationId,
+    ]);
+    final dao = LibraryDao(
+      database,
+      clock: () => DateTime.utc(2026, 8, 1, 12),
+      operationId: operationIds.removeFirst,
+    );
+    final repository = LibraryRepository(
+      local: dao,
+      remote: _UnusedLibraryRemote(),
+      sessionScope: () => (accountId: _accountId, authEpoch: 7),
+      verifiedScope: () => (accountId: _accountId, authEpoch: 7),
+    );
+    await repository.setSaved(
+      accountId: _accountId,
+      authEpoch: 7,
+      paperId: paper.paperId,
+      saved: true,
+      paper: paper,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          featureFlagsProvider.overrideWithValue(_libraryFlags),
+          libraryDisplayScopeProvider.overrideWithValue(const (
+            accountId: _accountId,
+            authEpoch: 7,
+          )),
+          libraryRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: MaterialApp(
+          home: Scaffold(body: PaperSaveControl(paper: paper)),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.bySemanticsLabel('Remove from To Read'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('paper-save-control')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.text('Removed from To Read'), findsOneWidget);
+    expect(find.text('Undo'), findsOneWidget);
+    var outbox = await database.select(database.syncOutbox).get();
+    expect(outbox, hasLength(1));
+    expect(outbox.single.operationId, _removeOperationId);
+    expect(outbox.single.operation, 'library_remove');
+
+    await tester.tap(find.byKey(const ValueKey('paper-save-undo')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    outbox = await database.select(database.syncOutbox).get();
+    expect(outbox, hasLength(1));
+    expect(outbox.single.operationId, _undoOperationId);
+    expect(outbox.single.operationId, isNot(_removeOperationId));
+    expect(outbox.single.operation, 'library_save');
+    expect(
+      await repository.watchSavedState(_accountId, paper.paperId).first,
+      const LibrarySavedState(saved: true, syncPending: true),
+    );
   });
 
   testWidgets('To Read is newest first with explicit remove and open actions', (
@@ -202,3 +284,14 @@ const _libraryFlags = FeatureFlags(
   comments: false,
   openingMotion: false,
 );
+
+final class _UnusedLibraryRemote implements LibraryRemoteDataSource {
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('The disconnected widget test must not upload.');
+}
+
+const _accountId = '018f47a6-4b56-7f4c-8c7a-e2656e820001';
+const _seedOperationId = '018f47a6-4b56-7f4c-8c7a-e2656e820201';
+const _removeOperationId = '018f47a6-4b56-7f4c-8c7a-e2656e820202';
+const _undoOperationId = '018f47a6-4b56-7f4c-8c7a-e2656e820203';

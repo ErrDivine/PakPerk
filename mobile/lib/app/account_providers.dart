@@ -7,6 +7,8 @@ import '../core/account/account_data_write_barrier.dart';
 import '../core/account_deletion/account_deletion.dart';
 import '../core/api/api_client.dart';
 import '../core/api/auth_interceptor.dart';
+import '../core/api/http_telemetry_interceptor.dart';
+import '../core/api/safe_retry_interceptor.dart';
 import '../core/auth/auth.dart';
 import '../core/cache/drift_local_store.dart';
 import '../core/database/account_cache_dao.dart';
@@ -32,7 +34,7 @@ final pakPerkDioProvider = Provider<Dio>((ref) {
       },
     ),
   );
-  dio.interceptors.add(const _RequestIdInterceptor());
+  dio.interceptors.add(const PakPerkRequestIdInterceptor());
   if (config.features.accounts) {
     dio.interceptors.add(
       AuthInterceptor(
@@ -72,6 +74,15 @@ final pakPerkDioProvider = Provider<Dio>((ref) {
       ),
     );
   }
+  dio.interceptors.add(
+    SafeRetryInterceptor(dio: dio, apiBaseUri: config.apiBaseUri),
+  );
+  dio.interceptors.add(
+    HttpTelemetryInterceptor(
+      apiBaseUri: config.apiBaseUri,
+      telemetry: ref.watch(telemetrySinkProvider),
+    ),
+  );
   ref.onDispose(() => dio.close(force: true));
   return dio;
 });
@@ -367,8 +378,8 @@ List<Override> accountApplicationOverrides(
   }),
 ];
 
-final class _RequestIdInterceptor extends Interceptor {
-  const _RequestIdInterceptor();
+final class PakPerkRequestIdInterceptor extends Interceptor {
+  const PakPerkRequestIdInterceptor();
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {

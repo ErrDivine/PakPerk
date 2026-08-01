@@ -33,10 +33,10 @@ spec:
           labels:
             {{- include "pakperk.componentLabels" (dict "root" . "component" "metadata-sync") | nindent 12 }}
           annotations:
-            checksum/runtime-secrets: {{ printf "%s|%s|%s|%s" .Values.secret.existingSecret .Values.secret.rotationVersion .Values.secret.metadataSyncDatabaseUrlKey .Values.secret.llmApiKeyKey | sha256sum }}
+            checksum/runtime-secrets: {{ printf "%s|%s|%s" .Values.secret.existingSecret .Values.secret.rotationVersion .Values.secret.metadataSyncDatabaseUrlKey | sha256sum }}
         spec:
           restartPolicy: Never
-          serviceAccountName: {{ include "pakperk.serviceAccountName" . }}
+          serviceAccountName: {{ include "pakperk.componentServiceAccountName" (dict "root" . "component" "metadata-sync") }}
           automountServiceAccountToken: false
           enableServiceLinks: false
           securityContext:
@@ -44,8 +44,7 @@ spec:
             runAsUser: 10001
             runAsGroup: 10001
             seccompProfile: { type: RuntimeDefault }
-          initContainers:
-            {{- include "pakperk.paperSecretCopyInit" . | nindent 12 }}
+          imagePullSecrets: {{ toYaml .Values.imagePullSecrets | nindent 12 }}
           containers:
             - name: metadata-sync
               image: {{ include "pakperk.appImage" . }}
@@ -55,23 +54,12 @@ spec:
                 - { name: APP_ENV, value: {{ .Values.environment | quote }} }
                 - { name: LOG_FORMAT, value: "json" }
                 - { name: RUST_LOG, value: "info,sqlx=warn,reqwest=warn,hyper=warn" }
-                - { name: RUN_MIGRATIONS, value: "false" }
-                - { name: DEMO_MODE, value: "false" }
                 - name: DATABASE_URL
                   valueFrom: { secretKeyRef: { name: {{ .Values.secret.existingSecret }}, key: {{ .Values.secret.metadataSyncDatabaseUrlKey }} } }
                 - { name: DATABASE_POOL_SIZE, value: "2" }
-                - { name: WORKER_ID, value: "metadata-sync" }
                 - { name: ARXIV_CONTACT_EMAIL, value: {{ .Values.paperWorker.arxivContactEmail | quote }} }
                 - { name: ARXIV_USER_AGENT, value: {{ printf "Pakperk/%s" .Chart.AppVersion | quote }} }
-                - { name: GROBID_URL, value: {{ printf "http://%s-grobid:8070" (include "pakperk.fullname" .) | quote }} }
-                - { name: FULLTEXT_POLICY, value: {{ .Values.policy.fulltext | quote }} }
-                - { name: LLM_PROVIDER, value: {{ .Values.paperWorker.llmProvider | quote }} }
-                - { name: LLM_API_KEY_FILE, value: "/var/run/pakperk-secrets/LLM_API_KEY" }
-                - { name: LLM_BASE_URL, value: {{ .Values.paperWorker.llmBaseUrl | quote }} }
-                - { name: LLM_CHAT_MODEL, value: {{ .Values.paperWorker.llmChatModel | quote }} }
-                - { name: LLM_EMBEDDING_MODEL, value: {{ .Values.paperWorker.llmEmbeddingModel | quote }} }
-                - { name: EMBEDDING_DIMENSION, value: {{ .Values.paperWorker.embeddingDimension | quote }} }
-                - { name: OTEL_SERVICE_NAME, value: "pakperk-metadata-sync" }
+                - { name: OTEL_SERVICE_NAME, value: {{ include "pakperk.otelServiceName" (dict "root" . "component" "metadata-sync") | quote }} }
                 - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ printf "http://%s-otel-collector:4317" (include "pakperk.fullname" .) | quote }} }
                 - { name: OTEL_EXPORTER_OTLP_INSECURE, value: "true" }
               securityContext:
@@ -80,11 +68,9 @@ spec:
                 capabilities: { drop: ["ALL"] }
               resources: {{ toYaml .Values.paperWorker.resources | nindent 16 }}
               volumeMounts:
-                - { name: owner-secrets, mountPath: /var/run/pakperk-secrets, readOnly: true }
                 - { name: manifest, mountPath: /inputs, readOnly: true }
                 - { name: tmp, mountPath: /tmp }
           volumes:
-            {{- include "pakperk.paperSecretVolumes" . | nindent 12 }}
             - name: manifest
               configMap: { name: {{ include "pakperk.fullname" . }}-metadata-manifest }
             - name: tmp

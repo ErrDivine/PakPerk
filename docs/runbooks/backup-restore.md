@@ -101,6 +101,14 @@ exact ledger count from the immutable pre-restore inventory. A zero count is
 valid only when supplied explicitly; a missing or wrong ledger volume cannot
 silently produce passing evidence.
 
+Each phase also fails if any required account, paper, core-job, library,
+comment/safety, or deletion table is absent. Its checksummed database snapshots
+record row counts for `users`, `papers`, `jobs`, `user_paper_library`,
+`library_operations`, `paper_comments`, `comment_reports`, `user_blocks`, the
+deletion ledger, and deletion jobs. Paper and core-job counts must remain
+unchanged across ledger verification/reapplication; account-owned counts may
+decrease as deletion obligations are correctly replayed.
+
 Then permit only the restored deletion worker to reach the restored Keycloak,
 start `pakperk-deletion-worker run`, and monitor until every replayed job is
 `completed`. A provider absence is idempotent; authentication, authorization,
@@ -110,11 +118,13 @@ user traffic. Stop the worker and run the harness again with
 requires zero unfinished/terminal jobs, zero matching restored users, intact
 ledger verification, and no missing jobs.
 
-Sample each restored data class after finalization: deleted Keycloak identities
-are absent; the same issuer/subject cannot JIT-provision; user, library,
-comment, block, report, draft/cache, session, and token-related application
-rows are absent or pseudonymized according to policy; retained moderation
-evidence contains no direct account reference. Record counts, never content.
+Sample each restored data class after finalization: paper metadata and core-job
+records are intact; deleted Keycloak identities are absent; the same
+issuer/subject cannot JIT-provision; user, library, comment, block, report,
+draft/cache, session, and token-related application rows are absent or
+pseudonymized according to policy; retained moderation evidence contains no
+direct account reference. Record counts and keyed integrity results, never
+content.
 
 ## Approval and teardown
 

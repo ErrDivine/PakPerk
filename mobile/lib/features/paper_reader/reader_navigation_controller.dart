@@ -158,6 +158,14 @@ class AppRestorationController extends StateNotifier<AppRestorationState> {
     _schedulePersist();
   }
 
+  Future<void> resetAfterLocalDataClear() async {
+    _persistTimer?.cancel();
+    _persistTimer = null;
+    state = const AppRestorationState();
+    _publishLiveCacheProtection();
+    await _store.saveRestoration(state);
+  }
+
   void updateRoutePaper(String routeId, PaperSummary paper) {
     final routeIndex = state.routeStack.indexWhere(
       (entry) => entry.routeId == routeId,

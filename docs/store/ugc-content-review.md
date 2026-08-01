@@ -10,7 +10,8 @@ Public comments must remain disabled until the release owner verifies:
 - support and account-deletion URLs are live outside the app;
 - privacy, retention, deletion, and data-safety disclosures match production;
 - reviewer credentials and exact Save/Comments/Report/Block/Delete steps are
-  supplied without real user data;
+  supplied without real user data using
+  [reviewer-notes-template.md](reviewer-notes-template.md);
 - Apple/Google UGC, violence, sexual-content, profanity, social, and web-access
   age-rating answers have been reviewed against the enabled production state;
   and

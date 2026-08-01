@@ -11,6 +11,7 @@ import 'package:pakperk/core/library/library_repository.dart';
 import 'package:pakperk/core/sync/library_sync_controller.dart';
 import 'package:pakperk/core/sync/outbox_controller.dart';
 import 'package:pakperk/core/sync/retry_policy.dart';
+import 'package:pakperk/core/telemetry/telemetry.dart';
 
 import '../support/fakes.dart';
 
@@ -52,6 +53,14 @@ void main() {
           .revision,
       1,
     );
+    final backlog = harness.telemetry.events
+        .where(
+          (event) => event.$1 == PakPerkTelemetryEvent.libraryOutboxBacklog,
+        )
+        .toList(growable: false);
+    expect(backlog, isNotEmpty);
+    expect(backlog.first.$2, const {'pending_count': 1});
+    expect(backlog.last.$2, const {'pending_count': 0});
   });
 
   test('stop cancels scheduled retry and stale callbacks are inert', () async {
@@ -114,6 +123,7 @@ final class _SyncHarness {
     required this.remote,
     required this.controller,
     required this.wakeups,
+    required this.telemetry,
     required _MutableClock clock,
   }) : _clock = clock;
 
@@ -122,6 +132,7 @@ final class _SyncHarness {
   final _RetryThenSuccessRemote remote;
   final LibrarySyncController controller;
   final List<_FakeWakeup> wakeups;
+  final _RecordingTelemetry telemetry;
   final _MutableClock _clock;
 
   DateTime get now => _clock.value;
@@ -149,6 +160,7 @@ final class _SyncHarness {
       scopeGuard: () => true,
     );
     final wakeups = <_FakeWakeup>[];
+    final telemetry = _RecordingTelemetry();
     final controller = LibrarySyncController(
       repository: repository,
       outbox: LibraryOutboxController(
@@ -157,6 +169,7 @@ final class _SyncHarness {
         clock: () => clock.value,
       ),
       clock: () => clock.value,
+      telemetry: RedactingTelemetrySink(telemetry),
       wakeupFactory: (delay, callback) {
         final wakeup = _FakeWakeup(delay, callback);
         wakeups.add(wakeup);
@@ -169,6 +182,7 @@ final class _SyncHarness {
       remote: remote,
       controller: controller,
       wakeups: wakeups,
+      telemetry: telemetry,
       clock: clock,
     );
   }
@@ -177,6 +191,22 @@ final class _SyncHarness {
     controller.dispose();
     await database.close();
   }
+}
+
+final class _RecordingTelemetry implements TelemetrySink {
+  final events = <(String, Map<String, Object?>)>[];
+
+  @override
+  Future<void> event(String name, Map<String, Object?> attributes) async {
+    events.add((name, Map.unmodifiable(attributes)));
+  }
+
+  @override
+  Future<void> error(
+    Object error,
+    StackTrace stack, {
+    Map<String, Object?> context = const {},
+  }) async {}
 }
 
 final class _MutableClock {

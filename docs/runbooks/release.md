@@ -41,6 +41,12 @@ crash evidence.
 6. Verify live legal/support/association documents return direct HTTPS 200 with
    expected content types. Verify Nginx real-IP trust and API-observed ingress
    source ranges before relying on comment origin limits.
+7. Apply the reviewed `deploy/helm/ingress-nginx-production-values.yaml` to the
+   pinned TLS controller release and run
+   `scripts/verify_public_edge.sh SITE_ORIGIN API_ORIGIN TELEMETRY_ORIGIN`.
+   Exact HTTP redirects and one
+   `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
+   header on every public origin are release-blocking.
 
 ## Expand/contract deployment
 
@@ -98,6 +104,10 @@ accepted current terms, no real-user data, no privileged role, and a rotation/
 expiry owner. Review notes describe guest reading, sign-in, report/block,
 account deletion, web deletion URL, strict metadata/full-text behavior, and any
 staging-only coordinates. Credentials stay in store portals, never Git/issues.
+Start from the sanitized
+[store reviewer-notes template](../store/reviewer-notes-template.md) and keep
+every bracketed evidence field release-blocking until the exact candidate is
+verified.
 
 TestFlight/closed Play upload, physical-device deep links/callbacks/deletion,
 current Data Safety/App Privacy/age-rating forms, review status, measured

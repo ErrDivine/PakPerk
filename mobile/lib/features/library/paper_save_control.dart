@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/account_providers.dart';
 import '../../app/library_providers.dart';
+import '../../core/database/library_dao.dart';
 import '../../core/library/library_models.dart';
 import '../../core/models/paper.dart';
 import '../../core/providers.dart';
@@ -43,7 +44,7 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
 
   Future<void> _toggle(LibrarySavedState current) async {
     if (_committing) return;
-    var scope = ref.read(libraryDisplayScopeProvider);
+    final scope = ref.read(libraryDisplayScopeProvider);
     if (scope == null) {
       final continueToSignIn = await _showSignInRationale();
       if (!mounted || !continueToSignIn) return;
@@ -67,44 +68,107 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
       {'intent': saved ? 'save' : 'remove'},
     );
     try {
+      try {
+        await ref
+            .read(libraryRepositoryProvider)
+            .setSaved(
+              accountId: scope.accountId,
+              authEpoch: scope.authEpoch,
+              paperId: widget.paper.paperId,
+              saved: saved,
+              paper: widget.paper,
+            );
+      } on Object {
+        emitTelemetry(
+          ref.read(telemetrySinkProvider),
+          PakPerkTelemetryEvent.saveFailed,
+          {
+            'intent': saved ? 'save' : 'remove',
+            'failure_code': 'local_write',
+            'retryable': true,
+          },
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This save could not be stored on this device.'),
+          ),
+        );
+        return;
+      }
+      if (!mounted) return;
+      await _acknowledgeSelection(
+        saved ? 'Saved to To Read' : 'Removed from To Read',
+      );
+      if (!mounted) return;
+      unawaited(ref.read(librarySyncControllerProvider.notifier).drain());
+      if (saved) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: const Text('Removed from To Read'),
+            action: SnackBarAction(
+              key: const ValueKey('paper-save-undo'),
+              label: 'Undo',
+              onPressed: () => unawaited(_undoRemoval(scope)),
+            ),
+          ),
+        );
+    } finally {
+      if (mounted) setState(() => _committing = false);
+    }
+  }
+
+  Future<void> _undoRemoval(ActiveLibraryScope scope) async {
+    try {
+      // setSaved always allocates a fresh operation ID. Undo is therefore a
+      // new save intent and never rewrites the removal that may already have
+      // crossed the network boundary.
       await ref
           .read(libraryRepositoryProvider)
           .setSaved(
             accountId: scope.accountId,
             authEpoch: scope.authEpoch,
             paperId: widget.paper.paperId,
-            saved: saved,
+            saved: true,
             paper: widget.paper,
           );
-      if (!mounted) return;
-      await HapticFeedback.selectionClick();
-      if (!mounted) return;
-      if (MediaQuery.supportsAnnounceOf(context)) {
-        await SemanticsService.sendAnnouncement(
-          View.of(context),
-          saved ? 'Saved to To Read' : 'Removed from To Read',
-          Directionality.of(context),
-        );
-      }
-      unawaited(ref.read(librarySyncControllerProvider.notifier).drain());
+    } on LibraryScopeChanged {
+      // A stale Undo must not cross an account or authentication epoch.
+      return;
     } on Object {
-      emitTelemetry(
-        ref.read(telemetrySinkProvider),
-        PakPerkTelemetryEvent.saveFailed,
-        {
-          'intent': saved ? 'save' : 'remove',
-          'failure_code': 'local_write',
-          'retryable': true,
-        },
-      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('This save could not be stored on this device.'),
+          content: Text('This paper could not be restored on this device.'),
         ),
       );
-    } finally {
-      if (mounted) setState(() => _committing = false);
+      return;
+    }
+    if (!mounted) return;
+    await _acknowledgeSelection('Restored to To Read');
+    if (mounted) {
+      unawaited(ref.read(librarySyncControllerProvider.notifier).drain());
+    }
+  }
+
+  Future<void> _acknowledgeSelection(String announcement) async {
+    try {
+      await HapticFeedback.selectionClick();
+    } on Object {
+      // Platform feedback must not turn a durable local mutation into an
+      // apparent failure or suppress its Undo affordance.
+    }
+    if (!mounted || !MediaQuery.supportsAnnounceOf(context)) return;
+    try {
+      await SemanticsService.sendAnnouncement(
+        View.of(context),
+        announcement,
+        Directionality.of(context),
+      );
+    } on Object {
+      // The visual state and snackbar remain authoritative and accessible.
     }
   }
 

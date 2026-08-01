@@ -106,6 +106,65 @@ void main() {
     },
   );
 
+  test('Undo queues a fresh save behind an already-sent removal', () async {
+    final database = PakPerkDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final ids = Queue.of([_operation1, _operation2]);
+    final now = DateTime.utc(2026, 8, 1, 12);
+    final dao = LibraryDao(
+      database,
+      clock: () => now,
+      operationId: ids.removeFirst,
+    );
+    final scope = _Scope();
+    final repository = _repository(dao, _FakeRemote(), scope);
+    final guard = repository.scopeGuard(accountId: _accountId, authEpoch: 7);
+    await dao.applyFullSnapshot(
+      accountId: _accountId,
+      entries: [
+        LibraryRemoteEntry(
+          item: _canonical(revision: 10, operationId: _serverOperation),
+          paper: samplePaper,
+        ),
+      ],
+      syncRevision: 10,
+      scopeGuard: guard,
+    );
+
+    final removalId = await repository.setSaved(
+      accountId: _accountId,
+      authEpoch: 7,
+      paperId: samplePaper.paperId,
+      saved: false,
+      paper: samplePaper,
+    );
+    final sentRemoval = await repository.claimNextDue(
+      accountId: _accountId,
+      now: now,
+    );
+    expect(sentRemoval?.operationId, removalId);
+    expect(sentRemoval?.intent, LibraryMutationIntent.remove);
+
+    final undoId = await repository.setSaved(
+      accountId: _accountId,
+      authEpoch: 7,
+      paperId: samplePaper.paperId,
+      saved: true,
+      paper: samplePaper,
+    );
+
+    expect(removalId, _operation1);
+    expect(undoId, _operation2);
+    expect(undoId, isNot(removalId));
+    final outbox = await database.select(database.syncOutbox).get();
+    final byId = {for (final row in outbox) row.operationId: row};
+    expect(byId.keys, {removalId, undoId});
+    expect(byId[removalId]?.state, 'in_flight');
+    expect(byId[removalId]?.operation, 'library_remove');
+    expect(byId[undoId]?.state, 'queued');
+    expect(byId[undoId]?.operation, 'library_save');
+  });
+
   test(
     'permanent failure rolls back to canonical and exposes safe issue',
     () async {

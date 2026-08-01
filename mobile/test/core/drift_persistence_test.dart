@@ -1607,6 +1607,184 @@ void main() {
   );
 
   test(
+    'user cache clear removes rebuildable data and preserves durable owners',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final database = _memoryDatabase();
+      final store = DriftLocalStore(
+        preferences: await SharedPreferences.getInstance(),
+        database: database,
+        databaseByteMeasurer: () async =>
+            1024 * (await database.select(database.cachedPapers).get()).length,
+      );
+      addTearDown(store.close);
+      final papers = List.generate(6, (index) => _paper(index + 40));
+      await store.persistFeedPage(
+        queryKey: feedQueryKey(),
+        page: FeedPage(items: papers),
+        replace: true,
+      );
+      final accounts = AccountCacheDao(database);
+      await accounts.upsertLibraryItem(
+        accountId: 'account-cache-clear',
+        paperId: papers[1].paperId,
+        listState: 'to_read',
+        clientUpdatedAt: DateTime.utc(2026, 8, 1),
+      );
+      await accounts.saveCommentDraft(
+        draftId: 'cache-clear-draft',
+        accountId: 'account-cache-clear',
+        paperId: papers[2].paperId,
+        body: 'Keep this unsent draft',
+        createdAt: DateTime.utc(2026, 8, 1),
+        updatedAt: DateTime.utc(2026, 8, 1),
+      );
+      await accounts.enqueue(
+        operationId: 'cache-clear-outbox',
+        accountId: 'account-cache-clear',
+        entityKind: 'paper',
+        entityId: papers[3].paperId,
+        operation: 'save',
+        payload: const {'state': 'to_read'},
+        createdAt: DateTime.utc(2026, 8, 1),
+      );
+      final restoration = AppRestorationState(
+        feedIndex: 5,
+        feedPaperId: papers[5].paperId,
+        feedArxivId: papers[5].arxivId,
+        routeStack: [
+          PaperRouteEntry(routeId: 'cache-clear-route', paper: papers[0]),
+        ],
+      );
+      await store.saveRestoration(restoration);
+      for (final paper in papers) {
+        await store.saveProcessing(
+          PaperProcessingState.fromJson(
+            sampleProcessing.toJson()..['paper_id'] = paper.paperId,
+          ),
+        );
+      }
+
+      final result = await store.clearRebuildablePublicCache();
+
+      expect(result.before.metadataRows, 6);
+      expect(result.after.metadataRows, 5);
+      expect(result.removedMetadataRows, 1);
+      expect(await store.cachedPaperIds(papers.map((paper) => paper.paperId)), {
+        papers[0].paperId,
+        papers[1].paperId,
+        papers[2].paperId,
+        papers[3].paperId,
+        papers[5].paperId,
+      });
+      expect(await database.select(database.cachedProcessing).get(), isEmpty);
+      expect(await database.select(database.libraryItems).get(), hasLength(1));
+      expect(await database.select(database.commentDrafts).get(), hasLength(1));
+      expect(await database.select(database.syncOutbox).get(), hasLength(1));
+      final restored = await store.loadRestoration();
+      expect(restored.feedPaperId, papers[5].paperId);
+      expect(restored.routeStack.single.paper.paperId, papers[0].paperId);
+      final retainedFeed = await store.loadFeedPage(feedQueryKey());
+      expect(retainedFeed?.items.map((paper) => paper.paperId), [
+        papers[5].paperId,
+      ]);
+    },
+  );
+
+  test(
+    'clear all local data wipes every content table but preserves guards',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'pakperk.session.v1': '00000000-0000-4000-8000-000000000777',
+        'pakperk.appearance.v1': 'dark',
+        'pakperk.feed.v1': '{"items":[]}',
+        'pakperk.auth.invalidated.v1': true,
+        'pakperk.account_deletion.guard.v1': '{"pending":true}',
+      });
+      final preferences = await SharedPreferences.getInstance();
+      final database = _memoryDatabase();
+      final store = DriftLocalStore(
+        preferences: preferences,
+        database: database,
+      );
+      addTearDown(store.close);
+
+      await store.savePaper(samplePaper);
+      await store.saveFeed(FeedPage(items: [samplePaper]));
+      await store.saveProcessing(sampleProcessing);
+      await store.saveIntroduction(sampleIntroduction);
+      await store.saveConnections(sampleConnections);
+      await database.putMetadata('feed:test', const {'value': true});
+      final accounts = AccountCacheDao(database);
+      await accounts.upsertLibraryItem(
+        accountId: 'account-clear-all',
+        paperId: samplePaper.paperId,
+        listState: 'to_read',
+        clientUpdatedAt: DateTime.utc(2026, 8, 1),
+      );
+      await accounts.saveCommentDraft(
+        draftId: 'clear-all-draft',
+        accountId: 'account-clear-all',
+        paperId: samplePaper.paperId,
+        body: 'unsent',
+        createdAt: DateTime.utc(2026, 8, 1),
+        updatedAt: DateTime.utc(2026, 8, 1),
+      );
+      await accounts.enqueue(
+        operationId: 'clear-all-outbox',
+        accountId: 'account-clear-all',
+        entityKind: 'library_item',
+        entityId: samplePaper.paperId,
+        operation: 'save',
+        payload: const {'state': 'to_read'},
+        createdAt: DateTime.utc(2026, 8, 1),
+      );
+      await store.saveRestoration(
+        AppRestorationState(
+          routeStack: [
+            PaperRouteEntry(routeId: 'clear-all-route', paper: samplePaper),
+          ],
+        ),
+      );
+
+      await store.clearAllLocalData();
+
+      for (final table in [
+        'cached_papers',
+        'feed_queries',
+        'feed_entries',
+        'cached_processing',
+        'cached_introductions',
+        'cached_connections',
+        'cached_comment_pages',
+        'cached_chats',
+        'library_items',
+        'comment_drafts',
+        'blocked_users',
+        'sync_outbox',
+        'library_sync_states',
+        'cache_metadata',
+      ]) {
+        final count = await database
+            .customSelect('SELECT COUNT(*) AS row_count FROM $table')
+            .map((row) => row.read<int>('row_count'))
+            .getSingle();
+        expect(count, 0, reason: '$table retained local rows');
+      }
+      expect(
+        preferences.getKeys(),
+        containsAll({
+          'pakperk.auth.invalidated.v1',
+          'pakperk.account_deletion.guard.v1',
+        }),
+      );
+      expect(preferences.containsKey('pakperk.session.v1'), isFalse);
+      expect(preferences.containsKey('pakperk.appearance.v1'), isFalse);
+      expect(preferences.containsKey('pakperk.restoration.drift.v1'), isFalse);
+    },
+  );
+
+  test(
     'library pin projection and durable ownership protect eviction',
     () async {
       SharedPreferences.setMockInitialValues({});
@@ -1937,6 +2115,42 @@ void main() {
     await exercise(maxRows: 2, maxBytes: 1 << 30);
     await exercise(maxRows: 500, maxBytes: 2 * 1024);
   });
+
+  test(
+    'foreground memory pressure is single-flight and enforces cache bounds',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final database = _memoryDatabase();
+      final store = DriftLocalStore(
+        preferences: await SharedPreferences.getInstance(),
+        database: database,
+        databaseByteMeasurer: () async =>
+            1024 * (await database.select(database.cachedPapers).get()).length,
+      );
+      addTearDown(store.close);
+
+      await store.ensurePaperMetadata(List.generate(2, _paper));
+      await store.evictCache(
+        activeQueryKey: feedQueryKey(),
+        protectedPaperIds: const {},
+        maxMetadataPapers: 2,
+        maxDatabaseBytes: 1 << 30,
+        metadataTtl: const Duration(days: 365),
+        now: DateTime.utc(2026, 7, 31),
+      );
+      await store.ensurePaperMetadata(
+        List.generate(4, (index) => _paper(50 + index)),
+      );
+
+      final first = store.runMemoryPressureMaintenance();
+      final second = store.runMemoryPressureMaintenance();
+      expect(identical(first, second), isTrue);
+      final result = await first;
+
+      expect(result.usageAfter.metadataRows, lessThanOrEqualTo(2));
+      expect(await database.customSelect('SELECT 1').getSingle(), isNotNull);
+    },
+  );
 
   test(
     '64 MiB physical bound is reclaimed only by lifecycle-safe compaction',

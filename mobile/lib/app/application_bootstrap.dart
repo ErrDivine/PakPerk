@@ -9,8 +9,10 @@ import '../core/models/paper.dart';
 import '../core/models/reader_state.dart';
 import '../core/providers.dart';
 import '../core/repository/paper_repository.dart';
+import '../core/settings/appearance.dart';
 import '../features/feed/preloaded_feed_snapshot.dart';
 import 'app.dart';
+import 'appearance_controller.dart';
 import 'startup_controller.dart';
 import 'startup_gate.dart';
 import 'theme.dart';
@@ -21,12 +23,14 @@ class ApplicationStartupData {
     required this.anonymousSessionId,
     required this.restoration,
     required this.preloadedFeed,
+    required this.appearance,
   });
 
   final LocalStore store;
   final String anonymousSessionId;
   final AppRestorationState restoration;
   final PreloadedFeedSnapshot preloadedFeed;
+  final AppAppearance appearance;
 }
 
 /// Installs hydrated values in the application's root provider container.
@@ -48,6 +52,7 @@ List<Override> applicationStartupDataOverrides(
       (ref) => requireData().anonymousSessionId,
     ),
     initialRestorationProvider.overrideWith((ref) => requireData().restoration),
+    initialAppearanceProvider.overrideWith((ref) => requireData().appearance),
     preloadedFeedSnapshotProvider.overrideWith(
       (ref) => requireData().preloadedFeed,
     ),
@@ -91,9 +96,11 @@ class ApplicationStartupBootstrapper implements StartupBootstrapper {
     final store = await storeFactory();
     final sessionFuture = store.getOrCreateSessionId();
     final restorationFuture = store.loadRestoration();
+    final appearanceFuture = store.loadAppearance();
     final preloadedFeedFuture = _loadPreloadedFeed(store);
     final sessionId = await sessionFuture;
     final restoration = await restorationFuture;
+    final appearance = await appearanceFuture;
     final preloadedFeed = await preloadedFeedFuture;
     if (generation != _generation) return;
     _data = ApplicationStartupData(
@@ -101,6 +108,7 @@ class ApplicationStartupBootstrapper implements StartupBootstrapper {
       anonymousSessionId: sessionId,
       restoration: restoration,
       preloadedFeed: preloadedFeed,
+      appearance: appearance,
     );
   }
 
@@ -154,7 +162,7 @@ class PakPerkBootstrapApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: buildPakPerkTheme(),
       darkTheme: buildPakPerkDarkTheme(),
-      themeMode: ThemeMode.system,
+      themeMode: data?.appearance.themeMode ?? ThemeMode.system,
       home: StartupGate(
         state: startup,
         openingMotionEnabled: false,

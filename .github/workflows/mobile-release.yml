@@ -107,6 +107,69 @@ jobs:
             echo "$pair" >>"$GITHUB_OUTPUT"
           done
 
+      - name: Materialize protected mobile feature flags
+        shell: bash
+        env:
+          RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+          RELEASE_FLAVOR: ${{ steps.release.outputs.flavor }}
+          RELEASE_ACCOUNTS_ENABLED: ${{ vars.PAKPERK_ACCOUNTS_ENABLED }}
+          RELEASE_LIBRARY_ENABLED: ${{ vars.PAKPERK_LIBRARY_ENABLED }}
+          RELEASE_COMMENTS_ENABLED: ${{ vars.PAKPERK_COMMENTS_ENABLED }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/evidence"
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          root = pathlib.Path(os.environ["GITHUB_WORKSPACE"])
+          source = root / "mobile" / "config" / f"{os.environ['RELEASE_FLAVOR']}.json"
+          destination = pathlib.Path(os.environ["RUNNER_TEMP"]) / "mobile-release-config.json"
+          evidence = pathlib.Path(os.environ["RUNNER_TEMP"]) / "evidence" / "mobile-feature-flags.json"
+          config = json.loads(source.read_text(encoding="utf-8"))
+
+          if os.environ["RELEASE_ENVIRONMENT"] != "development":
+              protected = {}
+              for short_name, config_name in (
+                  ("ACCOUNTS", "PAKPERK_ACCOUNTS_ENABLED"),
+                  ("LIBRARY", "PAKPERK_LIBRARY_ENABLED"),
+                  ("COMMENTS", "PAKPERK_COMMENTS_ENABLED"),
+              ):
+                  raw = os.environ.get(f"RELEASE_{short_name}_ENABLED", "") or "false"
+                  if raw not in {"true", "false"}:
+                      raise SystemExit(
+                          f"Protected PAKPERK_{short_name}_ENABLED must be exactly true or false"
+                      )
+                  protected[config_name] = raw
+              if protected["PAKPERK_LIBRARY_ENABLED"] == "true" and protected["PAKPERK_ACCOUNTS_ENABLED"] != "true":
+                  raise SystemExit("Protected mobile library requires accounts")
+              if protected["PAKPERK_COMMENTS_ENABLED"] == "true" and protected["PAKPERK_ACCOUNTS_ENABLED"] != "true":
+                  raise SystemExit("Protected mobile comments require accounts")
+              config.update(protected)
+
+          destination.write_text(
+              json.dumps(config, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          evidence.write_text(
+              json.dumps(
+                  {
+                      "schema": 1,
+                      "environment": os.environ["RELEASE_ENVIRONMENT"],
+                      "accounts": config["PAKPERK_ACCOUNTS_ENABLED"] == "true",
+                      "library": config["PAKPERK_LIBRARY_ENABLED"] == "true",
+                      "comments": config["PAKPERK_COMMENTS_ENABLED"] == "true",
+                  },
+                  indent=2,
+                  sort_keys=True,
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          with pathlib.Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"PAKPERK_MOBILE_RELEASE_CONFIG={destination}\n")
+          PY
+
       - name: Validate protected inputs and monotonic store builds
         shell: bash
         env:
@@ -176,6 +239,18 @@ jobs:
         working-directory: mobile
         run: flutter pub get --enforce-lockfile
 
+      - name: Gate candidate on Dart formatting
+        working-directory: mobile
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Gate candidate on Flutter analysis
+        working-directory: mobile
+        run: flutter analyze
+
+      - name: Gate candidate on the complete Flutter test suite
+        working-directory: mobile
+        run: flutter test
+
       - name: Gate Apple SDK and capture exact build toolchain
         shell: bash
         run: |
@@ -243,10 +318,10 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/symbols/android-aab" "$RUNNER_TEMP/symbols/android-apk" "$RUNNER_TEMP/evidence" "$RUNNER_TEMP/artifacts"
           flutter build appbundle --release --flavor "${{ steps.release.outputs.flavor }}" \
-            --dart-define-from-file="config/${{ steps.release.outputs.flavor }}.json" \
+            --dart-define-from-file="$PAKPERK_MOBILE_RELEASE_CONFIG" \
             --obfuscate --split-debug-info="$RUNNER_TEMP/symbols/android-aab"
           flutter build apk --release --flavor "${{ steps.release.outputs.flavor }}" \
-            --dart-define-from-file="config/${{ steps.release.outputs.flavor }}.json" \
+            --dart-define-from-file="$PAKPERK_MOBILE_RELEASE_CONFIG" \
             --obfuscate --split-debug-info="$RUNNER_TEMP/symbols/android-apk"
           aab="build/app/outputs/bundle/${{ steps.release.outputs.flavor }}Release/app-${{ steps.release.outputs.flavor }}-release.aab"
           apk="build/app/outputs/flutter-apk/app-${{ steps.release.outputs.flavor }}-release.apk"
@@ -343,7 +418,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/symbols/ios" "$RUNNER_TEMP/native-symbols"
           flutter build ipa --release --flavor "${{ steps.release.outputs.flavor }}" \
-            --dart-define-from-file="config/${{ steps.release.outputs.flavor }}.json" \
+            --dart-define-from-file="$PAKPERK_MOBILE_RELEASE_CONFIG" \
             --export-options-plist="$RUNNER_TEMP/ExportOptions.plist" \
             --obfuscate --split-debug-info="$RUNNER_TEMP/symbols/ios"
           shopt -s nullglob

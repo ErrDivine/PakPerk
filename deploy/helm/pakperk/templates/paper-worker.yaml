@@ -23,7 +23,7 @@ spec:
         checksum/runtime-secrets: {{ printf "%s|%s|%s|%s" .Values.secret.existingSecret .Values.secret.rotationVersion .Values.secret.paperWorkerDatabaseUrlKey .Values.secret.llmApiKeyKey | sha256sum }}
         {{- with .Values.podAnnotations }}{{ toYaml . | nindent 8 }}{{- end }}
     spec:
-      serviceAccountName: {{ include "pakperk.serviceAccountName" . }}
+      serviceAccountName: {{ include "pakperk.componentServiceAccountName" (dict "root" . "component" "paper-worker") }}
       automountServiceAccountToken: false
       enableServiceLinks: false
       terminationGracePeriodSeconds: {{ .Values.paperWorker.terminationGracePeriodSeconds }}
@@ -67,7 +67,7 @@ spec:
             - { name: LLM_CHAT_MODEL, value: {{ .Values.paperWorker.llmChatModel | quote }} }
             - { name: LLM_EMBEDDING_MODEL, value: {{ .Values.paperWorker.llmEmbeddingModel | quote }} }
             - { name: EMBEDDING_DIMENSION, value: {{ .Values.paperWorker.embeddingDimension | quote }} }
-            - { name: OTEL_SERVICE_NAME, value: "pakperk-paper-worker" }
+            - { name: OTEL_SERVICE_NAME, value: {{ include "pakperk.otelServiceName" (dict "root" . "component" "paper-worker") | quote }} }
             - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ printf "http://%s-otel-collector:4317" (include "pakperk.fullname" .) | quote }} }
             - { name: OTEL_EXPORTER_OTLP_INSECURE, value: "true" }
             - { name: OTEL_TRACES_SAMPLER_ARG, value: "0.10" }

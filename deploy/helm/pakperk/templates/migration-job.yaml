@@ -21,7 +21,7 @@ spec:
       annotations:
         checksum/migration-contract: {{ printf "%s|%d|%s|%s|%s" .Values.migration.confirmBackupId (int .Values.migration.expectedVersion) .Values.secret.existingSecret .Values.secret.rotationVersion .Values.secret.migrationDatabaseUrlKey | sha256sum }}
     spec:
-      serviceAccountName: default
+      serviceAccountName: {{ include "pakperk.migrationServiceAccountName" . }}
       automountServiceAccountToken: false
       enableServiceLinks: false
       restartPolicy: Never
@@ -44,7 +44,7 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ .Values.secret.existingSecret }}, key: {{ .Values.secret.migrationDatabaseUrlKey }} } }
             - { name: PAKPERK_MIGRATION_BACKUP_ID, value: {{ .Values.migration.confirmBackupId | quote }} }
             - { name: PAKPERK_MIGRATION_EXPECTED_VERSION, value: {{ .Values.migration.expectedVersion | quote }} }
-            - { name: OTEL_SERVICE_NAME, value: "pakperk-migrate" }
+            - { name: OTEL_SERVICE_NAME, value: {{ include "pakperk.otelServiceName" (dict "root" . "component" "migrate") | quote }} }
             - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ printf "http://%s-otel-collector:4317" (include "pakperk.fullname" .) | quote }} }
             - { name: OTEL_EXPORTER_OTLP_INSECURE, value: "true" }
             - { name: OTEL_TRACES_SAMPLER_ARG, value: "1.0" }

@@ -12,10 +12,90 @@ import 'package:pakperk/core/providers.dart';
 import 'package:pakperk/core/repository/paper_repository.dart';
 import 'package:pakperk/features/paper_reader/paper_reader.dart';
 import 'package:pakperk/features/paper_reader/reader_navigation_controller.dart';
+import 'package:pakperk/features/feed/preloaded_feed_snapshot.dart';
 
 import '../support/fakes.dart';
 
 void main() {
+  testWidgets(
+    'bundled feed is labeled until live data replaces it; device cache is not',
+    (tester) async {
+      final pendingNetwork = Completer<RepositoryValue<FeedPage>>();
+      final repository = FakePaperDataSource(paper: samplePaper)
+        ..networkFeedCompleter = pendingNetwork;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            paperRepositoryProvider.overrideWithValue(repository),
+            localStoreProvider.overrideWithValue(MemoryLocalStore()),
+            initialRestorationProvider.overrideWithValue(
+              const AppRestorationState(),
+            ),
+            preloadedFeedSnapshotProvider.overrideWithValue(
+              PreloadedFeedSnapshot(
+                page: FeedPage(items: [samplePaper]),
+                origin: DataOrigin.bundledDemo,
+              ),
+            ),
+          ],
+          child: const PakPerkApp(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        find.text('BUNDLED DEMO · Offline sample content'),
+        findsOneWidget,
+      );
+
+      pendingNetwork.complete(
+        RepositoryValue(
+          value: FeedPage(items: [samplePaper]),
+          origin: DataOrigin.network,
+          offline: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('BUNDLED DEMO · Offline sample content'), findsNothing);
+
+      final deviceNetwork = Completer<RepositoryValue<FeedPage>>();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            paperRepositoryProvider.overrideWithValue(
+              FakePaperDataSource(paper: samplePaper)
+                ..networkFeedCompleter = deviceNetwork,
+            ),
+            localStoreProvider.overrideWithValue(MemoryLocalStore()),
+            initialRestorationProvider.overrideWithValue(
+              const AppRestorationState(),
+            ),
+            preloadedFeedSnapshotProvider.overrideWithValue(
+              PreloadedFeedSnapshot(
+                page: FeedPage(items: [samplePaper]),
+                origin: DataOrigin.deviceCache,
+              ),
+            ),
+          ],
+          child: const PakPerkApp(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('BUNDLED DEMO · Offline sample content'), findsNothing);
+      deviceNetwork.complete(
+        RepositoryValue(
+          value: FeedPage(items: [samplePaper]),
+          origin: DataOrigin.network,
+          offline: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+    },
+  );
+
   testWidgets('offline launch publishes cached feed without awaiting network', (
     tester,
   ) async {

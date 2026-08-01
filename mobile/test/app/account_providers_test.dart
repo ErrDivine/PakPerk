@@ -9,6 +9,8 @@ import 'package:pakperk/app/feature_flags.dart';
 import 'package:pakperk/app/startup_controller.dart';
 import 'package:pakperk/core/account_deletion/account_deletion.dart';
 import 'package:pakperk/core/api/auth_interceptor.dart';
+import 'package:pakperk/core/api/http_telemetry_interceptor.dart';
+import 'package:pakperk/core/api/safe_retry_interceptor.dart';
 import 'package:pakperk/core/auth/auth.dart';
 import 'package:pakperk/core/providers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -60,6 +62,11 @@ void main() {
     final adapter = _AccountAdapter();
     dio.httpClientAdapter = adapter;
     expect(dio.interceptors.whereType<AuthInterceptor>(), isEmpty);
+    expect(_pakPerkInterceptorTypes(dio), [
+      PakPerkRequestIdInterceptor,
+      SafeRetryInterceptor,
+      HttpTelemetryInterceptor,
+    ]);
 
     final firstClient = container.read(apiClientProvider);
     await firstClient.ready();
@@ -96,7 +103,12 @@ void main() {
       final adapter = _AccountAdapter(accountId: accountId);
       final dio = container.read(pakPerkDioProvider)
         ..httpClientAdapter = adapter;
-      expect(dio.interceptors.whereType<AuthInterceptor>(), hasLength(1));
+      expect(_pakPerkInterceptorTypes(dio), [
+        PakPerkRequestIdInterceptor,
+        AuthInterceptor,
+        SafeRetryInterceptor,
+        HttpTelemetryInterceptor,
+      ]);
 
       final startup = container.read(startupBootstrapperProvider);
       expect(
@@ -239,6 +251,17 @@ void main() {
     },
   );
 }
+
+List<Type> _pakPerkInterceptorTypes(Dio dio) => dio.interceptors
+    .where(
+      (interceptor) =>
+          interceptor is PakPerkRequestIdInterceptor ||
+          interceptor is AuthInterceptor ||
+          interceptor is SafeRetryInterceptor ||
+          interceptor is HttpTelemetryInterceptor,
+    )
+    .map((interceptor) => interceptor.runtimeType)
+    .toList(growable: false);
 
 AppBuildConfig _accountConfig() => AppBuildConfig.fromValues(const {
   'PAKPERK_ACCOUNTS_ENABLED': 'true',

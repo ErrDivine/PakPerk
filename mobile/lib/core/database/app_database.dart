@@ -168,7 +168,6 @@ class CommentDrafts extends Table {
   TextColumn get accountId => text().nullable()();
   TextColumn get paperId =>
       text().references(CachedPapers, #paperId, onDelete: KeyAction.restrict)();
-  TextColumn get parentCommentId => text().nullable()();
   TextColumn get body => text()();
   // Stable across explicit retries and app restarts. It is never enqueued or
   // auto-sent; the user must still press Send for every attempt.
@@ -281,7 +280,7 @@ class PakPerkDatabase extends _$PakPerkDatabase {
   final Future<String>? _databasePath;
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -438,6 +437,12 @@ class PakPerkDatabase extends _$PakPerkDatabase {
         )..where((row) => row.accountId.isNull())).go();
         await migrator.createTable(blockedUsers);
       }
+      if (from < 6 &&
+          await _columnExists('comment_drafts', 'parent_comment_id')) {
+        // Replies are intentionally outside v0.0. Rebuild the table so a
+        // dormant legacy field cannot quietly become a reply feature later.
+        await migrator.alterTable(TableMigration(commentDrafts));
+      }
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -472,6 +477,11 @@ class PakPerkDatabase extends _$PakPerkDatabase {
     final pageSize = await _pragmaInt('page_size');
     return pageCount * pageSize;
   }
+
+  /// Drops SQLite's expendable page-cache allocations after an OS memory
+  /// warning. Unlike checkpointing or VACUUM this is safe while the reader is
+  /// interactive and does not rewrite the database file.
+  Future<void> releaseMemory() => customStatement('PRAGMA shrink_memory');
 
   /// Reclaims freelist and WAL pages. Call only from a lifecycle-safe state,
   /// never from the swipe-time eviction path.
@@ -642,6 +652,26 @@ class PakPerkDatabase extends _$PakPerkDatabase {
             )
         ''');
     await (delete(cacheMetadata)..where((row) => row.key.like('feed:%'))).go();
+  });
+
+  /// Explicit user-requested local wipe. Compliance guards and authentication
+  /// invalidation live outside this database and are deliberately preserved.
+  Future<void> clearAllLocalData() => transaction(() async {
+    // Drafts restrict paper deletion, while every other paper child cascades.
+    await delete(commentDrafts).go();
+    await delete(feedEntries).go();
+    await delete(cachedProcessing).go();
+    await delete(cachedIntroductions).go();
+    await delete(cachedConnections).go();
+    await delete(cachedCommentPages).go();
+    await delete(cachedChats).go();
+    await delete(feedQueries).go();
+    await delete(libraryItems).go();
+    await delete(blockedUsers).go();
+    await delete(syncOutbox).go();
+    await delete(librarySyncStates).go();
+    await delete(cachedPapers).go();
+    await delete(cacheMetadata).go();
   });
 }
 

@@ -9,8 +9,8 @@
   ],
   "properties": {
     "environment": { "enum": ["staging", "production"] },
-    "nameOverride": { "type": "string", "maxLength": 63 },
-    "fullnameOverride": { "type": "string", "maxLength": 63 },
+    "nameOverride": { "$ref": "#/definitions/dnsLabelOrEmpty" },
+    "fullnameOverride": { "$ref": "#/definitions/dnsLabelOrEmpty" },
     "imagePullSecrets": {
       "type": "array",
       "items": {
@@ -113,15 +113,18 @@
     "api": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["replicas", "trustedProxyCidrs", "resources", "databasePoolSize", "requestTimeoutSeconds", "chatTimeoutSeconds", "maxRequestBytes", "terminationGracePeriodSeconds", "service", "pdb", "topologySpread"],
+      "required": ["replicas", "trustedProxyCidrs", "resources", "databasePoolSize", "requestTimeoutSeconds", "chatTimeoutSeconds", "maxRequestBytes", "edgeRateLimitRps", "edgeBurstMultiplier", "edgeConnectionLimit", "terminationGracePeriodSeconds", "service", "pdb", "topologySpread"],
       "properties": {
         "replicas": { "type": "integer", "minimum": 1, "maximum": 100 },
-        "trustedProxyCidrs": { "$ref": "#/definitions/cidrList" },
+        "trustedProxyCidrs": { "$ref": "#/definitions/ipv4CidrList" },
         "resources": { "$ref": "#/definitions/resources" },
         "databasePoolSize": { "type": "integer", "minimum": 1, "maximum": 100 },
         "requestTimeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 300 },
         "chatTimeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 600 },
         "maxRequestBytes": { "type": "integer", "minimum": 1024, "maximum": 10485760 },
+        "edgeRateLimitRps": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "edgeBurstMultiplier": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "edgeConnectionLimit": { "type": "integer", "minimum": 1, "maximum": 10000 },
         "terminationGracePeriodSeconds": { "type": "integer", "minimum": 10, "maximum": 600 },
         "service": { "$ref": "#/definitions/service" },
         "pdb": { "$ref": "#/definitions/pdb" },
@@ -283,7 +286,7 @@
     "networkPolicy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "ingressController", "apiHttpsCidrs", "paperHttpsCidrs", "identityAdminHttpsCidrs", "databaseCidrs", "databasePort", "telemetryCidrs", "telemetryPort", "dnsNamespaceSelector", "dnsPodSelector"],
+      "required": ["enabled", "ingressController", "apiHttpsCidrs", "arxivHttpsCidrs", "modelHttpsCidrs", "identityAdminHttpsCidrs", "databaseCidrs", "databasePort", "telemetryCidrs", "telemetryPort", "dnsNamespaceSelector", "dnsPodSelector"],
       "properties": {
         "enabled": { "type": "boolean" },
         "ingressController": {
@@ -291,16 +294,17 @@
           "additionalProperties": false,
           "required": ["namespaceSelector", "podSelector"],
           "properties": {
-            "namespaceSelector": { "$ref": "#/definitions/stringMap" },
-            "podSelector": { "$ref": "#/definitions/stringMap" }
+            "namespaceSelector": { "$ref": "#/definitions/nonEmptyStringMap" },
+            "podSelector": { "$ref": "#/definitions/nonEmptyStringMap" }
           }
         },
-        "apiHttpsCidrs": { "$ref": "#/definitions/cidrList" },
-        "paperHttpsCidrs": { "$ref": "#/definitions/cidrList" },
-        "identityAdminHttpsCidrs": { "$ref": "#/definitions/cidrList" },
-        "databaseCidrs": { "$ref": "#/definitions/cidrList" },
+        "apiHttpsCidrs": { "$ref": "#/definitions/ipv4CidrList" },
+        "arxivHttpsCidrs": { "$ref": "#/definitions/ipv4CidrList" },
+        "modelHttpsCidrs": { "$ref": "#/definitions/ipv4CidrList" },
+        "identityAdminHttpsCidrs": { "$ref": "#/definitions/ipv4CidrList" },
+        "databaseCidrs": { "$ref": "#/definitions/ipv4CidrList" },
         "databasePort": { "$ref": "#/definitions/port" },
-        "telemetryCidrs": { "$ref": "#/definitions/cidrList" },
+        "telemetryCidrs": { "$ref": "#/definitions/ipv4CidrList" },
         "telemetryPort": { "$ref": "#/definitions/port" },
         "dnsNamespaceSelector": { "$ref": "#/definitions/stringMap" },
         "dnsPodSelector": { "$ref": "#/definitions/stringMap" }
@@ -308,11 +312,12 @@
     },
     "serviceAccount": {
       "type": "object",
+      "description": "Configuration shared by distinct component ServiceAccounts; name is an optional base prefix, not one shared workload identity.",
       "additionalProperties": false,
       "required": ["create", "name", "annotations"],
       "properties": {
         "create": { "type": "boolean" },
-        "name": { "type": "string", "maxLength": 253 },
+        "name": { "$ref": "#/definitions/dnsLabelOrEmpty", "description": "DNS-label base prefix for the derived <base>-<component> ServiceAccount names; required when create=false." },
         "annotations": { "$ref": "#/definitions/stringMap" }
       }
     },
@@ -390,13 +395,23 @@
       "propertyNames": { "type": "string", "minLength": 1, "maxLength": 253 },
       "additionalProperties": { "type": "string", "maxLength": 4096 }
     },
-    "cidrList": {
+    "nonEmptyStringMap": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "type": "string", "minLength": 1, "maxLength": 253 },
+      "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 4096 }
+    },
+    "ipv4CidrList": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "type": "string", "minLength": 3, "maxLength": 64, "not": { "enum": ["0.0.0.0/0", "::/0"] } }
+      "items": {
+        "type": "string",
+        "pattern": "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])/(3[0-2]|[12][0-9]|[89])$"
+      }
     },
     "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
-    "kubeName": { "type": "string", "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$", "maxLength": 253 },
+    "kubeName": { "type": "string", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$", "maxLength": 253 },
+    "dnsLabelOrEmpty": { "type": "string", "pattern": "^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "maxLength": 63 },
     "secretKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,253}$" },
     "safeIdentifier": { "type": "string", "pattern": "^[A-Za-z0-9._-]{3,255}$" },
     "dateVersion": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },

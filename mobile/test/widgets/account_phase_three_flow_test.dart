@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pakperk/app/account_providers.dart';
 import 'package:pakperk/app/feature_flags.dart';
+import 'package:pakperk/app/router.dart';
 import 'package:pakperk/core/account/account.dart';
 import 'package:pakperk/core/auth/auth.dart';
 import 'package:pakperk/core/providers.dart';
@@ -78,18 +79,45 @@ void main() {
           matching: find.byType(Checkbox),
         ),
       );
-      final communityCheckbox = find.descendant(
-        of: find.byKey(const ValueKey('account-community-checkbox')),
-        matching: find.byType(Checkbox),
-      );
-      await tester.ensureVisible(communityCheckbox);
-      await tester.tap(communityCheckbox);
       tester.testTextInput.hide();
       await tester.pumpAndSettle();
       final completeSetup = find.widgetWithText(
         FilledButton,
         'Complete account setup',
       );
+      await tester.ensureVisible(completeSetup);
+      await tester.tap(completeSetup);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Accept the current Community Guidelines to continue.'),
+        findsOneWidget,
+      );
+      expect(adapter.requests.map((request) => request.method), ['GET']);
+      expect(resumed, 0);
+
+      final communityCheckbox = find.descendant(
+        of: find.byKey(const ValueKey('account-community-checkbox')),
+        matching: find.byType(Checkbox),
+      );
+      await tester.ensureVisible(communityCheckbox);
+      expect(find.textContaining('Comments are public.'), findsOneWidget);
+      expect(find.textContaining('sexual exploitation'), findsOneWidget);
+      expect(find.textContaining('copyright abuse'), findsOneWidget);
+      await tester.tap(communityCheckbox);
+      await tester.pumpAndSettle();
+      final support = find.byKey(const ValueKey('account-community-support'));
+      await tester.ensureVisible(support);
+      expect(
+        find.text(
+          'Support/moderation contact: https://support.test/moderation',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(support);
+      await tester.pumpAndSettle();
+      expect(find.text('Support and moderation route'), findsOneWidget);
+      expect(await tester.binding.handlePopRoute(), isTrue);
+      await tester.pumpAndSettle();
       await tester.ensureVisible(completeSetup);
       await tester.pumpAndSettle();
       await tester.tap(completeSetup);
@@ -424,6 +452,15 @@ GoRouter _authRouter({String initialLocation = '/auth'}) => GoRouter(
       path: '/you',
       builder: (_, __) => const Scaffold(body: Text('You destination')),
     ),
+    GoRoute(
+      path: PakPerkRoutes.communityGuidelines,
+      builder: (_, __) => const Scaffold(body: Text('Community rules route')),
+    ),
+    GoRoute(
+      path: PakPerkRoutes.support,
+      builder: (_, __) =>
+          const Scaffold(body: Text('Support and moderation route')),
+    ),
   ],
 );
 
@@ -433,6 +470,8 @@ AppBuildConfig _accountConfig() => AppBuildConfig.fromValues(const {
   'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile',
   'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth-dev://oauth/callback',
   'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI': 'pakperk-auth-dev://oauth/logout',
+  'PAKPERK_PUBLIC_SITE_ORIGIN': 'https://public.test',
+  'PAKPERK_SUPPORT_URL': 'https://support.test/moderation',
 });
 
 const _accountId = '018f47a6-4b56-7f4c-8c7a-e2656e820001';

@@ -18,6 +18,8 @@ concurrency:
 env:
   RUST_TOOLCHAIN: 1.91.1
   FLUTTER_VERSION: 3.44.8
+  GROBID_IMAGE: grobid/grobid@sha256:24ba90eb1c959f65d812bcdb2cf79c677fa5fd7b95235de616b8bc9fa1317849
+  OTEL_COLLECTOR_IMAGE: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib@sha256:e0f565815b2b8e78eb9fdbb80f6190c921ab323aaa8ccceab3255c6d4225f4af
 
 jobs:
   dependency-review:
@@ -88,7 +90,10 @@ jobs:
       - name: Verify immutable workflow pins exist upstream
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 scripts/validate_workflow_pins.py --verify-upstream
+        run: |
+          python3 scripts/validate_workflow_pins.py --verify-upstream
+          python3 scripts/validate_external_image_scan_pins.py
+          python3 scripts/test_validate_external_image_scan_pins.py
       - name: Install pinned Rust toolchain
         run: |
           rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
@@ -176,6 +181,20 @@ jobs:
           severity: HIGH,CRITICAL
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          image-ref: ${{ env.GROBID_IMAGE }}
+          format: sarif
+          output: release/metadata/grobid-trivy.sarif
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.OTEL_COLLECTOR_IMAGE }}
+          format: sarif
+          output: release/metadata/otel-collector-trivy.sarif
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
           image-ref: pakperk-backend:ci
           format: cyclonedx
           output: release/metadata/backend-image.cdx.json
@@ -185,6 +204,18 @@ jobs:
           image-ref: pakperk-site:ci
           format: cyclonedx
           output: release/metadata/site-image.cdx.json
+          scanners: vuln
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.GROBID_IMAGE }}
+          format: cyclonedx
+          output: release/metadata/grobid-image.cdx.json
+          scanners: vuln
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.OTEL_COLLECTOR_IMAGE }}
+          format: cyclonedx
+          output: release/metadata/otel-collector-image.cdx.json
           scanners: vuln
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

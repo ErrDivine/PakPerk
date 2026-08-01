@@ -23,7 +23,7 @@ spec:
         checksum/runtime-secrets: {{ printf "%s|%s|%s|%s|%s|%s|%s" .Values.secret.existingSecret .Values.secret.rotationVersion .Values.secret.deletionWorkerDatabaseUrlKey .Values.secret.identityFingerprintKeysKey .Values.secret.deletionLedgerSigningKeysKey .Values.secret.deletionProviderIdentityKeysKey .Values.secret.oidcAdminClientSecretKey | sha256sum }}
         {{- with .Values.podAnnotations }}{{ toYaml . | nindent 8 }}{{- end }}
     spec:
-      serviceAccountName: {{ include "pakperk.serviceAccountName" . }}
+      serviceAccountName: {{ include "pakperk.componentServiceAccountName" (dict "root" . "component" "deletion-worker") }}
       automountServiceAccountToken: false
       enableServiceLinks: false
       terminationGracePeriodSeconds: {{ .Values.deletionWorker.terminationGracePeriodSeconds }}
@@ -98,7 +98,7 @@ spec:
             - { name: KEYCLOAK_ADMIN_CLIENT_ID, value: {{ .Values.deletionWorker.keycloakAdminClientId | quote }} }
             - { name: KEYCLOAK_ADMIN_CLIENT_SECRET_FILE, value: "/var/run/pakperk-secrets/OIDC_ADMIN_CLIENT_SECRET" }
             - { name: OIDC_ISSUER_URL, value: {{ .Values.public.oidcIssuer | quote }} }
-            - { name: OTEL_SERVICE_NAME, value: "pakperk-deletion-worker" }
+            - { name: OTEL_SERVICE_NAME, value: {{ include "pakperk.otelServiceName" (dict "root" . "component" "deletion-worker") | quote }} }
             - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ printf "http://%s-otel-collector:4317" (include "pakperk.fullname" .) | quote }} }
             - { name: OTEL_EXPORTER_OTLP_INSECURE, value: "true" }
             - { name: OTEL_TRACES_SAMPLER_ARG, value: "0.10" }

@@ -102,10 +102,8 @@ impl Worker {
     pub async fn execute_cli(&self, cli: Cli) -> Result<()> {
         match cli.command {
             Command::Run => self.run().await,
-            Command::SyncMetadata { manifest } => {
-                let manifest = read_manifest(&manifest).await?;
-                self.sync_manifest_metadata(&manifest).await?;
-                Ok(())
+            Command::SyncMetadata { .. } => {
+                bail!("sync-metadata must run before full worker initialization")
             }
             Command::PrepareDemo {
                 manifest,
@@ -1051,23 +1049,6 @@ impl Worker {
             Some(metadata) => Ok(Some(self.papers.upsert_metadata(&metadata).await?)),
             None => Ok(None),
         }
-    }
-
-    async fn sync_manifest_metadata(&self, manifest: &SeedManifest) -> Result<()> {
-        for entry in &manifest.papers {
-            let paper = self
-                .exact_arxiv_paper(&entry.arxiv_id)
-                .await
-                .with_context(|| format!("could not sync {}", entry.arxiv_id))?;
-            if paper.is_none() {
-                bail!("arXiv returned no metadata for {}", entry.arxiv_id);
-            }
-        }
-        info!(
-            paper_count = manifest.papers.len(),
-            "demo metadata synchronized"
-        );
-        Ok(())
     }
 
     async fn sync_recent_metadata(&self) -> Result<()> {

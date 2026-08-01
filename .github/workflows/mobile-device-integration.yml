@@ -1,0 +1,359 @@
+name: mobile-device-integration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-device-integration-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: 3.44.8
+
+jobs:
+  physical-device-verification:
+    name: Deterministic local subset on a physical device
+    runs-on: [self-hosted, pakperk-mobile-device]
+    environment: mobile-device-verification
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Resolve locked Flutter dependencies
+        working-directory: mobile
+        run: flutter pub get --enforce-lockfile
+      - name: Verify the exact protected device is connected
+        shell: bash
+        env:
+          PAKPERK_MOBILE_DEVICE_ID: ${{ secrets.PAKPERK_MOBILE_DEVICE_ID }}
+          PAKPERK_SOURCE_REVISION: ${{ github.sha }}
+        run: |
+          echo "::add-mask::$PAKPERK_MOBILE_DEVICE_ID"
+          if ! [[ "$PAKPERK_MOBILE_DEVICE_ID" =~ ^[A-Za-z0-9._:-]{1,128}$ ]]; then
+            echo "device_id contains unsupported characters." >&2
+            exit 2
+          fi
+          flutter devices --machine >"$RUNNER_TEMP/flutter-devices.json"
+          python3 - "$RUNNER_TEMP/flutter-devices.json" "$RUNNER_TEMP/device-evidence.json" <<'PY'
+          import json
+          import os
+          import pathlib
+          import re
+          import sys
+
+          source, destination = map(pathlib.Path, sys.argv[1:])
+          expected = os.environ["PAKPERK_MOBILE_DEVICE_ID"]
+          if not re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", expected):
+              raise SystemExit("device_id contains unsupported characters")
+          devices = json.loads(source.read_text(encoding="utf-8"))
+          if not isinstance(devices, list):
+              raise SystemExit("flutter devices --machine did not return a list")
+          if not all(isinstance(device, dict) for device in devices):
+              raise SystemExit("flutter device entries must be objects")
+          matches = [device for device in devices if device.get("id") == expected]
+          if len(matches) != 1:
+              raise SystemExit("Expected exactly one connected protected device")
+          selected = matches[0]
+          if selected.get("isSupported") is not True:
+              raise SystemExit("The connected protected device is unsupported")
+          if selected.get("emulator") is not False:
+              raise SystemExit("The protected lane requires a physical device, not an emulator")
+          target = selected.get("targetPlatform")
+          allowed_targets = {"android-arm", "android-arm64", "android-x64", "ios"}
+          if target not in allowed_targets:
+              raise SystemExit(f"Unsupported mobile target platform: {target!r}")
+          sdk = selected.get("sdk")
+          if not isinstance(sdk, str):
+              raise SystemExit("The protected device did not report an SDK")
+          android = re.fullmatch(
+              r"Android ([0-9]{1,2}(?:\.[0-9]{1,2}){0,2}) \(API ([0-9]{1,3})\)",
+              sdk,
+          )
+          ios = re.fullmatch(
+              r"iOS ([0-9]{1,2}(?:\.[0-9]{1,2}){0,2})(?: [A-Za-z0-9]+)?",
+              sdk,
+          )
+          if target.startswith("android-") and android is None:
+              raise SystemExit("Android SDK did not match the sanitized version/API shape")
+          if target == "ios" and ios is None:
+              raise SystemExit("iOS SDK did not match the sanitized version shape")
+          match = android or ios
+          assert match is not None
+          evidence = {
+              "schema": 1,
+              "source_revision": os.environ["PAKPERK_SOURCE_REVISION"],
+              "target_platform": target,
+              "os_family": "android" if android else "ios",
+              "os_version": match.group(1),
+              **({"android_api_level": int(android.group(2))} if android else {}),
+              "emulator": False,
+              "supported": True,
+          }
+          destination.write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+      - name: Run deterministic production contract in profile mode
+        id: device-test
+        shell: bash
+        working-directory: mobile
+        env:
+          PAKPERK_MOBILE_DEVICE_ID: ${{ secrets.PAKPERK_MOBILE_DEVICE_ID }}
+        run: |
+          echo "::add-mask::$PAKPERK_MOBILE_DEVICE_ID"
+          flutter test integration_test/production_verification_test.dart \
+            --profile -d "$PAKPERK_MOBILE_DEVICE_ID" 2>&1 \
+            | tee "$RUNNER_TEMP/mobile-device-integration.log"
+      - name: Validate and extract deterministic performance evidence
+        id: evidence-validation
+        if: always()
+        shell: bash
+        run: |
+          python3 - "$RUNNER_TEMP/mobile-device-integration.log" "$RUNNER_TEMP/performance-evidence.json" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          source, destination = map(pathlib.Path, sys.argv[1:])
+          text = source.read_text(encoding="utf-8")
+
+          def records(marker):
+              decoded = []
+              for line in text.splitlines():
+                  position = line.find(marker)
+                  if position < 0:
+                      continue
+                  raw = line[position + len(marker):].strip()
+                  value, end = json.JSONDecoder().raw_decode(raw)
+                  if raw[end:].strip():
+                      raise SystemExit(f"{marker.strip()} payload has trailing data")
+                  if not isinstance(value, dict):
+                      raise SystemExit(f"{marker.strip()} payload must be an object")
+                  decoded.append(value)
+              return decoded
+
+          def integer(record, name, *, minimum=0):
+              value = record.get(name)
+              if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+                  raise SystemExit(f"Invalid {name}: {value!r}")
+              return value
+
+          frames = records("PAKPERK_FRAME_TIMING ")
+          databases = records("PAKPERK_DB_WORKLOAD ")
+          if len(frames) != 1 or len(databases) != 1:
+              raise SystemExit("Expected exactly one frame and one database evidence record")
+          frame = frames[0]
+          database = databases[0]
+          expected_frame_keys = {
+              "schema", "classification", "physical_device", "sample_count",
+              "build_p90_us", "build_max_us", "raster_p90_us", "raster_max_us",
+              "total_p90_us", "total_max_us", "metadata_records",
+              "pagination_path",
+              "cached_initial_records", "cursor_page_size", "cursor_pages_requested",
+              "cursor_pages_persisted", "unique_cursors_requested",
+              "generated_flutter_drag_count",
+              "generated_flutter_fling_count", "controller_page_commit_count",
+              "generated_gesture_source", "blank_cards",
+              "revalidation_stalled_during_traversal",
+              "maximum_live_readers",
+          }
+          if set(frame) != expected_frame_keys:
+              raise SystemExit(
+                  "Frame evidence schema mismatch: "
+                  f"missing={sorted(expected_frame_keys - set(frame))}, "
+                  f"extra={sorted(set(frame) - expected_frame_keys)}"
+              )
+          if integer(frame, "schema") != 2:
+              raise SystemExit("Unexpected frame evidence schema version")
+          if frame.get("classification") != (
+              "deterministic fixture workload; not staging p95 evidence"
+          ):
+              raise SystemExit("Frame evidence lost its fixture-only classification")
+          if frame.get("physical_device") is not True:
+              raise SystemExit("The device lane received headless frame evidence")
+          if frame.get("pagination_path") != "feed_prefetch_coordinator":
+              raise SystemExit("Traversal bypassed the production prefetch coordinator")
+          if frame.get("generated_gesture_source") != "WidgetTester":
+              raise SystemExit("Generated gestures lost their explicit source label")
+          integer(frame, "sample_count", minimum=20)
+          duration_pairs = (
+              ("build_p90_us", "build_max_us"),
+              ("raster_p90_us", "raster_max_us"),
+              ("total_p90_us", "total_max_us"),
+          )
+          durations = {}
+          for percentile_name, maximum_name in duration_pairs:
+              percentile = integer(frame, percentile_name)
+              maximum = integer(frame, maximum_name)
+              if percentile > maximum:
+                  raise SystemExit(
+                      f"{percentile_name} exceeds its corresponding maximum"
+                  )
+              durations[percentile_name] = percentile
+              durations[maximum_name] = maximum
+          if durations["total_max_us"] < max(
+              durations["build_max_us"], durations["raster_max_us"]
+          ):
+              raise SystemExit("Total frame maximum is smaller than a component maximum")
+          if integer(frame, "metadata_records") != 200:
+              raise SystemExit("Frame traversal did not cover exactly 200 metadata records")
+          expected_traversal_counts = {
+              "cached_initial_records": 30,
+              "cursor_page_size": 30,
+              "cursor_pages_requested": 6,
+              "cursor_pages_persisted": 6,
+              "unique_cursors_requested": 6,
+              "generated_flutter_drag_count": 10,
+              "generated_flutter_fling_count": 10,
+              "controller_page_commit_count": 179,
+              "blank_cards": 0,
+          }
+          for name, expected in expected_traversal_counts.items():
+              if integer(frame, name) != expected:
+                  raise SystemExit(f"Unexpected deterministic traversal count for {name}")
+          traversed_transitions = (
+              frame["generated_flutter_drag_count"]
+              + frame["generated_flutter_fling_count"]
+              + frame["controller_page_commit_count"]
+          )
+          if traversed_transitions + 1 != frame["metadata_records"]:
+              raise SystemExit("Traversal transition counts do not cover the fixture")
+          if frame.get("revalidation_stalled_during_traversal") is not True:
+              raise SystemExit("First-page revalidation did not remain stalled")
+          readers = integer(frame, "maximum_live_readers", minimum=1)
+          if readers > 5:
+              raise SystemExit(f"PaperReader retention is unbounded: observed {readers}")
+          expected_database_keys = {
+              "metadata_records", "saved_records", "outbox_records",
+              "live_database_bytes", "physical_database_bytes",
+              "database_file_backed", "database_size_kind",
+              "metadata_write_ms", "library_write_ms",
+              "metadata_query_us", "library_query_us",
+          }
+          if set(database) != expected_database_keys:
+              raise SystemExit(
+                  "Database evidence schema mismatch: "
+                  f"missing={sorted(expected_database_keys - set(database))}, "
+                  f"extra={sorted(set(database) - expected_database_keys)}"
+              )
+          expected_database_counts = {
+              "metadata_records": 500,
+              "saved_records": 100,
+              "outbox_records": 100,
+          }
+          for name, expected in expected_database_counts.items():
+              if integer(database, name) != expected:
+                  raise SystemExit(f"Unexpected {name} fixture count")
+          integer(database, "live_database_bytes", minimum=1)
+          integer(database, "physical_database_bytes", minimum=1)
+          if database.get("database_file_backed") is not True:
+              raise SystemExit("Device database evidence was not file-backed")
+          if database.get("database_size_kind") != "sqlite_file_wal_shm":
+              raise SystemExit("Device database evidence did not include SQLite/WAL/SHM")
+          if "logical_database_bytes" in database:
+              raise SystemExit("Device evidence retained the headless logical-size fallback")
+          for name in (
+              "metadata_write_ms", "library_write_ms",
+              "metadata_query_us", "library_query_us",
+          ):
+              integer(database, name)
+          evidence = {
+              "schema": 2,
+              "classification": "deterministic fixture workload; not staging p95 evidence",
+              "frame_timing": frame,
+              "device_database_fixture": database,
+          }
+          destination.write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+      - name: Record the exact verification boundary
+        if: always()
+        shell: bash
+        env:
+          PAKPERK_DEVICE_TEST_OUTCOME: ${{ steps.device-test.outcome }}
+          PAKPERK_EVIDENCE_VALIDATION_OUTCOME: ${{ steps.evidence-validation.outcome }}
+        run: |
+          python3 - "$RUNNER_TEMP/verification-scope.json" "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
+
+          destination, summary_path = map(pathlib.Path, sys.argv[1:])
+          component_outcomes = {
+              "device_test": os.environ.get("PAKPERK_DEVICE_TEST_OUTCOME", "unknown"),
+              "evidence_validation": os.environ.get(
+                  "PAKPERK_EVIDENCE_VALIDATION_OUTCOME", "unknown"
+              ),
+          }
+          if all(value == "success" for value in component_outcomes.values()):
+              automated_outcome = "success"
+          elif "cancelled" in component_outcomes.values():
+              automated_outcome = "cancelled"
+          else:
+              automated_outcome = "failure"
+          automated = [
+              "eight fake-repository demo interaction paths",
+              "30-record cached launch plus six deterministic cursor pages covering exactly 200 records",
+              "10 WidgetTester drags and 10 WidgetTester flings while first-page revalidation remains stalled",
+              "at least 20 engine frame samples and bounded live readers",
+              "500-paper/100-save file-backed SQLite/WAL/SHM fixture measurement",
+              "deterministic packet-loss and single-flight prefetch behavior",
+              "same-UUID local outbox recovery after database reopen",
+              "bounded comment-page loading",
+              "memory-warning/lifecycle maintenance, reduced motion, and strict cache masking",
+          ]
+          external = [
+              "native process cold-start p95 and launch-screen continuity",
+              "20 operator/OS-driver vertical gestures under representative latency and exact Read -> You -> Read restoration",
+              "system-browser OIDC/PKCE login and real expired-token refresh",
+              "backend-connected save/relaunch and two independently installed devices",
+              "live comment post/edit/delete plus report/block enforcement",
+              "recent-auth account deletion, provider cleanup, and restore replay",
+              "OS process death, real offline transitions, and network packet loss",
+              "signed-candidate deep links, store distribution, crash window, and staging p95 targets",
+          ]
+          payload = {
+              "schema": 1,
+              "automated_outcome": automated_outcome,
+              "component_outcomes": component_outcomes,
+              "automated_deterministic_scope": automated,
+              "external_paths_not_executed": external,
+              "does_not_attest_external_paths": True,
+          }
+          destination.write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          with summary_path.open("a", encoding="utf-8") as summary:
+              summary.write("## Mobile device verification boundary\n\n")
+              summary.write(
+                  f"Deterministic device-probe outcome: **{payload['automated_outcome']}**. "
+                  "This workflow does not attest live OIDC, two-device, staging, signed-store, "
+                  "or operational release evidence. See the retained scope artifact and "
+                  "`docs/mobile-release.md`.\n"
+              )
+          PY
+      - name: Retain scoped device and frame-timing evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mobile-device-integration-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/device-evidence.json
+            ${{ runner.temp }}/performance-evidence.json
+            ${{ runner.temp }}/verification-scope.json
+          if-no-files-found: warn
+          retention-days: 30

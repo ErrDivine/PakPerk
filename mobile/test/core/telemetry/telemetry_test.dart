@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/core/telemetry/otlp_http_telemetry_sink.dart';
 import 'package:pakperk/core/telemetry/telemetry.dart';
+import 'package:pakperk/features/feed/feed_prefetch_telemetry.dart';
 
 void main() {
   group('RedactingTelemetrySink', () {
@@ -79,6 +80,54 @@ void main() {
       });
       expect(delegate.events.last.attributes, const {'source': 'read_feed'});
     });
+
+    test(
+      'exports every required feed-prefetch metric with closed fields',
+      () async {
+        final delegate = _RecordingSink();
+        final telemetry = PakPerkFeedPrefetchTelemetry(
+          sink: RedactingTelemetrySink(delegate),
+          timeline: const NoopFeedPrefetchTelemetry(),
+        );
+
+        for (final event in const [
+          FeedPrefetchEvent(FeedPrefetchMetric.requested),
+          FeedPrefetchEvent(FeedPrefetchMetric.succeeded),
+          FeedPrefetchEvent(FeedPrefetchMetric.failed, attempt: 2),
+          FeedPrefetchEvent(FeedPrefetchMetric.deduplicated),
+          FeedPrefetchEvent(FeedPrefetchMetric.nextPaperCacheHit),
+          FeedPrefetchEvent(FeedPrefetchMetric.nextPaperCacheMiss),
+          FeedPrefetchEvent(FeedPrefetchMetric.blankCard),
+          FeedPrefetchEvent(FeedPrefetchMetric.cacheRows, value: 500),
+          FeedPrefetchEvent(FeedPrefetchMetric.cacheBytes, value: 67108864),
+          FeedPrefetchEvent(FeedPrefetchMetric.timeToReadable, value: 42),
+        ]) {
+          telemetry.record(event);
+        }
+        await Future<void>.delayed(Duration.zero);
+
+        expect(delegate.events, const [
+          _RecordedEvent(PakPerkTelemetryEvent.feedPrefetchRequested, {}),
+          _RecordedEvent(PakPerkTelemetryEvent.feedPrefetchSucceeded, {}),
+          _RecordedEvent(PakPerkTelemetryEvent.feedPrefetchFailed, {}),
+          _RecordedEvent(PakPerkTelemetryEvent.feedPrefetchDeduplicated, {}),
+          _RecordedEvent(PakPerkTelemetryEvent.nextPaperCacheHit, {
+            'cache_tier': 'device',
+          }),
+          _RecordedEvent(PakPerkTelemetryEvent.nextPaperCacheMiss, {
+            'cache_tier': 'device',
+          }),
+          _RecordedEvent(PakPerkTelemetryEvent.feedBlankCard, {}),
+          _RecordedEvent(PakPerkTelemetryEvent.feedCacheRows, {'rows': 500}),
+          _RecordedEvent(PakPerkTelemetryEvent.feedCacheBytes, {
+            'bytes': 67108864,
+          }),
+          _RecordedEvent(PakPerkTelemetryEvent.feedTimeToReadable, {
+            'elapsed_ms': 42,
+          }),
+        ]);
+      },
+    );
 
     test(
       'never delegates raw exceptions, messages, stacks, or context',

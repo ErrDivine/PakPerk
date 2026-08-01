@@ -8,6 +8,7 @@ import '../core/auth/auth.dart';
 import '../features/feed/feed_controller.dart';
 import '../features/paper_reader/reader_navigation_controller.dart';
 import 'account_providers.dart';
+import 'appearance_controller.dart';
 import 'library_providers.dart';
 import 'comments_providers.dart';
 import 'router.dart';
@@ -75,7 +76,7 @@ class _PakPerkAppState extends ConsumerState<PakPerkApp>
       debugShowCheckedModeBanner: false,
       theme: buildPakPerkTheme(),
       darkTheme: buildPakPerkDarkTheme(),
-      themeMode: ThemeMode.system,
+      themeMode: ref.watch(appearanceControllerProvider).themeMode,
       restorationScopeId: 'pakperk-app',
       routerConfig: ref.watch(pakPerkRouterProvider),
       builder: (context, child) => StartupGate(

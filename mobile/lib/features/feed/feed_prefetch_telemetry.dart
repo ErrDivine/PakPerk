@@ -76,15 +76,48 @@ final class PakPerkFeedPrefetchTelemetry implements FeedPrefetchTelemetry {
   @override
   void record(FeedPrefetchEvent event) {
     timeline.record(event);
-    final name = switch (event.metric) {
-      FeedPrefetchMetric.nextPaperCacheHit =>
+    final telemetry = switch (event.metric) {
+      FeedPrefetchMetric.requested => (
+        PakPerkTelemetryEvent.feedPrefetchRequested,
+        const <String, Object?>{},
+      ),
+      FeedPrefetchMetric.succeeded => (
+        PakPerkTelemetryEvent.feedPrefetchSucceeded,
+        const <String, Object?>{},
+      ),
+      FeedPrefetchMetric.failed => (
+        PakPerkTelemetryEvent.feedPrefetchFailed,
+        const <String, Object?>{},
+      ),
+      FeedPrefetchMetric.deduplicated => (
+        PakPerkTelemetryEvent.feedPrefetchDeduplicated,
+        const <String, Object?>{},
+      ),
+      FeedPrefetchMetric.nextPaperCacheHit => (
         PakPerkTelemetryEvent.nextPaperCacheHit,
-      FeedPrefetchMetric.nextPaperCacheMiss =>
+        const <String, Object?>{'cache_tier': 'device'},
+      ),
+      FeedPrefetchMetric.nextPaperCacheMiss => (
         PakPerkTelemetryEvent.nextPaperCacheMiss,
-      _ => null,
+        const <String, Object?>{'cache_tier': 'device'},
+      ),
+      FeedPrefetchMetric.blankCard => (
+        PakPerkTelemetryEvent.feedBlankCard,
+        const <String, Object?>{},
+      ),
+      FeedPrefetchMetric.cacheRows => (
+        PakPerkTelemetryEvent.feedCacheRows,
+        <String, Object?>{'rows': event.value},
+      ),
+      FeedPrefetchMetric.cacheBytes => (
+        PakPerkTelemetryEvent.feedCacheBytes,
+        <String, Object?>{'bytes': event.value},
+      ),
+      FeedPrefetchMetric.timeToReadable => (
+        PakPerkTelemetryEvent.feedTimeToReadable,
+        <String, Object?>{'elapsed_ms': event.value},
+      ),
     };
-    if (name != null) {
-      emitTelemetry(sink, name, const {'cache_tier': 'device'});
-    }
+    emitTelemetry(sink, telemetry.$1, telemetry.$2);
   }
 }

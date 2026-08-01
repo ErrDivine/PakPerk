@@ -37,6 +37,16 @@ policy:
   termsVersion: "2026-07-31"
   communityGuidelinesVersion: "2026-07-31"
 
+# Render the complete topology in contract tests. Real protected values files
+# enable these only after the corresponding release smoke/evidence gate.
+features:
+  accounts: true
+  library: true
+  libraryWrites: true
+  comments: true
+  commentCreation: true
+  accountDeletion: true
+
 api:
   # Render-only example. A deployment must use the source CIDRs actually
   # observed from its ingress-controller pods.
@@ -84,7 +94,8 @@ ingress:
 
 networkPolicy:
   apiHttpsCidrs: [203.0.113.10/32]
-  paperHttpsCidrs: [203.0.113.20/32]
+  arxivHttpsCidrs: [203.0.113.20/32]
+  modelHttpsCidrs: [203.0.113.21/32]
   identityAdminHttpsCidrs: [203.0.113.30/32]
   databaseCidrs: [198.51.100.10/32]
   telemetryCidrs: [192.0.2.40/32]

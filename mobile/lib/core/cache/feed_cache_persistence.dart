@@ -69,6 +69,33 @@ class FeedCacheUsage {
   final int physicalDatabaseBytes;
 }
 
+/// Result of an explicit, user-requested removal of rebuildable public data.
+///
+/// Physical SQLite allocation can remain larger until lifecycle-safe
+/// compaction runs, so callers must distinguish live bytes from allocated
+/// bytes instead of promising that foreground deletion immediately shrinks
+/// the database file.
+class PublicCacheClearResult {
+  const PublicCacheClearResult({required this.before, required this.after});
+
+  final FeedCacheUsage before;
+  final FeedCacheUsage after;
+
+  int get removedMetadataRows =>
+      (before.metadataRows - after.metadataRows).clamp(0, before.metadataRows);
+}
+
+/// Optional local-store capability used by the public Settings surface.
+///
+/// Implementations remove only rebuildable feed/metadata/derived records.
+/// Account data, saves, drafts, pending synchronization, identity, and active
+/// reading restoration must remain intact.
+abstract interface class PublicCacheControl {
+  Future<FeedCacheUsage> measurePublicCache();
+
+  Future<PublicCacheClearResult> clearRebuildablePublicCache();
+}
+
 class CacheEvictionResult {
   const CacheEvictionResult({
     required this.expiredCommentPages,

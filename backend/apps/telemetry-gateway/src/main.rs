@@ -10,9 +10,11 @@ use axum::{
     body::Bytes,
     extract::{DefaultBodyLimit, State},
     http::{HeaderMap, StatusCode, header},
+    middleware,
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use http_policy::strict_transport_security;
 use observability::{
     ObservabilityConfig, OperationClass, OperationOutcome, init, record_operation,
 };
@@ -155,14 +157,7 @@ async fn serve(config: Config) -> Result<()> {
         upstream: config.upstream,
         client,
     };
-    let router = Router::new()
-        .route("/health/live", get(|| async { StatusCode::OK }))
-        .route("/health/ready", get(|| async { StatusCode::OK }))
-        .route("/v1/logs", post(ingest))
-        .fallback(|| async { StatusCode::NOT_FOUND })
-        .with_state(state)
-        .layer(DefaultBodyLimit::max(MAXIMUM_BODY_BYTES))
-        .layer(ConcurrencyLimitLayer::new(64));
+    let router = build_router(state);
     let listener = TcpListener::bind(config.bind)
         .await
         .with_context(|| format!("could not bind {}", config.bind))?;
@@ -171,6 +166,18 @@ async fn serve(config: Config) -> Result<()> {
         .with_graceful_shutdown(shutdown_signal())
         .await
         .context("mobile telemetry gateway failed")
+}
+
+fn build_router(state: AppState) -> Router {
+    Router::new()
+        .route("/health/live", get(|| async { StatusCode::OK }))
+        .route("/health/ready", get(|| async { StatusCode::OK }))
+        .route("/v1/logs", post(ingest))
+        .fallback(|| async { StatusCode::NOT_FOUND })
+        .with_state(state)
+        .layer(DefaultBodyLimit::max(MAXIMUM_BODY_BYTES))
+        .layer(ConcurrencyLimitLayer::new(64))
+        .layer(middleware::from_fn(strict_transport_security))
 }
 
 async fn ingest(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> Response {
@@ -350,6 +357,7 @@ fn validate_payload(body: &[u8], environment: &str, now: SystemTime) -> Result<(
         || !attributes
             .iter()
             .all(|(key, value)| valid_event_attribute(event, key, value, environment))
+        || !valid_event_attribute_set(event, &attributes)
     {
         return Err(());
     }
@@ -404,11 +412,20 @@ fn valid_event(event: &str) -> bool {
             | "shell_destination_selected"
             | "paper_page_committed"
             | "paper_stage_committed"
+            | "feed_prefetch_requested"
+            | "feed_prefetch_succeeded"
+            | "feed_prefetch_failed"
+            | "feed_prefetch_deduplicated"
             | "next_paper_cache_hit"
             | "next_paper_cache_miss"
+            | "feed_blank_card"
+            | "feed_cache_rows"
+            | "feed_cache_bytes"
+            | "feed_time_to_readable_ms"
             | "save_requested"
             | "save_synced"
             | "save_failed"
+            | "library_outbox_backlog"
             | "auth_started"
             | "auth_completed"
             | "auth_cancelled"
@@ -421,8 +438,71 @@ fn valid_event(event: &str) -> bool {
             | "account_deletion_accepted"
             | "account_deletion_unavailable"
             | "account_deletion_local_cleanup_failed"
+            | "http_request_completed"
             | "mobile_error"
     )
+}
+
+fn valid_http_request_completed_attribute(key: &str, value: &OtlpValue) -> bool {
+    match key {
+        "method_class" => matches!(
+            string_value(Some(value)),
+            Some("read" | "write" | "delete" | "other")
+        ),
+        "route_class" => matches!(
+            string_value(Some(value)),
+            Some(
+                "health"
+                    | "feed"
+                    | "paper"
+                    | "paper_prepare"
+                    | "paper_chat"
+                    | "account"
+                    | "account_deletion"
+                    | "library"
+                    | "comments"
+                    | "moderation"
+                    | "unknown"
+            )
+        ),
+        "outcome" => matches!(
+            string_value(Some(value)),
+            Some(
+                "success"
+                    | "cancelled"
+                    | "timeout"
+                    | "unavailable"
+                    | "client_error"
+                    | "server_error"
+                    | "http_error"
+                    | "transport_error"
+            )
+        ),
+        "status_family" => matches!(
+            string_value(Some(value)),
+            Some("none" | "1xx" | "2xx" | "3xx" | "4xx" | "5xx")
+        ),
+        "elapsed_ms" => int_value(value).is_some_and(|value| value <= 86_400_000),
+        "retry_count" => int_value(value).is_some_and(|value| value <= 1),
+        _ => false,
+    }
+}
+
+fn valid_mobile_error_attribute(key: &str, value: &OtlpValue) -> bool {
+    match key {
+        "failure_code" => string_value(Some(value)).is_some_and(valid_failure_code),
+        "retryable" => bool_value(value).is_some(),
+        "component" => matches!(string_value(Some(value)), Some("startup" | "application")),
+        "operation" => matches!(
+            string_value(Some(value)),
+            Some("local_bootstrap" | "flutter_framework" | "platform_dispatcher" | "zone")
+        ),
+        "error_category" => matches!(
+            string_value(Some(value)),
+            Some("timeout" | "format" | "state" | "argument" | "unexpected")
+        ),
+        _ => false,
+    }
 }
 
 fn valid_event_attribute(event: &str, key: &str, value: &OtlpValue, environment: &str) -> bool {
@@ -439,14 +519,11 @@ fn valid_event_attribute(event: &str, key: &str, value: &OtlpValue, environment:
         ("startup_ready", "elapsed_ms") => {
             int_value(value).is_some_and(|value| value <= 86_400_000)
         }
-        ("startup_failure" | "save_failed" | "mobile_error", "failure_code") => {
+        ("startup_failure" | "save_failed", "failure_code") => {
             string_value(Some(value)).is_some_and(valid_failure_code)
         }
         ("startup_failure", "timed_out")
-        | (
-            "save_failed" | "comment_rejected" | "account_deletion_unavailable" | "mobile_error",
-            "retryable",
-        )
+        | ("save_failed" | "comment_rejected" | "account_deletion_unavailable", "retryable")
         | ("shell_destination_selected", "reselected") => bool_value(value).is_some(),
         ("shell_destination_selected", "destination") => {
             matches!(string_value(Some(value)), Some("read" | "you"))
@@ -462,6 +539,13 @@ fn valid_event_attribute(event: &str, key: &str, value: &OtlpValue, environment:
         ("next_paper_cache_hit" | "next_paper_cache_miss", "cache_tier") => {
             string_value(Some(value)) == Some("device")
         }
+        ("feed_cache_rows", "rows") => int_value(value).is_some_and(|value| value <= 100_000),
+        ("feed_cache_bytes", "bytes") => {
+            int_value(value).is_some_and(|value| value <= 1_073_741_824)
+        }
+        ("feed_time_to_readable_ms", "elapsed_ms") => {
+            int_value(value).is_some_and(|value| value <= 86_400_000)
+        }
         ("save_requested", "intent") => {
             matches!(string_value(Some(value)), Some("save" | "remove"))
         }
@@ -470,6 +554,9 @@ fn valid_event_attribute(event: &str, key: &str, value: &OtlpValue, environment:
             string_value(Some(value)),
             Some("save" | "remove" | "mutation")
         ),
+        ("library_outbox_backlog", "pending_count") => {
+            int_value(value).is_some_and(|value| value <= 100_000)
+        }
         ("auth_started" | "auth_completed" | "auth_cancelled", "purpose") => matches!(
             string_value(Some(value)),
             Some("session" | "account_deletion")
@@ -496,19 +583,35 @@ fn valid_event_attribute(event: &str, key: &str, value: &OtlpValue, environment:
         ("account_deletion_local_cleanup_failed", "failure_code") => {
             string_value(Some(value)) == Some("local_cleanup")
         }
-        ("mobile_error", "component") => {
-            matches!(string_value(Some(value)), Some("startup" | "application"))
-        }
-        ("mobile_error", "operation") => matches!(
-            string_value(Some(value)),
-            Some("local_bootstrap" | "flutter_framework" | "platform_dispatcher" | "zone")
-        ),
-        ("mobile_error", "error_category") => matches!(
-            string_value(Some(value)),
-            Some("timeout" | "format" | "state" | "argument" | "unexpected")
-        ),
+        ("http_request_completed", key) => valid_http_request_completed_attribute(key, value),
+        ("mobile_error", key) => valid_mobile_error_attribute(key, value),
         _ => false,
     }
+}
+
+fn valid_event_attribute_set(event: &str, attributes: &HashMap<&str, &OtlpValue>) -> bool {
+    let expected: &[&str] = match event {
+        "feed_prefetch_requested"
+        | "feed_prefetch_succeeded"
+        | "feed_prefetch_failed"
+        | "feed_prefetch_deduplicated"
+        | "feed_blank_card" => &[],
+        "next_paper_cache_hit" | "next_paper_cache_miss" => &["cache_tier"],
+        "feed_cache_rows" => &["rows"],
+        "feed_cache_bytes" => &["bytes"],
+        "feed_time_to_readable_ms" => &["elapsed_ms"],
+        "library_outbox_backlog" => &["pending_count"],
+        "http_request_completed" => &[
+            "method_class",
+            "route_class",
+            "outcome",
+            "status_family",
+            "elapsed_ms",
+            "retry_count",
+        ],
+        _ => return true,
+    };
+    attributes.len() == expected.len() && expected.iter().all(|key| attributes.contains_key(key))
 }
 
 fn valid_failure_code(value: &str) -> bool {
@@ -583,6 +686,12 @@ async fn shutdown_signal() {
 
 #[cfg(test)]
 mod tests {
+    use axum::{
+        body::Body,
+        http::{Request, header::STRICT_TRANSPORT_SECURITY},
+    };
+    use tower::ServiceExt as _;
+
     use super::*;
 
     fn payload(event: &str, attributes: &serde_json::Value) -> Vec<u8> {
@@ -611,6 +720,28 @@ mod tests {
         .unwrap()
     }
 
+    #[tokio::test]
+    async fn public_gateway_responses_carry_the_closed_hsts_policy() {
+        let state = AppState {
+            environment: "staging".to_owned(),
+            upstream: Url::parse("http://pakperk-otel-collector:4318/v1/logs").unwrap(),
+            client: reqwest::Client::new(),
+        };
+        let app = build_router(state);
+
+        for path in ["/health/live", "/missing"] {
+            let response = app
+                .clone()
+                .oneshot(Request::get(path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(
+                response.headers()[STRICT_TRANSPORT_SECURITY],
+                http_policy::HSTS_HEADER_VALUE
+            );
+        }
+    }
+
     #[test]
     fn accepts_only_the_closed_mobile_schema() {
         let safe = payload(
@@ -630,6 +761,105 @@ mod tests {
         assert!(validate_payload(&unknown, "staging", SystemTime::now()).is_err());
         let unknown_event = payload("attacker_event", &json!([]));
         assert!(validate_payload(&unknown_event, "staging", SystemTime::now()).is_err());
+    }
+
+    #[test]
+    fn accepts_all_feed_metrics_and_the_exact_http_completion_shape() {
+        for (event, attributes) in [
+            ("feed_prefetch_requested", json!([])),
+            ("feed_prefetch_succeeded", json!([])),
+            ("feed_prefetch_failed", json!([])),
+            ("feed_prefetch_deduplicated", json!([])),
+            ("feed_blank_card", json!([])),
+            (
+                "next_paper_cache_hit",
+                json!([{"key":"cache_tier","value":{"stringValue":"device"}}]),
+            ),
+            (
+                "next_paper_cache_miss",
+                json!([{"key":"cache_tier","value":{"stringValue":"device"}}]),
+            ),
+            (
+                "feed_cache_rows",
+                json!([{"key":"rows","value":{"intValue":"500"}}]),
+            ),
+            (
+                "feed_cache_bytes",
+                json!([{"key":"bytes","value":{"intValue":"67108864"}}]),
+            ),
+            (
+                "feed_time_to_readable_ms",
+                json!([{"key":"elapsed_ms","value":{"intValue":"42"}}]),
+            ),
+            (
+                "library_outbox_backlog",
+                json!([{"key":"pending_count","value":{"intValue":"3"}}]),
+            ),
+        ] {
+            assert!(
+                validate_payload(&payload(event, &attributes), "staging", SystemTime::now())
+                    .is_ok(),
+                "rejected {event}"
+            );
+        }
+
+        let http_attributes = json!([
+            {"key":"method_class","value":{"stringValue":"write"}},
+            {"key":"route_class","value":{"stringValue":"comments"}},
+            {"key":"outcome","value":{"stringValue":"success"}},
+            {"key":"status_family","value":{"stringValue":"2xx"}},
+            {"key":"elapsed_ms","value":{"intValue":"125"}},
+            {"key":"retry_count","value":{"intValue":"1"}}
+        ]);
+        assert!(
+            validate_payload(
+                &payload("http_request_completed", &http_attributes),
+                "staging",
+                SystemTime::now(),
+            )
+            .is_ok()
+        );
+
+        let missing_required = json!([
+            {"key":"method_class","value":{"stringValue":"write"}},
+            {"key":"route_class","value":{"stringValue":"comments"}},
+            {"key":"outcome","value":{"stringValue":"success"}},
+            {"key":"status_family","value":{"stringValue":"2xx"}},
+            {"key":"elapsed_ms","value":{"intValue":"125"}}
+        ]);
+        assert!(
+            validate_payload(
+                &payload("http_request_completed", &missing_required),
+                "staging",
+                SystemTime::now(),
+            )
+            .is_err()
+        );
+        let oversized_backlog = payload(
+            "library_outbox_backlog",
+            &json!([{"key":"pending_count","value":{"intValue":"100001"}}]),
+        );
+        assert!(validate_payload(&oversized_backlog, "staging", SystemTime::now()).is_err());
+
+        for forbidden_key in ["route", "uri", "authorization", "body", "paper_id"] {
+            let mut attributes = http_attributes.as_array().unwrap().clone();
+            attributes.push(json!({
+                "key": forbidden_key,
+                "value": {"stringValue": "private-or-identifying-value"}
+            }));
+            assert!(
+                validate_payload(
+                    &payload(
+                        "http_request_completed",
+                        &serde_json::Value::Array(attributes)
+                    ),
+                    "staging",
+                    SystemTime::now(),
+                )
+                .is_err(),
+                "accepted forbidden HTTP field {forbidden_key}"
+            );
+        }
     }
 
     #[test]

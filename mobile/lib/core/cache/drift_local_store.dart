@@ -19,6 +19,7 @@ import '../models/introduction.dart';
 import '../models/paper.dart';
 import '../models/processing.dart';
 import '../models/reader_state.dart';
+import '../settings/appearance.dart';
 import 'drift_restoration_persistence.dart';
 import 'feed_cache_persistence.dart';
 import 'local_store.dart';
@@ -34,6 +35,7 @@ class DriftLocalStore
         FeedConditionalCache,
         FeedCachePersistence,
         CacheCompactionPersistence,
+        PublicCacheControl,
         LiveRestorationCacheProtection,
         VersionedDerivedCache,
         GenerationScopedChatCache {
@@ -102,24 +104,7 @@ class DriftLocalStore
       fulltextPolicy: fulltextPolicy,
     );
     try {
-      final restoration = await store.loadRestoration();
-      final routePapers = restoration.routeStack
-          .map((entry) => entry.paper)
-          .toList(growable: false);
-      PaperSummary? feedPaper;
-      if (restoration.feedPaperId case final paperId?) {
-        feedPaper = await store.loadPaper(paperId);
-      }
-      await database.clearPublicCache();
-      await store.ensurePaperMetadata(routePapers);
-      if (feedPaper != null) {
-        await store.persistFeedPage(
-          queryKey: feedQueryKey(),
-          page: FeedPage(items: [feedPaper]),
-          replace: true,
-        );
-      }
-      await SharedPreferencesLocalStore.repairPublicCache();
+      await store.clearRebuildablePublicCache();
     } finally {
       await store.close();
     }
@@ -138,6 +123,7 @@ class DriftLocalStore
   Future<LegacyImportStats>? _legacyImport;
   WidgetsBinding? _lifecycleBinding;
   Future<CacheCompactionResult>? _lifecycleMaintenance;
+  Future<CacheEvictionResult>? _memoryPressureMaintenance;
   String _lastActiveQueryKey = feedQueryKey();
   Set<String> _lastProtectedPaperIds = const {};
   int _lastMaxMetadataPapers = 500;
@@ -170,12 +156,40 @@ class DriftLocalStore
     unawaited(_runLifecycleMaintenanceIgnoringErrors());
   }
 
+  @override
+  void didHaveMemoryPressure() {
+    final state = _lifecycleBinding?.lifecycleState;
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      unawaited(_runLifecycleMaintenanceIgnoringErrors());
+      return;
+    }
+    // A foreground memory warning may arrive during a swipe. Release SQLite's
+    // expendable cache and enforce the existing row/live-byte bounds, but do
+    // not checkpoint or VACUUM until a non-interactive lifecycle state.
+    unawaited(_runMemoryPressureMaintenanceIgnoringErrors());
+  }
+
   Future<void> _runLifecycleMaintenanceIgnoringErrors() async {
     try {
       await runLifecycleSafeMaintenance();
     } on Object catch (error, stackTrace) {
       developer.log(
         'lifecycle-safe cache maintenance failed',
+        name: 'pakperk.cache',
+        error: error.runtimeType,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  Future<void> _runMemoryPressureMaintenanceIgnoringErrors() async {
+    try {
+      await runMemoryPressureMaintenance();
+    } on Object catch (error, stackTrace) {
+      developer.log(
+        'foreground memory-pressure cache maintenance failed',
         name: 'pakperk.cache',
         error: error.runtimeType,
         stackTrace: stackTrace,
@@ -193,6 +207,17 @@ class DriftLocalStore
   @override
   Future<void> purgeAccountDeletionCommentSnapshots() =>
       AccountCacheDao(database).purgeCommentPagesForAccountDeletion();
+
+  @override
+  Future<void> clearAllLocalData() async {
+    await legacyImportDone;
+    await _restoration.waitForWrites();
+    await database.clearAllLocalData();
+    await _preferences.clearAllLocalData();
+    _liveRestoration = const AppRestorationState();
+    _lastActiveQueryKey = feedQueryKey();
+    _lastProtectedPaperIds = const {};
+  }
 
   @override
   Future<String> getOrCreateSessionId() => _preferences.getOrCreateSessionId();
@@ -217,6 +242,13 @@ class DriftLocalStore
     updateLiveRestorationProtection(value);
     return _restoration.save(value);
   }
+
+  @override
+  Future<AppAppearance> loadAppearance() => _preferences.loadAppearance();
+
+  @override
+  Future<void> saveAppearance(AppAppearance value) =>
+      _preferences.saveAppearance(value);
 
   @override
   void updateLiveRestorationProtection(AppRestorationState value) {
@@ -453,6 +485,62 @@ class DriftLocalStore
   Future<FeedCacheUsage> measureCache() => _maintenance.measure();
 
   @override
+  Future<FeedCacheUsage> measurePublicCache() => measureCache();
+
+  @override
+  Future<PublicCacheClearResult> clearRebuildablePublicCache() async {
+    await _restoration.waitForWrites();
+    final before = await measureCache();
+    final persisted = await loadRestoration();
+    final live = _liveRestoration;
+    final restorations = <AppRestorationState>[
+      persisted,
+      if (live != null && live != persisted) live,
+    ];
+
+    // Snapshot the minimum content needed to keep every currently restorable
+    // paper readable before deleting rebuildable relational data.
+    final protectedPapers = <String, PaperSummary>{};
+    for (final restoration in restorations) {
+      for (final entry in restoration.routeStack) {
+        protectedPapers[entry.paper.paperId] = entry.paper;
+      }
+      if (restoration.feedPaperId case final paperId?) {
+        final paper = await loadPaper(paperId);
+        if (paper != null) protectedPapers[paper.paperId] = paper;
+      }
+    }
+
+    PaperSummary? activeFeedPaper;
+    final activeFeed = await loadFeedPage(_lastActiveQueryKey);
+    if (activeFeed != null && activeFeed.items.isNotEmpty) {
+      final preferred = live ?? persisted;
+      final referencedId = preferred.feedPaperId;
+      if (referencedId != null) {
+        activeFeedPaper = activeFeed.items
+            .where((paper) => paper.paperId == referencedId)
+            .firstOrNull;
+      }
+      activeFeedPaper ??= activeFeed
+          .items[preferred.feedIndex.clamp(0, activeFeed.items.length - 1)];
+      protectedPapers[activeFeedPaper.paperId] = activeFeedPaper;
+    }
+
+    await database.clearPublicCache();
+    await ensurePaperMetadata(protectedPapers.values);
+    if (activeFeedPaper != null) {
+      await persistFeedPage(
+        queryKey: _lastActiveQueryKey,
+        page: FeedPage(items: [activeFeedPaper]),
+        replace: true,
+      );
+    }
+    await SharedPreferencesLocalStore.repairPublicCache();
+    final after = await measureCache();
+    return PublicCacheClearResult(before: before, after: after);
+  }
+
+  @override
   Future<CacheEvictionResult> evictCache({
     required String activeQueryKey,
     required Set<String> protectedPaperIds,
@@ -529,6 +617,33 @@ class DriftLocalStore
     });
     _lifecycleMaintenance = operation;
     return operation;
+  }
+
+  /// Handles a foreground OS memory warning without performing physical
+  /// compaction. Calls are single-flight so repeated platform warnings cannot
+  /// start overlapping eviction transactions.
+  Future<CacheEvictionResult> runMemoryPressureMaintenance() {
+    final active = _memoryPressureMaintenance;
+    if (active != null) return active;
+    late final Future<CacheEvictionResult> operation;
+    operation = _runMemoryPressureMaintenance().whenComplete(() {
+      if (identical(_memoryPressureMaintenance, operation)) {
+        _memoryPressureMaintenance = null;
+      }
+    });
+    _memoryPressureMaintenance = operation;
+    return operation;
+  }
+
+  Future<CacheEvictionResult> _runMemoryPressureMaintenance() async {
+    await database.releaseMemory();
+    return evictCache(
+      activeQueryKey: _lastActiveQueryKey,
+      protectedPaperIds: _lastProtectedPaperIds,
+      maxMetadataPapers: _lastMaxMetadataPapers,
+      maxDatabaseBytes: _lastMaxDatabaseBytes,
+      metadataTtl: _lastMetadataTtl,
+    );
   }
 
   Future<CacheCompactionResult> _runLifecycleSafeMaintenance() async {

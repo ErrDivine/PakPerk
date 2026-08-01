@@ -246,19 +246,38 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
                 '${profile.currentCommunityGuidelinesVersion}.',
               ),
               subtitle: const Text(
-                'Comments are public. Harassment, threats, doxxing, spam, '
-                'impersonation, and illegal content are prohibited.',
+                'Comments are public. Harassment, threats, illegal content, '
+                'doxxing, sexual exploitation, spam, impersonation, and '
+                'copyright abuse are prohibited.',
               ),
             ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: busy
-                    ? null
-                    : () =>
-                          context.push<void>(PakPerkRoutes.communityGuidelines),
-                child: const Text('Read the Community Guidelines'),
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Text(
+                'Support/moderation contact: '
+                '${ref.watch(appBuildConfigProvider).supportUri}',
+                key: const ValueKey('account-community-support-contact'),
+                style: Theme.of(context).textTheme.bodySmall,
               ),
+            ),
+            Wrap(
+              children: [
+                TextButton(
+                  onPressed: busy
+                      ? null
+                      : () => context.push<void>(
+                          PakPerkRoutes.communityGuidelines,
+                        ),
+                  child: const Text('Read the Community Guidelines'),
+                ),
+                TextButton(
+                  key: const ValueKey('account-community-support'),
+                  onPressed: busy
+                      ? null
+                      : () => context.push<void>(PakPerkRoutes.support),
+                  child: const Text('Contact support or moderation'),
+                ),
+              ],
             ),
           ],
           if (_safeError ?? account.error?.message case final message?) ...[

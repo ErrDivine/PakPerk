@@ -110,6 +110,7 @@ final class LibrarySyncController extends StateNotifier<LibrarySyncStatus> {
     _wakeup = null;
     final initialPendingCount = await _repository.pendingCount(scope.accountId);
     if (!_isRunnable(scope)) return;
+    _recordBacklog(initialPendingCount);
     state = LibrarySyncStatus(
       phase: LibrarySyncPhase.syncing,
       pendingCount: initialPendingCount,
@@ -130,6 +131,7 @@ final class LibrarySyncController extends StateNotifier<LibrarySyncStatus> {
       if (!_isRunnable(scope)) return;
       final pendingCount = await _repository.pendingCount(scope.accountId);
       if (!_isRunnable(scope)) return;
+      _recordBacklog(pendingCount);
       state = LibrarySyncStatus(
         phase: drained.issue != null
             ? LibrarySyncPhase.failed
@@ -160,6 +162,7 @@ final class LibrarySyncController extends StateNotifier<LibrarySyncStatus> {
       if (!_isRunnable(scope)) return;
       final pendingCount = await _repository.pendingCount(scope.accountId);
       if (!_isRunnable(scope)) return;
+      _recordBacklog(pendingCount);
       state = LibrarySyncStatus(
         phase: LibrarySyncPhase.failed,
         pendingCount: pendingCount,
@@ -175,6 +178,7 @@ final class LibrarySyncController extends StateNotifier<LibrarySyncStatus> {
       if (!_isRunnable(scope)) return;
       final pendingCount = await _repository.pendingCount(scope.accountId);
       if (!_isRunnable(scope)) return;
+      _recordBacklog(pendingCount);
       state = LibrarySyncStatus(
         phase: LibrarySyncPhase.failed,
         pendingCount: pendingCount,
@@ -188,6 +192,12 @@ final class LibrarySyncController extends StateNotifier<LibrarySyncStatus> {
     final operation = _tail.then((_) => action(), onError: (_) => action());
     _tail = operation.catchError((Object _) {});
     return operation;
+  }
+
+  void _recordBacklog(int pendingCount) {
+    emitTelemetry(_telemetry, PakPerkTelemetryEvent.libraryOutboxBacklog, {
+      'pending_count': pendingCount,
+    });
   }
 
   void _schedule(_ActiveLibraryScope scope, DateTime? nextAttemptAt) {

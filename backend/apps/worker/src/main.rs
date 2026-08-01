@@ -1,6 +1,7 @@
 mod cli;
 mod config;
 mod evaluation;
+mod metadata_sync;
 mod runtime;
 
 use anyhow::{Context as _, Result};
@@ -25,6 +26,20 @@ async fn main() -> Result<()> {
                 .await?;
         write_content_evaluation_report(&report, output).await?;
         report.require_valid()?;
+        return Ok(());
+    }
+    if let Command::SyncMetadata { manifest } = &cli.command {
+        let config = metadata_sync::MetadataSyncConfig::from_env()
+            .context("invalid metadata-sync configuration")?;
+        let telemetry_config = ObservabilityConfig::from_env("pakperk-metadata-sync")
+            .context("invalid telemetry configuration")?;
+        let telemetry = init(&telemetry_config).context("could not initialize telemetry")?;
+        let sync_result = metadata_sync::run(config, manifest).await;
+        let telemetry_result = telemetry
+            .shutdown()
+            .context("could not flush metadata-sync telemetry");
+        sync_result?;
+        telemetry_result?;
         return Ok(());
     }
     let config = WorkerConfig::from_env().context("invalid worker configuration")?;

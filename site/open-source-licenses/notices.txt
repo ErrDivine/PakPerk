@@ -3,7 +3,7 @@ Pakperk release-candidate open-source notices
 
 This checked-in file is a deployment-safe placeholder, not the release
 inventory. The release workflow MUST replace it with the output of
-scripts/generate_license_inventory.py from the locked Rust and Flutter graphs.
+scripts/generate_release_metadata.py from the locked Rust and Flutter graphs.
 A production artifact validator rejects this placeholder text.
 
 Pakperk project code: MIT

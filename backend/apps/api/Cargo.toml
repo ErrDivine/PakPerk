@@ -21,6 +21,7 @@ domain.workspace = true
 jobs.workspace = true
 library.workspace = true
 llm_provider.workspace = true
+http_policy.workspace = true
 moderation.workspace = true
 observability.workspace = true
 pgvector.workspace = true

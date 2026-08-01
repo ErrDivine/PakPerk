@@ -2439,7 +2439,7 @@
             }
           },
           "403": {
-            "description": "ACCOUNT_SUSPENDED, ACCOUNT_DELETION_PENDING, or COMMENT_PROFILE_INCOMPLETE",
+            "description": "ACCOUNT_INCOMPLETE, TERMS_ACCEPTANCE_REQUIRED, ACCOUNT_SUSPENDED, or ACCOUNT_DELETION_PENDING",
             "content": {
               "application/json": {
                 "schema": {

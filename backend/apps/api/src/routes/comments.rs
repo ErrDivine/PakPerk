@@ -139,7 +139,7 @@ pub(crate) async fn list_paper_comments(
         (status = 200, description = "Exact idempotent replay of the canonical comment", body = CommentEnvelope, headers(("Cache-Control" = String, description = "Always private, no-store"))),
         (status = 400, description = "INVALID_REQUEST, INVALID_CLIENT_REQUEST_ID, or INVALID_COMMENT_BODY", body = crate::openapi::ErrorEnvelopeSchema),
         (status = 401, description = "UNAUTHENTICATED or TOKEN_EXPIRED", body = crate::openapi::ErrorEnvelopeSchema, headers(("WWW-Authenticate" = String, description = "Bearer challenge"))),
-        (status = 403, description = "ACCOUNT_SUSPENDED, ACCOUNT_DELETION_PENDING, or COMMENT_PROFILE_INCOMPLETE", body = crate::openapi::ErrorEnvelopeSchema),
+        (status = 403, description = "ACCOUNT_INCOMPLETE, TERMS_ACCEPTANCE_REQUIRED, ACCOUNT_SUSPENDED, or ACCOUNT_DELETION_PENDING", body = crate::openapi::ErrorEnvelopeSchema),
         (status = 404, description = "PAPER_NOT_FOUND", body = crate::openapi::ErrorEnvelopeSchema),
         (status = 409, description = "IDEMPOTENCY_CONFLICT", body = crate::openapi::ErrorEnvelopeSchema),
         (status = 422, description = "COMMENT_REJECTED", body = crate::openapi::ErrorEnvelopeSchema),
@@ -560,11 +560,18 @@ fn comment_error(request_id: RequestId, error_value: &CommentServiceError) -> Ap
                 false,
             )
         }
-        CommentServiceError::ProfileIncomplete => ApiError::new(
+        CommentServiceError::AccountIncomplete => ApiError::new(
             request_id,
             StatusCode::FORBIDDEN,
-            "COMMENT_PROFILE_INCOMPLETE",
-            "Choose a handle and accept the current Terms and Community Guidelines before posting.",
+            "ACCOUNT_INCOMPLETE",
+            "Choose a handle before posting.",
+            false,
+        ),
+        CommentServiceError::TermsAcceptanceRequired => ApiError::new(
+            request_id,
+            StatusCode::FORBIDDEN,
+            "TERMS_ACCEPTANCE_REQUIRED",
+            "Accept the current Terms and Community Guidelines before posting.",
             false,
         ),
         CommentServiceError::PaperNotFound => ApiError::new(
@@ -740,6 +747,13 @@ mod tests {
         );
         assert_eq!(conflict.code, "COMMENT_EDIT_CONFLICT");
         assert!(!conflict.message.contains("42"));
+
+        let incomplete = comment_error(request_id, &CommentServiceError::AccountIncomplete);
+        assert_eq!(incomplete.status, StatusCode::FORBIDDEN);
+        assert_eq!(incomplete.code, "ACCOUNT_INCOMPLETE");
+        let policies = comment_error(request_id, &CommentServiceError::TermsAcceptanceRequired);
+        assert_eq!(policies.status, StatusCode::FORBIDDEN);
+        assert_eq!(policies.code, "TERMS_ACCEPTANCE_REQUIRED");
 
         let missing = comment_error(request_id, &CommentServiceError::CommentNotFound);
         let foreign = comment_error(request_id, &CommentServiceError::NotAuthor);

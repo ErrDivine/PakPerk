@@ -1,0 +1,84 @@
+# Structural production-render overrides used only by chart contract tests.
+# The digests, signing identity, private CIDRs, backup ID, and credentials are
+# deterministic fixtures and are not deployable production evidence. Always
+# layer this file after ci/staging-values.yaml.
+environment: production
+
+image:
+  digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+siteImage:
+  digest: sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+
+secret:
+  existingSecret: pakperk-production-render-runtime
+  rotationVersion: "2026-08-01-render"
+
+public:
+  siteOrigin: https://pakperk.app
+  apiOrigin: https://api.pakperk.app
+  mobileTelemetryOrigin: https://telemetry.pakperk.app
+  oidcOrigin: https://identity.pakperk.app
+  oidcIssuer: https://identity.pakperk.app/realms/pakperk
+  oidcAudience: pakperk-api-production-render
+  oidcWebClientId: pakperk-web-deletion-production-render
+  oidcNativeClientId: pakperk-mobile-production-render
+  supportEmail: support@pakperk.app
+  documentVersion: "2026-08-01"
+
+mobileAssociations:
+  androidPackageName: app.pakperk.pakperk
+  androidSha256Fingerprints:
+    - "01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF"
+  appleTeamId: PKPRK2026A
+  appleBundleId: app.pakperk.pakperk
+
+policy:
+  termsVersion: "2026-08-01"
+  communityGuidelinesVersion: "2026-08-01"
+
+paperWorker:
+  arxivContactEmail: research-ops@pakperk.app
+  llmBaseUrl: https://model.pakperk.app/v1/
+  llmChatModel: production-render-chat
+  llmEmbeddingModel: production-render-embedding
+
+deletionLedger:
+  existingClaim: pakperk-production-render-deletion-ledger
+  environmentId: production
+
+deletionWorker:
+  keycloakAdminBaseUrl: https://identity.pakperk.app/
+  keycloakRealm: pakperk
+  keycloakAdminClientId: pakperk-deletion-worker-production-render
+
+migration:
+  confirmBackupId: backup-prod-20260801-structural
+
+metadataSync:
+  manifestJson: |
+    {
+      "schema_version": 1,
+      "topic": "Pakperk production render contract",
+      "papers": [{"arxiv_id":"1706.03762","prepared":false,"highlight":false}]
+    }
+
+grobid:
+  image:
+    digest: sha256:24ba90eb1c959f65d812bcdb2cf79c677fa5fd7b95235de616b8bc9fa1317849
+
+otelCollector:
+  exporterEndpoint: https://telemetry-upstream.pakperk.app:4317
+
+ingress:
+  tlsSecretName: pakperk-production-render-tls
+  siteHost: pakperk.app
+  apiHost: api.pakperk.app
+  telemetryHost: telemetry.pakperk.app
+
+networkPolicy:
+  apiHttpsCidrs: [10.10.0.10/32]
+  arxivHttpsCidrs: [10.20.0.0/24]
+  modelHttpsCidrs: [10.21.0.0/24]
+  identityAdminHttpsCidrs: [10.30.0.0/24]
+  databaseCidrs: [10.40.0.0/24]
+  telemetryCidrs: [10.50.0.0/24]

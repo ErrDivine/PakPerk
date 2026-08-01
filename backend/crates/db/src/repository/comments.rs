@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc, time::Duration};
 
 use chrono::{DateTime, Utc};
 use domain::{
@@ -7,6 +7,7 @@ use domain::{
     DisplayName, Handle, PaperComment, PaperId, PublicUser, ReportDetail, TermsVersion,
 };
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use uuid::Uuid;
 
 use super::DbError;
@@ -26,6 +27,8 @@ const COMMENT_COLUMNS: &str = r"
     users.display_name AS author_display_name,
     users.status AS author_status
 ";
+const COORDINATION_RETRY_BASE: Duration = Duration::from_millis(10);
+const COORDINATION_RETRY_MAX: Duration = Duration::from_millis(250);
 
 #[derive(FromRow)]
 struct CommentRow {
@@ -109,7 +112,8 @@ pub enum CommentCreateOutcome {
     },
     AccountNotFound,
     Inactive(AccountStatus),
-    ProfileIncomplete,
+    AccountIncomplete,
+    TermsAcceptanceRequired,
     PaperNotFound,
     IdempotencyConflict,
 }
@@ -119,7 +123,8 @@ pub enum CommentCreatePrecondition {
     Eligible,
     AccountNotFound,
     Inactive(AccountStatus),
-    ProfileIncomplete,
+    AccountIncomplete,
+    TermsAcceptanceRequired,
     PaperNotFound,
 }
 
@@ -300,17 +305,131 @@ impl TryFrom<BlockedUserRow> for BlockedUser {
 #[derive(Clone)]
 pub struct CommentRepository {
     pool: PgPool,
+    coordination_permits: Arc<Semaphore>,
+}
+
+/// Cross-replica ownership of one logical comment write.
+///
+/// The transaction intentionally contains only a `PostgreSQL` advisory lock. It
+/// stays open while the service resolves idempotency, consumes shared limits,
+/// and (for create/edit) runs moderation. Keeping that wider scope is what
+/// prevents two API replicas from both spending capacity or moderating the
+/// same retry. Dropping the guard rolls the transaction back and releases the
+/// lock, including when a request future is cancelled.
+/// Contenders use non-blocking lock attempts and release their pool connection
+/// between attempts, so a duplicate burst cannot starve the lock owner of the
+/// second connection used by the repositories below this service boundary.
+/// A process-local permit also caps successful held coordination transactions
+/// at half the pool, leaving the other half available for the actual write path
+/// and unrelated API work when many distinct mutations arrive at once. A failed
+/// lock attempt releases its permit before a bounded exponential backoff, so a
+/// duplicate burst cannot occupy every permit while merely polling one key.
+pub struct CommentWriteGuard {
+    transaction: Transaction<'static, Postgres>,
+    _coordination_permit: OwnedSemaphorePermit,
+}
+
+impl CommentWriteGuard {
+    /// Releases ownership after the complete logical write has resolved.
+    pub async fn release(self) -> Result<(), DbError> {
+        self.transaction.commit().await?;
+        Ok(())
+    }
 }
 
 impl CommentRepository {
     #[must_use]
-    pub const fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(pool: PgPool) -> Self {
+        let maximum_connections = pool.options().get_max_connections();
+        let coordination_limit =
+            usize::try_from((maximum_connections / 2).max(1)).unwrap_or(usize::MAX);
+        Self {
+            pool,
+            coordination_permits: Arc::new(Semaphore::new(coordination_limit)),
+        }
     }
 
     #[must_use]
     pub fn pool(&self) -> &PgPool {
         &self.pool
+    }
+
+    /// Serializes one client-request ID across every API replica.
+    pub async fn coordinate_create(
+        &self,
+        author_user_id: AuthenticatedUserId,
+        client_request_id: Uuid,
+    ) -> Result<CommentWriteGuard, DbError> {
+        self.coordinate_write("comment-service-create", author_user_id, client_request_id)
+            .await
+    }
+
+    /// Serializes edits and deletes of the same author/comment pair.
+    pub async fn coordinate_mutation(
+        &self,
+        author_user_id: AuthenticatedUserId,
+        comment_id: Uuid,
+    ) -> Result<CommentWriteGuard, DbError> {
+        self.coordinate_write("comment-service-mutation", author_user_id, comment_id)
+            .await
+    }
+
+    /// Serializes the unique reporter/comment relationship.
+    pub async fn coordinate_report(
+        &self,
+        reporter_user_id: AuthenticatedUserId,
+        comment_id: Uuid,
+    ) -> Result<CommentWriteGuard, DbError> {
+        self.coordinate_write("comment-service-report", reporter_user_id, comment_id)
+            .await
+    }
+
+    /// Serializes both directions of the same block relationship mutation.
+    #[allow(clippy::similar_names)]
+    pub async fn coordinate_block(
+        &self,
+        blocker_user_id: AuthenticatedUserId,
+        blocked_user_id: AuthenticatedUserId,
+    ) -> Result<CommentWriteGuard, DbError> {
+        self.coordinate_write(
+            "comment-service-block",
+            blocker_user_id,
+            blocked_user_id.into_inner(),
+        )
+        .await
+    }
+
+    async fn coordinate_write(
+        &self,
+        namespace: &str,
+        user_id: AuthenticatedUserId,
+        target_id: Uuid,
+    ) -> Result<CommentWriteGuard, DbError> {
+        if self.pool.options().get_max_connections() < 2 {
+            return Err(DbError::InvalidData(
+                "comment writes require at least two database pool connections".to_owned(),
+            ));
+        }
+        let mut retry_attempt = 0_u32;
+        loop {
+            let coordination_permit = Arc::clone(&self.coordination_permits)
+                .acquire_owned()
+                .await
+                .map_err(|_| {
+                    DbError::InvalidData("comment write coordination was closed".to_owned())
+                })?;
+            let mut transaction = self.pool.begin().await?;
+            if try_advisory_lock(&mut transaction, namespace, user_id, target_id).await? {
+                return Ok(CommentWriteGuard {
+                    transaction,
+                    _coordination_permit: coordination_permit,
+                });
+            }
+            transaction.rollback().await?;
+            drop(coordination_permit);
+            tokio::time::sleep(coordination_retry_delay(retry_attempt)).await;
+            retry_attempt = retry_attempt.saturating_add(1);
+        }
     }
 
     /// Resolves a durable create request before a caller spends moderation or
@@ -396,14 +515,16 @@ impl CommentRepository {
         if !status.is_active() {
             return Ok(CommentCreatePrecondition::Inactive(status));
         }
-        if account.handle.is_none()
-            || account.terms_accepted_at.is_none()
+        if account.handle.is_none() {
+            return Ok(CommentCreatePrecondition::AccountIncomplete);
+        }
+        if account.terms_accepted_at.is_none()
             || account.terms_version.as_deref() != Some(current_terms_version.as_str())
             || account.community_guidelines_accepted_at.is_none()
             || account.community_guidelines_version.as_deref()
                 != Some(current_guidelines_version.as_str())
         {
-            return Ok(CommentCreatePrecondition::ProfileIncomplete);
+            return Ok(CommentCreatePrecondition::TermsAcceptanceRequired);
         }
         let paper_exists: bool =
             sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM papers WHERE id = $1)")
@@ -454,14 +575,16 @@ impl CommentRepository {
         if !account_status.is_active() {
             return Ok(CommentCreateOutcome::Inactive(account_status));
         }
-        let eligible = account.handle.is_some()
-            && account.terms_accepted_at.is_some()
+        if account.handle.is_none() {
+            return Ok(CommentCreateOutcome::AccountIncomplete);
+        }
+        let policies_accepted = account.terms_accepted_at.is_some()
             && account.terms_version.as_deref() == Some(current_terms_version.as_str())
             && account.community_guidelines_accepted_at.is_some()
             && account.community_guidelines_version.as_deref()
                 == Some(current_guidelines_version.as_str());
-        if !eligible {
-            return Ok(CommentCreateOutcome::ProfileIncomplete);
+        if !policies_accepted {
+            return Ok(CommentCreateOutcome::TermsAcceptanceRequired);
         }
         advisory_lock(
             &mut transaction,
@@ -1440,4 +1563,80 @@ async fn advisory_lock(
     .execute(&mut **transaction)
     .await?;
     Ok(())
+}
+
+async fn try_advisory_lock(
+    transaction: &mut Transaction<'_, Postgres>,
+    namespace: &str,
+    user_id: AuthenticatedUserId,
+    target_id: Uuid,
+) -> Result<bool, DbError> {
+    sqlx::query_scalar(
+        r"
+        SELECT pg_try_advisory_xact_lock(
+            hashtextextended($1 || ':' || $2::text || ':' || $3::text, 0)
+        )
+        ",
+    )
+    .bind(namespace)
+    .bind(user_id.into_inner())
+    .bind(target_id)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(DbError::from)
+}
+
+fn coordination_retry_delay(attempt: u32) -> Duration {
+    let multiplier = 1_u32 << attempt.min(5);
+    COORDINATION_RETRY_BASE
+        .saturating_mul(multiplier)
+        .min(COORDINATION_RETRY_MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use sqlx::postgres::PgPoolOptions;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn write_coordinator_reserves_half_the_pool_for_inner_work() {
+        let pool = PgPoolOptions::new()
+            .max_connections(10)
+            .connect_lazy("postgres://test:test@127.0.0.1/test")
+            .unwrap();
+        let repository = CommentRepository::new(pool);
+        let cloned = repository.clone();
+
+        assert_eq!(repository.coordination_permits.available_permits(), 5);
+        assert!(Arc::ptr_eq(
+            &repository.coordination_permits,
+            &cloned.coordination_permits,
+        ));
+    }
+
+    #[test]
+    fn write_coordinator_backoff_is_bounded() {
+        assert_eq!(coordination_retry_delay(0), Duration::from_millis(10));
+        assert_eq!(coordination_retry_delay(3), Duration::from_millis(80));
+        assert_eq!(coordination_retry_delay(30), Duration::from_millis(250));
+        assert!(coordination_retry_delay(u32::MAX) <= COORDINATION_RETRY_MAX);
+    }
+
+    #[tokio::test]
+    async fn write_coordinator_rejects_a_single_connection_pool_before_acquiring() {
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy("postgres://test:test@127.0.0.1/test")
+            .unwrap();
+        let repository = CommentRepository::new(pool);
+        let result = repository
+            .coordinate_create(AuthenticatedUserId::new(Uuid::now_v7()), Uuid::now_v7())
+            .await;
+        assert!(matches!(
+            result,
+            Err(DbError::InvalidData(message))
+                if message == "comment writes require at least two database pool connections"
+        ));
+    }
 }

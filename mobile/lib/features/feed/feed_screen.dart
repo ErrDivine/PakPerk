@@ -5,8 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models/reader_state.dart';
 import '../../core/providers.dart';
+import '../../core/repository/paper_repository.dart';
 import '../../core/telemetry/telemetry.dart';
 import '../../core/widgets/responsive_reader_frame.dart';
+import '../../core/widgets/status_widgets.dart';
 import '../paper_reader/paper_reader.dart';
 import '../paper_reader/reader_navigation_controller.dart';
 import 'feed_controller.dart';
@@ -99,36 +101,52 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     }
 
     return Scaffold(
-      body: PageView.builder(
-        key: const PageStorageKey('vertical-paper-feed'),
-        controller: _controller,
-        scrollDirection: Axis.vertical,
-        itemCount: feed.items.length,
-        onPageChanged: (index) {
-          setState(() => _currentIndex = index);
-          ref
-              .read(appRestorationControllerProvider.notifier)
-              .setFeedPosition(index, feed.items[index]);
-          _commitPage(feed, index);
-        },
-        itemBuilder: (context, index) {
-          final paper = feed.items[index];
-          final readerKey = feedReaderKey(paper);
-          return ResponsiveReaderFrame(
-            key: ValueKey('responsive-reader-$readerKey'),
-            child: PaperReader(
-              key: ValueKey('feed-paper-$readerKey'),
-              paper: paper,
-              readerKey: readerKey,
-              isActive:
-                  readBranchActive && index == _currentIndex && routes.isEmpty,
-              onPreviousPaper: index > 0 ? () => _goToPaper(index - 1) : null,
-              onNextPaper: index + 1 < feed.items.length
-                  ? () => _goToPaper(index + 1)
-                  : null,
+      body: Column(
+        children: [
+          if (feed.origin == DataOrigin.bundledDemo)
+            const SafeArea(
+              bottom: false,
+              minimum: EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: BundledDemoNotice(),
             ),
-          );
-        },
+          Expanded(
+            child: PageView.builder(
+              key: const PageStorageKey('vertical-paper-feed'),
+              controller: _controller,
+              scrollDirection: Axis.vertical,
+              itemCount: feed.items.length,
+              onPageChanged: (index) {
+                setState(() => _currentIndex = index);
+                ref
+                    .read(appRestorationControllerProvider.notifier)
+                    .setFeedPosition(index, feed.items[index]);
+                _commitPage(feed, index);
+              },
+              itemBuilder: (context, index) {
+                final paper = feed.items[index];
+                final readerKey = feedReaderKey(paper);
+                return ResponsiveReaderFrame(
+                  key: ValueKey('responsive-reader-$readerKey'),
+                  child: PaperReader(
+                    key: ValueKey('feed-paper-$readerKey'),
+                    paper: paper,
+                    readerKey: readerKey,
+                    isActive:
+                        readBranchActive &&
+                        index == _currentIndex &&
+                        routes.isEmpty,
+                    onPreviousPaper: index > 0
+                        ? () => _goToPaper(index - 1)
+                        : null,
+                    onNextPaper: index + 1 < feed.items.length
+                        ? () => _goToPaper(index + 1)
+                        : null,
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -4630,17 +4630,6 @@ class $CommentDraftsTable extends CommentDrafts
       'REFERENCES cached_papers (paper_id) ON DELETE RESTRICT',
     ),
   );
-  static const VerificationMeta _parentCommentIdMeta = const VerificationMeta(
-    'parentCommentId',
-  );
-  @override
-  late final GeneratedColumn<String> parentCommentId = GeneratedColumn<String>(
-    'parent_comment_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
   static const VerificationMeta _bodyMeta = const VerificationMeta('body');
   @override
   late final GeneratedColumn<String> body = GeneratedColumn<String>(
@@ -4700,7 +4689,6 @@ class $CommentDraftsTable extends CommentDrafts
     draftId,
     accountId,
     paperId,
-    parentCommentId,
     body,
     clientRequestId,
     lastAttemptedBody,
@@ -4740,15 +4728,6 @@ class $CommentDraftsTable extends CommentDrafts
       );
     } else if (isInserting) {
       context.missing(_paperIdMeta);
-    }
-    if (data.containsKey('parent_comment_id')) {
-      context.handle(
-        _parentCommentIdMeta,
-        parentCommentId.isAcceptableOrUnknown(
-          data['parent_comment_id']!,
-          _parentCommentIdMeta,
-        ),
-      );
     }
     if (data.containsKey('body')) {
       context.handle(
@@ -4813,10 +4792,6 @@ class $CommentDraftsTable extends CommentDrafts
         DriftSqlType.string,
         data['${effectivePrefix}paper_id'],
       )!,
-      parentCommentId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}parent_comment_id'],
-      ),
       body: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}body'],
@@ -4850,7 +4825,6 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
   final String draftId;
   final String? accountId;
   final String paperId;
-  final String? parentCommentId;
   final String body;
   final String? clientRequestId;
   final String? lastAttemptedBody;
@@ -4860,7 +4834,6 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
     required this.draftId,
     this.accountId,
     required this.paperId,
-    this.parentCommentId,
     required this.body,
     this.clientRequestId,
     this.lastAttemptedBody,
@@ -4875,9 +4848,6 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
       map['account_id'] = Variable<String>(accountId);
     }
     map['paper_id'] = Variable<String>(paperId);
-    if (!nullToAbsent || parentCommentId != null) {
-      map['parent_comment_id'] = Variable<String>(parentCommentId);
-    }
     map['body'] = Variable<String>(body);
     if (!nullToAbsent || clientRequestId != null) {
       map['client_request_id'] = Variable<String>(clientRequestId);
@@ -4897,9 +4867,6 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
           ? const Value.absent()
           : Value(accountId),
       paperId: Value(paperId),
-      parentCommentId: parentCommentId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(parentCommentId),
       body: Value(body),
       clientRequestId: clientRequestId == null && nullToAbsent
           ? const Value.absent()
@@ -4921,7 +4888,6 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
       draftId: serializer.fromJson<String>(json['draftId']),
       accountId: serializer.fromJson<String?>(json['accountId']),
       paperId: serializer.fromJson<String>(json['paperId']),
-      parentCommentId: serializer.fromJson<String?>(json['parentCommentId']),
       body: serializer.fromJson<String>(json['body']),
       clientRequestId: serializer.fromJson<String?>(json['clientRequestId']),
       lastAttemptedBody: serializer.fromJson<String?>(
@@ -4938,7 +4904,6 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
       'draftId': serializer.toJson<String>(draftId),
       'accountId': serializer.toJson<String?>(accountId),
       'paperId': serializer.toJson<String>(paperId),
-      'parentCommentId': serializer.toJson<String?>(parentCommentId),
       'body': serializer.toJson<String>(body),
       'clientRequestId': serializer.toJson<String?>(clientRequestId),
       'lastAttemptedBody': serializer.toJson<String?>(lastAttemptedBody),
@@ -4951,7 +4916,6 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
     String? draftId,
     Value<String?> accountId = const Value.absent(),
     String? paperId,
-    Value<String?> parentCommentId = const Value.absent(),
     String? body,
     Value<String?> clientRequestId = const Value.absent(),
     Value<String?> lastAttemptedBody = const Value.absent(),
@@ -4961,9 +4925,6 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
     draftId: draftId ?? this.draftId,
     accountId: accountId.present ? accountId.value : this.accountId,
     paperId: paperId ?? this.paperId,
-    parentCommentId: parentCommentId.present
-        ? parentCommentId.value
-        : this.parentCommentId,
     body: body ?? this.body,
     clientRequestId: clientRequestId.present
         ? clientRequestId.value
@@ -4979,9 +4940,6 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
       draftId: data.draftId.present ? data.draftId.value : this.draftId,
       accountId: data.accountId.present ? data.accountId.value : this.accountId,
       paperId: data.paperId.present ? data.paperId.value : this.paperId,
-      parentCommentId: data.parentCommentId.present
-          ? data.parentCommentId.value
-          : this.parentCommentId,
       body: data.body.present ? data.body.value : this.body,
       clientRequestId: data.clientRequestId.present
           ? data.clientRequestId.value
@@ -5000,7 +4958,6 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
           ..write('draftId: $draftId, ')
           ..write('accountId: $accountId, ')
           ..write('paperId: $paperId, ')
-          ..write('parentCommentId: $parentCommentId, ')
           ..write('body: $body, ')
           ..write('clientRequestId: $clientRequestId, ')
           ..write('lastAttemptedBody: $lastAttemptedBody, ')
@@ -5015,7 +4972,6 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
     draftId,
     accountId,
     paperId,
-    parentCommentId,
     body,
     clientRequestId,
     lastAttemptedBody,
@@ -5029,7 +4985,6 @@ class CommentDraftRow extends DataClass implements Insertable<CommentDraftRow> {
           other.draftId == this.draftId &&
           other.accountId == this.accountId &&
           other.paperId == this.paperId &&
-          other.parentCommentId == this.parentCommentId &&
           other.body == this.body &&
           other.clientRequestId == this.clientRequestId &&
           other.lastAttemptedBody == this.lastAttemptedBody &&
@@ -5041,7 +4996,6 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
   final Value<String> draftId;
   final Value<String?> accountId;
   final Value<String> paperId;
-  final Value<String?> parentCommentId;
   final Value<String> body;
   final Value<String?> clientRequestId;
   final Value<String?> lastAttemptedBody;
@@ -5052,7 +5006,6 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
     this.draftId = const Value.absent(),
     this.accountId = const Value.absent(),
     this.paperId = const Value.absent(),
-    this.parentCommentId = const Value.absent(),
     this.body = const Value.absent(),
     this.clientRequestId = const Value.absent(),
     this.lastAttemptedBody = const Value.absent(),
@@ -5064,7 +5017,6 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
     required String draftId,
     this.accountId = const Value.absent(),
     required String paperId,
-    this.parentCommentId = const Value.absent(),
     required String body,
     this.clientRequestId = const Value.absent(),
     this.lastAttemptedBody = const Value.absent(),
@@ -5080,7 +5032,6 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
     Expression<String>? draftId,
     Expression<String>? accountId,
     Expression<String>? paperId,
-    Expression<String>? parentCommentId,
     Expression<String>? body,
     Expression<String>? clientRequestId,
     Expression<String>? lastAttemptedBody,
@@ -5092,7 +5043,6 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
       if (draftId != null) 'draft_id': draftId,
       if (accountId != null) 'account_id': accountId,
       if (paperId != null) 'paper_id': paperId,
-      if (parentCommentId != null) 'parent_comment_id': parentCommentId,
       if (body != null) 'body': body,
       if (clientRequestId != null) 'client_request_id': clientRequestId,
       if (lastAttemptedBody != null) 'last_attempted_body': lastAttemptedBody,
@@ -5106,7 +5056,6 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
     Value<String>? draftId,
     Value<String?>? accountId,
     Value<String>? paperId,
-    Value<String?>? parentCommentId,
     Value<String>? body,
     Value<String?>? clientRequestId,
     Value<String?>? lastAttemptedBody,
@@ -5118,7 +5067,6 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
       draftId: draftId ?? this.draftId,
       accountId: accountId ?? this.accountId,
       paperId: paperId ?? this.paperId,
-      parentCommentId: parentCommentId ?? this.parentCommentId,
       body: body ?? this.body,
       clientRequestId: clientRequestId ?? this.clientRequestId,
       lastAttemptedBody: lastAttemptedBody ?? this.lastAttemptedBody,
@@ -5139,9 +5087,6 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
     }
     if (paperId.present) {
       map['paper_id'] = Variable<String>(paperId.value);
-    }
-    if (parentCommentId.present) {
-      map['parent_comment_id'] = Variable<String>(parentCommentId.value);
     }
     if (body.present) {
       map['body'] = Variable<String>(body.value);
@@ -5170,7 +5115,6 @@ class CommentDraftsCompanion extends UpdateCompanion<CommentDraftRow> {
           ..write('draftId: $draftId, ')
           ..write('accountId: $accountId, ')
           ..write('paperId: $paperId, ')
-          ..write('parentCommentId: $parentCommentId, ')
           ..write('body: $body, ')
           ..write('clientRequestId: $clientRequestId, ')
           ..write('lastAttemptedBody: $lastAttemptedBody, ')
@@ -11068,7 +11012,6 @@ typedef $$CommentDraftsTableCreateCompanionBuilder =
       required String draftId,
       Value<String?> accountId,
       required String paperId,
-      Value<String?> parentCommentId,
       required String body,
       Value<String?> clientRequestId,
       Value<String?> lastAttemptedBody,
@@ -11081,7 +11024,6 @@ typedef $$CommentDraftsTableUpdateCompanionBuilder =
       Value<String> draftId,
       Value<String?> accountId,
       Value<String> paperId,
-      Value<String?> parentCommentId,
       Value<String> body,
       Value<String?> clientRequestId,
       Value<String?> lastAttemptedBody,
@@ -11138,11 +11080,6 @@ class $$CommentDraftsTableFilterComposer
 
   ColumnFilters<String> get accountId => $composableBuilder(
     column: $table.accountId,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get parentCommentId => $composableBuilder(
-    column: $table.parentCommentId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -11214,11 +11151,6 @@ class $$CommentDraftsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get parentCommentId => $composableBuilder(
-    column: $table.parentCommentId,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   ColumnOrderings<String> get body => $composableBuilder(
     column: $table.body,
     builder: (column) => ColumnOrderings(column),
@@ -11282,11 +11214,6 @@ class $$CommentDraftsTableAnnotationComposer
 
   GeneratedColumn<String> get accountId =>
       $composableBuilder(column: $table.accountId, builder: (column) => column);
-
-  GeneratedColumn<String> get parentCommentId => $composableBuilder(
-    column: $table.parentCommentId,
-    builder: (column) => column,
-  );
 
   GeneratedColumn<String> get body =>
       $composableBuilder(column: $table.body, builder: (column) => column);
@@ -11364,7 +11291,6 @@ class $$CommentDraftsTableTableManager
                 Value<String> draftId = const Value.absent(),
                 Value<String?> accountId = const Value.absent(),
                 Value<String> paperId = const Value.absent(),
-                Value<String?> parentCommentId = const Value.absent(),
                 Value<String> body = const Value.absent(),
                 Value<String?> clientRequestId = const Value.absent(),
                 Value<String?> lastAttemptedBody = const Value.absent(),
@@ -11375,7 +11301,6 @@ class $$CommentDraftsTableTableManager
                 draftId: draftId,
                 accountId: accountId,
                 paperId: paperId,
-                parentCommentId: parentCommentId,
                 body: body,
                 clientRequestId: clientRequestId,
                 lastAttemptedBody: lastAttemptedBody,
@@ -11388,7 +11313,6 @@ class $$CommentDraftsTableTableManager
                 required String draftId,
                 Value<String?> accountId = const Value.absent(),
                 required String paperId,
-                Value<String?> parentCommentId = const Value.absent(),
                 required String body,
                 Value<String?> clientRequestId = const Value.absent(),
                 Value<String?> lastAttemptedBody = const Value.absent(),
@@ -11399,7 +11323,6 @@ class $$CommentDraftsTableTableManager
                 draftId: draftId,
                 accountId: accountId,
                 paperId: paperId,
-                parentCommentId: parentCommentId,
                 body: body,
                 clientRequestId: clientRequestId,
                 lastAttemptedBody: lastAttemptedBody,

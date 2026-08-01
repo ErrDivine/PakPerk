@@ -143,6 +143,26 @@ void main() {
     ]);
   });
 
+  test('401 replay preserves an explicit plain response type', () async {
+    final tokens = _TokenSource();
+    final adapter = _PlainUnauthorizedAdapter();
+    final dio = _dio(tokens, adapter);
+
+    final response = await dio.get<String>(
+      '/v1/me',
+      options: pakPerkRequestOptions(
+        auth: RequestAuthPolicy.required,
+        retry: AuthRetryPolicy.safe,
+        expectedAuthEpoch: 1,
+        responseType: ResponseType.plain,
+      ),
+    );
+
+    expect(response.data, 'plain authenticated response');
+    expect(tokens.refreshCalls, 1);
+    expect(adapter.responseTypes, [ResponseType.plain, ResponseType.plain]);
+  });
+
   test(
     'writes replay only with a bounded concurrency/idempotency key',
     () async {
@@ -405,6 +425,31 @@ final class _DelayedUnauthorizedAdapter implements HttpClientAdapter {
       200,
       headers: {
         Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+final class _PlainUnauthorizedAdapter implements HttpClientAdapter {
+  int requests = 0;
+  final responseTypes = <ResponseType>[];
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    requests += 1;
+    responseTypes.add(options.responseType);
+    return ResponseBody.fromString(
+      requests == 1 ? 'unauthorized' : 'plain authenticated response',
+      requests == 1 ? 401 : 200,
+      headers: {
+        Headers.contentTypeHeader: const ['text/plain; charset=utf-8'],
       },
     );
   }

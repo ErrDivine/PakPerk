@@ -252,8 +252,10 @@ pub enum CommentServiceError {
     AccountNotFound,
     #[error("account is not active")]
     Inactive(AccountStatus),
-    #[error("comment posting requires a handle and current policy acceptance")]
-    ProfileIncomplete,
+    #[error("comment posting requires a completed account profile")]
+    AccountIncomplete,
+    #[error("comment posting requires current policy acceptance")]
+    TermsAcceptanceRequired,
     #[error("paper was not found")]
     PaperNotFound,
     #[error("comment was not found")]
@@ -373,41 +375,62 @@ impl CommentService {
         }
         let origin_scope = validate_origin_scope(&request.origin_scope)?;
         let body = CommentBody::parse(&request.body)?;
-        match self
+        let coordination = self
             .comments
-            .resolve_create(author_user_id, paper_id, request.client_request_id, &body)
-            .await?
-        {
-            CommentCreateResolution::Replay(comment) => {
-                return Ok(CreateCommentResult {
-                    comment,
-                    replayed: true,
-                });
-            }
-            CommentCreateResolution::AccountNotFound => {
-                return Err(CommentServiceError::AccountNotFound);
-            }
-            CommentCreateResolution::Inactive(status) => {
-                return Err(CommentServiceError::Inactive(status));
-            }
-            CommentCreateResolution::IdempotencyConflict => {
-                return Err(CommentServiceError::IdempotencyConflict);
-            }
-            CommentCreateResolution::Unknown => {}
+            .coordinate_create(author_user_id, request.client_request_id)
+            .await?;
+        let result = self
+            .create_coordinated(author_user_id, paper_id, request, origin_scope, body)
+            .await;
+        finish_coordinated(result, coordination.release().await)
+    }
+
+    async fn create_coordinated(
+        &self,
+        author_user_id: AuthenticatedUserId,
+        paper_id: PaperId,
+        request: CreateCommentRequest,
+        origin_scope: String,
+        body: CommentBody,
+    ) -> Result<CreateCommentResult, CommentServiceError> {
+        if let Some(result) = map_create_resolution(
+            self.comments
+                .resolve_create(author_user_id, paper_id, request.client_request_id, &body)
+                .await?,
+        ) {
+            return result;
         }
 
-        self.check_rate_limit(RateLimitRequest::comment_create(
-            author_user_id,
-            self.config.create_limit,
-            self.config.create_window,
-        ))
-        .await?;
-        self.check_rate_limit(RateLimitRequest::comment_origin(
-            origin_scope,
-            self.config.origin_limit,
-            self.config.origin_window,
-        ))
-        .await?;
+        for limit in [
+            RateLimitRequest::comment_create(
+                author_user_id,
+                self.config.create_limit,
+                self.config.create_window,
+            ),
+            RateLimitRequest::comment_origin(
+                origin_scope,
+                self.config.origin_limit,
+                self.config.origin_window,
+            ),
+        ] {
+            if let Err(error) = self.check_rate_limit(limit).await {
+                if matches!(error, CommentServiceError::RateLimited { .. })
+                    && let Some(result) = map_create_resolution(
+                        self.comments
+                            .resolve_create(
+                                author_user_id,
+                                paper_id,
+                                request.client_request_id,
+                                &body,
+                            )
+                            .await?,
+                    )
+                {
+                    return result;
+                }
+                return Err(error);
+            }
+        }
         match self
             .comments
             .check_create_preconditions(
@@ -425,8 +448,11 @@ impl CommentService {
             CommentCreatePrecondition::Inactive(status) => {
                 return Err(CommentServiceError::Inactive(status));
             }
-            CommentCreatePrecondition::ProfileIncomplete => {
-                return Err(CommentServiceError::ProfileIncomplete);
+            CommentCreatePrecondition::AccountIncomplete => {
+                return Err(CommentServiceError::AccountIncomplete);
+            }
+            CommentCreatePrecondition::TermsAcceptanceRequired => {
+                return Err(CommentServiceError::TermsAcceptanceRequired);
             }
             CommentCreatePrecondition::PaperNotFound => {
                 return Err(CommentServiceError::PaperNotFound);
@@ -453,7 +479,10 @@ impl CommentService {
             }
             CommentCreateOutcome::AccountNotFound => Err(CommentServiceError::AccountNotFound),
             CommentCreateOutcome::Inactive(status) => Err(CommentServiceError::Inactive(status)),
-            CommentCreateOutcome::ProfileIncomplete => Err(CommentServiceError::ProfileIncomplete),
+            CommentCreateOutcome::AccountIncomplete => Err(CommentServiceError::AccountIncomplete),
+            CommentCreateOutcome::TermsAcceptanceRequired => {
+                Err(CommentServiceError::TermsAcceptanceRequired)
+            }
             CommentCreateOutcome::PaperNotFound => Err(CommentServiceError::PaperNotFound),
             CommentCreateOutcome::IdempotencyConflict => {
                 Err(CommentServiceError::IdempotencyConflict)
@@ -471,33 +500,51 @@ impl CommentService {
             return Err(CommentServiceError::InvalidExpectedVersion);
         }
         let body = CommentBody::parse(&request.body)?;
-        match self
+        let coordination = self
             .comments
-            .resolve_edit(author_user_id, comment_id, request.expected_version)
-            .await?
-        {
-            CommentEditResolution::Ready => {}
-            CommentEditResolution::AccountNotFound => {
-                return Err(CommentServiceError::AccountNotFound);
-            }
-            CommentEditResolution::Inactive(status) => {
-                return Err(CommentServiceError::Inactive(status));
-            }
-            CommentEditResolution::CommentNotFound => {
-                return Err(CommentServiceError::CommentNotFound);
-            }
-            CommentEditResolution::VersionConflict { current_version } => {
-                return Err(CommentServiceError::EditConflict { current_version });
-            }
+            .coordinate_mutation(author_user_id, comment_id)
+            .await?;
+        let result = self
+            .edit_coordinated(author_user_id, comment_id, request.expected_version, body)
+            .await;
+        finish_coordinated(result, coordination.release().await)
+    }
+
+    async fn edit_coordinated(
+        &self,
+        author_user_id: AuthenticatedUserId,
+        comment_id: Uuid,
+        expected_version: i32,
+        body: CommentBody,
+    ) -> Result<PaperComment, CommentServiceError> {
+        if let Some(result) = map_edit_resolution(
+            &self
+                .comments
+                .resolve_edit(author_user_id, comment_id, expected_version)
+                .await?,
+        ) {
+            return result;
         }
-        self.check_mutation_limit(author_user_id).await?;
+        if let Err(error) = self.check_mutation_limit(author_user_id).await {
+            if matches!(error, CommentServiceError::RateLimited { .. })
+                && let Some(result) = map_edit_resolution(
+                    &self
+                        .comments
+                        .resolve_edit(author_user_id, comment_id, expected_version)
+                        .await?,
+                )
+            {
+                return result;
+            }
+            return Err(error);
+        }
         let (status, reason) = self.moderate(body.clone()).await?;
         map_updated(
             self.comments
                 .edit(
                     author_user_id,
                     comment_id,
-                    request.expected_version,
+                    expected_version,
                     &body,
                     status,
                     reason.as_ref().map(ModerationReasonCode::as_str),
@@ -511,30 +558,38 @@ impl CommentService {
         author_user_id: AuthenticatedUserId,
         comment_id: Uuid,
     ) -> Result<DeleteCommentResult, CommentServiceError> {
-        match self
+        let coordination = self
             .comments
-            .resolve_delete(author_user_id, comment_id)
-            .await?
-        {
-            CommentDeleteResolution::Replay(comment) => {
-                return Ok(DeleteCommentResult {
-                    comment_id: comment.id,
-                    version: comment.version,
-                    replayed: true,
-                });
-            }
-            CommentDeleteResolution::AccountNotFound => {
-                return Err(CommentServiceError::AccountNotFound);
-            }
-            CommentDeleteResolution::Inactive(status) => {
-                return Err(CommentServiceError::Inactive(status));
-            }
-            CommentDeleteResolution::CommentNotFound | CommentDeleteResolution::NotAuthor => {
-                return Err(CommentServiceError::CommentNotFound);
-            }
-            CommentDeleteResolution::Unknown => {}
+            .coordinate_mutation(author_user_id, comment_id)
+            .await?;
+        let result = self.delete_coordinated(author_user_id, comment_id).await;
+        finish_coordinated(result, coordination.release().await)
+    }
+
+    async fn delete_coordinated(
+        &self,
+        author_user_id: AuthenticatedUserId,
+        comment_id: Uuid,
+    ) -> Result<DeleteCommentResult, CommentServiceError> {
+        if let Some(result) = map_delete_resolution(
+            self.comments
+                .resolve_delete(author_user_id, comment_id)
+                .await?,
+        ) {
+            return result;
         }
-        self.check_mutation_limit(author_user_id).await?;
+        if let Err(error) = self.check_mutation_limit(author_user_id).await {
+            if matches!(error, CommentServiceError::RateLimited { .. })
+                && let Some(result) = map_delete_resolution(
+                    self.comments
+                        .resolve_delete(author_user_id, comment_id)
+                        .await?,
+                )
+            {
+                return result;
+            }
+            return Err(error);
+        }
         match self.comments.delete(author_user_id, comment_id).await? {
             CommentMutationOutcome::Deleted { comment, replayed } => Ok(DeleteCommentResult {
                 comment_id: comment.id,
@@ -552,48 +607,65 @@ impl CommentService {
         request: ReportCommentRequest,
     ) -> Result<ReportCommentResult, CommentServiceError> {
         let origin_scope = validate_origin_scope(&request.origin_scope)?;
-        match self
+        let coordination = self
             .comments
-            .resolve_report(reporter_user_id, comment_id)
-            .await?
-        {
-            CommentReportResolution::Replay(report) => {
-                return Ok(report_result(&report, true));
-            }
-            CommentReportResolution::AccountNotFound => {
-                return Err(CommentServiceError::AccountNotFound);
-            }
-            CommentReportResolution::Inactive(status) => {
-                return Err(CommentServiceError::Inactive(status));
-            }
-            CommentReportResolution::CommentNotFound => {
-                return Err(CommentServiceError::CommentNotFound);
-            }
-            CommentReportResolution::Unknown => {}
+            .coordinate_report(reporter_user_id, comment_id)
+            .await?;
+        let result = self
+            .report_coordinated(reporter_user_id, comment_id, request, origin_scope)
+            .await;
+        finish_coordinated(result, coordination.release().await)
+    }
+
+    async fn report_coordinated(
+        &self,
+        reporter_user_id: AuthenticatedUserId,
+        comment_id: Uuid,
+        request: ReportCommentRequest,
+        origin_scope: String,
+    ) -> Result<ReportCommentResult, CommentServiceError> {
+        if let Some(result) = map_report_resolution(
+            self.comments
+                .resolve_report(reporter_user_id, comment_id)
+                .await?,
+        ) {
+            return result;
         }
         let detail = request
             .detail
             .as_deref()
             .map(ReportDetail::parse)
             .transpose()?;
-        self.check_rate_limit(RateLimitRequest::comment_origin(
-            origin_scope,
-            self.config.origin_limit,
-            self.config.origin_window,
-        ))
-        .await?;
-        self.check_rate_limit(RateLimitRequest::comment_report(
-            reporter_user_id,
-            self.config.report_limit,
-            self.config.report_window,
-        ))
-        .await?;
-        self.check_rate_limit(RateLimitRequest::comment_report_target(
-            comment_id,
-            self.config.report_limit,
-            self.config.report_window,
-        ))
-        .await?;
+        for limit in [
+            RateLimitRequest::comment_origin(
+                origin_scope,
+                self.config.origin_limit,
+                self.config.origin_window,
+            ),
+            RateLimitRequest::comment_report(
+                reporter_user_id,
+                self.config.report_limit,
+                self.config.report_window,
+            ),
+            RateLimitRequest::comment_report_target(
+                comment_id,
+                self.config.report_limit,
+                self.config.report_window,
+            ),
+        ] {
+            if let Err(error) = self.check_rate_limit(limit).await {
+                if matches!(error, CommentServiceError::RateLimited { .. })
+                    && let Some(result) = map_report_resolution(
+                        self.comments
+                            .resolve_report(reporter_user_id, comment_id)
+                            .await?,
+                    )
+                {
+                    return result;
+                }
+                return Err(error);
+            }
+        }
         match self
             .comments
             .report(
@@ -619,29 +691,44 @@ impl CommentService {
         blocker_user_id: AuthenticatedUserId,
         blocked_user_id: AuthenticatedUserId,
     ) -> Result<BlockUserResult, CommentServiceError> {
-        match self
-            .comments
-            .resolve_block(blocker_user_id, blocked_user_id)
-            .await?
-        {
-            UserBlockResolution::Replay(blocked_user) => {
-                return Ok(BlockUserResult { blocked_user });
-            }
-            UserBlockResolution::AccountNotFound => {
-                return Err(CommentServiceError::AccountNotFound);
-            }
-            UserBlockResolution::Inactive(status) => {
-                return Err(CommentServiceError::Inactive(status));
-            }
-            UserBlockResolution::TargetNotFound => {
-                return Err(CommentServiceError::BlockTargetNotFound);
-            }
-            UserBlockResolution::CannotBlockSelf => {
-                return Err(CommentServiceError::CannotBlockSelf);
-            }
-            UserBlockResolution::Unknown => {}
+        if blocker_user_id == blocked_user_id {
+            return Err(CommentServiceError::CannotBlockSelf);
         }
-        self.check_mutation_limit(blocker_user_id).await?;
+        let coordination = self
+            .comments
+            .coordinate_block(blocker_user_id, blocked_user_id)
+            .await?;
+        let result = self
+            .block_coordinated(blocker_user_id, blocked_user_id)
+            .await;
+        finish_coordinated(result, coordination.release().await)
+    }
+
+    #[allow(clippy::similar_names)]
+    async fn block_coordinated(
+        &self,
+        blocker_user_id: AuthenticatedUserId,
+        blocked_user_id: AuthenticatedUserId,
+    ) -> Result<BlockUserResult, CommentServiceError> {
+        if let Some(result) = map_block_resolution(
+            self.comments
+                .resolve_block(blocker_user_id, blocked_user_id)
+                .await?,
+        ) {
+            return result;
+        }
+        if let Err(error) = self.check_mutation_limit(blocker_user_id).await {
+            if matches!(error, CommentServiceError::RateLimited { .. })
+                && let Some(result) = map_block_resolution(
+                    self.comments
+                        .resolve_block(blocker_user_id, blocked_user_id)
+                        .await?,
+                )
+            {
+                return result;
+            }
+            return Err(error);
+        }
         match self
             .comments
             .block(blocker_user_id, blocked_user_id)
@@ -658,29 +745,48 @@ impl CommentService {
         blocker_user_id: AuthenticatedUserId,
         blocked_user_id: AuthenticatedUserId,
     ) -> Result<UnblockUserResult, CommentServiceError> {
-        match self
-            .comments
-            .resolve_unblock(blocker_user_id, blocked_user_id)
-            .await?
-        {
-            UserUnblockResolution::Absent => {
-                return Ok(UnblockUserResult {
-                    user_id: blocked_user_id,
-                    existed: false,
-                });
-            }
-            UserUnblockResolution::AccountNotFound => {
-                return Err(CommentServiceError::AccountNotFound);
-            }
-            UserUnblockResolution::Inactive(status) => {
-                return Err(CommentServiceError::Inactive(status));
-            }
-            UserUnblockResolution::CannotBlockSelf => {
-                return Err(CommentServiceError::CannotBlockSelf);
-            }
-            UserUnblockResolution::Present => {}
+        if blocker_user_id == blocked_user_id {
+            return Err(CommentServiceError::CannotBlockSelf);
         }
-        self.check_mutation_limit(blocker_user_id).await?;
+        let coordination = self
+            .comments
+            .coordinate_block(blocker_user_id, blocked_user_id)
+            .await?;
+        let result = self
+            .unblock_coordinated(blocker_user_id, blocked_user_id)
+            .await;
+        finish_coordinated(result, coordination.release().await)
+    }
+
+    #[allow(clippy::similar_names)]
+    async fn unblock_coordinated(
+        &self,
+        blocker_user_id: AuthenticatedUserId,
+        blocked_user_id: AuthenticatedUserId,
+    ) -> Result<UnblockUserResult, CommentServiceError> {
+        if let Some(result) = map_unblock_resolution(
+            &self
+                .comments
+                .resolve_unblock(blocker_user_id, blocked_user_id)
+                .await?,
+            blocked_user_id,
+        ) {
+            return result;
+        }
+        if let Err(error) = self.check_mutation_limit(blocker_user_id).await {
+            if matches!(error, CommentServiceError::RateLimited { .. })
+                && let Some(result) = map_unblock_resolution(
+                    &self
+                        .comments
+                        .resolve_unblock(blocker_user_id, blocked_user_id)
+                        .await?,
+                    blocked_user_id,
+                )
+            {
+                return result;
+            }
+            return Err(error);
+        }
         match self
             .comments
             .unblock(blocker_user_id, blocked_user_id)
@@ -824,6 +930,124 @@ fn validate_origin_scope(value: &str) -> Result<String, CommentServiceError> {
     Ok(format!("origin:{value}"))
 }
 
+fn finish_coordinated<T>(
+    result: Result<T, CommentServiceError>,
+    release: Result<(), DbError>,
+) -> Result<T, CommentServiceError> {
+    match result {
+        // The coordination transaction contains no product write. Preserve an
+        // authoritative validation/rate/domain error even if its final lock
+        // release also observes a broken connection.
+        Err(error) => Err(error),
+        Ok(value) => {
+            release?;
+            Ok(value)
+        }
+    }
+}
+
+fn map_create_resolution(
+    resolution: CommentCreateResolution,
+) -> Option<Result<CreateCommentResult, CommentServiceError>> {
+    match resolution {
+        CommentCreateResolution::Unknown => None,
+        CommentCreateResolution::Replay(comment) => Some(Ok(CreateCommentResult {
+            comment,
+            replayed: true,
+        })),
+        CommentCreateResolution::AccountNotFound => Some(Err(CommentServiceError::AccountNotFound)),
+        CommentCreateResolution::Inactive(status) => {
+            Some(Err(CommentServiceError::Inactive(status)))
+        }
+        CommentCreateResolution::IdempotencyConflict => {
+            Some(Err(CommentServiceError::IdempotencyConflict))
+        }
+    }
+}
+
+fn map_edit_resolution(
+    resolution: &CommentEditResolution,
+) -> Option<Result<PaperComment, CommentServiceError>> {
+    match resolution {
+        CommentEditResolution::Ready => None,
+        CommentEditResolution::AccountNotFound => Some(Err(CommentServiceError::AccountNotFound)),
+        CommentEditResolution::Inactive(status) => {
+            Some(Err(CommentServiceError::Inactive(*status)))
+        }
+        CommentEditResolution::CommentNotFound => Some(Err(CommentServiceError::CommentNotFound)),
+        CommentEditResolution::VersionConflict { current_version } => {
+            Some(Err(CommentServiceError::EditConflict {
+                current_version: *current_version,
+            }))
+        }
+    }
+}
+
+fn map_delete_resolution(
+    resolution: CommentDeleteResolution,
+) -> Option<Result<DeleteCommentResult, CommentServiceError>> {
+    match resolution {
+        CommentDeleteResolution::Unknown => None,
+        CommentDeleteResolution::Replay(comment) => Some(Ok(DeleteCommentResult {
+            comment_id: comment.id,
+            version: comment.version,
+            replayed: true,
+        })),
+        CommentDeleteResolution::AccountNotFound => Some(Err(CommentServiceError::AccountNotFound)),
+        CommentDeleteResolution::Inactive(status) => {
+            Some(Err(CommentServiceError::Inactive(status)))
+        }
+        CommentDeleteResolution::CommentNotFound | CommentDeleteResolution::NotAuthor => {
+            Some(Err(CommentServiceError::CommentNotFound))
+        }
+    }
+}
+
+fn map_report_resolution(
+    resolution: CommentReportResolution,
+) -> Option<Result<ReportCommentResult, CommentServiceError>> {
+    match resolution {
+        CommentReportResolution::Unknown => None,
+        CommentReportResolution::Replay(report) => Some(Ok(report_result(&report, true))),
+        CommentReportResolution::AccountNotFound => Some(Err(CommentServiceError::AccountNotFound)),
+        CommentReportResolution::Inactive(status) => {
+            Some(Err(CommentServiceError::Inactive(status)))
+        }
+        CommentReportResolution::CommentNotFound => Some(Err(CommentServiceError::CommentNotFound)),
+    }
+}
+
+fn map_block_resolution(
+    resolution: UserBlockResolution,
+) -> Option<Result<BlockUserResult, CommentServiceError>> {
+    match resolution {
+        UserBlockResolution::Unknown => None,
+        UserBlockResolution::Replay(blocked_user) => Some(Ok(BlockUserResult { blocked_user })),
+        UserBlockResolution::AccountNotFound => Some(Err(CommentServiceError::AccountNotFound)),
+        UserBlockResolution::Inactive(status) => Some(Err(CommentServiceError::Inactive(status))),
+        UserBlockResolution::TargetNotFound => Some(Err(CommentServiceError::BlockTargetNotFound)),
+        UserBlockResolution::CannotBlockSelf => Some(Err(CommentServiceError::CannotBlockSelf)),
+    }
+}
+
+fn map_unblock_resolution(
+    resolution: &UserUnblockResolution,
+    blocked_user_id: AuthenticatedUserId,
+) -> Option<Result<UnblockUserResult, CommentServiceError>> {
+    match resolution {
+        UserUnblockResolution::Present => None,
+        UserUnblockResolution::Absent => Some(Ok(UnblockUserResult {
+            user_id: blocked_user_id,
+            existed: false,
+        })),
+        UserUnblockResolution::AccountNotFound => Some(Err(CommentServiceError::AccountNotFound)),
+        UserUnblockResolution::Inactive(status) => {
+            Some(Err(CommentServiceError::Inactive(*status)))
+        }
+        UserUnblockResolution::CannotBlockSelf => Some(Err(CommentServiceError::CannotBlockSelf)),
+    }
+}
+
 fn map_updated(outcome: CommentMutationOutcome) -> Result<PaperComment, CommentServiceError> {
     match outcome {
         CommentMutationOutcome::Updated(comment) => Ok(comment),
@@ -906,5 +1130,48 @@ mod tests {
             .with_report_rate_limit(0, Duration::from_secs(60))
             .is_err()
         );
+    }
+
+    #[test]
+    fn post_limit_resolution_preserves_authoritative_mutation_results() {
+        assert!(matches!(
+            map_edit_resolution(&CommentEditResolution::VersionConflict { current_version: 7 }),
+            Some(Err(CommentServiceError::EditConflict {
+                current_version: 7,
+            }))
+        ));
+        let blocked_user_id = AuthenticatedUserId::new(Uuid::now_v7());
+        assert!(matches!(
+            map_unblock_resolution(&UserUnblockResolution::Absent, blocked_user_id),
+            Some(Ok(UnblockUserResult {
+                user_id,
+                existed: false,
+            })) if user_id == blocked_user_id
+        ));
+        assert!(matches!(
+            map_delete_resolution(CommentDeleteResolution::NotAuthor),
+            Some(Err(CommentServiceError::CommentNotFound))
+        ));
+        assert!(matches!(
+            map_block_resolution(UserBlockResolution::CannotBlockSelf),
+            Some(Err(CommentServiceError::CannotBlockSelf))
+        ));
+    }
+
+    #[test]
+    fn coordination_release_preserves_domain_errors_but_fails_success() {
+        let release_error = || DbError::InvalidData("lock connection failed".to_owned());
+        assert!(matches!(
+            finish_coordinated::<()>(
+                Err(CommentServiceError::InvalidClientRequestId),
+                Err(release_error()),
+            ),
+            Err(CommentServiceError::InvalidClientRequestId)
+        ));
+        assert!(matches!(
+            finish_coordinated(Ok(()), Err(release_error())),
+            Err(CommentServiceError::Storage(DbError::InvalidData(message)))
+                if message == "lock connection failed"
+        ));
     }
 }

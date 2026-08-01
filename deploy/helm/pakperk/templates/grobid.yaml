@@ -18,7 +18,7 @@ spec:
       labels:
         {{- include "pakperk.componentLabels" (dict "root" . "component" "grobid") | nindent 8 }}
     spec:
-      serviceAccountName: {{ include "pakperk.serviceAccountName" . }}
+      serviceAccountName: {{ include "pakperk.componentServiceAccountName" (dict "root" . "component" "grobid") }}
       automountServiceAccountToken: false
       enableServiceLinks: false
       terminationGracePeriodSeconds: 60

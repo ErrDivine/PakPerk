@@ -19,6 +19,7 @@ use axum::{
 use comments::CommentService;
 use db::{Database, PaperRepository};
 use domain::FulltextPolicy;
+use http_policy::strict_transport_security;
 use library::{LibraryPolicy, LibraryService};
 use llm_provider::{
     ChatProvider, DeterministicProvider, EmbeddingProvider, OpenAiCompatibleProvider,
@@ -331,6 +332,9 @@ pub fn build_router(state: AppState, config: &ApiConfig) -> Router {
         .layer(middleware::from_fn(telemetry_middleware))
         .layer(middleware::from_fn(request_id_middleware))
         .layer(middleware::from_fn(private_account_cache_control))
+        // The TLS edge emits the same closed policy. Keep an origin guarantee
+        // as defense in depth and cover direct-origin/error responses too.
+        .layer(middleware::from_fn(strict_transport_security))
 }
 
 fn feed_aware_cors(allowed_origins: &[HeaderValue]) -> CorsLayer {

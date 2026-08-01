@@ -164,6 +164,37 @@ services:
       - no-new-privileges:true
     restart: unless-stopped
 
+  # One-off metadata tooling deliberately does not inherit `.env`. In
+  # particular, GROBID_URL and LLM_API_KEY must be absent because the
+  # metadata-only runtime rejects worker privileges before opening the
+  # database or making a network request.
+  metadata-sync:
+    profiles: ["tools"]
+    image: pakperk-backend:dev
+    build: *backend-build
+    command:
+      - /usr/local/bin/pakperk-worker
+      - sync-metadata
+      - --manifest
+      - /app/demo/seed_manifest.json
+    environment:
+      DATABASE_URL: postgres://pakperk:pakperk@postgres:5432/pakperk
+      DATABASE_POOL_SIZE: "2"
+      ARXIV_USER_AGENT: ${ARXIV_USER_AGENT:-Pakperk/0.2.0}
+      ARXIV_CONTACT_EMAIL: ${ARXIV_CONTACT_EMAIL:-}
+      ARXIV_MIN_INTERVAL_MS: ${ARXIV_MIN_INTERVAL_MS:-3000}
+      ARXIV_REQUEST_TIMEOUT_SECONDS: ${ARXIV_REQUEST_TIMEOUT_SECONDS:-30}
+      ARXIV_CACHE_TTL_SECONDS: ${ARXIV_CACHE_TTL_SECONDS:-86400}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
 volumes:
   pakperk-postgres:
   pakperk-keycloak-postgres:

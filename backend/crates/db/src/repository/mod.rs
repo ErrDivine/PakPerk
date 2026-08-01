@@ -47,8 +47,8 @@ pub use accounts::{AccountRepository, ProfilePatch, ProfileUpdateOutcome};
 pub use comments::{
     CommentCreateOutcome, CommentCreatePrecondition, CommentCreateResolution,
     CommentDeleteResolution, CommentEditResolution, CommentMutationOutcome, CommentReadOutcome,
-    CommentReportOutcome, CommentReportResolution, CommentRepository, StoredReport,
-    UserBlockOutcome, UserBlockResolution, UserUnblockResolution,
+    CommentReportOutcome, CommentReportResolution, CommentRepository, CommentWriteGuard,
+    StoredReport, UserBlockOutcome, UserBlockResolution, UserUnblockResolution,
 };
 pub use library::{
     LibraryChangesOutcome, LibraryMutationIntent, LibraryMutationOutcome,

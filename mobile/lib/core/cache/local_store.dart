@@ -10,12 +10,16 @@ import '../models/arxiv_identifier.dart';
 import '../models/paper.dart';
 import '../models/processing.dart';
 import '../models/reader_state.dart';
+import '../settings/appearance.dart';
+import 'restoration_persistence.dart';
 
 abstract interface class LocalStore {
   Future<String> getOrCreateSessionId();
   Future<String> rotateAnonymousSession();
   Future<AppRestorationState> loadRestoration();
   Future<void> saveRestoration(AppRestorationState value);
+  Future<AppAppearance> loadAppearance();
+  Future<void> saveAppearance(AppAppearance value);
 
   Future<FeedPage?> loadFeed();
   Future<void> saveFeed(FeedPage value);
@@ -39,6 +43,14 @@ abstract interface class LocalStore {
   /// Deletes every cached comment snapshot during account deletion.
   /// Implementations must not silently succeed if they can retain comments.
   Future<void> purgeAccountDeletionCommentSnapshots();
+
+  /// Removes user-visible local state, including public cache, account rows,
+  /// drafts, outbox, anonymous identity, appearance, and restoration.
+  ///
+  /// Implementations must preserve the independent account-deletion and auth
+  /// invalidation guards. Those records prevent a failed secure erase or an
+  /// incomplete server deletion from becoming usable again.
+  Future<void> clearAllLocalData();
 }
 
 class SharedPreferencesLocalStore implements LocalStore {
@@ -48,6 +60,7 @@ class SharedPreferencesLocalStore implements LocalStore {
   static const _sessionKey = 'pakperk.session.v1';
   static const _restorationKey = 'pakperk.restoration.v2';
   static const _feedKey = 'pakperk.feed.v1';
+  static const _appearanceKey = 'pakperk.appearance.v1';
 
   static Future<SharedPreferencesLocalStore> create() async =>
       SharedPreferencesLocalStore(await SharedPreferences.getInstance());
@@ -70,6 +83,38 @@ class SharedPreferencesLocalStore implements LocalStore {
         .toList(growable: false);
     for (final key in keys) {
       await preferences.remove(key);
+    }
+  }
+
+  @override
+  Future<void> clearAllLocalData() async {
+    const exactKeys = {
+      _sessionKey,
+      _restorationKey,
+      compactRestorationPreferencesKey,
+      _feedKey,
+      _appearanceKey,
+    };
+    const rebuildablePrefixes = [
+      'pakperk.paper.',
+      'pakperk.processing.',
+      'pakperk.introduction.',
+      'pakperk.connections.',
+      'pakperk.chat.',
+    ];
+    final keys = _preferences
+        .getKeys()
+        .where(
+          (key) =>
+              exactKeys.contains(key) ||
+              rebuildablePrefixes.any(key.startsWith),
+        )
+        .toList(growable: false);
+    for (final key in keys) {
+      final removed = await _preferences.remove(key);
+      if (!removed && _preferences.containsKey(key)) {
+        throw StateError('Failed to clear local application data.');
+      }
     }
   }
 
@@ -120,6 +165,16 @@ class SharedPreferencesLocalStore implements LocalStore {
   @override
   Future<void> saveRestoration(AppRestorationState value) =>
       _writeMap(_restorationKey, value.toJson());
+
+  @override
+  Future<AppAppearance> loadAppearance() async =>
+      AppAppearance.fromWire(_preferences.getString(_appearanceKey));
+
+  @override
+  Future<void> saveAppearance(AppAppearance value) async {
+    final written = await _preferences.setString(_appearanceKey, value.name);
+    if (!written) throw StateError('Failed to save the appearance setting.');
+  }
 
   @override
   Future<FeedPage?> loadFeed() async {

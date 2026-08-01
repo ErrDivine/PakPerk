@@ -978,6 +978,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "http_policy"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "http",
+ "tokio",
+ "tower",
+]
+
+[[package]]
 name = "httparse"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1648,6 +1658,7 @@ dependencies = [
  "comments",
  "db",
  "domain",
+ "http_policy",
  "jobs",
  "library",
  "llm_provider",
@@ -1710,6 +1721,7 @@ dependencies = [
  "anyhow",
  "axum",
  "http",
+ "http_policy",
  "observability",
  "reqwest",
  "serde",

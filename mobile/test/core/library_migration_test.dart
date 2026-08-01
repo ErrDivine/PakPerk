@@ -6,7 +6,7 @@ import 'package:sqlite3/sqlite3.dart' as sqlite;
 
 void main() {
   test(
-    'frozen v3 upgrades through comments v5 without losing library rows',
+    'frozen v3 upgrades through flat comments v6 without losing library rows',
     () async {
       final raw = sqlite.sqlite3.openInMemory();
       raw.execute(_schemaV3);
@@ -57,7 +57,7 @@ void main() {
       final database = PakPerkDatabase(NativeDatabase.opened(raw));
       addTearDown(database.close);
 
-      expect(database.schemaVersion, 5);
+      expect(database.schemaVersion, 6);
       final tables = await database
           .customSelect("SELECT name FROM sqlite_master WHERE type = 'table'")
           .get();
@@ -173,7 +173,7 @@ void main() {
     },
   );
 
-  test('v5 account-owned schema has no credential-shaped columns', () async {
+  test('v6 account-owned schema has no credential or reply columns', () async {
     final database = PakPerkDatabase(NativeDatabase.memory());
     addTearDown(database.close);
     final tables = await database
@@ -201,10 +201,17 @@ void main() {
         reason: '$table must not store credentials',
       );
     }
+    final draftColumns = await database
+        .customSelect('PRAGMA table_info(comment_drafts)')
+        .get();
+    expect(
+      draftColumns.map((row) => row.read<String>('name')),
+      isNot(contains('parent_comment_id')),
+    );
   });
 
   test(
-    'frozen v4 upgrades to v5 and preserves only safely scoped comment data',
+    'frozen v4 upgrades to v6, scopes drafts, and removes reply metadata',
     () async {
       final raw = sqlite.sqlite3.openInMemory();
       raw.execute(_schemaV3);
@@ -229,7 +236,7 @@ void main() {
         'scoped-draft',
         _accountId,
         _paperId,
-        null,
+        'legacy-parent-that-must-be-discarded',
         'keep until this account signs out',
         12,
         13,
@@ -248,7 +255,7 @@ void main() {
       final database = PakPerkDatabase(NativeDatabase.opened(raw));
       addTearDown(database.close);
 
-      expect(database.schemaVersion, 5);
+      expect(database.schemaVersion, 6);
       final cached = await database.select(database.cachedCommentPages).get();
       expect(cached, hasLength(1));
       expect(cached.single.viewerAccountId, isNull);
@@ -258,6 +265,13 @@ void main() {
       expect(drafts.single.draftId, 'scoped-draft');
       expect(drafts.single.clientRequestId, isNull);
       expect(drafts.single.lastAttemptedBody, isNull);
+      final draftColumns = await database
+          .customSelect('PRAGMA table_info(comment_drafts)')
+          .get();
+      expect(
+        draftColumns.map((row) => row.read<String>('name')),
+        isNot(contains('parent_comment_id')),
+      );
       final tables = await database
           .customSelect("SELECT name FROM sqlite_master WHERE type = 'table'")
           .get();

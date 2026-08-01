@@ -95,7 +95,8 @@ spec:
   egress:
     {{- include "pakperk.dnsEgress" . | nindent 4 }}
     {{- include "pakperk.databaseEgress" . | nindent 4 }}
-    {{- include "pakperk.paperHttpsEgress" . | nindent 4 }}
+    {{- include "pakperk.arxivHttpsEgress" . | nindent 4 }}
+    {{- include "pakperk.modelHttpsEgress" . | nindent 4 }}
     - to:
         - podSelector:
             matchLabels:
@@ -124,12 +125,7 @@ spec:
   egress:
     {{- include "pakperk.dnsEgress" . | nindent 4 }}
     {{- include "pakperk.databaseEgress" . | nindent 4 }}
-    {{- include "pakperk.paperHttpsEgress" . | nindent 4 }}
-    - to:
-        - podSelector:
-            matchLabels:
-              {{- include "pakperk.componentLabels" (dict "root" . "component" "grobid") | nindent 14 }}
-      ports: [{ protocol: TCP, port: 8070 }]
+    {{- include "pakperk.arxivHttpsEgress" . | nindent 4 }}
     - to:
         - podSelector:
             matchLabels:
@@ -160,29 +156,6 @@ spec:
               {{- include "pakperk.componentLabels" (dict "root" . "component" "otel-collector") | nindent 14 }}
       ports: [{ protocol: TCP, port: 4317 }]
 {{- end }}
-{{- if .Values.migration.enabled }}
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: {{ include "pakperk.fullname" . }}-migration
-  labels:
-    {{- include "pakperk.labels" . | nindent 4 }}
-spec:
-  podSelector:
-    matchLabels:
-      {{- include "pakperk.componentLabels" (dict "root" . "component" "migration") | nindent 6 }}
-  policyTypes: [Ingress, Egress]
-  ingress: []
-  egress:
-    {{- include "pakperk.dnsEgress" . | nindent 4 }}
-    {{- include "pakperk.databaseEgress" . | nindent 4 }}
-    - to:
-        - podSelector:
-            matchLabels:
-              {{- include "pakperk.componentLabels" (dict "root" . "component" "otel-collector") | nindent 14 }}
-      ports: [{ protocol: TCP, port: 4317 }]
-{{- end }}
 {{- if .Values.grobid.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -202,7 +175,7 @@ spec:
             matchExpressions:
               - key: app.kubernetes.io/component
                 operator: In
-                values: [paper-worker, metadata-sync]
+                values: [paper-worker]
       ports: [{ protocol: TCP, port: 8070 }]
   egress: []
 {{- end }}

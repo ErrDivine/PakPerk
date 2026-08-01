@@ -10,6 +10,7 @@ import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/models/processing.dart';
 import 'package:pakperk/core/models/reader_state.dart';
 import 'package:pakperk/core/repository/paper_repository.dart';
+import 'package:pakperk/core/settings/appearance.dart';
 
 final samplePaper = PaperSummary(
   paperId: '17060376-2000-4000-8000-000000000001',
@@ -73,6 +74,20 @@ class MemoryLocalStore implements LocalStore {
   final Map<String, PaperConnections> connections = {};
   final Map<String, ChatSnapshot> chats = {};
   int accountDeletionCommentPurgeCalls = 0;
+  AppAppearance appearance = AppAppearance.system;
+
+  @override
+  Future<void> clearAllLocalData() async {
+    sessionId = null;
+    restoration = const AppRestorationState();
+    feed = null;
+    papers.clear();
+    processing.clear();
+    introductions.clear();
+    connections.clear();
+    chats.clear();
+    appearance = AppAppearance.system;
+  }
 
   @override
   Future<void> purgeAccountDeletionCommentSnapshots() async {
@@ -106,6 +121,14 @@ class MemoryLocalStore implements LocalStore {
   @override
   Future<void> saveRestoration(AppRestorationState value) async {
     restoration = value;
+  }
+
+  @override
+  Future<AppAppearance> loadAppearance() async => appearance;
+
+  @override
+  Future<void> saveAppearance(AppAppearance value) async {
+    appearance = value;
   }
 
   @override

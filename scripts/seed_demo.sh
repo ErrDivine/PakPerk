@@ -8,7 +8,7 @@ run_worker() {
   if [[ "${PAKPERK_USE_DOCKER:-1}" == "1" ]]; then
     docker compose --project-directory "$project_dir" run --rm \
       --volume "$manifest:/inputs/seed_manifest.json:ro" \
-      worker /usr/local/bin/pakperk-worker "$@"
+      metadata-sync /usr/local/bin/pakperk-worker "$@"
   else
     cargo run --manifest-path "$project_dir/backend/Cargo.toml" \
       --package pakperk-worker -- "$@"

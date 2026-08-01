@@ -147,12 +147,41 @@ if [[ "$migration" != "$expected_migration" ]]; then
   exit 1
 fi
 
+missing_required_tables="$(psql_value "
+  SELECT count(*)
+  FROM (VALUES
+    ('public.users'),
+    ('public.papers'),
+    ('public.jobs'),
+    ('public.user_paper_library'),
+    ('public.library_operations'),
+    ('public.paper_comments'),
+    ('public.comment_reports'),
+    ('public.user_blocks'),
+    ('public.account_deletion_ledger'),
+    ('public.account_deletion_jobs')
+  ) AS required(table_name)
+  WHERE to_regclass(required.table_name) IS NULL
+")"
+if [[ "$missing_required_tables" != 0 ]]; then
+  echo "The restore is missing one or more required application data classes." >&2
+  exit 1
+fi
+
 database_snapshot() {
   psql_value "
     SELECT json_build_object(
       'migration', (SELECT COALESCE(max(version), 0) FROM _sqlx_migrations WHERE success),
+      'users', (SELECT count(*) FROM users),
+      'papers', (SELECT count(*) FROM papers),
+      'core_jobs', (SELECT count(*) FROM jobs),
+      'library_items', (SELECT count(*) FROM user_paper_library),
+      'library_operations', (SELECT count(*) FROM library_operations),
+      'paper_comments', (SELECT count(*) FROM paper_comments),
+      'comment_reports', (SELECT count(*) FROM comment_reports),
+      'user_blocks', (SELECT count(*) FROM user_blocks),
       'ledger_records', (SELECT count(*) FROM account_deletion_ledger),
-      'jobs', (SELECT count(*) FROM account_deletion_jobs),
+      'deletion_jobs', (SELECT count(*) FROM account_deletion_jobs),
       'unfinished_jobs', (
         SELECT count(*) FROM account_deletion_jobs WHERE state <> 'completed'
       ),
@@ -197,18 +226,24 @@ if [[ "$phase" == reapply ]]; then
      .requeued_provider_reconciliation == .verified_records)' \
     "$evidence_dir/ledger-reapply.json" >/dev/null
   database_snapshot >"$evidence_dir/database-after-reapply.json"
-  jq -e --slurpfile verification "$evidence_dir/ledger-verification.json" '
+  jq -e \
+    --slurpfile before "$evidence_dir/database-before.json" \
+    --slurpfile verification "$evidence_dir/ledger-verification.json" '
     .unsafe_restored_users == 0 and
     .missing_jobs == 0 and
-    .ledger_records >= $verification[0].verified_records
+    .ledger_records >= $verification[0].verified_records and
+    .papers == $before[0].papers and
+    .core_jobs == $before[0].core_jobs
   ' "$evidence_dir/database-after-reapply.json" >/dev/null
 else
   database_snapshot >"$evidence_dir/database-final.json"
-  jq -e '
+  jq -e --slurpfile before "$evidence_dir/database-before.json" '
     .unsafe_restored_users == 0 and
     .missing_jobs == 0 and
     .unfinished_jobs == 0 and
-    .terminal_jobs == 0
+    .terminal_jobs == 0 and
+    .papers == $before[0].papers and
+    .core_jobs == $before[0].core_jobs
   ' "$evidence_dir/database-final.json" >/dev/null
 fi
 

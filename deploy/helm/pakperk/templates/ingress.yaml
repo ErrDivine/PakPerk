@@ -50,6 +50,9 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-connect-timeout: {{ add (int .Values.api.chatTimeoutSeconds) 5 | quote }}
     nginx.ingress.kubernetes.io/proxy-read-timeout: {{ add (int .Values.api.chatTimeoutSeconds) 5 | quote }}
     nginx.ingress.kubernetes.io/proxy-send-timeout: {{ add (int .Values.api.chatTimeoutSeconds) 5 | quote }}
+    nginx.ingress.kubernetes.io/limit-rps: {{ .Values.api.edgeRateLimitRps | quote }}
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .Values.api.edgeBurstMultiplier | quote }}
+    nginx.ingress.kubernetes.io/limit-connections: {{ .Values.api.edgeConnectionLimit | quote }}
     {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
@@ -99,6 +102,12 @@ spec:
     - host: {{ .Values.ingress.telemetryHost }}
       http:
         paths:
+          - path: /health/ready
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "pakperk.fullname" . }}-telemetry-gateway
+                port: { name: http }
           - path: /v1/logs
             pathType: Exact
             backend:

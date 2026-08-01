@@ -9,6 +9,13 @@
 {{- if ne (len (uniq $databaseKeys)) (len $databaseKeys) -}}
 {{- fail "every component must use a distinct database URL Secret key and least-privilege role" -}}
 {{- end -}}
+{{- $allSecretKeys := list .Values.secret.apiDatabaseUrlKey .Values.secret.paperWorkerDatabaseUrlKey .Values.secret.metadataSyncDatabaseUrlKey .Values.secret.deletionWorkerDatabaseUrlKey .Values.secret.migrationDatabaseUrlKey .Values.secret.llmApiKeyKey .Values.secret.apiOriginHashKey .Values.secret.identityFingerprintKeysKey .Values.secret.deletionLedgerSigningKeysKey .Values.secret.deletionProviderIdentityKeysKey .Values.secret.oidcAdminClientSecretKey .Values.secret.telemetryExporterHeadersKey -}}
+{{- if ne (len (uniq $allSecretKeys)) (len $allSecretKeys) -}}
+{{- fail "database URLs and every purpose-specific credential must use distinct external Secret keys" -}}
+{{- end -}}
+{{- if or (ne .Values.public.documentVersion .Values.policy.termsVersion) (ne .Values.public.documentVersion .Values.policy.communityGuidelinesVersion) -}}
+{{- fail "public.documentVersion, policy.termsVersion, and policy.communityGuidelinesVersion must match exactly" -}}
+{{- end -}}
 {{- if not (regexMatch $httpsOrigin .Values.public.siteOrigin) -}}
 {{- fail "public.siteOrigin must be an exact HTTPS origin without path, query, fragment, credentials, or wildcard" -}}
 {{- end -}}
@@ -109,11 +116,8 @@
 {{- if and .Values.ingress.enabled (not .Values.site.enabled) -}}
 {{- fail "ingress.enabled requires site.enabled because the chart routes the site host to that Service" -}}
 {{- end -}}
-{{- if and (or .Values.paperWorker.enabled .Values.metadataSync.enabled) (not .Values.grobid.enabled) -}}
-{{- fail "paperWorker and metadataSync require the chart-managed GROBID Service" -}}
-{{- end -}}
-{{- if and .Values.metadataSync.enabled (not .Values.paperWorker.enabled) -}}
-{{- fail "metadataSync uses the paper-worker runtime contract and requires paperWorker.enabled" -}}
+{{- if and .Values.paperWorker.enabled (not .Values.grobid.enabled) -}}
+{{- fail "paperWorker requires the chart-managed GROBID Service" -}}
 {{- end -}}
 {{- if and (eq .Values.environment "production") (lt (int .Values.telemetryGateway.replicas) 2) -}}
 {{- fail "production requires at least two mobile telemetry gateway replicas" -}}
@@ -128,7 +132,7 @@
 {{- if or (contains "fixture" $backupId) (contains "placeholder" $backupId) (contains "example" $backupId) (contains "staging" $backupId) -}}
 {{- fail "production migration.confirmBackupId must identify verified environment backup evidence" -}}
 {{- end -}}
-{{- range $category, $ranges := dict "apiHttpsCidrs" .Values.networkPolicy.apiHttpsCidrs "paperHttpsCidrs" .Values.networkPolicy.paperHttpsCidrs "identityAdminHttpsCidrs" .Values.networkPolicy.identityAdminHttpsCidrs "databaseCidrs" .Values.networkPolicy.databaseCidrs "telemetryCidrs" .Values.networkPolicy.telemetryCidrs -}}
+{{- range $category, $ranges := dict "apiHttpsCidrs" .Values.networkPolicy.apiHttpsCidrs "arxivHttpsCidrs" .Values.networkPolicy.arxivHttpsCidrs "modelHttpsCidrs" .Values.networkPolicy.modelHttpsCidrs "identityAdminHttpsCidrs" .Values.networkPolicy.identityAdminHttpsCidrs "databaseCidrs" .Values.networkPolicy.databaseCidrs "telemetryCidrs" .Values.networkPolicy.telemetryCidrs -}}
 {{- range $cidr := $ranges -}}
 {{- if or (hasPrefix "192.0.2." $cidr) (hasPrefix "198.51.100." $cidr) (hasPrefix "203.0.113." $cidr) -}}
 {{- fail (printf "production networkPolicy.%s cannot contain TEST-NET documentation ranges" $category) -}}
@@ -145,6 +149,23 @@
 {{- if and .Values.features.comments (not .Values.features.accounts) -}}
 {{- fail "features.comments requires features.accounts" -}}
 {{- end -}}
+{{- if and .Values.features.comments (lt (int .Values.api.databasePoolSize) 2) -}}
+{{- fail "features.comments requires api.databasePoolSize>=2 for coordinated writes" -}}
+{{- end -}}
+{{- $serviceAccountBase := default (include "pakperk.fullname" .) .Values.serviceAccount.name -}}
+{{- if not (regexMatch `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$` $serviceAccountBase) -}}
+{{- fail "the derived ServiceAccount base must be one DNS label" -}}
+{{- end -}}
+{{- range $key, $_ := .Values.podLabels -}}
+{{- if has $key (list "app.kubernetes.io/name" "app.kubernetes.io/instance" "app.kubernetes.io/component" "app.kubernetes.io/managed-by" "app.kubernetes.io/version" "helm.sh/chart") -}}
+{{- fail (printf "podLabels[%s] is chart-owned and cannot be overridden" $key) -}}
+{{- end -}}
+{{- end -}}
+{{- range $key, $_ := .Values.podAnnotations -}}
+{{- if hasPrefix "checksum/" $key -}}
+{{- fail (printf "podAnnotations[%s] cannot override a chart-owned rollout checksum" $key) -}}
+{{- end -}}
+{{- end -}}
 {{- if empty .Values.api.trustedProxyCidrs -}}
 {{- fail "api.trustedProxyCidrs is required for trustworthy anonymous prepare/chat and comment origin limits" -}}
 {{- end -}}
@@ -152,6 +173,7 @@
 {{- if or (eq $cidr "0.0.0.0/0") (eq $cidr "::/0") -}}
 {{- fail "api.trustedProxyCidrs cannot trust an internet-wide range" -}}
 {{- end -}}
+{{- $_ := include "pakperk.ipv4CidrBounds" $cidr -}}
 {{- end -}}
 {{- if and .Values.features.commentCreation (not .Values.features.comments) -}}
 {{- fail "features.commentCreation requires features.comments" -}}
@@ -236,11 +258,20 @@
 {{- fail (printf "ingress.annotations[%s] is forbidden because chart-owned Nginx security annotations cannot be overridden" $key) -}}
 {{- end -}}
 {{- end -}}
+{{- if and .Values.networkPolicy.enabled (empty .Values.networkPolicy.ingressController.namespaceSelector) -}}
+{{- fail "networkPolicy.ingressController.namespaceSelector must contain at least one exact label" -}}
+{{- end -}}
+{{- if and .Values.networkPolicy.enabled (empty .Values.networkPolicy.ingressController.podSelector) -}}
+{{- fail "networkPolicy.ingressController.podSelector must contain at least one exact label" -}}
+{{- end -}}
 {{- if and .Values.networkPolicy.enabled (empty .Values.networkPolicy.apiHttpsCidrs) -}}
 {{- fail "networkPolicy.apiHttpsCidrs must enumerate reviewed API HTTPS dependency ranges" -}}
 {{- end -}}
-{{- if and .Values.networkPolicy.enabled .Values.paperWorker.enabled (empty .Values.networkPolicy.paperHttpsCidrs) -}}
-{{- fail "networkPolicy.paperHttpsCidrs must enumerate reviewed paper-provider HTTPS ranges" -}}
+{{- if and .Values.networkPolicy.enabled (or .Values.paperWorker.enabled .Values.metadataSync.enabled) (empty .Values.networkPolicy.arxivHttpsCidrs) -}}
+{{- fail "networkPolicy.arxivHttpsCidrs must enumerate reviewed arXiv HTTPS ranges" -}}
+{{- end -}}
+{{- if and .Values.networkPolicy.enabled .Values.paperWorker.enabled (empty .Values.networkPolicy.modelHttpsCidrs) -}}
+{{- fail "networkPolicy.modelHttpsCidrs must enumerate reviewed model-provider HTTPS ranges" -}}
 {{- end -}}
 {{- if and .Values.networkPolicy.enabled .Values.deletionWorker.enabled (empty .Values.networkPolicy.identityAdminHttpsCidrs) -}}
 {{- fail "networkPolicy.identityAdminHttpsCidrs must enumerate reviewed identity-admin HTTPS ranges" -}}
@@ -251,16 +282,39 @@
 {{- if and .Values.networkPolicy.enabled (empty .Values.networkPolicy.telemetryCidrs) -}}
 {{- fail "networkPolicy.telemetryCidrs must enumerate the upstream OTLP collector ranges" -}}
 {{- end -}}
-{{- range $category, $ranges := dict "apiHttpsCidrs" .Values.networkPolicy.apiHttpsCidrs "paperHttpsCidrs" .Values.networkPolicy.paperHttpsCidrs "identityAdminHttpsCidrs" .Values.networkPolicy.identityAdminHttpsCidrs "databaseCidrs" .Values.networkPolicy.databaseCidrs "telemetryCidrs" .Values.networkPolicy.telemetryCidrs -}}
+{{- range $category, $ranges := dict "apiHttpsCidrs" .Values.networkPolicy.apiHttpsCidrs "arxivHttpsCidrs" .Values.networkPolicy.arxivHttpsCidrs "modelHttpsCidrs" .Values.networkPolicy.modelHttpsCidrs "identityAdminHttpsCidrs" .Values.networkPolicy.identityAdminHttpsCidrs "databaseCidrs" .Values.networkPolicy.databaseCidrs "telemetryCidrs" .Values.networkPolicy.telemetryCidrs -}}
 {{- range $cidr := $ranges -}}
 {{- if or (eq $cidr "0.0.0.0/0") (eq $cidr "::/0") -}}
 {{- fail (printf "networkPolicy.%s cannot contain an internet-wide CIDR" $category) -}}
 {{- end -}}
+{{- $_ := include "pakperk.ipv4CidrBounds" $cidr -}}
 {{- end -}}
 {{- end -}}
-{{- range $cidr := .Values.networkPolicy.identityAdminHttpsCidrs -}}
-{{- if has $cidr $.Values.networkPolicy.paperHttpsCidrs -}}
-{{- fail "identityAdminHttpsCidrs and paperHttpsCidrs must be distinct so paper workers cannot reach identity administration" -}}
+{{- if .Values.networkPolicy.enabled -}}
+{{- $providerBounds := dict -}}
+{{- range $category, $ranges := dict "arxivHttpsCidrs" .Values.networkPolicy.arxivHttpsCidrs "modelHttpsCidrs" .Values.networkPolicy.modelHttpsCidrs "identityAdminHttpsCidrs" .Values.networkPolicy.identityAdminHttpsCidrs -}}
+{{- $bounds := dict -}}
+{{- range $cidr := $ranges -}}
+{{- $_ := set $bounds $cidr (include "pakperk.ipv4CidrBounds" $cidr) -}}
+{{- end -}}
+{{- $_ := set $providerBounds $category $bounds -}}
+{{- end -}}
+{{- range $pair := list (list "arxivHttpsCidrs" "modelHttpsCidrs") (list "arxivHttpsCidrs" "identityAdminHttpsCidrs") (list "modelHttpsCidrs" "identityAdminHttpsCidrs") -}}
+{{- $leftCategory := index $pair 0 -}}
+{{- $rightCategory := index $pair 1 -}}
+{{- range $leftCidr, $leftEncoded := index $providerBounds $leftCategory -}}
+{{- $leftParts := splitList "," $leftEncoded -}}
+{{- $leftStart := int64 (index $leftParts 0) -}}
+{{- $leftEnd := int64 (index $leftParts 1) -}}
+{{- range $rightCidr, $rightEncoded := index $providerBounds $rightCategory -}}
+{{- $rightParts := splitList "," $rightEncoded -}}
+{{- $rightStart := int64 (index $rightParts 0) -}}
+{{- $rightEnd := int64 (index $rightParts 1) -}}
+{{- if and (le $leftStart $rightEnd) (le $rightStart $leftEnd) -}}
+{{- fail (printf "networkPolicy.%s entry %s overlaps %s entry %s" $leftCategory $leftCidr $rightCategory $rightCidr) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- if and (eq .Values.environment "production") (or (hasSuffix ".test" (lower .Values.public.supportEmail)) (hasSuffix ".invalid" (lower .Values.public.supportEmail)) (contains "@example." (lower .Values.public.supportEmail)) (hasSuffix "@localhost" (lower .Values.public.supportEmail)) (contains "placeholder" (lower .Values.public.supportEmail))) -}}

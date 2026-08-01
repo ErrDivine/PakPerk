@@ -23,12 +23,58 @@ app.kubernetes.io/name: {{ include "pakperk.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
-{{- define "pakperk.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create -}}
-{{- default (include "pakperk.fullname" .) .Values.serviceAccount.name -}}
-{{- else -}}
-{{- required "serviceAccount.name is required when serviceAccount.create=false" .Values.serviceAccount.name -}}
+{{- define "pakperk.componentServiceAccountName" -}}
+{{- $root := .root -}}
+{{- $component := .component -}}
+{{- $base := default (include "pakperk.fullname" $root) $root.Values.serviceAccount.name -}}
+{{- if not $root.Values.serviceAccount.create -}}
+{{- $base = required "serviceAccount.name base is required when serviceAccount.create=false" $root.Values.serviceAccount.name -}}
 {{- end -}}
+{{- $maxBaseLength := sub 62 (len $component) | int -}}
+{{- printf "%s-%s" (trunc $maxBaseLength $base | trimSuffix "-") $component | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "pakperk.migrationServiceAccountName" -}}
+{{- printf "%s-migration" (include "pakperk.fullname" . | trunc 53 | trimSuffix "-") | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "pakperk.otelServiceName" -}}
+{{- printf "pakperk-%s-%s" .component .root.Values.environment -}}
+{{- end -}}
+
+{{/*
+Return the inclusive numeric bounds of a canonical IPv4 CIDR as "start,end".
+The paper/provider and identity-admin boundaries deliberately accept only
+canonical IPv4 CIDRs: Helm has no native dual-stack CIDR containment primitive,
+and silently accepting an IPv6 range that cannot be compared would fail open.
+*/}}
+{{- define "pakperk.ipv4CidrBounds" -}}
+{{- $cidr := . -}}
+{{- if not (regexMatch `^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$` $cidr) -}}
+{{- fail (printf "%s must be a canonical IPv4 CIDR" $cidr) -}}
+{{- end -}}
+{{- $parts := splitList "/" $cidr -}}
+{{- $octets := splitList "." (index $parts 0) -}}
+{{- range $octet := $octets -}}
+{{- if or (gt (int $octet) 255) (and (gt (len $octet) 1) (hasPrefix "0" $octet)) -}}
+{{- fail (printf "%s must be a canonical IPv4 CIDR" $cidr) -}}
+{{- end -}}
+{{- end -}}
+{{- $prefix := int (index $parts 1) -}}
+{{- if lt $prefix 8 -}}
+{{- fail (printf "%s must use an IPv4 prefix between /8 and /32" $cidr) -}}
+{{- end -}}
+{{- $address := add (mul (int64 (index $octets 0)) 16777216) (mul (int64 (index $octets 1)) 65536) (mul (int64 (index $octets 2)) 256) (int64 (index $octets 3)) -}}
+{{- $blockSize := int64 1 -}}
+{{- range until (sub 32 $prefix | int) -}}
+{{- $blockSize = mul $blockSize 2 -}}
+{{- end -}}
+{{- $start := mul (div $address $blockSize) $blockSize -}}
+{{- if ne $address $start -}}
+{{- fail (printf "%s must start at its canonical network address" $cidr) -}}
+{{- end -}}
+{{- $end := sub (add $start $blockSize) 1 -}}
+{{- printf "%d,%d" $start $end -}}
 {{- end -}}
 
 {{- define "pakperk.appImage" -}}
@@ -223,8 +269,15 @@ app.kubernetes.io/component: {{ .component }}
 {{- end }}
 {{- end -}}
 
-{{- define "pakperk.paperHttpsEgress" -}}
-{{- range .Values.networkPolicy.paperHttpsCidrs }}
+{{- define "pakperk.arxivHttpsEgress" -}}
+{{- range .Values.networkPolicy.arxivHttpsCidrs }}
+- to: [{ ipBlock: { cidr: {{ . | quote }} } }]
+  ports: [{ protocol: TCP, port: 443 }]
+{{- end }}
+{{- end -}}
+
+{{- define "pakperk.modelHttpsEgress" -}}
+{{- range .Values.networkPolicy.modelHttpsCidrs }}
 - to: [{ ipBlock: { cidr: {{ . | quote }} } }]
   ports: [{ protocol: TCP, port: 443 }]
 {{- end }}

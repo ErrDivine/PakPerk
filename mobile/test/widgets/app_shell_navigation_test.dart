@@ -13,7 +13,7 @@ import 'package:pakperk/core/providers.dart';
 import 'package:pakperk/core/repository/paper_repository.dart';
 import 'package:pakperk/features/account/guest_you_screen.dart';
 import 'package:pakperk/features/paper_reader/reader_navigation_controller.dart';
-import 'package:pakperk/features/placeholders/phase_one_placeholder_screens.dart';
+import 'package:pakperk/features/settings/public_settings_screen.dart';
 
 import '../support/fakes.dart';
 

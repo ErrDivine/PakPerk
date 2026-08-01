@@ -9,12 +9,15 @@ import 'package:go_router/go_router.dart';
 import '../../app/library_providers.dart';
 import '../../core/database/library_dao.dart';
 import '../../core/library/library_models.dart';
+import '../../core/models/paper.dart';
 import '../../core/providers.dart';
 import '../placeholders/phase_one_placeholder_screens.dart';
 import 'to_read_list.dart';
 
 class ToReadScreen extends ConsumerWidget {
-  const ToReadScreen({super.key});
+  const ToReadScreen({required this.onOpenPaper, super.key});
+
+  final ValueChanged<PaperSummary> onOpenPaper;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -71,10 +74,7 @@ class ToReadScreen extends ConsumerWidget {
                       : null),
               onRefresh: () =>
                   ref.read(librarySyncControllerProvider.notifier).refresh(),
-              onOpen: (item) => context.go(
-                '/read/paper/${item.paper.paperId}',
-                extra: item.paper,
-              ),
+              onOpen: (item) => onOpenPaper(item.paper),
               onRemove: (item) => unawaited(_remove(context, ref, scope, item)),
             ),
     );

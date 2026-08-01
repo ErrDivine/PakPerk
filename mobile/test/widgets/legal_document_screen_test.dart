@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,29 @@ import 'package:pakperk/core/providers.dart';
 import 'package:pakperk/features/legal/legal_document_screen.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test(
+    'bundled community rules contain the complete first-post disclosure',
+    () async {
+      final policy = await loadBundledLegalDocument(
+        rootBundle,
+        LegalDocumentKind.communityGuidelines.assetPath,
+      );
+
+      for (final requiredText in const [
+        'comments are public',
+        'sexual exploitation',
+        'copyright abuse',
+        'https://pakperk.app/support/',
+        'Use **Report**',
+        'Use **Block user**',
+      ]) {
+        expect(policy, contains(requiredText));
+      }
+    },
+  );
+
   testWidgets('renders selectable Markdown and audits link opening', (
     tester,
   ) async {

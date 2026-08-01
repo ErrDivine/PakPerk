@@ -36,7 +36,7 @@ data:
           - /var/log/pods/{{ .Release.Namespace }}_{{ include "pakperk.fullname" . }}-paper-worker-*_*/paper-worker/*.log
           - /var/log/pods/{{ .Release.Namespace }}_{{ include "pakperk.fullname" . }}-deletion-worker-*_*/deletion-worker/*.log
           - /var/log/pods/{{ .Release.Namespace }}_{{ include "pakperk.fullname" . }}-metadata-sync-*_*/metadata-sync/*.log
-          - /var/log/pods/{{ .Release.Namespace }}_{{ include "pakperk.fullname" . }}-migrate-*_*/migration/*.log
+          - /var/log/pods/{{ .Release.Namespace }}_{{ include "pakperk.fullname" . }}-migration-*_*/migrate/*.log
           - /var/log/pods/{{ .Release.Namespace }}_{{ include "pakperk.fullname" . }}-telemetry-gateway-*_*/telemetry-gateway/*.log
         exclude:
           - /var/log/pods/{{ .Release.Namespace }}_{{ include "pakperk.fullname" . }}-otel-collector-*_*/collector/*.log
@@ -162,7 +162,7 @@ spec:
         checksum/config: {{ toJson .Values.otelCollector | sha256sum }}
         checksum/runtime-secrets: {{ printf "%s|%s|%s" .Values.secret.existingSecret .Values.secret.rotationVersion .Values.secret.telemetryExporterHeadersKey | sha256sum }}
     spec:
-      serviceAccountName: {{ include "pakperk.serviceAccountName" . }}
+      serviceAccountName: {{ include "pakperk.componentServiceAccountName" (dict "root" . "component" "otel-collector") }}
       automountServiceAccountToken: false
       enableServiceLinks: false
       securityContext:

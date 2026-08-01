@@ -19,7 +19,7 @@ Do not post or facilitate:
   real-world harm;
 - spam, repetitive promotion, deceptive links, or manipulation;
 - impersonation or misleading claims of affiliation;
-- copyright or other rights violations; or
+- copyright abuse or other rights violations; or
 - attempts to evade moderation or repeatedly recreate suspended accounts.
 
 Do not paste private peer-review material, unpublished confidential work, or

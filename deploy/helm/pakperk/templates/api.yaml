@@ -24,7 +24,7 @@ spec:
         checksum/runtime-secrets: {{ printf "%s|%s|%s|%s|%s|%s|%s|%s" .Values.secret.existingSecret .Values.secret.rotationVersion .Values.secret.apiDatabaseUrlKey .Values.secret.llmApiKeyKey .Values.secret.apiOriginHashKey .Values.secret.identityFingerprintKeysKey .Values.secret.deletionLedgerSigningKeysKey .Values.secret.deletionProviderIdentityKeysKey | sha256sum }}
         {{- with .Values.podAnnotations }}{{ toYaml . | nindent 8 }}{{- end }}
     spec:
-      serviceAccountName: {{ include "pakperk.serviceAccountName" . }}
+      serviceAccountName: {{ include "pakperk.componentServiceAccountName" (dict "root" . "component" "api") }}
       automountServiceAccountToken: false
       enableServiceLinks: false
       terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds }}
@@ -109,7 +109,7 @@ spec:
             - { name: LLM_API_KEY_FILE, value: "/var/run/pakperk-secrets/LLM_API_KEY" }
             - { name: ARXIV_CONTACT_EMAIL, value: {{ .Values.paperWorker.arxivContactEmail | quote }} }
             - { name: ARXIV_USER_AGENT, value: {{ printf "Pakperk/%s" .Chart.AppVersion | quote }} }
-            - { name: OTEL_SERVICE_NAME, value: "pakperk-api" }
+            - { name: OTEL_SERVICE_NAME, value: {{ include "pakperk.otelServiceName" (dict "root" . "component" "api") | quote }} }
             - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ printf "http://%s-otel-collector:4317" (include "pakperk.fullname" .) | quote }} }
             - { name: OTEL_EXPORTER_OTLP_INSECURE, value: "true" }
             - { name: OTEL_TRACES_SAMPLER_ARG, value: "0.10" }

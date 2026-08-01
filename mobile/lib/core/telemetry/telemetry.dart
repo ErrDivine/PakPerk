@@ -40,11 +40,20 @@ abstract final class PakPerkTelemetryEvent {
   static const shellDestinationSelected = 'shell_destination_selected';
   static const paperPageCommitted = 'paper_page_committed';
   static const paperStageCommitted = 'paper_stage_committed';
+  static const feedPrefetchRequested = 'feed_prefetch_requested';
+  static const feedPrefetchSucceeded = 'feed_prefetch_succeeded';
+  static const feedPrefetchFailed = 'feed_prefetch_failed';
+  static const feedPrefetchDeduplicated = 'feed_prefetch_deduplicated';
   static const nextPaperCacheHit = 'next_paper_cache_hit';
   static const nextPaperCacheMiss = 'next_paper_cache_miss';
+  static const feedBlankCard = 'feed_blank_card';
+  static const feedCacheRows = 'feed_cache_rows';
+  static const feedCacheBytes = 'feed_cache_bytes';
+  static const feedTimeToReadable = 'feed_time_to_readable_ms';
   static const saveRequested = 'save_requested';
   static const saveSynced = 'save_synced';
   static const saveFailed = 'save_failed';
+  static const libraryOutboxBacklog = 'library_outbox_backlog';
   static const authStarted = 'auth_started';
   static const authCompleted = 'auth_completed';
   static const authCancelled = 'auth_cancelled';
@@ -58,6 +67,7 @@ abstract final class PakPerkTelemetryEvent {
   static const accountDeletionUnavailable = 'account_deletion_unavailable';
   static const accountDeletionLocalCleanupFailed =
       'account_deletion_local_cleanup_failed';
+  static const httpRequestCompleted = 'http_request_completed';
 }
 
 /// Audited event and attribute filter placed in front of every exporter.
@@ -123,11 +133,25 @@ final class RedactingTelemetrySink implements TelemetrySink {
     PakPerkTelemetryEvent.paperStageCommitted: {
       'stage': _StringEnumPolicy({'abstract', 'introduction', 'connections'}),
     },
+    PakPerkTelemetryEvent.feedPrefetchRequested: {},
+    PakPerkTelemetryEvent.feedPrefetchSucceeded: {},
+    PakPerkTelemetryEvent.feedPrefetchFailed: {},
+    PakPerkTelemetryEvent.feedPrefetchDeduplicated: {},
     PakPerkTelemetryEvent.nextPaperCacheHit: {
       'cache_tier': _StringEnumPolicy({'device'}),
     },
     PakPerkTelemetryEvent.nextPaperCacheMiss: {
       'cache_tier': _StringEnumPolicy({'device'}),
+    },
+    PakPerkTelemetryEvent.feedBlankCard: {},
+    PakPerkTelemetryEvent.feedCacheRows: {
+      'rows': _IntegerRangePolicy(0, 100000),
+    },
+    PakPerkTelemetryEvent.feedCacheBytes: {
+      'bytes': _IntegerRangePolicy(0, 1073741824),
+    },
+    PakPerkTelemetryEvent.feedTimeToReadable: {
+      'elapsed_ms': _IntegerRangePolicy(0, 86_400_000),
     },
     PakPerkTelemetryEvent.saveRequested: {
       'intent': _StringEnumPolicy({'save', 'remove'}),
@@ -139,6 +163,9 @@ final class RedactingTelemetrySink implements TelemetrySink {
       'intent': _StringEnumPolicy({'save', 'remove', 'mutation'}),
       'failure_code': _failureCode,
       'retryable': _boolean,
+    },
+    PakPerkTelemetryEvent.libraryOutboxBacklog: {
+      'pending_count': _IntegerRangePolicy(0, 100000),
     },
     PakPerkTelemetryEvent.authStarted: {
       'purpose': _StringEnumPolicy({'session', 'account_deletion'}),
@@ -180,6 +207,42 @@ final class RedactingTelemetrySink implements TelemetrySink {
     PakPerkTelemetryEvent.accountDeletionUnavailable: {'retryable': _boolean},
     PakPerkTelemetryEvent.accountDeletionLocalCleanupFailed: {
       'failure_code': _StringEnumPolicy({'local_cleanup'}),
+    },
+    PakPerkTelemetryEvent.httpRequestCompleted: {
+      'method_class': _StringEnumPolicy({'read', 'write', 'delete', 'other'}),
+      'route_class': _StringEnumPolicy({
+        'health',
+        'feed',
+        'paper',
+        'paper_prepare',
+        'paper_chat',
+        'account',
+        'account_deletion',
+        'library',
+        'comments',
+        'moderation',
+        'unknown',
+      }),
+      'outcome': _StringEnumPolicy({
+        'success',
+        'cancelled',
+        'timeout',
+        'unavailable',
+        'client_error',
+        'server_error',
+        'http_error',
+        'transport_error',
+      }),
+      'status_family': _StringEnumPolicy({
+        'none',
+        '1xx',
+        '2xx',
+        '3xx',
+        '4xx',
+        '5xx',
+      }),
+      'elapsed_ms': _IntegerRangePolicy(0, 86_400_000),
+      'retry_count': _IntegerRangePolicy(0, 1),
     },
   };
 

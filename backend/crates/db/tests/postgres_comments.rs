@@ -38,6 +38,10 @@ async fn postgres_comments_idempotency_permissions_pagination_and_moderation() {
         .provision_oidc_identity(&issuer, "incomplete", Duration::from_secs(900))
         .await
         .unwrap();
+    let policy_pending = accounts
+        .provision_oidc_identity(&issuer, "policy-pending", Duration::from_secs(900))
+        .await
+        .unwrap();
     let suspended = accounts
         .provision_oidc_identity(&issuer, "suspended", Duration::from_secs(900))
         .await
@@ -66,6 +70,12 @@ async fn postgres_comments_idempotency_permissions_pagination_and_moderation() {
         .await
         .unwrap();
     }
+    sqlx::query("UPDATE users SET handle = $2 WHERE id = $1")
+        .bind(policy_pending.id.into_inner())
+        .bind("comment_policy_pending")
+        .execute(database.pool())
+        .await
+        .unwrap();
     sqlx::query("UPDATE users SET status = 'suspended' WHERE id = $1")
         .bind(suspended.id.into_inner())
         .execute(database.pool())
@@ -147,7 +157,24 @@ async fn postgres_comments_idempotency_permissions_pagination_and_moderation() {
             )
             .await
             .unwrap(),
-        CommentCreateOutcome::ProfileIncomplete
+        CommentCreateOutcome::AccountIncomplete
+    );
+    assert_eq!(
+        repository
+            .create(
+                Uuid::now_v7(),
+                policy_pending.id,
+                paper.id,
+                Uuid::now_v7(),
+                &body,
+                CommentStatus::Published,
+                None,
+                &terms,
+                &guidelines,
+            )
+            .await
+            .unwrap(),
+        CommentCreateOutcome::TermsAcceptanceRequired
     );
     assert_eq!(
         repository

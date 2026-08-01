@@ -10,6 +10,7 @@ import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/models/reader_state.dart';
 import 'package:pakperk/core/providers.dart';
 import 'package:pakperk/core/repository/paper_repository.dart';
+import 'package:pakperk/core/settings/appearance.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../support/fakes.dart';
@@ -103,6 +104,7 @@ void main() {
     final sessionId = await store.getOrCreateSessionId();
     const restoration = AppRestorationState(activeBranchIndex: 1, feedIndex: 2);
     await store.saveRestoration(restoration);
+    await store.saveAppearance(AppAppearance.dark);
     await store.saveFeed(FeedPage(items: [samplePaper]));
     await store.savePaper(samplePaper);
 
@@ -112,6 +114,7 @@ void main() {
     expect(await repaired.getOrCreateSessionId(), sessionId);
     expect((await repaired.loadRestoration()).activeBranchIndex, 1);
     expect((await repaired.loadRestoration()).feedIndex, 2);
+    expect(await repaired.loadAppearance(), AppAppearance.dark);
     expect(await repaired.loadFeed(), isNull);
     expect(await repaired.loadPaper(samplePaper.paperId), isNull);
   });

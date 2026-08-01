@@ -47,6 +47,13 @@ before any network client is created. The complete release commands use the
 checked-in files under `config/` and are documented in
 [`../docs/mobile-release.md`](../docs/mobile-release.md).
 
+Checked-in staging and production configs keep accounts, library, and comments
+off. Signed candidates may enable them only through the protected environment
+variables `PAKPERK_ACCOUNTS_ENABLED`, `PAKPERK_LIBRARY_ENABLED`, and
+`PAKPERK_COMMENTS_ENABLED`; missing values stay false and the workflow records
+the resolved booleans. See the
+[protected feature-flag contract](../docs/mobile-release.md#protected-mobile-feature-flags).
+
 The login uses the system browser and PKCE. Access tokens stay in memory;
 refresh/session material is stored in platform secure storage rather than
 SharedPreferences or Drift. Invalid refresh returns to guest state, while
@@ -104,14 +111,36 @@ flutter analyze
 flutter test
 ```
 
-The normal suite includes a headless end-to-end specification for all eight
-demo flows in `test/e2e/demo_flows_test.dart`. With an Android or iOS test
-target attached, run the same scenarios through Flutter's device integration
-binding:
+The normal suite includes headless specifications for all eight demo flows in
+`test/e2e/demo_flows_test.dart` and the deterministic production-verification
+subset in `test/e2e/production_verification_test.dart`. The latter exercises a
+30-record cached launch, six deterministic cursor pages that cover exactly 200
+papers while first-page revalidation remains stalled, 20 generated Flutter
+drag/fling gestures, bounded live readers, a 500-paper/100-save Drift workload
+(logical page size in headless CI and real SQLite/WAL/SHM file size in the
+physical-device lane), packet-loss and single-flight behavior, same-UUID
+outbox recovery, comment pagination, lifecycle-safe maintenance, foreground
+memory-warning handling, reduced motion, and strict cache masking.
+
+Those fixtures do not impersonate a real identity provider, staging backend,
+second installed device, OS process kill, signed store candidate, or
+representative performance window. With a physical Android or iOS target
+attached, run the deterministic subset through Flutter's integration binding:
 
 ```sh
-flutter test integration_test/demo_flows_test.dart
+flutter test integration_test/production_verification_test.dart \
+  --profile -d "$PAKPERK_MOBILE_DEVICE_ID"
 ```
 
-Setting `PAKPERK_RUN_DEVICE_INTEGRATION_TESTS=1` makes the repository-level
-`scripts/check.sh` include that device run.
+Setting `PAKPERK_MOBILE_DEVICE_ID` makes the repository-level
+`scripts/check.sh` include that physical-device probe after the complete
+headless suite. The manually dispatched `mobile-device-integration` workflow
+does the same on a protected self-hosted runner, reads the exact device ID only
+from the protected `PAKPERK_MOBILE_DEVICE_ID` environment secret, rejects
+emulators, and retains closed platform/version, frame, file-backed database,
+and verification-scope evidence. It explicitly records the
+live OIDC, two-device, staging, account-deletion, store, and operational paths
+that it did not execute. Its generated `WidgetTester` pointer sequences cover
+Flutter's gesture and pagination paths but are not operator gestures or a
+representative performance window. The required manual/staging lane is
+documented in [`../docs/mobile-release.md`](../docs/mobile-release.md).
