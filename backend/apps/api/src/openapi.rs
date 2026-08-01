@@ -591,6 +591,11 @@ mod tests {
         let document = serde_json::to_value(ApiDoc::openapi()).unwrap();
         let delete = &document["paths"]["/v1/me"]["delete"];
         assert_eq!(delete["security"][0]["oidcBearer"], json!([]));
+        assert!(
+            delete["description"]
+                .as_str()
+                .is_some_and(|description| description.contains("Every request, including an identity-scoped replay, requires recent authentication"))
+        );
         assert!(delete.get("requestBody").is_none());
         assert!(delete["parameters"].as_array().is_none_or(|parameters| {
             parameters

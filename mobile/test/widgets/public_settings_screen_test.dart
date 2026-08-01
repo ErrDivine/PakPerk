@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/app/account_providers.dart';
 import 'package:pakperk/app/feature_flags.dart';
+import 'package:pakperk/core/auth/auth.dart';
 import 'package:pakperk/core/cache/feed_cache_persistence.dart';
 import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/providers.dart';
@@ -183,26 +184,107 @@ void main() {
       );
     },
   );
+
+  testWidgets('recoverable account exposes the routed deletion action', (
+    tester,
+  ) async {
+    final store = _CacheControlStore(
+      initial: const FeedCacheUsage(metadataRows: 1, databaseBytes: 1024),
+      after: const FeedCacheUsage(metadataRows: 1, databaseBytes: 1024),
+    );
+    final auth = _authController(
+      storedRecord(accountId: '018f47a6-4b56-7f4c-8c7a-e2656e820001'),
+    );
+    expect(
+      await auth.inspectStoredSession(),
+      AuthStoredSessionStatus.refreshRequired,
+    );
+    var deletionOpens = 0;
+
+    await _pump(
+      tester,
+      store,
+      features: _accountsEnabled,
+      authSession: auth,
+      onOpenDeleteAccount: () => deletionOpens += 1,
+    );
+
+    final action = find.byKey(const ValueKey('delete-account-setting'));
+    await tester.scrollUntilVisible(
+      action,
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Delete account'), findsOneWidget);
+    await tester.tap(action);
+
+    expect(deletionOpens, 1);
+  });
+
+  testWidgets('guest does not expose account deletion from public settings', (
+    tester,
+  ) async {
+    final store = _CacheControlStore(
+      initial: const FeedCacheUsage(metadataRows: 0, databaseBytes: 0),
+      after: const FeedCacheUsage(metadataRows: 0, databaseBytes: 0),
+    );
+    final auth = _authController();
+    expect(await auth.inspectStoredSession(), AuthStoredSessionStatus.guest);
+
+    await _pump(
+      tester,
+      store,
+      features: _accountsEnabled,
+      authSession: auth,
+      onOpenDeleteAccount: () => fail('Guest deletion action opened.'),
+    );
+
+    expect(find.byKey(const ValueKey('delete-account-setting')), findsNothing);
+  });
 }
 
 Future<void> _pump(
   WidgetTester tester,
   _CacheControlStore store, {
   MemorySecureTokenStore? secureStore,
+  FeatureFlags features = const FeatureFlags.disabled(),
+  AuthSessionController? authSession,
+  VoidCallback? onOpenDeleteAccount,
 }) async {
   final tokens = secureStore ?? MemorySecureTokenStore();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        featureFlagsProvider.overrideWithValue(const FeatureFlags.disabled()),
+        featureFlagsProvider.overrideWithValue(features),
+        if (authSession != null)
+          authSessionProvider.overrideWith((ref) => authSession),
         secureTokenStoreProvider.overrideWithValue(tokens),
         localStoreProvider.overrideWithValue(store),
       ],
-      child: const MaterialApp(home: PublicSettingsScreen()),
+      child: MaterialApp(
+        home: PublicSettingsScreen(onOpenDeleteAccount: onOpenDeleteAccount),
+      ),
     ),
   );
   await tester.pumpAndSettle();
 }
+
+AuthSessionController _authController([SecureAuthRecord? record]) =>
+    AuthSessionController(
+      repository: AuthRepository(
+        configuration: testOidcConfiguration,
+        oidcClient: FakeOidcClient(),
+        secureTokenStore: MemorySecureTokenStore(record),
+      ),
+      clearAccountOwnedData: (_, __) async {},
+    );
+
+const _accountsEnabled = FeatureFlags(
+  accounts: true,
+  library: false,
+  comments: false,
+  openingMotion: false,
+);
 
 final class _CacheControlStore extends MemoryLocalStore
     implements PublicCacheControl {

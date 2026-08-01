@@ -86,28 +86,20 @@ class ToReadScreen extends ConsumerWidget {
     ActiveLibraryScope scope,
     LibraryListItem item,
   ) async {
+    final repository = ref.read(libraryRepositoryProvider);
+    final sync = ref.read(librarySyncControllerProvider.notifier);
     try {
-      await ref
-          .read(libraryRepositoryProvider)
-          .setSaved(
-            accountId: scope.accountId,
-            authEpoch: scope.authEpoch,
-            paperId: item.paper.paperId,
-            saved: false,
-            paper: item.paper,
-          );
+      await repository.setSaved(
+        accountId: scope.accountId,
+        authEpoch: scope.authEpoch,
+        paperId: item.paper.paperId,
+        saved: false,
+        paper: item.paper,
+      );
+      // The local mutation and outbox row are already durable. Platform
+      // feedback is optional and must never suppress synchronization or Undo.
+      unawaited(sync.drain());
       if (!context.mounted) return;
-      await HapticFeedback.selectionClick();
-      if (!context.mounted) return;
-      if (MediaQuery.supportsAnnounceOf(context)) {
-        await SemanticsService.sendAnnouncement(
-          View.of(context),
-          'Removed from To Read',
-          Directionality.of(context),
-        );
-        if (!context.mounted) return;
-      }
-      unawaited(ref.read(librarySyncControllerProvider.notifier).drain());
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
@@ -119,6 +111,7 @@ class ToReadScreen extends ConsumerWidget {
             ),
           ),
         );
+      unawaited(_acknowledgeRemoval(context));
     } on LibraryScopeChanged {
       // A sign-out/account switch owns the screen transition and cleanup.
     } on Object {
@@ -128,6 +121,24 @@ class ToReadScreen extends ConsumerWidget {
           content: Text('This paper could not be removed on this device.'),
         ),
       );
+    }
+  }
+
+  Future<void> _acknowledgeRemoval(BuildContext context) async {
+    try {
+      await HapticFeedback.selectionClick();
+    } on Object {
+      // A missing platform feedback channel does not affect the saved state.
+    }
+    if (!context.mounted || !MediaQuery.supportsAnnounceOf(context)) return;
+    try {
+      await SemanticsService.sendAnnouncement(
+        View.of(context),
+        'Removed from To Read',
+        Directionality.of(context),
+      );
+    } on Object {
+      // The visible snackbar remains the authoritative outcome and Undo path.
     }
   }
 

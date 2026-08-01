@@ -60,34 +60,29 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
       return;
     }
 
+    final repository = ref.read(libraryRepositoryProvider);
+    final sync = ref.read(librarySyncControllerProvider.notifier);
+    final telemetry = ref.read(telemetrySinkProvider);
     setState(() => _committing = true);
     final saved = !current.saved;
-    emitTelemetry(
-      ref.read(telemetrySinkProvider),
-      PakPerkTelemetryEvent.saveRequested,
-      {'intent': saved ? 'save' : 'remove'},
-    );
+    emitTelemetry(telemetry, PakPerkTelemetryEvent.saveRequested, {
+      'intent': saved ? 'save' : 'remove',
+    });
     try {
       try {
-        await ref
-            .read(libraryRepositoryProvider)
-            .setSaved(
-              accountId: scope.accountId,
-              authEpoch: scope.authEpoch,
-              paperId: widget.paper.paperId,
-              saved: saved,
-              paper: widget.paper,
-            );
-      } on Object {
-        emitTelemetry(
-          ref.read(telemetrySinkProvider),
-          PakPerkTelemetryEvent.saveFailed,
-          {
-            'intent': saved ? 'save' : 'remove',
-            'failure_code': 'local_write',
-            'retryable': true,
-          },
+        await repository.setSaved(
+          accountId: scope.accountId,
+          authEpoch: scope.authEpoch,
+          paperId: widget.paper.paperId,
+          saved: saved,
+          paper: widget.paper,
         );
+      } on Object {
+        emitTelemetry(telemetry, PakPerkTelemetryEvent.saveFailed, {
+          'intent': saved ? 'save' : 'remove',
+          'failure_code': 'local_write',
+          'retryable': true,
+        });
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -96,12 +91,17 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
         );
         return;
       }
+      // A successful local write includes the durable outbox operation. Drain
+      // it even if navigation disposes this control while the write awaits.
+      unawaited(sync.drain());
       if (!mounted) return;
-      await _acknowledgeSelection(
-        saved ? 'Saved to To Read' : 'Removed from To Read',
+      // Platform feedback is best-effort. It must not delay durable sync or
+      // the time-sensitive Undo affordance.
+      unawaited(
+        _acknowledgeSelection(
+          saved ? 'Saved to To Read' : 'Removed from To Read',
+        ),
       );
-      if (!mounted) return;
-      unawaited(ref.read(librarySyncControllerProvider.notifier).drain());
       if (saved) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -121,19 +121,19 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
   }
 
   Future<void> _undoRemoval(ActiveLibraryScope scope) async {
+    final repository = ref.read(libraryRepositoryProvider);
+    final sync = ref.read(librarySyncControllerProvider.notifier);
     try {
       // setSaved always allocates a fresh operation ID. Undo is therefore a
       // new save intent and never rewrites the removal that may already have
       // crossed the network boundary.
-      await ref
-          .read(libraryRepositoryProvider)
-          .setSaved(
-            accountId: scope.accountId,
-            authEpoch: scope.authEpoch,
-            paperId: widget.paper.paperId,
-            saved: true,
-            paper: widget.paper,
-          );
+      await repository.setSaved(
+        accountId: scope.accountId,
+        authEpoch: scope.authEpoch,
+        paperId: widget.paper.paperId,
+        saved: true,
+        paper: widget.paper,
+      );
     } on LibraryScopeChanged {
       // A stale Undo must not cross an account or authentication epoch.
       return;
@@ -146,11 +146,11 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
       );
       return;
     }
+    // Undo is itself a fresh durable operation and must not depend on the
+    // originating reader widget remaining mounted.
+    unawaited(sync.drain());
     if (!mounted) return;
     await _acknowledgeSelection('Restored to To Read');
-    if (mounted) {
-      unawaited(ref.read(librarySyncControllerProvider.notifier).drain());
-    }
   }
 
   Future<void> _acknowledgeSelection(String announcement) async {

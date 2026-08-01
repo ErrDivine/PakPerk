@@ -211,7 +211,7 @@ pub(crate) async fn patch_me(
     delete,
     path = "/v1/me",
     tag = "accounts",
-    description = "Registered only when ACCOUNT_DELETION_ENABLED=true. The verified issuer/subject is the replay key; no Idempotency-Key header is accepted. A replay resumes durable externalization and returns the original operation. ACCOUNT_DELETION_UNAVAILABLE is unusual: the account is already locally deletion_pending, ordinary access remains blocked, and the worker/operator owns completion even though the external tombstone was not yet acknowledged durable.",
+    description = "Registered only when ACCOUNT_DELETION_ENABLED=true. Every request, including an identity-scoped replay, requires recent authentication. The verified issuer/subject is the replay key; no Idempotency-Key header is accepted. A replay resumes durable externalization and returns the original operation. ACCOUNT_DELETION_UNAVAILABLE is unusual: the account is already locally deletion_pending, ordinary access remains blocked, and the worker/operator owns completion even though the external tombstone was not yet acknowledged durable.",
     security(("oidcBearer" = [])),
     responses(
         (
@@ -243,18 +243,11 @@ pub(crate) async fn delete_me(
 ) -> Result<Response, ApiError> {
     validate_delete_request(request_id, &headers, &body)?;
     let service = deletion_service(&state, request_id)?;
-    let replay = service
-        .lookup(&principal.identity)
-        .await
-        .map_err(|error| deletion_service_error(request_id, &error))?
-        .is_some();
-    if !replay {
-        require_recent_auth(
-            request_id,
-            principal.auth_time,
-            service.policy().recent_auth(),
-        )?;
-    }
+    require_recent_auth(
+        request_id,
+        principal.auth_time,
+        service.policy().recent_auth(),
+    )?;
     match service
         .request(&principal.identity)
         .await

@@ -50,8 +50,9 @@ rotation owner in the protected release evidence.
 7. Open **You > Settings > Clear reading cache**. The confirmation explains
    that rebuildable public data is removed while saves, drafts, pending sync,
    account data, and reading position remain.
-8. Open **You > Delete account**. Complete the exact confirmation phrase and
-   recent-authentication browser step, then submit. The app enters a deletion
+8. Open **You > Settings > Delete account**. Select the permanent-deletion
+   confirmation checkbox and complete the recent-authentication browser step,
+   then submit. The app enters a deletion
    status state, removes account-owned local data, revokes the local session,
    and keeps public reading available. Use `[fresh disposable account / reset
    procedure]` if the store review needs another pass.

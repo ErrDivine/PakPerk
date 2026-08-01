@@ -47,8 +47,11 @@ trackers or long-lived test fixtures.
 Before release:
 
 1. Run `scripts/test_backend_log_export.sh` with the chart-pinned Collector. It
-   injects a backend container log and proves export after redaction. This local
-   E2E is pipeline evidence, not proof of the live sink or retention job.
+   injects a backend container log plus direct OTLP log, trace, and metric
+   fixtures. Every configured protected key is exercised as both a signal and
+   resource attribute; safe sentinels must export and protected sentinels must
+   not. This local E2E is pipeline evidence, not proof of the live sink or
+   retention job.
 2. Send valid and hostile mobile telemetry payloads through staging. Require
    valid events to export and unknown fields, identifiers, oversized payloads,
    redirects, and wrong content types to fail closed. Confirm no auth/cookie

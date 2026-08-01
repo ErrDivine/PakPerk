@@ -84,18 +84,156 @@ data:
         limit_mib: {{ .Values.otelCollector.memoryLimitMiB }}
         spike_limit_mib: 64
       attributes/redact:
+        # Process-level OTLP is a trusted transport, not a trusted payload. Keep
+        # this denylist in lockstep with resource/redact below so a protected
+        # value cannot bypass redaction by moving between signal and resource
+        # attributes. The integration harness exercises every key on logs,
+        # traces, and metric data points, plus a resource-level sentinel.
         actions:
           - { key: http.request.header.authorization, action: delete }
           - { key: http.request.header.cookie, action: delete }
           - { key: http.response.header.set-cookie, action: delete }
+          - { key: authorization, action: delete }
+          - { key: cookie, action: delete }
+          - { key: set-cookie, action: delete }
+          - { key: api_key, action: delete }
+          - { key: api.key, action: delete }
+          - { key: access_token, action: delete }
+          - { key: refresh_token, action: delete }
+          - { key: id_token, action: delete }
+          - { key: id_token_hint, action: delete }
+          - { key: oauth.access_token, action: delete }
+          - { key: oauth.refresh_token, action: delete }
+          - { key: oauth.id_token, action: delete }
+          - { key: http.request.body, action: delete }
+          - { key: http.request.body.content, action: delete }
+          - { key: http.response.body, action: delete }
+          - { key: http.response.body.content, action: delete }
           - { key: http.url, action: delete }
+          - { key: http.target, action: delete }
           - { key: url.full, action: delete }
+          - { key: url.query, action: delete }
+          - { key: url.path, action: delete }
           - { key: db.statement, action: delete }
+          - { key: db.query.text, action: delete }
           - { key: enduser.id, action: delete }
+          - { key: user.id, action: delete }
+          - { key: account.id, action: delete }
+          - { key: provider.id, action: delete }
+          - { key: oidc.subject, action: delete }
+          - { key: oidc.sub, action: delete }
+          - { key: oidc_sub, action: delete }
+          - { key: subject, action: delete }
           - { key: user.email, action: delete }
+          - { key: enduser.email, action: delete }
+          - { key: email, action: delete }
+          - { key: user.handle, action: delete }
+          - { key: public.handle, action: delete }
+          - { key: client.address, action: delete }
+          - { key: source.address, action: delete }
+          - { key: network.peer.address, action: delete }
+          - { key: net.peer.ip, action: delete }
+          - { key: http.client_ip, action: delete }
+          - { key: device.id, action: delete }
+          - { key: session.id, action: delete }
+          - { key: search.query, action: delete }
           - { key: comment.body, action: delete }
+          - { key: comment_body, action: delete }
+          - { key: chat.message, action: delete }
+          - { key: chat.message.content, action: delete }
+          - { key: chat_message, action: delete }
+          - { key: messaging.message.body, action: delete }
+          - { key: paper.full_text, action: delete }
+          - { key: paper.fulltext, action: delete }
+          - { key: paper.content, action: delete }
+          - { key: paper_full_text, action: delete }
           - { key: model.prompt, action: delete }
           - { key: model.response, action: delete }
+          - { key: model_prompt, action: delete }
+          - { key: model_response, action: delete }
+          - { key: gen_ai.prompt, action: delete }
+          - { key: gen_ai.completion, action: delete }
+          - { key: gen_ai.input.messages, action: delete }
+          - { key: gen_ai.output.messages, action: delete }
+          - { key: gen_ai.system_instructions, action: delete }
+          - { key: exception.message, action: delete }
+          - { key: exception.stacktrace, action: delete }
+          - { key: code.file.path, action: delete }
+          - { key: file.path, action: delete }
+          - { key: log.file.path, action: delete }
+      resource/redact:
+        attributes:
+          - { key: http.request.header.authorization, action: delete }
+          - { key: http.request.header.cookie, action: delete }
+          - { key: http.response.header.set-cookie, action: delete }
+          - { key: authorization, action: delete }
+          - { key: cookie, action: delete }
+          - { key: set-cookie, action: delete }
+          - { key: api_key, action: delete }
+          - { key: api.key, action: delete }
+          - { key: access_token, action: delete }
+          - { key: refresh_token, action: delete }
+          - { key: id_token, action: delete }
+          - { key: id_token_hint, action: delete }
+          - { key: oauth.access_token, action: delete }
+          - { key: oauth.refresh_token, action: delete }
+          - { key: oauth.id_token, action: delete }
+          - { key: http.request.body, action: delete }
+          - { key: http.request.body.content, action: delete }
+          - { key: http.response.body, action: delete }
+          - { key: http.response.body.content, action: delete }
+          - { key: http.url, action: delete }
+          - { key: http.target, action: delete }
+          - { key: url.full, action: delete }
+          - { key: url.query, action: delete }
+          - { key: url.path, action: delete }
+          - { key: db.statement, action: delete }
+          - { key: db.query.text, action: delete }
+          - { key: enduser.id, action: delete }
+          - { key: user.id, action: delete }
+          - { key: account.id, action: delete }
+          - { key: provider.id, action: delete }
+          - { key: oidc.subject, action: delete }
+          - { key: oidc.sub, action: delete }
+          - { key: oidc_sub, action: delete }
+          - { key: subject, action: delete }
+          - { key: user.email, action: delete }
+          - { key: enduser.email, action: delete }
+          - { key: email, action: delete }
+          - { key: user.handle, action: delete }
+          - { key: public.handle, action: delete }
+          - { key: client.address, action: delete }
+          - { key: source.address, action: delete }
+          - { key: network.peer.address, action: delete }
+          - { key: net.peer.ip, action: delete }
+          - { key: http.client_ip, action: delete }
+          - { key: device.id, action: delete }
+          - { key: session.id, action: delete }
+          - { key: search.query, action: delete }
+          - { key: comment.body, action: delete }
+          - { key: comment_body, action: delete }
+          - { key: chat.message, action: delete }
+          - { key: chat.message.content, action: delete }
+          - { key: chat_message, action: delete }
+          - { key: messaging.message.body, action: delete }
+          - { key: paper.full_text, action: delete }
+          - { key: paper.fulltext, action: delete }
+          - { key: paper.content, action: delete }
+          - { key: paper_full_text, action: delete }
+          - { key: model.prompt, action: delete }
+          - { key: model.response, action: delete }
+          - { key: model_prompt, action: delete }
+          - { key: model_response, action: delete }
+          - { key: gen_ai.prompt, action: delete }
+          - { key: gen_ai.completion, action: delete }
+          - { key: gen_ai.input.messages, action: delete }
+          - { key: gen_ai.output.messages, action: delete }
+          - { key: gen_ai.system_instructions, action: delete }
+          - { key: exception.message, action: delete }
+          - { key: exception.stacktrace, action: delete }
+          - { key: code.file.path, action: delete }
+          - { key: file.path, action: delete }
+          - { key: log.file.path, action: delete }
       resource/backend-defaults:
         attributes:
           - { key: service.name, value: pakperk-backend-stdout, action: insert }
@@ -128,15 +266,15 @@ data:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [memory_limiter, attributes/redact, batch]
+          processors: [memory_limiter, resource/redact, attributes/redact, batch]
           exporters: [otlp]
         metrics:
           receivers: [otlp]
-          processors: [memory_limiter, batch]
+          processors: [memory_limiter, resource/redact, attributes/redact, batch]
           exporters: [otlp]
         logs:
           receivers: [otlp, filelog/pakperk_backend]
-          processors: [memory_limiter, attributes/redact, resource/backend-defaults, batch]
+          processors: [memory_limiter, resource/redact, attributes/redact, resource/backend-defaults, batch]
           exporters: [otlp]
 ---
 apiVersion: apps/v1
@@ -159,7 +297,7 @@ spec:
       labels:
         {{- include "pakperk.componentLabels" (dict "root" . "component" "otel-collector") | nindent 8 }}
       annotations:
-        checksum/config: {{ toJson .Values.otelCollector | sha256sum }}
+        checksum/config: {{ printf "%s|%s|%s" .Chart.Version .Values.environment (toJson .Values.otelCollector) | sha256sum }}
         checksum/runtime-secrets: {{ printf "%s|%s|%s" .Values.secret.existingSecret .Values.secret.rotationVersion .Values.secret.telemetryExporterHeadersKey | sha256sum }}
     spec:
       serviceAccountName: {{ include "pakperk.componentServiceAccountName" (dict "root" . "component" "otel-collector") }}

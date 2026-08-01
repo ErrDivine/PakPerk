@@ -270,10 +270,11 @@ Phase 4 now publishes library routes only when its independent account,
 library, and write gates allow them. Saving does not require a handle or terms
 acceptance; remote sync additionally requires an epoch-bound `/v1/me` account
 verification. The provider-neutral identity-admin boundary now has a bounded
-Keycloak implementation used only by the dedicated deletion worker. Recent-auth
-`DELETE /v1/me`, deletion verification, the durable state machine, signed
-external restore ledger, provider session/identity removal, and replay tooling
-are implemented behind `ACCOUNT_DELETION_ENABLED`. They remain default-off
+Keycloak implementation used only by the dedicated deletion worker. Every
+`DELETE /v1/me` attempt, including an identity-scoped replay after response
+loss, requires recent authentication. Deletion verification, the durable state
+machine, signed external restore ledger, provider session/identity removal, and
+replay tooling are implemented behind `ACCOUNT_DELETION_ENABLED`. They remain default-off
 until the target provider grant, independent ledger/backup topology, restore
 drill, alerts, and public disclosures have approved evidence. Comments are
 implemented behind independent read/publication flags and must not be enabled

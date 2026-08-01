@@ -16,6 +16,22 @@ metadata_llm_rotation_rendered="$temporary_dir/metadata-llm-rotation-rendered.ya
 metadata_db_rotation_rendered="$temporary_dir/metadata-db-rotation-rendered.yaml"
 rejection_index=0
 
+collector_checksum_template="$(grep -F 'checksum/config:' "$chart/templates/otel-collector.yaml")"
+for required_checksum_input in '.Chart.Version' '.Values.environment' 'toJson .Values.otelCollector'; do
+  if [[ "$collector_checksum_template" != *"$required_checksum_input"* ]]; then
+    echo "Collector rollout checksum omits $required_checksum_input." >&2
+    exit 1
+  fi
+done
+
+site_checksum_template="$(grep -F 'checksum/site-config:' "$chart/templates/site.yaml")"
+for required_checksum_input in '.Chart.Version' '.Values.environment' 'toJson .Values.mobileAssociations'; do
+  if [[ "$site_checksum_template" != *"$required_checksum_input"* ]]; then
+    echo "Site rollout checksum omits $required_checksum_input." >&2
+    exit 1
+  fi
+done
+
 expect_template_rejection() {
   local description="$1"
   local expected_message="$2"

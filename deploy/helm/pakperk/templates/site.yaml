@@ -92,7 +92,7 @@ spec:
       labels:
         {{- include "pakperk.componentLabels" (dict "root" . "component" "site") | nindent 8 }}
       annotations:
-        checksum/site-config: {{ printf "%s|%s|%s|%s|%s|%s|%s|%s|%s" .Values.environment .Values.public.siteOrigin .Values.public.apiOrigin .Values.public.oidcOrigin .Values.public.oidcIssuer .Values.public.oidcWebClientId .Values.public.supportEmail .Values.public.documentVersion (toJson .Values.mobileAssociations) | sha256sum }}
+        checksum/site-config: {{ printf "%s|%s|%s|%s|%s|%s|%s|%s|%s|%s" .Chart.Version .Values.environment .Values.public.siteOrigin .Values.public.apiOrigin .Values.public.oidcOrigin .Values.public.oidcIssuer .Values.public.oidcWebClientId .Values.public.supportEmail .Values.public.documentVersion (toJson .Values.mobileAssociations) | sha256sum }}
     spec:
       serviceAccountName: {{ include "pakperk.componentServiceAccountName" (dict "root" . "component" "site") }}
       automountServiceAccountToken: false

@@ -15,7 +15,9 @@ import '../feed/feed_controller.dart';
 import '../paper_reader/reader_navigation_controller.dart';
 
 class PublicSettingsScreen extends ConsumerStatefulWidget {
-  const PublicSettingsScreen({super.key});
+  const PublicSettingsScreen({this.onOpenDeleteAccount, super.key});
+
+  final VoidCallback? onOpenDeleteAccount;
 
   @override
   ConsumerState<PublicSettingsScreen> createState() =>
@@ -44,6 +46,16 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final accountsEnabled = ref.watch(
+      featureFlagsProvider.select((features) => features.accounts),
+    );
+    final canOpenDeleteAccount =
+        accountsEnabled &&
+        ref.watch(
+          authSessionProvider.select(
+            (session) => session.mayHaveRecoverableCredentials,
+          ),
+        );
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: SafeArea(
@@ -118,6 +130,29 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
               ),
               onTap: _busy ? null : _confirmAndClearAll,
             ),
+            if (canOpenDeleteAccount) ...[
+              const Divider(),
+              ListTile(
+                key: const ValueKey<String>('delete-account-setting'),
+                enabled: !_busy,
+                leading: Icon(
+                  Icons.person_off_outlined,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                title: Text(
+                  'Delete account',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+                subtitle: const Text(
+                  'Permanently erase your Pakperk account and associated data.',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _busy
+                    ? null
+                    : widget.onOpenDeleteAccount ??
+                          () => context.push(PakPerkRoutes.youAccountDelete),
+              ),
+            ],
             const ListTile(
               leading: Icon(Icons.info_outline),
               title: Text('Version'),

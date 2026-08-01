@@ -231,9 +231,12 @@ profile expiration, entitlement result, and packaged privacy-manifest result.
 
 ### Protected mobile feature flags
 
-Staging and production config files keep accounts, library, and comments off
-by default. The signed-candidate workflow materializes its temporary build
-config from these GitHub environment variables:
+The checked-in production config keeps accounts, library, and comments off.
+The checked-in staging fixture enables them so ordinary debug builds exercise
+the complete feature composition, but it is never used unchanged for a signed
+candidate. For both staging and production, the signed-candidate workflow
+materializes a temporary build config and defaults every protected feature to
+off unless these GitHub environment variables explicitly enable it:
 
 - `PAKPERK_ACCOUNTS_ENABLED`
 - `PAKPERK_LIBRARY_ENABLED`

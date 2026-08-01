@@ -49,9 +49,19 @@ execution to the reviewed backup ID and expected schema version.
 - Trusted-proxy client-origin unit tests passed, including right-to-left chain,
   spoof resistance, malformed fallback, canonical CIDRs, and keyed address
   hashing.
+- Every deletion request, including replay after response loss, now enforces
+  recent authentication. A checked-in PostgreSQL integration target composes
+  the real router, signed EdDSA JWT verification, loopback OIDC discovery/JWKS,
+  JIT profile/consent, library, comments, CORS, kill switches, expiration, and
+  deletion replay behavior across two router instances. The full workspace
+  compiled and passed locally; the target intentionally returns early without
+  `TEST_DATABASE_URL`, while CI supplies the disposable database.
 - Helm lint/render and positive/negative production-contract validation passed
-  with the pinned Helm binary. The backend stdout-to-OTLP Collector E2E passed
-  with protected fields and source file path absent.
+  with the pinned Helm binary. During the operations audit, the backend stdout
+  and direct-OTLP Collector harness passed twice against the pinned image for
+  logs, traces, metrics, and resource attributes, with every configured
+  protected field and source file path absent. A live deployed sink and its
+  retention job remain external evidence.
 - Secret initialization was structurally changed to copy/chmod before per-file
   ownership transfer using only `CAP_CHOWN`; the security workflow contains a
   real runtime-image capability smoke.

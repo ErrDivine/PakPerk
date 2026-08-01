@@ -345,8 +345,12 @@ impl CommentFeatureConfig {
         Ok(config)
     }
 
-    #[cfg(test)]
-    pub(crate) fn for_test() -> anyhow::Result<Self> {
+    /// Deterministic bounded policy for repository integration tests.
+    ///
+    /// Production configuration must continue to use [`ApiConfig::from_env`]
+    /// so the deployed support contact and every explicit limit are validated.
+    #[doc(hidden)]
+    pub fn for_test() -> anyhow::Result<Self> {
         Ok(Self {
             maximum_comment_scalars: COMMENT_MAX_SCALARS,
             maximum_comment_bytes: COMMENT_MAX_BYTES,

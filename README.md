@@ -375,8 +375,10 @@ GET    /v1/me/deletion-verification
 Library, personalized comment, and deletion responses are private/no-store. Library
 mutations use an `Idempotency-Key`; comment creation carries its durable client
 request ID in the strict JSON body. Deletion routes register only when
-`ACCOUNT_DELETION_ENABLED=true`; they require recent authentication and the
-durable worker/ledger/provider configuration to pass startup.
+`ACCOUNT_DELETION_ENABLED=true`; every `DELETE /v1/me` attempt, including a
+replay, requires recent authentication, while deletion verification accepts any
+currently valid access token. The durable worker/ledger/provider configuration
+must pass startup.
 
 Development and staging also expose `GET /openapi.json`. The reviewed artifact
 is checked in at [`docs/openapi-v1.json`](docs/openapi-v1.json). Regenerate and

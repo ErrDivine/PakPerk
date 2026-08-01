@@ -691,7 +691,7 @@
         "tags": [
           "accounts"
         ],
-        "description": "Registered only when ACCOUNT_DELETION_ENABLED=true. The verified issuer/subject is the replay key; no Idempotency-Key header is accepted. A replay resumes durable externalization and returns the original operation. ACCOUNT_DELETION_UNAVAILABLE is unusual: the account is already locally deletion_pending, ordinary access remains blocked, and the worker/operator owns completion even though the external tombstone was not yet acknowledged durable.",
+        "description": "Registered only when ACCOUNT_DELETION_ENABLED=true. Every request, including an identity-scoped replay, requires recent authentication. The verified issuer/subject is the replay key; no Idempotency-Key header is accepted. A replay resumes durable externalization and returns the original operation. ACCOUNT_DELETION_UNAVAILABLE is unusual: the account is already locally deletion_pending, ordinary access remains blocked, and the worker/operator owns completion even though the external tombstone was not yet acknowledged durable.",
         "operationId": "delete_me",
         "responses": {
           "202": {

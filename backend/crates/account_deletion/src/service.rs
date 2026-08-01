@@ -178,21 +178,6 @@ impl AccountDeletionService {
             .map_err(AccountDeletionServiceError::from)
     }
 
-    /// Resolves a prior operation before recent-auth or rate policy is applied.
-    /// This is what makes retry after response loss possible even though the
-    /// ordinary account extractor now rejects the pending account.
-    pub async fn lookup(
-        &self,
-        identity: &VerifiedIdentity,
-    ) -> Result<Option<AccountDeletionOperation>, AccountDeletionServiceError> {
-        let fingerprints = self.fingerprints(identity)?;
-        self.repository
-            .find_by_fingerprints(&fingerprints)
-            .await
-            .map(|request| request.map(|request| request.operation))
-            .map_err(AccountDeletionServiceError::from)
-    }
-
     /// Maps a verified provider identity to an existing bounded account view
     /// without JIT provisioning or exposing issuer/subject claims.
     pub async fn verify_identity(

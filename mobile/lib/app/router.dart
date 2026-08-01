@@ -501,7 +501,10 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                   ),
                   GoRoute(
                     path: 'settings',
-                    builder: (_, __) => const PublicSettingsScreen(),
+                    builder: (context, _) => PublicSettingsScreen(
+                      onOpenDeleteAccount: () =>
+                          context.push(PakPerkRoutes.youAccountDelete),
+                    ),
                   ),
                   GoRoute(
                     path: 'account/delete',

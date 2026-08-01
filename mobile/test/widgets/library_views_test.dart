@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pakperk/app/account_providers.dart';
@@ -16,8 +17,11 @@ import 'package:pakperk/core/library/library_models.dart';
 import 'package:pakperk/core/library/library_repository.dart';
 import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/providers.dart';
+import 'package:pakperk/core/sync/library_sync_controller.dart';
+import 'package:pakperk/core/sync/outbox_controller.dart';
 import 'package:pakperk/features/library/paper_save_control.dart';
 import 'package:pakperk/features/library/to_read_list.dart';
+import 'package:pakperk/features/library/to_read_screen.dart';
 
 void main() {
   testWidgets('guest save records one credential-free intent before auth', (
@@ -151,8 +155,10 @@ void main() {
 
     expect(find.bySemanticsLabel('Remove from To Read'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('paper-save-control')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
+    await _pumpUntil(
+      tester,
+      () => find.text('Removed from To Read').evaluate().isNotEmpty,
+    );
 
     expect(find.text('Removed from To Read'), findsOneWidget);
     expect(find.text('Undo'), findsOneWidget);
@@ -161,6 +167,7 @@ void main() {
     expect(outbox.single.operationId, _removeOperationId);
     expect(outbox.single.operation, 'library_remove');
 
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.byKey(const ValueKey('paper-save-undo')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
@@ -174,7 +181,97 @@ void main() {
       await repository.watchSavedState(_accountId, paper.paperId).first,
       const LibrarySavedState(saved: true, syncPending: true),
     );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
   });
+
+  testWidgets(
+    'To Read unsave still syncs and offers Undo when platform feedback fails',
+    (tester) async {
+      final paper = _paper('Feedback-independent paper', 5);
+      final database = PakPerkDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final operationIds = Queue.of([_seedOperationId, _removeOperationId]);
+      final dao = LibraryDao(
+        database,
+        clock: () => DateTime.utc(2026, 8, 1, 12),
+        operationId: operationIds.removeFirst,
+      );
+      final remote = _RecordingLibraryRemote();
+      final repository = LibraryRepository(
+        local: dao,
+        remote: remote,
+        sessionScope: () => (accountId: _accountId, authEpoch: 7),
+        verifiedScope: () => (accountId: _accountId, authEpoch: 7),
+      );
+      final sync = LibrarySyncController(
+        repository: repository,
+        outbox: LibraryOutboxController(repository: repository),
+        clock: () => DateTime.utc(2026, 8, 1, 12, 5),
+      );
+      await sync.start(accountId: _accountId, authEpoch: 7);
+      await repository.setSaved(
+        accountId: _accountId,
+        authEpoch: 7,
+        paperId: paper.paperId,
+        saved: true,
+        paper: paper,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            featureFlagsProvider.overrideWithValue(_libraryFlags),
+            libraryDisplayScopeProvider.overrideWithValue(const (
+              accountId: _accountId,
+              authEpoch: 7,
+            )),
+            libraryRepositoryProvider.overrideWithValue(repository),
+            librarySyncControllerProvider.overrideWith((ref) => sync),
+            networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
+          ],
+          child: MaterialApp(home: ToReadScreen(onOpenPaper: (_) {})),
+        ),
+      );
+      await _pumpUntil(
+        tester,
+        () => find
+            .byKey(ValueKey('remove-to-read-${paper.paperId}'))
+            .evaluate()
+            .isNotEmpty,
+      );
+
+      final messenger = tester.binding.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'HapticFeedback.vibrate') {
+          throw PlatformException(code: 'feedback-unavailable');
+        }
+        return null;
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+      );
+
+      await tester.tap(find.byKey(ValueKey('remove-to-read-${paper.paperId}')));
+      await _pumpUntil(
+        tester,
+        () =>
+            remote.removeCalls == 1 &&
+            find.text('Removed from To Read').evaluate().isNotEmpty,
+      );
+
+      expect(find.text('Removed from To Read'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+      expect(
+        find.text('This paper could not be removed on this device.'),
+        findsNothing,
+      );
+      expect(remote.removeCalls, 1);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 1));
+    },
+  );
 
   testWidgets('To Read is newest first with explicit remove and open actions', (
     tester,
@@ -251,6 +348,12 @@ void main() {
   });
 }
 
+Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
+  for (var attempt = 0; attempt < 40 && !condition(); attempt += 1) {
+    await tester.pump(const Duration(milliseconds: 25));
+  }
+}
+
 LibraryListItem _item(String title, int day, {bool pending = false}) {
   final timestamp = DateTime.utc(2026, 7, day);
   return LibraryListItem(
@@ -289,6 +392,60 @@ final class _UnusedLibraryRemote implements LibraryRemoteDataSource {
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw StateError('The disconnected widget test must not upload.');
+}
+
+final class _RecordingLibraryRemote implements LibraryRemoteDataSource {
+  int removeCalls = 0;
+
+  @override
+  Future<LibraryListPage> list({
+    required int expectedAuthEpoch,
+    String? cursor,
+    int limit = 100,
+  }) async =>
+      const LibraryListPage(items: [], nextCursor: null, syncRevision: 0);
+
+  @override
+  Future<LibraryChangesPage> changes({
+    required int afterRevision,
+    required int expectedAuthEpoch,
+    int limit = 100,
+  }) async => LibraryChangesPage(
+    items: const [],
+    nextAfterRevision: afterRevision,
+    hasMore: false,
+    syncRevision: afterRevision,
+  );
+
+  @override
+  Future<LibraryMutationResult> remove({
+    required String paperId,
+    required String operationId,
+    required int expectedAuthEpoch,
+  }) async {
+    removeCalls += 1;
+    final savedAt = DateTime.utc(2026, 8, 1, 12);
+    final removedAt = DateTime.utc(2026, 8, 1, 12, 1);
+    return LibraryMutationResult(
+      LibraryCanonicalItem(
+        paperId: paperId,
+        state: 'to_read',
+        savedAt: savedAt,
+        updatedAt: removedAt,
+        removed: true,
+        removedAt: removedAt,
+        revision: 1,
+        lastOperationId: operationId,
+      ),
+    );
+  }
+
+  @override
+  Future<LibraryMutationResult> save({
+    required String paperId,
+    required String operationId,
+    required int expectedAuthEpoch,
+  }) => throw StateError('The regression path must upload only removal.');
 }
 
 const _accountId = '018f47a6-4b56-7f4c-8c7a-e2656e820001';

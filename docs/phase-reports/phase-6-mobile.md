@@ -46,6 +46,16 @@ deterministic icon regeneration, shell/plist/JSON validation, and scoped diff
 checks. The available production debug APK/AAB correctly fail the hardened
 release verifier because a debug certificate is not release evidence.
 
+A strict repository-closure audit then made account deletion discoverable at
+**You > Settings > Delete account** for authenticated/recoverable sessions and
+made save/removal outbox draining plus Undo independent of widget disposal or
+haptic and semantics platform failures. Direct Dart format and analysis passed
+on that resulting tree. Focused widget coverage passed for the shared
+save-control Undo path before the final widget-lifecycle hardening; the new
+Settings visibility/routing and haptic-failure regression cases are checked in
+for the next complete Flutter CI lane. This report does not infer a full
+post-change widget or device run.
+
 Merged/built artifact inspection confirmed production ID
 `app.pakperk.pakperk`, version `0.2.0 (2)`, callback `pakperk-auth`, HTTPS
 `pakperk.app` links, no production cleartext/ATS exception, disabled Android
