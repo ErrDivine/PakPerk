@@ -170,14 +170,18 @@ async fn serve(config: Config) -> Result<()> {
 
 fn build_router(state: AppState) -> Router {
     Router::new()
-        .route("/health/live", get(|| async { StatusCode::OK }))
-        .route("/health/ready", get(|| async { StatusCode::OK }))
+        .route("/health/live", get(health))
+        .route("/health/ready", get(health))
         .route("/v1/logs", post(ingest))
         .fallback(|| async { StatusCode::NOT_FOUND })
         .with_state(state)
         .layer(DefaultBodyLimit::max(MAXIMUM_BODY_BYTES))
         .layer(ConcurrencyLimitLayer::new(64))
         .layer(middleware::from_fn(strict_transport_security))
+}
+
+async fn health() -> Response {
+    (StatusCode::OK, [(header::CACHE_CONTROL, "no-store")]).into_response()
 }
 
 async fn ingest(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> Response {
@@ -692,7 +696,10 @@ async fn shutdown_signal() {
 mod tests {
     use axum::{
         body::Body,
-        http::{Request, header::STRICT_TRANSPORT_SECURITY},
+        http::{
+            Request,
+            header::{CACHE_CONTROL, STRICT_TRANSPORT_SECURITY},
+        },
     };
     use tower::ServiceExt as _;
 
@@ -743,6 +750,27 @@ mod tests {
                 response.headers()[STRICT_TRANSPORT_SECURITY],
                 http_policy::HSTS_HEADER_VALUE
             );
+        }
+    }
+
+    #[tokio::test]
+    async fn health_responses_are_never_cacheable() {
+        let state = AppState {
+            environment: "staging".to_owned(),
+            upstream: Url::parse("http://pakperk-otel-collector:4318/v1/logs").unwrap(),
+            client: reqwest::Client::new(),
+        };
+        let app = build_router(state);
+
+        for path in ["/health/live", "/health/ready"] {
+            let response = app
+                .clone()
+                .oneshot(Request::get(path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(response.headers().get_all(CACHE_CONTROL).iter().count(), 1);
+            assert_eq!(response.headers()[CACHE_CONTROL], "no-store");
         }
     }
 

@@ -1,0 +1,265 @@
+name: public edge verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Reviewed full lowercase commit SHA that exactly matches the selected main revision
+        required: true
+        type: string
+      target_environment:
+        description: Named environment whose public endpoints are being observed
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      candidate_id:
+        description: Non-secret candidate-record ID in exact sha256 lowercase digest form
+        required: true
+        type: string
+      confirmation:
+        description: Type RUN_PUBLIC_EDGE_VERIFICATION to perform the external observations
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-edge-verification-${{ inputs.target_environment }}
+  cancel-in-progress: false
+
+jobs:
+  verify-edge:
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.target_environment }}
+    timeout-minutes: 15
+    env:
+      REQUESTED_REVISION: ${{ inputs.source_revision }}
+      DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+      TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+      CANDIDATE_ID: ${{ inputs.candidate_id }}
+      SITE_ORIGIN: ${{ vars.PAKPERK_SITE_ORIGIN }}
+      API_ORIGIN: ${{ vars.PAKPERK_API_ORIGIN }}
+      TELEMETRY_ORIGIN: ${{ vars.PAKPERK_TELEMETRY_ORIGIN }}
+      OIDC_ISSUER: ${{ vars.PAKPERK_OIDC_ISSUER }}
+      OIDC_CLIENT_ID: ${{ vars.PAKPERK_WEB_OIDC_CLIENT_ID }}
+      SUPPORT_EMAIL: ${{ vars.PAKPERK_SUPPORT_EMAIL }}
+      DOCUMENT_VERSION: ${{ vars.PAKPERK_PUBLIC_DOCUMENT_VERSION }}
+      ANDROID_PACKAGE: ${{ vars.PAKPERK_ANDROID_PACKAGE }}
+      ANDROID_SHA256: ${{ vars.PAKPERK_ANDROID_SHA256 }}
+      APPLE_TEAM_ID: ${{ vars.PAKPERK_APPLE_TEAM_ID }}
+      APPLE_BUNDLE_ID: ${{ vars.PAKPERK_APPLE_BUNDLE_ID }}
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_revision }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact reviewed main source and scoped coordinates
+        shell: bash
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+          DISPATCH_REVISION: ${{ github.sha }}
+        run: |
+          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then
+            echo "Public-edge verification must be dispatched from main." >&2
+            exit 2
+          fi
+          if [[ "$DISPATCH_CONFIRMATION" != "RUN_PUBLIC_EDGE_VERIFICATION" ]]; then
+            echo "Dispatch confirmation did not match the required phrase." >&2
+            exit 2
+          fi
+          if ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_revision must be a full lowercase Git commit SHA." >&2
+            exit 2
+          fi
+          if [[ "$TARGET_ENVIRONMENT" != "staging" && "$TARGET_ENVIRONMENT" != "production" ]]; then
+            echo "target_environment must be staging or production." >&2
+            exit 2
+          fi
+          if ! [[ "$CANDIDATE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "candidate_id must be an exact lowercase sha256 content ID." >&2
+            exit 2
+          fi
+          if [[ "$REQUESTED_REVISION" != "$DISPATCH_REVISION" ]]; then
+            echo "source_revision must exactly match the selected main revision." >&2
+            exit 2
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$REQUESTED_REVISION" ]]; then
+            echo "Checkout did not resolve the exact requested revision." >&2
+            exit 2
+          fi
+          if [[ "$(git rev-parse refs/remotes/origin/main)" != "$REQUESTED_REVISION" ]]; then
+            echo "The requested revision is not the fetched origin/main tip." >&2
+            exit 2
+          fi
+          required_coordinates=(
+            SITE_ORIGIN
+            API_ORIGIN
+            TELEMETRY_ORIGIN
+            OIDC_ISSUER
+            OIDC_CLIENT_ID
+            SUPPORT_EMAIL
+            DOCUMENT_VERSION
+            ANDROID_PACKAGE
+            ANDROID_SHA256
+            APPLE_TEAM_ID
+            APPLE_BUNDLE_ID
+          )
+          for coordinate in "${required_coordinates[@]}"; do
+            if [[ -z "${!coordinate}" ]]; then
+              echo "A required environment-scoped public coordinate is unavailable." >&2
+              exit 2
+            fi
+          done
+
+      - name: Observe exact public-edge contract
+        id: public-edge
+        continue-on-error: true
+        shell: bash
+        env:
+          PUBLIC_EDGE_EVIDENCE_FILE: ${{ runner.temp }}/pakperk-public-edge-evidence/public-edge-evidence.json
+        run: |
+          evidence_dir="$RUNNER_TEMP/pakperk-public-edge-evidence"
+          umask 077
+          mkdir "$evidence_dir"
+          ./scripts/verify_public_edge.sh \
+            "$SITE_ORIGIN" \
+            "$API_ORIGIN" \
+            "$TELEMETRY_ORIGIN" \
+            --evidence-output "$PUBLIC_EDGE_EVIDENCE_FILE" \
+            --source-revision "$REQUESTED_REVISION" \
+            --environment "$TARGET_ENVIRONMENT" \
+            --candidate-id "$CANDIDATE_ID" \
+            --oidc-issuer "$OIDC_ISSUER" \
+            --oidc-client-id "$OIDC_CLIENT_ID" \
+            --support-email "$SUPPORT_EMAIL" \
+            --document-version "$DOCUMENT_VERSION" \
+            --android-package "$ANDROID_PACKAGE" \
+            --android-sha256 "$ANDROID_SHA256" \
+            --apple-team-id "$APPLE_TEAM_ID" \
+            --apple-bundle-id "$APPLE_BUNDLE_ID"
+
+      - name: Validate and atomically package sanitized technical evidence
+        id: evidence-package
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          PUBLIC_EDGE_OUTCOME: ${{ steps.public-edge.outcome }}
+          PUBLIC_EDGE_EVIDENCE_FILE: ${{ runner.temp }}/pakperk-public-edge-evidence/public-edge-evidence.json
+        run: |
+          umask 077
+          evidence_dir="$RUNNER_TEMP/pakperk-public-edge-evidence"
+          evidence_file="$evidence_dir/public-edge-evidence.json"
+          archive="$RUNNER_TEMP/pakperk-public-edge-evidence-$REQUESTED_REVISION.tar"
+          temporary_archive="$RUNNER_TEMP/.pakperk-public-edge-evidence-$REQUESTED_REVISION.tar.partial"
+          if [[ "$(git rev-parse HEAD)" != "$REQUESTED_REVISION" || "$(git rev-parse refs/remotes/origin/main)" != "$REQUESTED_REVISION" ]]; then
+            echo "The reviewed source identity changed before evidence validation." >&2
+            exit 1
+          fi
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo "Tracked source changed before evidence validation." >&2
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
+            echo "The source tree is not clean before evidence validation." >&2
+            exit 1
+          fi
+          if [[ -e "$archive" || -L "$archive" || -e "$temporary_archive" || -L "$temporary_archive" ]]; then
+            echo "Public-edge evidence archive path is not fresh." >&2
+            exit 1
+          fi
+          case "$PUBLIC_EDGE_OUTCOME" in
+            success) evidence_outcome=passed ;;
+            failure) evidence_outcome=failed ;;
+            *)
+              echo "Public-edge action outcome is not evidence-compatible." >&2
+              exit 1
+              ;;
+          esac
+          python3 scripts/validate_public_edge_evidence.py "$PUBLIC_EDGE_EVIDENCE_FILE" \
+            --source-revision "$REQUESTED_REVISION" \
+            --environment "$TARGET_ENVIRONMENT" \
+            --candidate-id "$CANDIDATE_ID" \
+            --site-origin "$SITE_ORIGIN" \
+            --api-origin "$API_ORIGIN" \
+            --telemetry-origin "$TELEMETRY_ORIGIN" \
+            --oidc-issuer "$OIDC_ISSUER" \
+            --oidc-client-id "$OIDC_CLIENT_ID" \
+            --support-email "$SUPPORT_EMAIL" \
+            --document-version "$DOCUMENT_VERSION" \
+            --android-package "$ANDROID_PACKAGE" \
+            --android-sha256 "$ANDROID_SHA256" \
+            --apple-team-id "$APPLE_TEAM_ID" \
+            --apple-bundle-id "$APPLE_BUNDLE_ID" \
+            --expected-outcome "$evidence_outcome"
+          if [[ ! -s "$evidence_file" || -L "$evidence_file" ]]; then
+            echo "Canonical sanitized public-edge evidence is absent or unsafe." >&2
+            exit 1
+          fi
+          mapfile -d '' evidence_entries < <(find "$evidence_dir" -mindepth 1 -maxdepth 1 -print0)
+          if [[ "${#evidence_entries[@]}" -ne 1 || "${evidence_entries[0]}" != "$evidence_file" ]]; then
+            echo "The evidence directory contains data outside the closed artifact." >&2
+            exit 1
+          fi
+          (
+            cd "$evidence_dir"
+            sha256sum -- public-edge-evidence.json >SHA256SUMS
+            sha256sum --check --strict SHA256SUMS
+            chmod 0400 public-edge-evidence.json SHA256SUMS
+          )
+          tar \
+            --create \
+            --file "$temporary_archive" \
+            --directory "$evidence_dir" \
+            public-edge-evidence.json SHA256SUMS
+          chmod 0400 "$temporary_archive"
+          mv -- "$temporary_archive" "$archive"
+
+      - name: Record public-edge evidence boundary
+        if: always()
+        shell: bash
+        run: |
+          cat >>"$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## Public-edge verification boundary
+
+          Any artifact retained by this run is sanitized public-edge technical verification
+          for the exact source, target label, and public coordinates encoded in its
+          closed evidence statement. The requested candidate-record ID is release-record
+          context and is not observed at the edge. The observed site source comes
+          from the public notices document. The telemetry observation covers
+          endpoint process readiness only, not end-to-end telemetry delivery.
+          This evidence does not attest GitHub environment reviewer or
+          deployment-branch settings, deployment provenance, release approval,
+          legal/content approval, signed-candidate custody, store submission, or
+          store approval.
+          EOF
+
+      - name: Upload exact-source public-edge evidence
+        id: evidence-upload
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: public-edge-${{ inputs.target_environment }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pakperk-public-edge-evidence-${{ github.sha }}.tar
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Enforce public-edge verification result
+        if: always()
+        shell: bash
+        env:
+          PUBLIC_EDGE_OUTCOME: ${{ steps.public-edge.outcome }}
+          EVIDENCE_PACKAGE_OUTCOME: ${{ steps.evidence-package.outcome }}
+          EVIDENCE_UPLOAD_OUTCOME: ${{ steps.evidence-upload.outcome }}
+        run: |
+          if [[ "$PUBLIC_EDGE_OUTCOME" != "success" || "$EVIDENCE_PACKAGE_OUTCOME" != "success" || "$EVIDENCE_UPLOAD_OUTCOME" != "success" ]]; then
+            echo "Public-edge verification, evidence validation, or evidence upload did not pass." >&2
+            exit 1
+          fi

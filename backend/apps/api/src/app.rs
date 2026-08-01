@@ -41,10 +41,11 @@ use crate::{
     routes::support::not_found,
     routes::{
         block_user, chat, connections, create_comment, delete_comment, delete_me, edit_comment,
-        feed, get_me, health_live, health_ready, introduction, library_changes, list_blocked_users,
-        list_library, list_my_comments, list_paper_comments, paper_by_arxiv, paper_metadata,
-        patch_me, prepare, private_account_cache_control, processing, remove_library_item,
-        report_comment, report_user, save_library_item, unblock_user, verify_deletion_identity,
+        feed, get_me, health_cache_control, health_live, health_ready, introduction,
+        library_changes, list_blocked_users, list_library, list_my_comments, list_paper_comments,
+        paper_by_arxiv, paper_metadata, patch_me, prepare, private_account_cache_control,
+        processing, remove_library_item, report_comment, report_user, save_library_item,
+        unblock_user, verify_deletion_identity,
     },
 };
 
@@ -342,6 +343,9 @@ pub fn build_router(state: AppState, config: &ApiConfig) -> Router {
         // The TLS edge emits the same closed policy. Keep an origin guarantee
         // as defense in depth and cover direct-origin/error responses too.
         .layer(middleware::from_fn(strict_transport_security))
+        // This must remain outside the timeout/error layers so their synthetic
+        // health responses cannot accidentally become cacheable.
+        .layer(middleware::from_fn(health_cache_control))
 }
 
 fn feed_aware_cors(allowed_origins: &[HeaderValue]) -> CorsLayer {

@@ -88,6 +88,10 @@ jobs:
           python3 scripts/test_live_comments_evidence.py
           python3 scripts/test_validate_live_comments_workflow.py
           python3 scripts/validate_live_comments_workflow.py
+          python3 scripts/test_public_edge_evidence.py
+          python3 scripts/test_verify_public_edge.py
+          python3 scripts/test_validate_public_edge_workflow.py
+          python3 scripts/validate_public_edge_workflow.py
       - name: Verify Docker context excludes local credentials
         run: python3 scripts/validate_dockerignore.py
       - name: Verify Android artifact-gate regressions
@@ -256,3 +260,4 @@ jobs:
         run: npx playwright test tests/static-security.spec.js
       - run: ./scripts/test_backend_log_export.sh
       - run: ./scripts/verify_mobile_associations.sh --help
+      - run: ./scripts/verify_public_edge.sh --help

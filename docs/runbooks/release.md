@@ -68,7 +68,67 @@ satisfy the complete
 [moderation readiness matrix](moderation.md#acceptance-and-production-readiness-evidence)
 for the exact deployed candidate before comment creation can be enabled.
 
-## Pre-deploy gates
+## Public-edge technical evidence
+
+Run the manual `public edge verification` workflow against the dark-deployed
+staging or production candidate before enabling features or submitting a store
+build. Dispatch it from `main` with all four required inputs:
+
+- `source_revision`: the reviewed full lowercase commit SHA, which must equal
+  the selected workflow revision, checked-out `HEAD`, and fetched
+  `origin/main` tip;
+- `target_environment`: exactly `staging` or `production`;
+- `candidate_id`: `sha256:` followed by the exact digest of
+  `promotion-handoff.json` recorded in the protected image-publication
+  artifact's verified `SHA256SUMS`; and
+- `confirmation`: exactly `RUN_PUBLIC_EDGE_VERIFICATION`.
+
+Configure these non-secret variables on each named GitHub environment. They
+are protected release coordinates, not dispatch-controlled hosts:
+
+```text
+PAKPERK_SITE_ORIGIN
+PAKPERK_API_ORIGIN
+PAKPERK_TELEMETRY_ORIGIN
+PAKPERK_OIDC_ISSUER
+PAKPERK_WEB_OIDC_CLIENT_ID
+PAKPERK_SUPPORT_EMAIL
+PAKPERK_PUBLIC_DOCUMENT_VERSION
+PAKPERK_ANDROID_PACKAGE
+PAKPERK_ANDROID_SHA256
+PAKPERK_APPLE_TEAM_ID
+PAKPERK_APPLE_BUNDLE_ID
+```
+
+The verifier makes proxy-free, credential-free, redirect-disabled requests to
+publicly resolved 80/443 addresses with bounded DNS, connect, total-request,
+header, and body limits. It checks exact HTTP-to-HTTPS redirects; TLS and HSTS;
+the runtime configuration; distinct stable HTML routes and their security/cache
+headers; the notices source-revision marker; Android and Apple association
+identities; the API readiness response contract; and telemetry-gateway process
+readiness. A failed observation still produces a closed, owner-only sanitized
+failure statement, then the workflow fails after retaining the exact-source
+artifact. Raw bodies, headers, transport errors, cookies, credentials, support
+address, and operator identity are not retained.
+
+The artifact's `public-edge-sha256:` content ID is deliberately not a Helm
+`releaseEvidence` approval ID. The requested candidate ID is release-record
+context and is not observed at the edge. The public notices marker observes the
+site source revision only; it does not prove the API image, Pod image IDs, Helm
+release, or whole deployment provenance. Before promotion, a platform owner
+must separately compare actual Pod `imageID` values and the immutable rendered
+release-binding ConfigMap/digest with the protected promotion handoff and
+release record.
+
+This technical lane also does not approve legal text or disclosures, attest
+GitHub environment reviewer/branch settings, prove signed-candidate custody,
+exercise physical-device universal links, complete authenticated account
+deletion, or prove Collector/export/sink delivery. Retain those approvals and
+protected live canaries separately; reference the retrievable public-edge
+artifact digest, workflow run/time, target, and outcome from the release
+ledger.
+
+## Pre-deploy and pre-enable gates
 
 1. Freeze the revision and attach CI/security results. Verify every GitHub
    Action is pinned to a real reviewed commit, not only a mutable tag comment.
@@ -92,15 +152,10 @@ for the exact deployed candidate before comment creation can be enabled.
    Confirm worker, API, and synchronization roles use distinct Secret keys.
 5. Confirm the deletion worker's `manage-users`-only service account readiness,
    current independent ledger, and alert coverage before enabling deletion.
-6. Verify live legal/support/association documents return direct HTTPS 200 with
-   expected content types. Verify Nginx real-IP trust and API-observed ingress
-   source ranges before relying on comment origin limits.
-7. Apply the reviewed `deploy/helm/ingress-nginx-production-values.yaml` to the
-   pinned TLS controller release and run
-   `scripts/verify_public_edge.sh SITE_ORIGIN API_ORIGIN TELEMETRY_ORIGIN`.
-   Exact HTTP redirects and one
-   `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
-   header on every public origin are release-blocking.
+6. Apply the reviewed `deploy/helm/ingress-nginx-production-values.yaml` to the
+   pinned TLS controller release. Verify Nginx real-IP trust and API-observed
+   ingress source ranges before relying on comment origin limits. Do not infer
+   a public-edge pass from Helm rendering or the configured hosts.
 
 ## Expand/contract deployment
 
@@ -120,16 +175,20 @@ for the exact deployed candidate before comment creation can be enabled.
    account-backed surface (including deletion), library writes, and comment
    creation dark until their dependencies and smoke checks pass. Production
    account enablement requires deletion to be enabled at the same time.
-4. Exercise guest cached reading first, then authenticated profile/library,
+4. Dispatch `public edge verification` for this exact dark-deployed target and
+   attach its passing artifact to the release ledger. A missing/failed artifact,
+   a source marker mismatch, or any redirect/header/config/document/association/
+   readiness mismatch blocks feature enablement and store submission.
+5. Exercise guest cached reading first, then authenticated profile/library,
    comments/report/block/moderation, deletion request/status/web callback, paper
    preparation, telemetry redaction/export, and association links. Capture
    aggregate status/latency only.
-5. Exercise the independent kill switches. `LIBRARY_WRITES_ENABLED=false`
+6. Exercise the independent kill switches. `LIBRARY_WRITES_ENABLED=false`
    preserves reads; `COMMENT_CREATION_ENABLED=false` preserves comment/safety
    reads/actions; disabling accounts does not make guest reading depend on
    OIDC. Account deletion remains enabled whenever production accounts are
    enabled, including a comments-disabled library release.
-6. Observe error rate, readiness, database saturation, queue/backlog age,
+7. Observe error rate, readiness, database saturation, queue/backlog age,
    moderation SLA, deletion failures, OTLP drops, and ingress errors through the
    release observation window. Record the exact window and approver.
 

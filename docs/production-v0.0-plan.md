@@ -128,10 +128,12 @@ candidate automation, policy/support hosting,
 and release,
 incident, moderation, deletion, observability, load, and backup/restore
 runbooks. The repository also contains an opt-in disposable Keycloak deletion
-acceptance workflow, a protected exact-SHA staging backend load gate, and mobile
-startup/accessibility hardening for concurrent local/session work, retry/repair
-ownership, reduced motion, settled haptics, 200% text, contrast, and canonical
-arXiv actions. Repository and mobile evidence is recorded in the
+acceptance workflow, a protected exact-SHA staging backend load gate, a manual
+exact-main public-edge verification/evidence lane for the configured dark
+deployment, and mobile startup/accessibility hardening for concurrent local/
+session work, retry/repair ownership, reduced motion, settled haptics, 200%
+text, contrast, and canonical arXiv actions. Repository and mobile evidence is
+recorded in the
 [Phase 6 report](phase-reports/phase-6.md) and
 [mobile Phase 6 report](phase-reports/phase-6-mobile.md).
 
@@ -144,7 +146,8 @@ the current-tree locked Flutter/widget verification remains unrecorded. An
 actual isolated backup/PITR restore and deletion replay, migration/rollback
 exercise, deployed staging/production telemetry sink/retention and alert-
 adapter/receiver/canary checks, current networked advisory/container scans,
-protected image publication and digest promotion, physical-device and
+protected image publication and digest promotion, a successful public-edge
+workflow artifact for that exact dark-deployed target, physical-device and
 performance/crash windows, protected signing, TestFlight/closed Play upload,
 reviewer account/notes, legal/content review, disclosures, and store approval
 remain external release gates and must stay marked unpassed until their owners

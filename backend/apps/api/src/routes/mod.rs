@@ -57,7 +57,7 @@ pub(crate) use comments::{
     list_paper_comments, report_comment, report_user, unblock_user,
 };
 pub(crate) use feed::feed;
-pub(crate) use health::{health_live, health_ready};
+pub(crate) use health::{health_cache_control, health_live, health_ready};
 pub(crate) use library::{library_changes, list_library, remove_library_item, save_library_item};
 pub(crate) use papers::{
     connections, introduction, paper_by_arxiv, paper_metadata, prepare, processing,

@@ -19,6 +19,14 @@
         "responses": {
           "200": {
             "description": "Process is live",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always no-store"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -42,6 +50,14 @@
         "responses": {
           "200": {
             "description": "Database is ready",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always no-store"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -55,6 +71,14 @@
           },
           "503": {
             "description": "Dependency unavailable",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Always no-store"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {

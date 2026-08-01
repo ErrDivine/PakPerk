@@ -12,6 +12,12 @@ events to the in-cluster Collector.
 - Process OTLP uses the exact in-cluster `*-otel-collector:4317` endpoint over
   plaintext only inside the NetworkPolicy boundary. External export is exact
   credential-free HTTPS host/port with headers from the external Secret.
+- Telemetry-gateway `/health/live` and `/health/ready` are non-cacheable
+  gateway-process signals: configuration, client construction, and listener
+  setup succeeded before the server became reachable. They deliberately do
+  not probe the Collector receiver, exporter queue, or external sink. Use the
+  protected canary and externally observed Collector alerts below for delivery
+  evidence; do not make product availability depend on that best-effort path.
 - The log DaemonSet mounts `/var/log/pods` read-only and therefore needs
   deliberate node scheduling and Pod Security admission review. It has no
   service-account token, a read-only root filesystem, dropped capabilities,

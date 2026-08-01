@@ -69,6 +69,19 @@
   ID cannot populate production `moderationReadinessId`; target-environment operator,
   safety-action, adapter, alert/staffing, support/deletion/retention, and
   approval evidence remains separate.
+- A manual, environment-gated public-edge workflow that always runs its trust
+  gate, rejects any dispatch outside the exact selected `main` tip, accepts
+  only named protected public coordinates, and performs proxy-free requests
+  pinned to publicly resolved addresses. Its 16-scenario closed contract checks
+  redirects, TLS/HSTS/security/cache headers, exact runtime configuration,
+  distinct legal/support/deletion/license route markers, the site notices
+  source marker, protected association identities, the API readiness
+  response, and telemetry-gateway process readiness. It retains only owner-only
+  sanitized outcomes/digests in an exact-source artifact and fails after upload
+  when any observation fails. The domain-separated `public-edge-sha256:` ID
+  cannot be substituted for a Helm approval manifest, and the requested image-
+  handoff digest remains release-record context rather than observed deployment
+  provenance.
 - A manual, `main`-only staging backend load gate for an exact reviewed commit.
   Its bounded runner validates a 200-record guest preflight, guest feed/metadata
   latency, optional authenticated library/comments reads, explicitly capped
@@ -183,6 +196,23 @@ that exact expected schema version.
   disposable cleanup. They do not invoke Docker. The updated live-comments
   workflow and reference stack were not executed in this verification, and no
   staging moderation-readiness approval is inferred.
+- The public-edge evidence/verifier regressions passed 24 hermetic cases,
+  including closed success/failure matrices, hostile JSON/header/body shapes,
+  stable route markers, source mismatch, unsafe origins, private/multicast/
+  transition IPv6 DNS answers, proxy/custom-CA authority, bounded reads, and
+  private atomic evidence publication. Eighty-three workflow tamper regressions
+  enforce unconditional non-main rejection, exact main-tip/source bindings,
+  protected variable-only coordinates, least privilege, fail-closed evidence
+  packaging/upload/result semantics, and truthful scope. The live workflow was
+  not dispatched and no deployed URL, environment protection, legal approval,
+  candidate custody, deployment provenance, physical link behavior, deletion
+  completion, or telemetry export/sink delivery is inferred.
+- API live/ready responses, including failed readiness, and telemetry-gateway
+  live/ready responses now emit one exact `Cache-Control: no-store`; focused
+  router tests (including a synthetic outer timeout), generated OpenAPI parity,
+  and warning-denying targeted Clippy passed. This prevents a stale
+  intermediary readiness success while keeping mobile telemetry best-effort
+  and Collector/export/sink proof in its separate live-canary gate.
 - All 21 internal Rust packages are explicitly private (`publish = false`).
   `cargo-deny 0.20.2` passed the bans, licenses, and sources checks with private
   path dependencies allowed; intentional duplicate-version diagnostics remain
@@ -229,13 +259,15 @@ pass from the repository validators.
   validation/redaction topology; immutable alert/evidence contracts; bounded
   staging-load harness; security/source/native SBOM automation; exact-SHA image
   publication and signed-candidate workflows; disposable comments/moderation
-  workflow and sanitized evidence contract; disclosure/runbook artifacts.
+  workflow and sanitized evidence contract; source-bound public-edge workflow
+  and sanitized evidence contract; disclosure/runbook artifacts.
 - **Not yet proved externally:** protected staging deletion against the target
   provider with its real secret manager, ledger, alert route, and backup
   inventory; a real backup/PITR restore and deletion replay; live migration/
   rollback exercise; live OTLP retention, adapter, receivers, and canary pages;
   an actual protected staging load result; complete protected staging
   moderation readiness for the target operator/adapter/alerts/staffing matrix;
+  a successful protected public-edge run for the exact dark-deployed candidate;
   current advisory/container scans;
   protected image publication/digest promotion and production mobile signing;
   measured startup/cache/crash targets; physical-device QA; legal/content
@@ -262,3 +294,7 @@ timestamp, environment/build, immutable evidence location, and approval.
 - Store history, signing keys, infrastructure retention, contacts, and legal/
   moderation staffing are intentionally external and cannot be inferred from
   this repository.
+- Public-edge evidence observes the site notices source marker and expected
+  public response contracts. Platform owners must still compare actual Pod
+  image IDs and the immutable release-binding ConfigMap with the protected
+  promotion handoff; the requested candidate digest is not edge-observed.

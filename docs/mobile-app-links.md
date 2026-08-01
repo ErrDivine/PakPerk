@@ -54,6 +54,16 @@ verified production universal links. Before a signed release, operations must:
 7. Confirm malformed and hostile-origin URLs stay in the browser or fail closed
    to Read, and that a valid public link opens Abstract.
 
+The manual `public edge verification` workflow automates the credential-free
+technical part of steps 1 through 5 for the exact named environment: it
+requires direct HTTPS 200 JSON, validates the closed association documents
+against the protected Play App Signing fingerprint and Apple team/bundle
+identity, binds the site notices marker to the selected `main` revision, and
+retains only sanitized digests/outcomes. It does not inspect signed AAB/APK/IPA
+bytes, prove store signing custody, or exercise OS link dispatch. Artifact-
+derived identity checks and the cold/warm/already-running physical Android and
+iOS matrix in steps 4 and 6 remain mandatory even when that workflow passes.
+
 The checked-in host configuration uses `pakperk.app` as the production link
 origin. Changing that origin requires an atomic update to the router allow-list,
 both native hosts, both external association files, tests, and published links.

@@ -626,7 +626,7 @@ mod tests {
     }
 
     #[test]
-    fn paper_operations_allow_guest_or_oidc_while_health_has_no_auth_contract() {
+    fn paper_operations_allow_guest_or_oidc_while_health_is_public_and_no_store() {
         let document = serde_json::to_value(ApiDoc::openapi()).unwrap();
         for (path, method) in [
             ("/v1/feed", "get"),
@@ -649,8 +649,15 @@ mod tests {
             }));
         }
         for path in ["/health/live", "/health/ready"] {
-            assert!(document["paths"][path]["get"].get("security").is_none());
+            let operation = &document["paths"][path]["get"];
+            assert!(operation.get("security").is_none());
+            assert!(operation["responses"]["200"]["headers"]["Cache-Control"].is_object());
         }
+        assert!(
+            document["paths"]["/health/ready"]["get"]["responses"]["503"]["headers"]
+                ["Cache-Control"]
+                .is_object()
+        );
     }
 
     #[test]
