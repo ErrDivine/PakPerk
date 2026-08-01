@@ -101,7 +101,7 @@
 {{- if ne (len (uniq $databaseKeys)) (len $databaseKeys) -}}
 {{- fail "every component must use a distinct database URL Secret key and least-privilege role" -}}
 {{- end -}}
-{{- $allSecretKeys := list .Values.secret.apiDatabaseUrlKey .Values.secret.paperWorkerDatabaseUrlKey .Values.secret.metadataSyncDatabaseUrlKey .Values.secret.deletionWorkerDatabaseUrlKey .Values.secret.migrationDatabaseUrlKey .Values.secret.llmApiKeyKey .Values.secret.commentModerationTokenKey .Values.secret.apiOriginHashKey .Values.secret.identityFingerprintKeysKey .Values.secret.deletionLedgerSigningKeysKey .Values.secret.deletionProviderIdentityKeysKey .Values.secret.oidcAdminClientSecretKey .Values.secret.telemetryExporterHeadersKey -}}
+{{- $allSecretKeys := list .Values.secret.apiDatabaseUrlKey .Values.secret.paperWorkerDatabaseUrlKey .Values.secret.metadataSyncDatabaseUrlKey .Values.secret.deletionWorkerDatabaseUrlKey .Values.secret.migrationDatabaseUrlKey .Values.secret.llmApiKeyKey .Values.secret.commentModerationTokenKey .Values.secret.apiOriginHashKey .Values.secret.apiCursorEncryptionKeysKey .Values.secret.identityFingerprintKeysKey .Values.secret.deletionLedgerSigningKeysKey .Values.secret.deletionProviderIdentityKeysKey .Values.secret.oidcAdminClientSecretKey .Values.secret.telemetryExporterHeadersKey -}}
 {{- if ne (len (uniq $allSecretKeys)) (len $allSecretKeys) -}}
 {{- fail "database URLs and every purpose-specific credential must use distinct external Secret keys" -}}
 {{- end -}}

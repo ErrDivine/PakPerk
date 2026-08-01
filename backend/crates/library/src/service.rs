@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use db::{
-    DbError, LibraryChangesOutcome, LibraryCursor, LibraryMutationIntent, LibraryMutationOutcome,
+    DbError, LibraryChangesOutcome, LibraryMutationIntent, LibraryMutationOutcome,
     LibraryOperationResolution, LibraryReadOutcome, LibraryRepository, RateLimitConfigError,
     RateLimitDecision, RateLimitRepository, RateLimitRequest, StoredLibraryChangesPage,
     StoredLibraryPage,
@@ -142,7 +142,7 @@ pub trait LibraryStore: Send + Sync {
         &self,
         user_id: AuthenticatedUserId,
         state: LibraryState,
-        cursor: Option<LibraryCursor>,
+        cursor: Option<&str>,
         limit: u32,
     ) -> Result<LibraryReadOutcome<StoredLibraryPage>, DbError>;
 
@@ -189,7 +189,7 @@ impl LibraryStore for LibraryRepository {
         &self,
         user_id: AuthenticatedUserId,
         state: LibraryState,
-        cursor: Option<LibraryCursor>,
+        cursor: Option<&str>,
         limit: u32,
     ) -> Result<LibraryReadOutcome<StoredLibraryPage>, DbError> {
         LibraryRepository::list(self, user_id, state, cursor, limit).await
@@ -364,14 +364,6 @@ impl LibraryService {
         if cursor.is_some_and(|cursor| cursor.len() > MAX_CURSOR_BYTES) {
             return Err(LibraryServiceError::InvalidCursor);
         }
-        let cursor = cursor
-            .map(LibraryCursor::decode)
-            .transpose()
-            .map_err(|_| LibraryServiceError::InvalidCursor)?;
-        if cursor.is_some_and(|cursor| cursor.paper_id.is_nil() || cursor.sync_revision < 0) {
-            return Err(LibraryServiceError::InvalidCursor);
-        }
-
         match self.library.list(user_id, state, cursor, limit).await? {
             LibraryReadOutcome::Found(StoredLibraryPage {
                 items,
@@ -532,9 +524,12 @@ mod tests {
             &self,
             _user_id: AuthenticatedUserId,
             _state: LibraryState,
-            _cursor: Option<LibraryCursor>,
+            cursor: Option<&str>,
             _limit: u32,
         ) -> Result<LibraryReadOutcome<StoredLibraryPage>, DbError> {
+            if cursor.is_some() {
+                return Ok(LibraryReadOutcome::InvalidCursor);
+            }
             if self.read_status.is_active() {
                 Ok(LibraryReadOutcome::Found(StoredLibraryPage {
                     items: Vec::new(),

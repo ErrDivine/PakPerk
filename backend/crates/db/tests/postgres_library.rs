@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::{TimeDelta, Utc};
 use db::{
     Database, LibraryChangesOutcome, LibraryMutationIntent, LibraryMutationOutcome,
@@ -19,7 +20,10 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
         eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL library coverage");
         return;
     };
-    let database = Database::connect(&database_url, 24).await.unwrap();
+    let database = Database::connect(&database_url, 24)
+        .await
+        .unwrap()
+        .with_cursor_codec(test_cursor_codec());
     database.migrate_embedded().await.unwrap();
 
     let unique = Uuid::now_v7().simple().to_string();
@@ -366,12 +370,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
     while let Some(encoded) = next_cursor {
         let page = found_page(
             repository
-                .list(
-                    owner.id,
-                    LibraryState::ToRead,
-                    Some(db::LibraryCursor::decode(&encoded).unwrap()),
-                    2,
-                )
+                .list(owner.id, LibraryState::ToRead, Some(&encoded), 2)
                 .await
                 .unwrap(),
         );
@@ -1336,6 +1335,11 @@ fn found_page(outcome: LibraryReadOutcome<db::StoredLibraryPage>) -> db::StoredL
         LibraryReadOutcome::Found(page) => page,
         unexpected => panic!("expected library page, got {unexpected:?}"),
     }
+}
+
+fn test_cursor_codec() -> opaque_cursor::OpaqueCursorCodec {
+    let key = STANDARD.encode([0x61; 32]);
+    opaque_cursor::OpaqueCursorCodec::parse_keyring(&format!("library_test:{key}")).unwrap()
 }
 
 fn found_changes(outcome: LibraryChangesOutcome) -> db::StoredLibraryChangesPage {

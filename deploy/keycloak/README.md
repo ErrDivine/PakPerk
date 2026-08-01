@@ -44,6 +44,7 @@ ACCOUNTS_ENABLED=true \
 DATABASE_URL=postgres://pakperk:pakperk@127.0.0.1:5432/pakperk \
 OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
 API_ORIGIN_HASH_SECRET_FILE="$PWD/.local/pakperk-secrets/API_ORIGIN_HASH_SECRET" \
+API_CURSOR_ENCRYPTION_KEYS_FILE="$PWD/.local/pakperk-secrets/API_CURSOR_ENCRYPTION_KEYS" \
 ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE="$PWD/.local/pakperk-secrets/ACCOUNT_IDENTITY_FINGERPRINT_KEYS" \
 API_BIND=127.0.0.1:8080 \
 cargo run --manifest-path backend/Cargo.toml -p pakperk-api
@@ -53,14 +54,14 @@ This is required because `localhost` inside the Compose API container refers
 to the container itself, while changing the issuer hostname for just one
 participant breaks OIDC exact-issuer validation.
 
-The initializer creates the API request-origin key, rotation-capable identity
-fingerprint/deletion-ledger/provider-coordinate keyrings, and the ledger
+The initializer creates the API request-origin key, cursor-encryption keyring,
+rotation-capable identity fingerprint/deletion-ledger/provider-coordinate keyrings, and the ledger
 directory. It never prints key values, never overwrites an existing keyring,
 rejects symlinks, and enforces owner-only modes. The account/deletion keyrings
 are consumed only by the documented host-run API/worker commands and are not
-bind-mounted into Compose. The generic request-origin source is the sole
-exception: a root one-shot Compose initializer reads it from the host directory,
-copies it into a named volume with mode `0400`, and transfers ownership to the
+bind-mounted into Compose. The generic request-origin and cursor-encryption
+sources are the only exceptions: a root one-shot Compose initializer reads them from the host directory,
+copies them into a named volume with mode `0400`, and transfers ownership to the
 API's UID 10001. The API mounts only that volume read-only. This avoids relying
 on a host UID mapping that is not portable across Linux and Docker Desktop.
 Account/deletion development still keeps Keycloak/PostgreSQL in Compose and

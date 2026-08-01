@@ -73,13 +73,19 @@ impl PaperRepository {
             rows.pop();
         }
         let next_cursor = if has_more {
-            rows.last().map(|row| {
-                FeedCursor {
-                    published_at: row.published_at,
-                    paper_id: row.id,
-                }
-                .encode()
-            })
+            rows.last()
+                .map(|row| {
+                    let codec = self
+                        .cursor_codec
+                        .as_ref()
+                        .ok_or(crate::CursorError::Unavailable)?;
+                    FeedCursor {
+                        published_at: row.published_at,
+                        paper_id: row.id,
+                    }
+                    .encode(codec, query.category.as_deref())
+                })
+                .transpose()?
         } else {
             None
         };

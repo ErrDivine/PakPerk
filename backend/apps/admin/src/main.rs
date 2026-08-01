@@ -15,6 +15,7 @@ use moderation::{AdminActor, ModerationActionResult, ModerationService};
 use observability::{
     ObservabilityConfig, OperationClass, OperationOutcome, init, record_operation,
 };
+use opaque_cursor::OpaqueCursorCodec;
 use serde::Serialize;
 use serde_json::json;
 
@@ -45,9 +46,14 @@ async fn main() -> Result<()> {
         if !(1..=10).contains(&pool_size) {
             anyhow::bail!("ADMIN_DATABASE_POOL_SIZE must be between 1 and 10");
         }
+        let cursor_keyring_path = std::env::var("API_CURSOR_ENCRYPTION_KEYS_FILE")
+            .context("API_CURSOR_ENCRYPTION_KEYS_FILE must be provided through the environment")?;
+        let cursor_codec = OpaqueCursorCodec::load_keyring(&cursor_keyring_path)
+            .context("opaque cursor keyring is unavailable or unsafe")?;
         let database = Database::connect(&database_url, pool_size)
             .await
-            .context("could not connect to the moderation database")?;
+            .context("could not connect to the moderation database")?
+            .with_cursor_codec(cursor_codec);
         database
             .ready()
             .await

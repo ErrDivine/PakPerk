@@ -256,6 +256,10 @@ fn api_config(database_url: String) -> ApiConfig {
             "postgres-chat-api-request-origin-secret-0123456789",
         )
         .unwrap(),
+        cursors: pakperk_api::CursorConfig::for_local_development(
+            "postgres-chat-api-cursor-test-seed",
+        )
+        .unwrap(),
         bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
         database_url,
         database_pool_size: 8,

@@ -60,6 +60,7 @@ pub struct AppState {
     pub(crate) arxiv: ArxivClient,
     pub(crate) arxiv_minimum_interval: Duration,
     pub(crate) arxiv_cache_ttl: Duration,
+    pub(crate) cursor_key_epoch: [u8; 32],
     pub(crate) fulltext_policy: FulltextPolicy,
     pub(crate) model_provider: Option<Arc<dyn ApiModelProvider>>,
     pub(crate) request_limiter: PublicRequestRateLimiter,
@@ -95,6 +96,8 @@ impl AppState {
         auth: AuthRuntime,
     ) -> anyhow::Result<Self> {
         validate_composition(config, &auth)?;
+        let cursor_key_epoch = config.cursors.active_key_epoch();
+        let database = database.with_cursor_codec(config.cursors.codec());
         let papers = database.papers();
         let mut arxiv_config = config.arxiv.clone();
         crate::config::enforce_cross_process_arxiv_gate(&mut arxiv_config);
@@ -112,6 +115,7 @@ impl AppState {
             arxiv: ArxivClient::new_with_external_gate(arxiv_config)?,
             arxiv_minimum_interval: config.arxiv.minimum_interval,
             arxiv_cache_ttl: config.arxiv_cache_ttl,
+            cursor_key_epoch,
             fulltext_policy: config.fulltext_policy,
             model_provider,
             request_limiter,

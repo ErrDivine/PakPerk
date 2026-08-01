@@ -518,9 +518,9 @@ mod tests {
     };
     use chrono::{TimeZone as _, Utc};
     use db::{
-        DbError, LibraryChangesOutcome, LibraryCursor, LibraryMutationIntent,
-        LibraryMutationOutcome, LibraryReadOutcome, RateLimitDecision, RateLimitRequest,
-        StoredLibraryChangesPage, StoredLibraryPage,
+        DbError, LibraryChangesOutcome, LibraryMutationIntent, LibraryMutationOutcome,
+        LibraryReadOutcome, RateLimitDecision, RateLimitRequest, StoredLibraryChangesPage,
+        StoredLibraryPage,
     };
     use domain::{
         AuthenticatedUserId, Capabilities, FulltextPolicy, LibraryChange, LibraryItem,
@@ -697,7 +697,7 @@ mod tests {
             &self,
             _user_id: AuthenticatedUserId,
             _state: LibraryState,
-            _cursor: Option<LibraryCursor>,
+            _cursor: Option<&str>,
             _limit: u32,
         ) -> Result<LibraryReadOutcome<StoredLibraryPage>, DbError> {
             Ok(LibraryReadOutcome::Found(StoredLibraryPage {
@@ -992,6 +992,10 @@ mod tests {
             account_deletion: None,
             request_origin: crate::config::RequestOriginConfig::for_local_development(
                 "library-route-request-origin-secret-0123456789",
+            )
+            .unwrap(),
+            cursors: crate::config::CursorConfig::for_local_development(
+                "library-route-cursor-test-seed",
             )
             .unwrap(),
             bind: SocketAddr::from(([127, 0, 0, 1], 0)),

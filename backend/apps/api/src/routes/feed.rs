@@ -16,14 +16,14 @@ use observability::{
 use sha2::{Digest as _, Sha256};
 
 use super::{
-    ApiError, AppState, FeedCursor, FeedParams, FeedQuery, FulltextPolicy, IntoResponse, Json,
-    Query, RequestId, State, StatusCode, apply_summary_policy, cursor_error, internal_db_error,
+    ApiError, AppState, FeedParams, FeedQuery, FulltextPolicy, IntoResponse, Json, Query,
+    RequestId, State, StatusCode, apply_summary_policy, cursor_error, internal_db_error,
     valid_category,
 };
 use crate::middleware::RequestPrincipal;
 
 const FEED_CACHE_CONTROL: &str = "public, max-age=60, stale-while-revalidate=300";
-const FEED_ETAG_VERSION: &[u8] = b"pakperk-feed-etag-v1";
+const FEED_ETAG_VERSION: &[u8] = b"pakperk-feed-etag-v2";
 const MAX_EMPTY_ETAG_LIST_ELEMENTS: usize = 16;
 const MAX_IF_NONE_MATCH_BYTES: usize = 16 * 1024;
 
@@ -65,21 +65,15 @@ pub(crate) async fn feed(
     Query(params): Query<FeedParams>,
 ) -> Result<Response, ApiError> {
     let request_id = RequestId(principal.request_id);
-    if let Some(category) = &params.category
-        && !valid_category(category)
-    {
-        return Err(ApiError::new(
-            request_id,
-            StatusCode::BAD_REQUEST,
-            "INVALID_CATEGORY",
-            "Category must be an arXiv category such as cs.AI.",
-            false,
-        ));
-    }
+    validate_feed_category(request_id, params.category.as_deref())?;
     let cursor = params
         .cursor
         .as_deref()
-        .map(FeedCursor::decode)
+        .map(|cursor| {
+            state
+                .papers
+                .decode_feed_cursor(params.category.as_deref(), cursor)
+        })
         .transpose()
         .map_err(|error| cursor_error(request_id, &error))?;
     let limit = params.limit.unwrap_or(20);
@@ -154,6 +148,7 @@ pub(crate) async fn feed(
         category: params.category.as_deref(),
         cursor: params.cursor.as_deref(),
         limit,
+        cursor_key_epoch: &state.cursor_key_epoch,
     };
     record_operation(
         OperationClass::Feed,
@@ -163,11 +158,25 @@ pub(crate) async fn feed(
     Ok(feed_response(page, representation, &headers))
 }
 
+fn validate_feed_category(request_id: RequestId, category: Option<&str>) -> Result<(), ApiError> {
+    if category.is_some_and(|category| !valid_category(category)) {
+        return Err(ApiError::new(
+            request_id,
+            StatusCode::BAD_REQUEST,
+            "INVALID_CATEGORY",
+            "Category must be an arXiv category such as cs.AI.",
+            false,
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy)]
 struct FeedRepresentation<'a> {
     category: Option<&'a str>,
     cursor: Option<&'a str>,
     limit: u32,
+    cursor_key_epoch: &'a [u8; 32],
 }
 
 #[derive(Debug)]
@@ -203,15 +212,16 @@ fn apply_feed_cache_headers(response: &mut Response, entity_tag: &HeaderValue) {
 }
 
 /// Builds a weak, opaque semantic validator without serializing the response
-/// body a second time. Every externally visible feed field and the complete
-/// request variant participate in the digest, so capability or metadata
-/// changes also invalidate an otherwise unchanged chronological page.
+/// body a second time. Every feed item field, the complete request variant,
+/// next-page presence, and active cursor-key epoch participate in the digest,
+/// so content changes and key promotion invalidate cached pagination safely.
 fn feed_entity_tag(page: &FeedPage, representation: FeedRepresentation<'_>) -> FeedEntityTag {
     let mut digest = Sha256::new();
     hash_bytes(&mut digest, FEED_ETAG_VERSION);
     hash_optional_str(&mut digest, representation.category);
     hash_optional_str(&mut digest, representation.cursor);
     digest.update(representation.limit.to_be_bytes());
+    hash_bytes(&mut digest, representation.cursor_key_epoch);
 
     // Exhaustive destructuring intentionally makes a future public response
     // field a compile error here until its validator contribution is chosen.
@@ -262,9 +272,12 @@ fn feed_entity_tag(page: &FeedPage, representation: FeedRepresentation<'_>) -> F
             u8::from(connections),
         ]);
     }
-    hash_optional_str(&mut digest, next_cursor.as_deref());
+    // Cursor ciphertext is intentionally randomized on every issuance. The
+    // complete item sequence above already binds the last ordering identity;
+    // only the presence of a following page is additionally semantic here.
+    digest.update([u8::from(next_cursor.is_some())]);
 
-    let opaque = format!("pp-feed-v1-{}", URL_SAFE_NO_PAD.encode(digest.finalize()));
+    let opaque = format!("pp-feed-v2-{}", URL_SAFE_NO_PAD.encode(digest.finalize()));
     let header = HeaderValue::from_str(&format!("W/\"{opaque}\""))
         .expect("a base64url feed entity tag is always a valid HTTP header value");
     FeedEntityTag { header, opaque }
@@ -441,6 +454,8 @@ mod tests {
 
     use super::*;
 
+    const TEST_CURSOR_KEY_EPOCH: [u8; 32] = [0x31; 32];
+
     fn page() -> FeedPage {
         FeedPage {
             items: vec![PaperSummary {
@@ -466,6 +481,7 @@ mod tests {
             category,
             cursor: None,
             limit,
+            cursor_key_epoch: &TEST_CURSOR_KEY_EPOCH,
         }
     }
 
@@ -483,6 +499,7 @@ mod tests {
                 category: None,
                 cursor: Some("opaque-request-cursor"),
                 limit: 30,
+                cursor_key_epoch: &TEST_CURSOR_KEY_EPOCH,
             },
         );
 
@@ -495,11 +512,11 @@ mod tests {
         assert!(!visible.contains("0198fa17"));
         assert!(!visible.contains("2026"));
         assert!(!visible.contains("2401.12345"));
-        assert!(visible.starts_with("W/\"pp-feed-v1-"));
+        assert!(visible.starts_with("W/\"pp-feed-v2-"));
     }
 
     #[test]
-    fn every_relevant_first_page_revision_changes_the_entity_tag() {
+    fn semantic_first_page_revisions_change_the_entity_tag() {
         let original = page();
         let original_tag = feed_entity_tag(&original, first_page(None, 30)).header;
 
@@ -517,11 +534,18 @@ mod tests {
             feed_entity_tag(&capability_changed, first_page(None, 30)).header
         );
 
-        let mut boundary_changed = original.clone();
-        boundary_changed.next_cursor = Some("different-boundary".to_owned());
+        let mut reencrypted_boundary = original.clone();
+        reencrypted_boundary.next_cursor = Some("fresh-randomized-ciphertext".to_owned());
+        assert_eq!(
+            original_tag,
+            feed_entity_tag(&reencrypted_boundary, first_page(None, 30)).header
+        );
+
+        let mut final_page = original.clone();
+        final_page.next_cursor = None;
         assert_ne!(
             original_tag,
-            feed_entity_tag(&boundary_changed, first_page(None, 30)).header
+            feed_entity_tag(&final_page, first_page(None, 30)).header
         );
     }
 
@@ -626,12 +650,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn promoted_cursor_key_epoch_forces_a_fresh_feed_body() {
+        let page = page();
+        let prior_representation = first_page(None, 30);
+        let stale = feed_entity_tag(&page, prior_representation);
+        let promoted_epoch = [0x32; 32];
+        let promoted_representation = FeedRepresentation {
+            category: None,
+            cursor: None,
+            limit: 30,
+            cursor_key_epoch: &promoted_epoch,
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert(IF_NONE_MATCH, stale.header.clone());
+
+        let response = feed_response(page, promoted_representation, &headers);
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_ne!(response.headers()[ETAG], stale.header);
+        assert_eq!(response.headers()[CONTENT_TYPE], "application/json");
+    }
+
+    #[tokio::test]
     async fn matching_cursor_page_validator_returns_an_empty_304() {
         let page = page();
         let representation = FeedRepresentation {
             category: Some("cs.AI"),
             cursor: Some("opaque-request-cursor"),
             limit: 30,
+            cursor_key_epoch: &TEST_CURSOR_KEY_EPOCH,
         };
         let entity_tag = feed_entity_tag(&page, representation);
         let mut headers = HeaderMap::new();

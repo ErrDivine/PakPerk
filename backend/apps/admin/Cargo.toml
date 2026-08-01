@@ -14,6 +14,7 @@ db.workspace = true
 domain.workspace = true
 moderation.workspace = true
 observability.workspace = true
+opaque_cursor.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

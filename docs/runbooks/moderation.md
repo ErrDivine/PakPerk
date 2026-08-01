@@ -138,6 +138,25 @@ replica, retain the old deployment secret only until the previous replicas and
 rate windows expire, then destroy it. Never log either secret or a raw peer
 address during validation.
 
+`API_CURSOR_ENCRYPTION_KEYS_FILE` must be available to both the API and
+`pakperk-admin` so a cursor issued by one replica or invocation remains usable
+by another. It is an owner-only, non-symlink keyring of up to eight
+`key_id:base64(32 random bytes)` lines. Rotate it in two rolling phases: append
+the candidate key while the old key remains first and roll every API/admin
+consumer; then move the candidate to the first line and roll every consumer
+again. Promotion changes the feed's non-secret cursor-key validator epoch, so a
+conditional first-page request carrying a pre-promotion ETag must return `200`
+with a fresh cursor instead of preserving an old cursor through `304`. After
+every consumer has completed the promotion rollout, verify that revalidation
+behavior and that the returned cursor paginates successfully. Then retain older
+keys through the maximum expected in-flight pagination window and remove them
+only after old cursors may safely expire. Never remove the old key before the
+promotion rollout and this revalidation check have completed. This sequence
+keeps both halves of a rolling deployment able to decrypt every newly issued
+token. Removing a key immediately invalidates its outstanding feed, library,
+comment, and moderation cursors; never reuse the request-origin secret as cursor
+key material.
+
 `API_TRUSTED_PROXY_CIDRS` must contain only the source ranges actually
 observed from the ingress-controller chain. The API accepts
 `X-Forwarded-For` only when the direct peer is in those ranges and walks the

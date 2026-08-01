@@ -58,13 +58,21 @@ carry the complete replacement body and `expected_version`; stale versions
 return `COMMENT_EDIT_CONFLICT`. Delete, comment report, user report, block, and
 unblock are repeat-safe. Comment reports are unique per reporter/comment and
 user reports are independently unique per reporter/reported-user pair.
-Both report request bodies use the closed shape `{"reason": ..., "detail":
-...}`. The `detail` property is always present and is either a bounded string
-or explicit JSON `null`; unknown or omitted properties fail with
+Both report request bodies use a closed shape with required `reason` and an
+optional bounded `detail`. Omitting `detail` and sending explicit JSON `null`
+both mean that no detail was supplied; unknown properties fail with
 `INVALID_REQUEST`, matching the code-first OpenAPI schema.
 
-Lists are newest-first and use an opaque `(created_at, id)` cursor. Paper
-comment lists contain published comments only. The authenticated
+Lists are newest-first and use an opaque `(created_at, id)` cursor. Cursor
+ordering coordinates are AES-256-GCM encrypted, authenticated, and
+bound to the exact list purpose plus paper/account/status scope. Public paper
+comment cursors additionally bind the paper to an explicit guest or account
+viewer identity because account block lists change the visible result set.
+Clients must return tokens unchanged; tokens from another list, viewer, or
+filter are rejected.
+The shared rotation-ordered API keyring keeps active replicas and admin CLI
+invocations interoperable without exposing timestamps or identifiers.
+Paper comment lists contain published comments only. The authenticated
 `GET /v1/me/comments` owner list is the sole listing surface that also exposes
 that author's private `pending_review` records. Authenticated paper lists remove
 blocked authors. The bounded author projection contains only local user ID,

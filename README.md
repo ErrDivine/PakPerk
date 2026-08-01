@@ -90,6 +90,9 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+The preparation step creates separate owner-only request-origin and rotating
+cursor-encryption key files; it never prints or overwrites their values.
+
 Both Rust processes deliberately reject placeholder or example-domain contact
 addresses so that every arXiv request has an accountable `User-Agent`.
 
@@ -130,6 +133,7 @@ ACCOUNTS_ENABLED=true \
 DATABASE_URL=postgres://pakperk:pakperk@127.0.0.1:5432/pakperk \
 OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
 API_ORIGIN_HASH_SECRET_FILE="$PWD/.local/pakperk-secrets/API_ORIGIN_HASH_SECRET" \
+API_CURSOR_ENCRYPTION_KEYS_FILE="$PWD/.local/pakperk-secrets/API_CURSOR_ENCRYPTION_KEYS" \
 ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE="$PWD/.local/pakperk-secrets/ACCOUNT_IDENTITY_FINGERPRINT_KEYS" \
 API_BIND=127.0.0.1:8080 \
 cargo run --manifest-path backend/Cargo.toml -p pakperk-api
@@ -410,7 +414,9 @@ Account-aware CORS permits `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and
 `X-Request-Id`, `Idempotency-Key`, `If-Match`, and `If-None-Match`; and exposes
 `X-Request-Id`, `ETag`, and `Retry-After` to explicit deployed origins.
 
-Feed pagination uses an opaque cursor backed by `(published_at, paper_id)`.
+Feed pagination uses a purpose/category-bound authenticated-encryption cursor
+backed by `(published_at, paper_id)`; ordering fields are never exposed to or
+accepted from clients as readable JSON.
 `prepare` is atomic and idempotent for a paper generation. Capability endpoints
 return a stable `CAPABILITY_NOT_READY` conflict while their independent work is
 unfinished. Errors have this public shape:

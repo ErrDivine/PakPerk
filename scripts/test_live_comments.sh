@@ -94,6 +94,7 @@ fi
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/pakperk-live-comments.XXXXXX")"
 state_file="$work_dir/state.json"
 comment_secret="$work_dir/comment-origin-secret"
+cursor_keys="$work_dir/api-cursor-encryption-keys"
 identity_fingerprint_keys="$work_dir/account-identity-fingerprint-keys"
 admin_access_token="$work_dir/admin-access-token"
 unauthorized_admin_access_token="$work_dir/unauthorized-admin-access-token"
@@ -102,6 +103,7 @@ read_only_log="$work_dir/api-read-only.log"
 unavailable_log="$work_dir/api-unavailable.log"
 umask 077
 openssl rand -hex 48 >"$comment_secret"
+printf 'live-comments-cursor:%s\n' "$(openssl rand -base64 32 | tr -d '\n')" >"$cursor_keys"
 printf 'live-comments-current:%s\n' "$(openssl rand -base64 32)" >"$identity_fingerprint_keys"
 run_id="$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
 ugc_sentinel="PAKPERK_UGC_SENTINEL_${run_id}"
@@ -127,6 +129,7 @@ export LIVE_COMMENTS_RUN_ID="$run_id"
 export LIVE_COMMENTS_UGC_SENTINEL="$ugc_sentinel"
 export LIVE_COMMENTS_TOKEN_SENTINEL="$token_sentinel"
 export LIVE_COMMENTS_COMMENT_SECRET_FILE="$comment_secret"
+export API_CURSOR_ENCRYPTION_KEYS_FILE="$cursor_keys"
 export LIVE_COMMENTS_CURRENT_TERMS_VERSION="$current_terms_version"
 export LIVE_COMMENTS_CURRENT_GUIDELINES_VERSION="$current_guidelines_version"
 export LIVE_COMMENTS_API_LOGS="$write_log:$read_only_log:$unavailable_log"
@@ -305,6 +308,7 @@ start_api() {
     COMMENT_CREATION_ENABLED="$creation_enabled" \
     ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE="$identity_fingerprint_keys" \
     API_ORIGIN_HASH_SECRET_FILE="$comment_secret" \
+    API_CURSOR_ENCRYPTION_KEYS_FILE="$cursor_keys" \
     COMMENT_MAX_SCALARS=2000 \
     COMMENT_MAX_BYTES=8000 \
     COMMENT_MAX_URLS=3 \

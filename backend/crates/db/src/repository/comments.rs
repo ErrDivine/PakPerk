@@ -6,12 +6,16 @@ use domain::{
     CommentReportReason, CommentReportStatus, CommentStatus, CommunityGuidelinesVersion,
     DisplayName, Handle, PaperComment, PaperId, PublicUser, ReportDetail, TermsVersion,
 };
+use opaque_cursor::OpaqueCursorCodec;
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use uuid::Uuid;
 
 use super::DbError;
-use crate::CreatedAtCursor;
+use crate::cursor::{
+    BLOCKED_USERS_CURSOR_PURPOSE, CreatedAtCursor, OWN_COMMENTS_CURSOR_PURPOSE,
+    PUBLIC_COMMENTS_CURSOR_PURPOSE,
+};
 
 const COMMENT_COLUMNS: &str = r"
     comments.id,
@@ -365,6 +369,7 @@ impl TryFrom<BlockedUserRow> for BlockedUser {
 pub struct CommentRepository {
     pool: PgPool,
     coordination_permits: Arc<Semaphore>,
+    cursor_codec: Option<OpaqueCursorCodec>,
 }
 
 /// Cross-replica ownership of one logical comment write.
@@ -405,7 +410,14 @@ impl CommentRepository {
         Self {
             pool,
             coordination_permits: Arc::new(Semaphore::new(coordination_limit)),
+            cursor_codec: None,
         }
+    }
+
+    pub(super) fn with_cursor_codec(pool: PgPool, cursor_codec: Option<OpaqueCursorCodec>) -> Self {
+        let mut repository = Self::new(pool);
+        repository.cursor_codec = cursor_codec;
+        repository
     }
 
     #[must_use]
@@ -996,8 +1008,16 @@ impl CommentRepository {
         cursor: Option<&str>,
         limit: u32,
     ) -> Result<CommentReadOutcome<CommentPage>, DbError> {
-        let Ok(cursor) = cursor.map(CreatedAtCursor::decode).transpose() else {
-            return Ok(CommentReadOutcome::InvalidCursor);
+        let scope = public_comments_cursor_scope(paper_id, viewer_user_id);
+        let cursor = match decode_created_at_cursor(
+            self.cursor_codec.as_ref(),
+            PUBLIC_COMMENTS_CURSOR_PURPOSE,
+            &scope,
+            cursor,
+        ) {
+            Ok(cursor) => cursor,
+            Err(crate::CursorError::Invalid) => return Ok(CommentReadOutcome::InvalidCursor),
+            Err(error) => return Err(error.into()),
         };
         let exists: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM papers WHERE id = $1)")
             .bind(paper_id)
@@ -1039,7 +1059,13 @@ impl CommentRepository {
         .bind(i64::from(page_size) + 1)
         .fetch_all(&self.pool)
         .await?;
-        page_from_comment_rows(rows, page_size)
+        page_from_comment_rows(
+            rows,
+            page_size,
+            self.cursor_codec.as_ref(),
+            PUBLIC_COMMENTS_CURSOR_PURPOSE,
+            &scope,
+        )
     }
 
     pub async fn list_own(
@@ -1048,8 +1074,16 @@ impl CommentRepository {
         cursor: Option<&str>,
         limit: u32,
     ) -> Result<CommentReadOutcome<CommentPage>, DbError> {
-        let Ok(cursor) = cursor.map(CreatedAtCursor::decode).transpose() else {
-            return Ok(CommentReadOutcome::InvalidCursor);
+        let scope = *author_user_id.into_inner().as_bytes();
+        let cursor = match decode_created_at_cursor(
+            self.cursor_codec.as_ref(),
+            OWN_COMMENTS_CURSOR_PURPOSE,
+            &scope,
+            cursor,
+        ) {
+            Ok(cursor) => cursor,
+            Err(crate::CursorError::Invalid) => return Ok(CommentReadOutcome::InvalidCursor),
+            Err(error) => return Err(error.into()),
         };
         match account_status(&self.pool, author_user_id).await? {
             None => return Ok(CommentReadOutcome::AccountNotFound),
@@ -1078,7 +1112,13 @@ impl CommentRepository {
         .bind(i64::from(page_size) + 1)
         .fetch_all(&self.pool)
         .await?;
-        page_from_comment_rows(rows, page_size)
+        page_from_comment_rows(
+            rows,
+            page_size,
+            self.cursor_codec.as_ref(),
+            OWN_COMMENTS_CURSOR_PURPOSE,
+            &scope,
+        )
     }
 
     pub async fn report(
@@ -1523,8 +1563,16 @@ impl CommentRepository {
         cursor: Option<&str>,
         limit: u32,
     ) -> Result<CommentReadOutcome<BlockedUserPage>, DbError> {
-        let Ok(cursor) = cursor.map(CreatedAtCursor::decode).transpose() else {
-            return Ok(CommentReadOutcome::InvalidCursor);
+        let scope = *blocker_user_id.into_inner().as_bytes();
+        let cursor = match decode_created_at_cursor(
+            self.cursor_codec.as_ref(),
+            BLOCKED_USERS_CURSOR_PURPOSE,
+            &scope,
+            cursor,
+        ) {
+            Ok(cursor) => cursor,
+            Err(crate::CursorError::Invalid) => return Ok(CommentReadOutcome::InvalidCursor),
+            Err(error) => return Err(error.into()),
         };
         match account_status(&self.pool, blocker_user_id).await? {
             None => return Ok(CommentReadOutcome::AccountNotFound),
@@ -1565,14 +1613,20 @@ impl CommentRepository {
         if has_more {
             items.pop();
         }
-        let next_cursor = has_more.then(|| {
-            let last = items.last().expect("a page with more rows is non-empty");
-            CreatedAtCursor {
-                created_at: last.created_at,
-                id: last.user.id.into_inner(),
-            }
-            .encode()
-        });
+        let next_cursor = has_more
+            .then(|| {
+                let codec = self
+                    .cursor_codec
+                    .as_ref()
+                    .ok_or(crate::CursorError::Unavailable)?;
+                let last = items.last().expect("a page with more rows is non-empty");
+                CreatedAtCursor {
+                    created_at: last.created_at,
+                    id: last.user.id.into_inner(),
+                }
+                .encode(codec, BLOCKED_USERS_CURSOR_PURPOSE, &scope)
+            })
+            .transpose()?;
         Ok(CommentReadOutcome::Found(BlockedUserPage {
             items,
             next_cursor,
@@ -1583,6 +1637,9 @@ impl CommentRepository {
 fn page_from_comment_rows(
     rows: Vec<CommentRow>,
     page_size: u32,
+    cursor_codec: Option<&OpaqueCursorCodec>,
+    cursor_purpose: &str,
+    cursor_scope: &[u8],
 ) -> Result<CommentReadOutcome<CommentPage>, DbError> {
     let mut items = rows
         .into_iter()
@@ -1592,18 +1649,48 @@ fn page_from_comment_rows(
     if has_more {
         items.pop();
     }
-    let next_cursor = has_more.then(|| {
-        let last = items.last().expect("a page with more rows is non-empty");
-        CreatedAtCursor {
-            created_at: last.created_at,
-            id: last.id,
-        }
-        .encode()
-    });
+    let next_cursor = has_more
+        .then(|| {
+            let codec = cursor_codec.ok_or(crate::CursorError::Unavailable)?;
+            let last = items.last().expect("a page with more rows is non-empty");
+            CreatedAtCursor {
+                created_at: last.created_at,
+                id: last.id,
+            }
+            .encode(codec, cursor_purpose, cursor_scope)
+        })
+        .transpose()?;
     Ok(CommentReadOutcome::Found(CommentPage {
         items,
         next_cursor,
     }))
+}
+
+fn public_comments_cursor_scope(
+    paper_id: PaperId,
+    viewer_user_id: Option<AuthenticatedUserId>,
+) -> [u8; 33] {
+    let mut scope = [0_u8; 33];
+    scope[..16].copy_from_slice(paper_id.as_bytes());
+    if let Some(viewer_user_id) = viewer_user_id {
+        scope[16] = 1;
+        scope[17..].copy_from_slice(viewer_user_id.as_uuid().as_bytes());
+    }
+    scope
+}
+
+fn decode_created_at_cursor(
+    cursor_codec: Option<&OpaqueCursorCodec>,
+    purpose: &str,
+    scope: &[u8],
+    cursor: Option<&str>,
+) -> Result<Option<CreatedAtCursor>, crate::CursorError> {
+    cursor
+        .map(|value| {
+            let codec = cursor_codec.ok_or(crate::CursorError::Unavailable)?;
+            CreatedAtCursor::decode(codec, purpose, scope, value)
+        })
+        .transpose()
 }
 
 enum FailedMutation {
@@ -1794,6 +1881,8 @@ fn coordination_retry_delay(attempt: u32) -> Duration {
 
 #[cfg(test)]
 mod tests {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use chrono::TimeZone as _;
     use sqlx::postgres::PgPoolOptions;
 
     use super::*;
@@ -1822,6 +1911,98 @@ mod tests {
         assert!(coordination_retry_delay(u32::MAX) <= COORDINATION_RETRY_MAX);
     }
 
+    #[test]
+    fn public_comment_cursor_is_bound_to_the_same_account_viewer() {
+        let codec = test_cursor_codec();
+        let paper_id = Uuid::parse_str("0198fa17-3499-7a02-8406-846ab42ba686").unwrap();
+        let viewer = AuthenticatedUserId::new(
+            Uuid::parse_str("0198fa17-3499-7a02-8406-846ab42ba687").unwrap(),
+        );
+        let other_viewer = AuthenticatedUserId::new(
+            Uuid::parse_str("0198fa17-3499-7a02-8406-846ab42ba688").unwrap(),
+        );
+        let cursor = CreatedAtCursor {
+            created_at: Utc.with_ymd_and_hms(2026, 8, 2, 12, 13, 14).unwrap(),
+            id: Uuid::parse_str("0198fa17-3499-7a02-8406-846ab42ba689").unwrap(),
+        };
+        let encoded = cursor
+            .encode(
+                &codec,
+                PUBLIC_COMMENTS_CURSOR_PURPOSE,
+                &public_comments_cursor_scope(paper_id, Some(viewer)),
+            )
+            .unwrap();
+
+        assert_eq!(
+            CreatedAtCursor::decode(
+                &codec,
+                PUBLIC_COMMENTS_CURSOR_PURPOSE,
+                &public_comments_cursor_scope(paper_id, Some(viewer)),
+                &encoded,
+            )
+            .unwrap(),
+            cursor
+        );
+        assert!(
+            CreatedAtCursor::decode(
+                &codec,
+                PUBLIC_COMMENTS_CURSOR_PURPOSE,
+                &public_comments_cursor_scope(paper_id, Some(other_viewer)),
+                &encoded,
+            )
+            .is_err()
+        );
+        assert!(
+            CreatedAtCursor::decode(
+                &codec,
+                PUBLIC_COMMENTS_CURSOR_PURPOSE,
+                &public_comments_cursor_scope(paper_id, None),
+                &encoded,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn public_comment_guest_cursor_rejects_account_viewers() {
+        let codec = test_cursor_codec();
+        let paper_id = Uuid::parse_str("0198fa17-3499-7a02-8406-846ab42ba686").unwrap();
+        let viewer = AuthenticatedUserId::new(
+            Uuid::parse_str("0198fa17-3499-7a02-8406-846ab42ba687").unwrap(),
+        );
+        let cursor = CreatedAtCursor {
+            created_at: Utc.with_ymd_and_hms(2026, 8, 2, 12, 13, 14).unwrap(),
+            id: Uuid::parse_str("0198fa17-3499-7a02-8406-846ab42ba689").unwrap(),
+        };
+        let encoded = cursor
+            .encode(
+                &codec,
+                PUBLIC_COMMENTS_CURSOR_PURPOSE,
+                &public_comments_cursor_scope(paper_id, None),
+            )
+            .unwrap();
+
+        assert_eq!(
+            CreatedAtCursor::decode(
+                &codec,
+                PUBLIC_COMMENTS_CURSOR_PURPOSE,
+                &public_comments_cursor_scope(paper_id, None),
+                &encoded,
+            )
+            .unwrap(),
+            cursor
+        );
+        assert!(
+            CreatedAtCursor::decode(
+                &codec,
+                PUBLIC_COMMENTS_CURSOR_PURPOSE,
+                &public_comments_cursor_scope(paper_id, Some(viewer)),
+                &encoded,
+            )
+            .is_err()
+        );
+    }
+
     #[tokio::test]
     async fn write_coordinator_rejects_a_single_connection_pool_before_acquiring() {
         let pool = PgPoolOptions::new()
@@ -1837,5 +2018,10 @@ mod tests {
             Err(DbError::InvalidData(message))
                 if message == "comment writes require at least two database pool connections"
         ));
+    }
+
+    fn test_cursor_codec() -> OpaqueCursorCodec {
+        let key = STANDARD.encode([0x63; 32]);
+        OpaqueCursorCodec::parse_keyring(&format!("comment_scope:{key}")).unwrap()
     }
 }

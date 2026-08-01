@@ -1,5 +1,5 @@
 [package]
-name = "db"
+name = "opaque_cursor"
 publish = false
 version.workspace = true
 edition.workspace = true
@@ -8,20 +8,14 @@ rust-version.workspace = true
 
 [dependencies]
 base64.workspace = true
-chrono.workspace = true
-domain.workspace = true
-jobs.workspace = true
-opaque_cursor.workspace = true
-pgvector.workspace = true
-regex.workspace = true
+ring.workspace = true
+secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sqlx.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
-tracing.workspace = true
-url.workspace = true
-uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

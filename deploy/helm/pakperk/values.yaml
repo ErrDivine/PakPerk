@@ -31,6 +31,7 @@ secret:
   llmApiKeyKey: LLM_API_KEY
   commentModerationTokenKey: COMMENT_MODERATION_TOKEN
   apiOriginHashKey: API_ORIGIN_HASH_SECRET
+  apiCursorEncryptionKeysKey: API_CURSOR_ENCRYPTION_KEYS
   identityFingerprintKeysKey: ACCOUNT_IDENTITY_FINGERPRINT_KEYS
   deletionLedgerSigningKeysKey: ACCOUNT_DELETION_LEDGER_SIGNING_KEYS
   deletionProviderIdentityKeysKey: ACCOUNT_DELETION_PROVIDER_IDENTITY_KEYS

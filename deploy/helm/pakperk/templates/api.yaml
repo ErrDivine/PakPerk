@@ -94,6 +94,7 @@ spec:
             {{- end }}
             - { name: COMMENT_SUPPORT_CONTACT_URL, value: {{ printf "%s/support/" .Values.public.siteOrigin | quote }} }
             - { name: API_ORIGIN_HASH_SECRET_FILE, value: "/var/run/pakperk-secrets/API_ORIGIN_HASH_SECRET" }
+            - { name: API_CURSOR_ENCRYPTION_KEYS_FILE, value: "/var/run/pakperk-secrets/API_CURSOR_ENCRYPTION_KEYS" }
             - { name: API_TRUSTED_PROXY_CIDRS, value: {{ join "," .Values.api.trustedProxyCidrs | quote }} }
             {{- if .Values.features.accounts }}
             - { name: ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE, value: "/var/run/pakperk-secrets/ACCOUNT_IDENTITY_FINGERPRINT_KEYS" }

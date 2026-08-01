@@ -268,6 +268,7 @@ for required in \
   'MOBILE_TELEMETRY_UPSTREAM_URL' \
   'ACCOUNT_DELETION_PROVIDER_IDENTITY_KEYS_FILE' \
   'ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE' \
+  'API_CURSOR_ENCRYPTION_KEYS_FILE' \
   'PAKPERK_MIGRATION_BACKUP_ID'; do
   grep -Fq "$required" "$rendered"
 done
@@ -295,6 +296,7 @@ for exact_edge_setting in \
   fi
 done
 grep -Fq 'name: API_ORIGIN_HASH_SECRET_FILE' "$rendered"
+grep -Fq 'name: API_CURSOR_ENCRYPTION_KEYS_FILE' "$rendered"
 grep -Fq 'name: API_TRUSTED_PROXY_CIDRS' "$rendered"
 grep -Fq 'documentVersion: "2026-07-31"' "$rendered"
 grep -Fq 'name: CURRENT_TERMS_VERSION, value: "2026-07-31"' "$rendered"
@@ -734,7 +736,7 @@ PY
 
 expect_template_rejection \
   "a missing ingress-controller namespace selector" \
-  "namespaceSelector is required" \
+  "missing property 'namespaceSelector'" \
   --values "$fixture" \
   --set-json 'networkPolicy.ingressController.namespaceSelector=null'
 expect_template_rejection \
@@ -745,7 +747,7 @@ expect_template_rejection \
   --set-json 'networkPolicy.ingressController.namespaceSelector=null'
 expect_template_rejection \
   "a missing ingress-controller pod selector" \
-  "podSelector is required" \
+  "missing property 'podSelector'" \
   --values "$fixture" \
   --set-json 'networkPolicy.ingressController.podSelector=null'
 expect_template_rejection \
@@ -788,7 +790,7 @@ expect_template_rejection \
   --set-json 'api.trustedProxyCidrs=["abc"]'
 expect_template_rejection \
   "more trusted-proxy CIDRs than the API runtime accepts" \
-  "api.trustedProxyCidrs: Array must have at most 64 items" \
+  "at '/api/trustedProxyCidrs': maxItems: got 65, want 64" \
   --values "$fixture" \
   --set-json "api.trustedProxyCidrs=$trusted_proxy_overflow_json"
 expect_template_rejection \
@@ -848,7 +850,7 @@ expect_template_rejection \
   --set-string paperWorker.llmBaseUrl=https://model.staging.pakperk.app:8443/v1/
 expect_template_rejection \
   "an invalid OCI backend repository" \
-  "image.repository: Does not match pattern" \
+  "at '/image/repository': 'bad repo' does not match pattern" \
   --values "$fixture" \
   --set-string 'image.repository=bad repo'
 for repository_path in image.repository siteImage.repository grobid.image.repository otelCollector.image.repository; do
@@ -861,7 +863,7 @@ for repository_path in image.repository siteImage.repository grobid.image.reposi
 done
 expect_template_rejection \
   "an OCI repository above the distribution reference-name limit" \
-  "image.repository: String length must be less than or equal to 255" \
+  "at '/image/repository': maxLength:" \
   --values "$fixture" \
   --set-string "image.repository=$long_oci_repository"
 expect_template_rejection \
@@ -1058,7 +1060,7 @@ expect_template_rejection \
   --set deletionWorker.retryMaxSeconds=10
 expect_template_rejection \
   "a deletion-worker step timeout above the runtime maximum" \
-  "deletionWorker.stepTimeoutSeconds: Must be less than or equal to 1800" \
+  "at '/deletionWorker/stepTimeoutSeconds': maximum:" \
   --values "$fixture" \
   --set deletionWorker.stepTimeoutSeconds=1801 \
   --set deletionWorker.leaseSeconds=1803 \
@@ -1079,7 +1081,7 @@ expect_template_rejection \
   --set deletionLedger.securityRetentionDays=400
 expect_template_rejection \
   "a migration version different from the release binary" \
-  "migration.expectedVersion: Must be less than or equal to 10" \
+  "at '/migration/expectedVersion': maximum:" \
   --values "$fixture" \
   --set migration.expectedVersion=11
 expect_template_rejection \
@@ -1095,7 +1097,7 @@ expect_template_rejection \
   --set-string migration.confirmBackupId=todo-backup-20260801
 expect_template_rejection \
   "an invalid metadata-sync Cron schedule" \
-  "metadataSync.schedule: Does not match pattern" \
+  "at '/metadataSync/schedule':" \
   --values "$fixture" \
   --set-string metadataSync.schedule=not-a-cron
 expect_template_rejection \
@@ -1148,7 +1150,7 @@ expect_template_rejection \
   --set-string policy.communityGuidelinesVersion=2026-08-01
 expect_template_rejection \
   "a mutable non-content-addressed release-evidence reference" \
-  "releaseEvidence.legalReviewId: Does not match pattern" \
+  "at '/releaseEvidence/legalReviewId':" \
   --values "$fixture" \
   --set-string releaseEvidence.legalReviewId=change-123
 expect_template_rejection \
@@ -1168,7 +1170,7 @@ expect_template_rejection \
   --set api.commentModerationProvider=http
 expect_template_rejection \
   "an HTTP moderation provider over plaintext" \
-  "api.commentModerationUrl: Does not match pattern" \
+  "at '/api/commentModerationUrl':" \
   --values "$fixture" \
   --set api.commentModerationProvider=http \
   --set-string api.commentModerationUrl=http://moderation.staging.pakperk.app/v1/evaluate

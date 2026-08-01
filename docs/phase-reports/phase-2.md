@@ -140,12 +140,16 @@ categories, comments, cursors, and raw identifiers from being attached.
 ## Conditional feed transport
 
 The Rust feed endpoint returns an opaque weak ETag derived with SHA-256 over
-the complete query representation and every public response field. The tag
-does not expose database IDs or timestamps directly. Successful and unchanged
-responses include:
+the complete query representation, every public paper field, next-page
+presence, and a non-secret epoch for the active cursor-encryption key. Random
+cursor ciphertext is excluded so repeated responses remain semantically
+stable, while key promotion changes the epoch and forces a `200` carrying a
+fresh cursor before the old key is retired. The tag does not expose database
+IDs, timestamps, or key material directly. Successful and unchanged responses
+include:
 
 ```text
-ETag: W/"pp-feed-v1-..."
+ETag: W/"pp-feed-v2-..."
 Cache-Control: public, max-age=60, stale-while-revalidate=300
 ```
 

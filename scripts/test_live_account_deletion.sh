@@ -76,6 +76,7 @@ work_dir="$(mktemp -d "${TMPDIR:-/tmp}/pakperk-live-account-deletion.XXXXXX")"
 umask 077
 state_file="$work_dir/state.json"
 origin_secret="$work_dir/api-origin-secret"
+cursor_keys="$work_dir/api-cursor-encryption-keys"
 identity_keys="$work_dir/account-identity-fingerprint-keys"
 signing_keys="$work_dir/account-deletion-signing-keys"
 provider_keys="$work_dir/account-deletion-provider-keys"
@@ -85,10 +86,11 @@ api_log="$work_dir/api.log"
 worker_log="$work_dir/worker.log"
 mkdir -m 0700 "$ledger_directory"
 openssl rand -hex 48 >"$origin_secret"
+printf 'live-account-deletion-cursor:%s\n' "$(openssl rand -base64 32 | tr -d '\n')" >"$cursor_keys"
 printf 'live-account-deletion-current:%s\n' "$(openssl rand -base64 48 | tr -d '\n')" >"$identity_keys"
 printf 'live-account-deletion-signing:%s\n' "$(openssl rand -base64 48 | tr -d '\n')" >"$signing_keys"
 printf 'live-account-deletion-provider:%s\n' "$(openssl rand -base64 48 | tr -d '\n')" >"$provider_keys"
-chmod 0600 "$origin_secret" "$identity_keys" "$signing_keys" "$provider_keys"
+chmod 0600 "$origin_secret" "$cursor_keys" "$identity_keys" "$signing_keys" "$provider_keys"
 
 run_id="$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
 token_sentinel="PAKPERK_DELETION_TOKEN_SENTINEL_${run_id}"
@@ -312,6 +314,7 @@ env -i \
   ACCOUNT_DELETION_LEDGER_RETENTION_DAYS=400 \
   ACCOUNT_RECOVERABLE_BACKUP_DAYS=35 \
   API_ORIGIN_HASH_SECRET_FILE="$origin_secret" \
+  API_CURSOR_ENCRYPTION_KEYS_FILE="$cursor_keys" \
   OIDC_ISSUER_URL="$issuer" \
   OIDC_AUDIENCE=pakperk-api \
   OIDC_ALLOWED_ALGORITHMS=RS256 \

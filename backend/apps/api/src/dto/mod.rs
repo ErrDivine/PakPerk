@@ -89,9 +89,11 @@ mod tests {
             serde_json::from_str::<ReportCommentBody>(r#"{"reason":"dislike","detail":null}"#)
                 .is_err()
         );
-        assert!(
-            serde_json::from_str::<ReportCommentBody>(r#"{"reason":"privacy"}"#).is_err(),
-            "the code-first contract requires an explicit string or null detail"
+        assert_eq!(
+            serde_json::from_str::<ReportCommentBody>(r#"{"reason":"privacy"}"#)
+                .unwrap()
+                .detail,
+            None,
         );
 
         let user_report: ReportUserBody = serde_json::from_str(
@@ -105,9 +107,11 @@ mod tests {
             serde_json::from_str::<ReportUserBody>(r#"{"reason":"impersonation","detail":null}"#,)
                 .is_ok()
         );
-        assert!(
-            serde_json::from_str::<ReportUserBody>(r#"{"reason":"impersonation"}"#).is_err(),
-            "the user-report decoder must match its required-nullable OpenAPI field"
+        assert_eq!(
+            serde_json::from_str::<ReportUserBody>(r#"{"reason":"impersonation"}"#)
+                .unwrap()
+                .detail,
+            None,
         );
         assert!(
             serde_json::from_str::<ReportUserBody>(

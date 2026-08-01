@@ -853,27 +853,31 @@ mod tests {
                 "other"
             ])
         );
+        assert_optional_report_detail(&document, "ReportCommentBody");
         let user_report = &document["paths"]["/v1/users/{user_id}/reports"]["post"];
         assert!(
             user_report["description"]
                 .as_str()
                 .is_some_and(|value| value.contains("independent from blocking"))
         );
-        let user_report_body = &document["components"]["schemas"]["ReportUserBody"];
-        assert_eq!(user_report_body["additionalProperties"], false);
-        let required = user_report_body["required"].as_array().unwrap();
-        for field in ["reason", "detail"] {
-            assert!(required.iter().any(|required| required == field));
-        }
-        assert_eq!(
-            user_report_body["properties"]["detail"]["type"],
-            json!(["string", "null"])
-        );
+        assert_optional_report_detail(&document, "ReportUserBody");
         let user_report_properties =
             &document["components"]["schemas"]["UserReportResponse"]["properties"];
         assert!(user_report_properties["reported_user_id"].is_object());
         assert!(user_report_properties.get("comment_id").is_none());
         assert!(user_report_properties.get("blocked_user").is_none());
+    }
+
+    fn assert_optional_report_detail(document: &serde_json::Value, schema: &str) {
+        let body = &document["components"]["schemas"][schema];
+        assert_eq!(body["additionalProperties"], false);
+        let required = body["required"].as_array().unwrap();
+        assert!(required.iter().any(|required| required == "reason"));
+        assert!(!required.iter().any(|required| required == "detail"));
+        assert_eq!(
+            body["properties"]["detail"]["type"],
+            json!(["string", "null"])
+        );
     }
 
     #[test]

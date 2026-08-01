@@ -20,7 +20,7 @@ pub use app::{AppState, build_router};
 pub use auth_bootstrap::{initialize_auth_runtime, spawn_auth_recovery};
 pub use config::{
     AccountFeatureConfig, ApiConfig, ApiEnvironment, ApiModelConfig, CommentFeatureConfig,
-    FeatureFlags, LibraryFeatureConfig, RequestOriginConfig,
+    CursorConfig, FeatureFlags, LibraryFeatureConfig, RequestOriginConfig,
 };
 pub use deletion_config::AccountDeletionFeatureConfig;
 pub use maintenance::{

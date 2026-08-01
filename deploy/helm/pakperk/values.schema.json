@@ -28,7 +28,7 @@
       "required": [
         "existingSecret", "rotationVersion", "apiDatabaseUrlKey", "paperWorkerDatabaseUrlKey",
         "metadataSyncDatabaseUrlKey", "deletionWorkerDatabaseUrlKey", "migrationDatabaseUrlKey", "llmApiKeyKey",
-        "commentModerationTokenKey", "apiOriginHashKey", "identityFingerprintKeysKey",
+        "commentModerationTokenKey", "apiOriginHashKey", "apiCursorEncryptionKeysKey", "identityFingerprintKeysKey",
         "deletionLedgerSigningKeysKey", "deletionProviderIdentityKeysKey", "oidcAdminClientSecretKey",
         "telemetryExporterHeadersKey"
       ],
@@ -43,6 +43,7 @@
         "llmApiKeyKey": { "$ref": "#/definitions/secretKey" },
         "commentModerationTokenKey": { "$ref": "#/definitions/secretKey" },
         "apiOriginHashKey": { "$ref": "#/definitions/secretKey" },
+        "apiCursorEncryptionKeysKey": { "$ref": "#/definitions/secretKey" },
         "identityFingerprintKeysKey": { "$ref": "#/definitions/secretKey" },
         "deletionLedgerSigningKeysKey": { "$ref": "#/definitions/secretKey" },
         "deletionProviderIdentityKeysKey": { "$ref": "#/definitions/secretKey" },

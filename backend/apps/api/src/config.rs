@@ -13,12 +13,14 @@ use accounts::{AccountPolicy, AccountPolicyError, IdentityFingerprintKeyring};
 use arxiv_client::ArxivClientConfig;
 use auth::{OidcAlgorithm, OidcVerifierConfig};
 use axum::http::{HeaderMap, HeaderValue};
+use base64::Engine as _;
 use domain::{
     COMMENT_MAX_BYTES, COMMENT_MAX_SCALARS, COMMENT_MAX_URLS, CommunityGuidelinesVersion,
     FulltextPolicy, TermsVersion,
 };
 use llm_provider::OpenAiCompatibleConfig;
 use moderation::HttpModerationConfig;
+use opaque_cursor::OpaqueCursorCodec;
 use secrecy::{ExposeSecret as _, SecretString};
 use sha2::{Digest as _, Sha256};
 use url::{Host, Url};
@@ -116,6 +118,9 @@ pub struct ApiConfig {
     /// Shared trusted-proxy boundary and keyed request-origin pseudonym used
     /// by public expensive-operation and UGC rate limits.
     pub request_origin: RequestOriginConfig,
+    /// Deployment-shared rotating encryption keys for every externally
+    /// visible pagination cursor.
+    pub cursors: CursorConfig,
     pub bind: SocketAddr,
     pub database_url: String,
     pub database_pool_size: u32,
@@ -131,6 +136,59 @@ pub struct ApiConfig {
     pub llm: Option<ApiModelConfig>,
     pub prepare_requests_per_minute: u32,
     pub chat_requests_per_minute: u32,
+}
+
+#[derive(Clone)]
+pub struct CursorConfig {
+    codec: OpaqueCursorCodec,
+}
+
+impl fmt::Debug for CursorConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CursorConfig")
+            .field("codec", &"[redacted]")
+            .finish()
+    }
+}
+
+impl CursorConfig {
+    fn from_env() -> anyhow::Result<Self> {
+        let path = required_api_secret_file_env("API_CURSOR_ENCRYPTION_KEYS_FILE")?;
+        Ok(Self {
+            codec: OpaqueCursorCodec::load_keyring(Path::new(&path))?,
+        })
+    }
+
+    /// Deterministic isolated key material for tests and local embedders.
+    /// Deployed configuration always loads an owner-only rotating keyring.
+    pub fn for_local_development(seed: &str) -> anyhow::Result<Self> {
+        let normalized = seed.trim();
+        if normalized.len() < 16 || normalized.len() > 4_096 {
+            anyhow::bail!("local cursor seed must contain 16 to 4096 non-whitespace bytes");
+        }
+        let key = Sha256::digest(
+            [
+                b"pakperk/local-cursor/v1\0".as_slice(),
+                normalized.as_bytes(),
+            ]
+            .concat(),
+        );
+        Ok(Self {
+            codec: OpaqueCursorCodec::parse_keyring(&format!(
+                "local_cursor:{}",
+                base64::engine::general_purpose::STANDARD.encode(key)
+            ))?,
+        })
+    }
+
+    pub(crate) fn codec(&self) -> OpaqueCursorCodec {
+        self.codec.clone()
+    }
+
+    pub(crate) fn active_key_epoch(&self) -> [u8; 32] {
+        self.codec.active_key_epoch()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -976,6 +1034,7 @@ impl ApiConfig {
         }
         .validate()?;
         let request_origin = RequestOriginConfig::from_env(environment)?;
+        let cursors = CursorConfig::from_env()?;
         let accounts = features
             .accounts
             .then(|| AccountFeatureConfig::from_env(environment, true))
@@ -1061,6 +1120,7 @@ impl ApiConfig {
             comments,
             account_deletion,
             request_origin,
+            cursors,
             bind,
             database_url,
             database_pool_size: env_parse("DATABASE_POOL_SIZE", 10_u32)?,
@@ -1226,6 +1286,13 @@ fn required_request_origin_env(name: &str) -> anyhow::Result<String> {
         .ok()
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| anyhow::anyhow!("{name} is required for shared public rate limits"))
+}
+
+fn required_api_secret_file_env(name: &str) -> anyhow::Result<String> {
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| anyhow::anyhow!("{name} is required for opaque API cursors"))
 }
 
 fn validate_oidc_issuer_environment(
@@ -1592,6 +1659,37 @@ mod tests {
                 .is_err()
         );
         assert!(RequestOriginConfig::for_local_development(&"x".repeat(64)).is_err());
+    }
+
+    #[test]
+    fn local_cursor_configuration_is_replica_stable_and_redacted() {
+        let first =
+            CursorConfig::for_local_development("shared-local-cursor-configuration-seed").unwrap();
+        let replica =
+            CursorConfig::for_local_development("shared-local-cursor-configuration-seed").unwrap();
+        let other =
+            CursorConfig::for_local_development("different-local-cursor-configuration-seed")
+                .unwrap();
+        let token = first
+            .codec()
+            .seal("feed.v1", b"cs.AI", &serde_json::json!({"position": 7}))
+            .unwrap();
+
+        assert_eq!(
+            replica
+                .codec()
+                .open::<serde_json::Value>("feed.v1", b"cs.AI", &token)
+                .unwrap(),
+            serde_json::json!({"position": 7})
+        );
+        assert!(
+            other
+                .codec()
+                .open::<serde_json::Value>("feed.v1", b"cs.AI", &token)
+                .is_err()
+        );
+        assert!(!format!("{first:?}").contains(&token));
+        assert!(format!("{first:?}").contains("[redacted]"));
     }
 
     #[test]
@@ -2037,6 +2135,8 @@ mod tests {
             .unwrap()
             .with_trusted_proxy_cidrs("10.244.0.0/16")
             .unwrap(),
+            cursors: CursorConfig::for_local_development("production-config-cursor-test-seed")
+                .unwrap(),
             bind: "0.0.0.0:8080".parse().unwrap(),
             database_url: "postgresql://api@database/pakperk".to_owned(),
             database_pool_size: 10,

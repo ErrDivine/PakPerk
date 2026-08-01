@@ -8,7 +8,7 @@ and secret material are deliberately external.
 The external Secret must expose a different key for every component database
 URL and every purpose-specific credential; reusing one key for two consumers
 is rejected even when neither value is a database URL. This keeps database,
-model, comment-moderation, request-origin, identity, deletion-ledger, provider-encryption, OIDC
+model, comment-moderation, request-origin, cursor-encryption, identity, deletion-ledger, provider-encryption, OIDC
 admin, and telemetry credentials independently grantable and rotatable. When
 account deletion is enabled the Secret must
 also contain rotation-ordered owner-only keyrings for identity fingerprints,
@@ -18,6 +18,19 @@ ledger signing, and provider-coordinate encryption
 as well as the deletion worker's confidential OIDC admin secret. Retain legacy
 verification/decryption keys until every corresponding ledger record and
 recoverable backup has passed final purge.
+The API cursor keyring uses the same rotation-ordered
+`key_id:base64(32 random bytes)` format: the first key encrypts newly issued
+cursors and retained legacy keys decrypt cursors issued before a rollout. A
+rolling rotation is deliberately two phase: append the candidate key and roll
+all API replicas and operator jobs while the old key remains first; then move
+the candidate to the first line, increment `secret.rotationVersion` again, and
+roll every consumer a second time. Retain the old key until its cursor window
+has expired. Promotion also changes a non-secret feed-validator epoch. Before
+removing the old key, verify the second rollout is complete and a conditional
+first-page request with a pre-promotion ETag returns `200` plus a cursor that
+paginates under the promoted keyring. This ordering prevents either half of a
+mixed-version rollout from issuing a cursor that the other half cannot decrypt
+and prevents a `304` from preserving a cursor after its key is retired.
 The Keycloak service account must have exactly the realm's
 `realm-management/manage-users` grant. Deletion-worker readiness remains false
 until a bounded reserved-user 404 and a bounded empty exact-ID query prove that
@@ -157,7 +170,9 @@ sequence in the release image. Do not replace it with `install -o/-g`, relax
 file modes, or run the application as root.
 
 Rotate the external Secret, verify every new/retained keyring and credential,
-then increment `secret.rotationVersion` to force a rollout. Keep old identity
+then increment `secret.rotationVersion` to force a rollout. Cursor encryption
+uses the two-phase append-then-promote rollout above, including a distinct
+rotation-version increment for each phase. Keep old identity
 fingerprint, ledger signature, and provider-coordinate decryption keys until
 every bound record and recoverable backup has expired or completed an evidenced
 purge. Model, comment-moderation, OIDC admin, telemetry exporter, and request-origin credentials can

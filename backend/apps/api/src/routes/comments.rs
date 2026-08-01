@@ -908,6 +908,10 @@ mod tests {
                 "strong-comment-origin-test-secret-0123456789",
             )
             .unwrap(),
+            cursors: crate::config::CursorConfig::for_local_development(
+                "comment-route-cursor-test-seed",
+            )
+            .unwrap(),
             bind: "127.0.0.1:0".parse().unwrap(),
             database_url: "postgres://test:test@127.0.0.1/test".to_owned(),
             database_pool_size: 1,

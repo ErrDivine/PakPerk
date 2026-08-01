@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::{TimeDelta, Utc};
 use db::{
     AdminCommentAction, AdminReportResolution, AdminUserStatusOutcome, CommentCreateOutcome,
@@ -20,7 +21,10 @@ async fn postgres_comments_idempotency_permissions_pagination_and_moderation() {
         eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL comment coverage");
         return;
     };
-    let database = Database::connect(&database_url, 16).await.unwrap();
+    let database = Database::connect(&database_url, 16)
+        .await
+        .unwrap()
+        .with_cursor_codec(test_cursor_codec());
     database.migrate_embedded().await.unwrap();
 
     let unique = Uuid::now_v7().simple().to_string();
@@ -578,6 +582,11 @@ fn found_comments(outcome: CommentReadOutcome<domain::CommentPage>) -> domain::C
         CommentReadOutcome::Found(page) => page,
         other => panic!("expected comment page, got {other:?}"),
     }
+}
+
+fn test_cursor_codec() -> opaque_cursor::OpaqueCursorCodec {
+    let key = STANDARD.encode([0x62; 32]);
+    opaque_cursor::OpaqueCursorCodec::parse_keyring(&format!("comments_test:{key}")).unwrap()
 }
 
 fn metadata(base_id: &str) -> PaperMetadata {

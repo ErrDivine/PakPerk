@@ -529,6 +529,7 @@ dependencies = [
  "chrono",
  "domain",
  "jobs",
+ "opaque_cursor",
  "pgvector",
  "regex",
  "serde",
@@ -1556,6 +1557,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
+name = "opaque_cursor"
+version = "0.2.0"
+dependencies = [
+ "base64",
+ "ring",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1640,6 +1654,7 @@ dependencies = [
  "domain",
  "moderation",
  "observability",
+ "opaque_cursor",
  "serde",
  "serde_json",
  "tempfile",
@@ -1671,6 +1686,7 @@ dependencies = [
  "llm_provider",
  "moderation",
  "observability",
+ "opaque_cursor",
  "pgvector",
  "rand 0.9.5",
  "retrieval",

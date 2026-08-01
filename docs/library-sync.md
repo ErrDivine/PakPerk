@@ -76,7 +76,9 @@ only active items:
 
 `state` must be exactly `to_read`. `limit` is bounded by the API and cursors
 are opaque: clients must return them unchanged and must not construct or
-inspect them. The first page captures a committed, account-scoped
+inspect them. Their coordinates and revision fence are AES-256-GCM encrypted,
+authenticated, and bound to the account plus library state, so a token cannot
+be forged or replayed into another account's walk. The first page captures a committed, account-scoped
 `sync_revision`; every `next_cursor` carries that revision fence, and every
 later page repeats the same revision. Rows whose current canonical revision
 advances beyond the fence are excluded from later pages. Because the server

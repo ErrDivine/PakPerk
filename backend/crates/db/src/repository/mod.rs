@@ -15,6 +15,7 @@ use domain::{
     ReferenceResolutionStatus, RelationType, SectionKind,
 };
 use jobs::JobKind;
+use opaque_cursor::OpaqueCursorCodec;
 use pgvector::Vector;
 use regex::Regex;
 use serde_json::Value;
@@ -24,7 +25,7 @@ use tracing::{debug, info, instrument};
 use url::Url;
 use uuid::Uuid;
 
-use crate::FeedCursor;
+use crate::{CursorError, FeedCursor};
 
 mod account_deletion;
 mod accounts;
@@ -93,6 +94,8 @@ pub enum DbError {
     InvalidUrl(#[from] url::ParseError),
     #[error("persisted data is invalid: {0}")]
     InvalidData(String),
+    #[error("cursor operation failed")]
+    Cursor(#[from] CursorError),
     #[error("paper generation changed while work was in progress")]
     StaleGeneration,
     #[error("requested chat thread is not owned by this session and paper")]
@@ -104,6 +107,7 @@ pub enum DbError {
 #[derive(Clone)]
 pub struct Database {
     pool: PgPool,
+    cursor_codec: Option<OpaqueCursorCodec>,
 }
 
 impl Database {
@@ -115,12 +119,26 @@ impl Database {
             .idle_timeout(Duration::from_secs(300))
             .connect(database_url)
             .await?;
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            cursor_codec: None,
+        })
     }
 
     #[must_use]
     pub const fn from_pool(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            cursor_codec: None,
+        }
+    }
+
+    /// Installs the deployment-shared rotating cursor keyring. Cursor-bearing
+    /// operations fail closed until application composition supplies it.
+    #[must_use]
+    pub fn with_cursor_codec(mut self, cursor_codec: OpaqueCursorCodec) -> Self {
+        self.cursor_codec = Some(cursor_codec);
+        self
     }
 
     #[must_use]
@@ -185,7 +203,7 @@ impl Database {
 
     #[must_use]
     pub fn papers(&self) -> PaperRepository {
-        PaperRepository::new(self.pool.clone())
+        PaperRepository::with_cursor_codec(self.pool.clone(), self.cursor_codec.clone())
     }
 
     #[must_use]
@@ -200,17 +218,17 @@ impl Database {
 
     #[must_use]
     pub fn library(&self) -> LibraryRepository {
-        LibraryRepository::new(self.pool.clone())
+        LibraryRepository::with_cursor_codec(self.pool.clone(), self.cursor_codec.clone())
     }
 
     #[must_use]
     pub fn comments(&self) -> CommentRepository {
-        CommentRepository::new(self.pool.clone())
+        CommentRepository::with_cursor_codec(self.pool.clone(), self.cursor_codec.clone())
     }
 
     #[must_use]
     pub fn moderation(&self) -> ModerationRepository {
-        ModerationRepository::new(self.pool.clone())
+        ModerationRepository::with_cursor_codec(self.pool.clone(), self.cursor_codec.clone())
     }
 
     #[must_use]
@@ -288,17 +306,34 @@ pub struct VerificationMetrics {
 #[derive(Clone)]
 pub struct PaperRepository {
     pool: PgPool,
+    cursor_codec: Option<OpaqueCursorCodec>,
 }
 
 impl PaperRepository {
     #[must_use]
     pub const fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            cursor_codec: None,
+        }
+    }
+
+    fn with_cursor_codec(pool: PgPool, cursor_codec: Option<OpaqueCursorCodec>) -> Self {
+        Self { pool, cursor_codec }
     }
 
     #[must_use]
     pub fn pool(&self) -> &PgPool {
         &self.pool
+    }
+
+    pub fn decode_feed_cursor(
+        &self,
+        category: Option<&str>,
+        value: &str,
+    ) -> Result<FeedCursor, CursorError> {
+        let codec = self.cursor_codec.as_ref().ok_or(CursorError::Unavailable)?;
+        FeedCursor::decode(codec, category, value)
     }
 }
 

@@ -4348,8 +4348,7 @@
       "ReportCommentBody": {
         "type": "object",
         "required": [
-          "reason",
-          "detail"
+          "reason"
         ],
         "properties": {
           "detail": {
@@ -4369,8 +4368,7 @@
       "ReportUserBody": {
         "type": "object",
         "required": [
-          "reason",
-          "detail"
+          "reason"
         ],
         "properties": {
           "detail": {

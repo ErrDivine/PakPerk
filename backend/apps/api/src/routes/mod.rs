@@ -10,7 +10,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
 };
-use db::{CursorError, DbError, FeedCursor, FeedQuery};
+use db::{CursorError, DbError, FeedQuery};
 use domain::{
     Capabilities, FailureCategory, FulltextPolicy, OverallProcessingState, Paper, PaperSummary,
     ProcessingError, ProcessingStage, ProcessingState,
@@ -542,6 +542,10 @@ mod tests {
             account_deletion: None,
             request_origin: crate::config::RequestOriginConfig::for_local_development(
                 "route-test-request-origin-secret-0123456789",
+            )
+            .unwrap(),
+            cursors: crate::config::CursorConfig::for_local_development(
+                "route-module-cursor-test-seed",
             )
             .unwrap(),
             bind: SocketAddr::from(([127, 0, 0, 1], 0)),

@@ -1172,6 +1172,10 @@ fn api_config(
         account_deletion: Some(deletion),
         request_origin: RequestOriginConfig::for_local_development(&request_origin_secret(unique))
             .unwrap(),
+        cursors: pakperk_api::CursorConfig::for_local_development(&format!(
+            "authenticated-api-cursor-{unique}-seed"
+        ))
+        .unwrap(),
         bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
         database_url,
         database_pool_size: 16,

@@ -5,12 +5,16 @@ use domain::{
     AccountStatus, AuthenticatedUserId, CommentBody, CommentReportReason, CommentStatus, PaperId,
     ReportDetail,
 };
+use opaque_cursor::OpaqueCursorCodec;
 use serde_json::json;
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 use super::DbError;
-use crate::CreatedAtCursor;
+use crate::cursor::{
+    CreatedAtCursor, MODERATION_COMMENTS_CURSOR_PURPOSE, MODERATION_REPORTS_CURSOR_PURPOSE,
+    MODERATION_USER_REPORTS_CURSOR_PURPOSE,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoredAdminActor {
@@ -349,12 +353,20 @@ struct MetricsRow {
 #[derive(Clone)]
 pub struct ModerationRepository {
     pool: PgPool,
+    cursor_codec: Option<OpaqueCursorCodec>,
 }
 
 impl ModerationRepository {
     #[must_use]
     pub const fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            cursor_codec: None,
+        }
+    }
+
+    pub(super) fn with_cursor_codec(pool: PgPool, cursor_codec: Option<OpaqueCursorCodec>) -> Self {
+        Self { pool, cursor_codec }
     }
 
     #[must_use]
@@ -367,10 +379,13 @@ impl ModerationRepository {
         cursor: Option<&str>,
         limit: u32,
     ) -> Result<StoredModerationQueuePage, DbError> {
-        let cursor = cursor
-            .map(CreatedAtCursor::decode)
-            .transpose()
-            .map_err(|_| DbError::InvalidData("moderation cursor is invalid".to_owned()))?;
+        let cursor = decode_moderation_cursor(
+            self.cursor_codec.as_ref(),
+            MODERATION_COMMENTS_CURSOR_PURPOSE,
+            b"pending_review",
+            cursor,
+        )
+        .map_err(|error| moderation_cursor_error("moderation", error))?;
         let page_size = limit.max(1);
         let rows = sqlx::query_as::<_, ModerationQueueRow>(
             r"
@@ -410,14 +425,20 @@ impl ModerationRepository {
         if has_more {
             items.pop();
         }
-        let next_cursor = has_more.then(|| {
-            let last = items.last().expect("a page with more items is non-empty");
-            CreatedAtCursor {
-                created_at: last.created_at,
-                id: last.comment_id,
-            }
-            .encode()
-        });
+        let next_cursor = has_more
+            .then(|| {
+                let last = items.last().expect("a page with more items is non-empty");
+                encode_moderation_cursor(
+                    self.cursor_codec.as_ref(),
+                    MODERATION_COMMENTS_CURSOR_PURPOSE,
+                    b"pending_review",
+                    CreatedAtCursor {
+                        created_at: last.created_at,
+                        id: last.comment_id,
+                    },
+                )
+            })
+            .transpose()?;
         Ok(StoredModerationQueuePage { items, next_cursor })
     }
 
@@ -432,10 +453,13 @@ impl ModerationRepository {
                 "report status filter is invalid".to_owned(),
             ));
         }
-        let cursor = cursor
-            .map(CreatedAtCursor::decode)
-            .transpose()
-            .map_err(|_| DbError::InvalidData("report cursor is invalid".to_owned()))?;
+        let cursor = decode_moderation_cursor(
+            self.cursor_codec.as_ref(),
+            MODERATION_REPORTS_CURSOR_PURPOSE,
+            status.as_bytes(),
+            cursor,
+        )
+        .map_err(|error| moderation_cursor_error("report", error))?;
         let page_size = limit.max(1);
         let rows = sqlx::query_as::<_, ReportQueueRow>(
             r"
@@ -473,14 +497,20 @@ impl ModerationRepository {
         if has_more {
             items.pop();
         }
-        let next_cursor = has_more.then(|| {
-            let last = items.last().expect("a page with more items is non-empty");
-            CreatedAtCursor {
-                created_at: last.created_at,
-                id: last.report_id,
-            }
-            .encode()
-        });
+        let next_cursor = has_more
+            .then(|| {
+                let last = items.last().expect("a page with more items is non-empty");
+                encode_moderation_cursor(
+                    self.cursor_codec.as_ref(),
+                    MODERATION_REPORTS_CURSOR_PURPOSE,
+                    status.as_bytes(),
+                    CreatedAtCursor {
+                        created_at: last.created_at,
+                        id: last.report_id,
+                    },
+                )
+            })
+            .transpose()?;
         Ok(StoredReportQueuePage { items, next_cursor })
     }
 
@@ -495,10 +525,13 @@ impl ModerationRepository {
                 "user-report status filter is invalid".to_owned(),
             ));
         }
-        let cursor = cursor
-            .map(CreatedAtCursor::decode)
-            .transpose()
-            .map_err(|_| DbError::InvalidData("user-report cursor is invalid".to_owned()))?;
+        let cursor = decode_moderation_cursor(
+            self.cursor_codec.as_ref(),
+            MODERATION_USER_REPORTS_CURSOR_PURPOSE,
+            status.as_bytes(),
+            cursor,
+        )
+        .map_err(|error| moderation_cursor_error("user-report", error))?;
         let page_size = limit.max(1);
         let rows = sqlx::query_as::<_, UserReportQueueRow>(
             r"
@@ -533,14 +566,20 @@ impl ModerationRepository {
         if has_more {
             items.pop();
         }
-        let next_cursor = has_more.then(|| {
-            let last = items.last().expect("a page with more items is non-empty");
-            CreatedAtCursor {
-                created_at: last.created_at,
-                id: last.report_id,
-            }
-            .encode()
-        });
+        let next_cursor = has_more
+            .then(|| {
+                let last = items.last().expect("a page with more items is non-empty");
+                encode_moderation_cursor(
+                    self.cursor_codec.as_ref(),
+                    MODERATION_USER_REPORTS_CURSOR_PURPOSE,
+                    status.as_bytes(),
+                    CreatedAtCursor {
+                        created_at: last.created_at,
+                        id: last.report_id,
+                    },
+                )
+            })
+            .transpose()?;
         Ok(StoredUserReportQueuePage { items, next_cursor })
     }
 
@@ -930,6 +969,37 @@ impl ModerationRepository {
             open_over_24h: row.open_over_24h,
             open_over_72h: row.open_over_72h,
         })
+    }
+}
+
+fn decode_moderation_cursor(
+    cursor_codec: Option<&OpaqueCursorCodec>,
+    purpose: &str,
+    scope: &[u8],
+    cursor: Option<&str>,
+) -> Result<Option<CreatedAtCursor>, crate::CursorError> {
+    cursor
+        .map(|value| {
+            let codec = cursor_codec.ok_or(crate::CursorError::Unavailable)?;
+            CreatedAtCursor::decode(codec, purpose, scope, value)
+        })
+        .transpose()
+}
+
+fn encode_moderation_cursor(
+    cursor_codec: Option<&OpaqueCursorCodec>,
+    purpose: &str,
+    scope: &[u8],
+    cursor: CreatedAtCursor,
+) -> Result<String, crate::CursorError> {
+    let codec = cursor_codec.ok_or(crate::CursorError::Unavailable)?;
+    cursor.encode(codec, purpose, scope)
+}
+
+fn moderation_cursor_error(label: &str, error: crate::CursorError) -> DbError {
+    match error {
+        crate::CursorError::Invalid => DbError::InvalidData(format!("{label} cursor is invalid")),
+        crate::CursorError::Unavailable => DbError::Cursor(error),
     }
 }
 

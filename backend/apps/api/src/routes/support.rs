@@ -284,6 +284,7 @@ fn db_error_kind(error: &DbError) -> &'static str {
         DbError::Migration(_) => "migration",
         DbError::InvalidUrl(_) => "invalid_url",
         DbError::InvalidData(_) => "invalid_data",
+        DbError::Cursor(_) => "cursor",
         DbError::StaleGeneration => "stale_generation",
         DbError::InvalidChatThread => "invalid_chat_thread",
         DbError::IdentityTombstoned => "identity_tombstoned",

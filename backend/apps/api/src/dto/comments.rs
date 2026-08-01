@@ -1,7 +1,7 @@
 use domain::{
     BlockedUser, CommentReportReason, CommentStatus, PaperComment, PublicUser, UserReportReceipt,
 };
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{AccountStatusSchema, format_timestamp};
@@ -100,8 +100,7 @@ impl From<CommentReportReason> for CommentReportReasonBody {
 #[serde(deny_unknown_fields)]
 pub(crate) struct ReportCommentBody {
     pub(crate) reason: CommentReportReasonBody,
-    #[serde(deserialize_with = "required_nullable_string")]
-    #[schema(required = true, nullable, min_length = 1, max_length = 500)]
+    #[schema(nullable, min_length = 1, max_length = 500)]
     pub(crate) detail: Option<String>,
 }
 
@@ -168,16 +167,8 @@ impl From<domain::CommentReportReceipt> for CommentReportEnvelope {
 #[serde(deny_unknown_fields)]
 pub(crate) struct ReportUserBody {
     pub(crate) reason: CommentReportReasonBody,
-    #[serde(deserialize_with = "required_nullable_string")]
-    #[schema(required = true, nullable, min_length = 1, max_length = 500)]
+    #[schema(nullable, min_length = 1, max_length = 500)]
     pub(crate) detail: Option<String>,
-}
-
-fn required_nullable_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    Option::<String>::deserialize(deserializer)
 }
 
 impl std::fmt::Debug for ReportUserBody {

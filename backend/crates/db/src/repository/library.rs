@@ -5,6 +5,7 @@ use domain::{
     AccountStatus, AuthenticatedUserId, LibraryChange, LibraryItem, LibraryState, PaperId,
     PaperSummary, SavedLibraryPaper,
 };
+use opaque_cursor::OpaqueCursorCodec;
 use serde_json::Value;
 use sqlx::{FromRow, PgPool, Postgres, QueryBuilder, Transaction};
 use uuid::Uuid;
@@ -85,12 +86,20 @@ pub enum LibraryChangesOutcome {
 #[derive(Clone)]
 pub struct LibraryRepository {
     pool: PgPool,
+    cursor_codec: Option<OpaqueCursorCodec>,
 }
 
 impl LibraryRepository {
     #[must_use]
     pub const fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            cursor_codec: None,
+        }
+    }
+
+    pub(super) fn with_cursor_codec(pool: PgPool, cursor_codec: Option<OpaqueCursorCodec>) -> Self {
+        Self { pool, cursor_codec }
     }
 
     #[must_use]
@@ -266,9 +275,17 @@ impl LibraryRepository {
         &self,
         user_id: AuthenticatedUserId,
         state: LibraryState,
-        cursor: Option<LibraryCursor>,
+        cursor: Option<&str>,
         limit: u32,
     ) -> Result<LibraryReadOutcome<StoredLibraryPage>, DbError> {
+        let cursor_scope = library_cursor_scope(user_id, state);
+        let cursor = match self.decode_list_cursor(&cursor_scope, cursor) {
+            Ok(cursor) => cursor,
+            Err(crate::CursorError::Invalid) => {
+                return Ok(LibraryReadOutcome::InvalidCursor);
+            }
+            Err(error) => return Err(error.into()),
+        };
         let mut transaction = begin_consistent_read(&self.pool).await?;
         match lock_account_status(&mut transaction, user_id).await? {
             None => return Ok(LibraryReadOutcome::AccountNotFound),
@@ -339,18 +356,7 @@ impl LibraryRepository {
         if has_more {
             rows.pop();
         }
-        let next_cursor = if has_more {
-            rows.last().map(|row| {
-                LibraryCursor {
-                    saved_at: row.saved_at,
-                    paper_id: row.paper_id,
-                    sync_revision,
-                }
-                .encode()
-            })
-        } else {
-            None
-        };
+        let next_cursor = self.encode_next_cursor(&rows, has_more, sync_revision, &cursor_scope)?;
         let items = rows
             .into_iter()
             .map(SavedLibraryPaper::try_from)
@@ -363,6 +369,52 @@ impl LibraryRepository {
             next_cursor,
             sync_revision,
         }))
+    }
+
+    fn decode_list_cursor(
+        &self,
+        scope: &[u8],
+        value: Option<&str>,
+    ) -> Result<Option<LibraryCursor>, crate::CursorError> {
+        let Some(value) = value else {
+            return Ok(None);
+        };
+        let codec = self
+            .cursor_codec
+            .as_ref()
+            .ok_or(crate::CursorError::Unavailable)?;
+        let cursor = LibraryCursor::decode(codec, scope, value)?;
+        if cursor.paper_id.is_nil() || cursor.sync_revision < 0 {
+            return Err(crate::CursorError::Invalid);
+        }
+        Ok(Some(cursor))
+    }
+
+    fn encode_next_cursor(
+        &self,
+        rows: &[LibraryPaperRow],
+        has_more: bool,
+        sync_revision: i64,
+        scope: &[u8],
+    ) -> Result<Option<String>, DbError> {
+        if !has_more {
+            return Ok(None);
+        }
+        let codec = self
+            .cursor_codec
+            .as_ref()
+            .ok_or(crate::CursorError::Unavailable)?;
+        rows.last()
+            .map(|row| {
+                LibraryCursor {
+                    saved_at: row.saved_at,
+                    paper_id: row.paper_id,
+                    sync_revision,
+                }
+                .encode(codec, scope)
+                .map_err(DbError::from)
+            })
+            .transpose()
     }
 
     pub async fn changes(
@@ -559,6 +611,13 @@ impl LibraryRepository {
         transaction.commit().await?;
         Ok(removed_count)
     }
+}
+
+fn library_cursor_scope(user_id: AuthenticatedUserId, state: LibraryState) -> Vec<u8> {
+    let mut scope = Vec::with_capacity(16 + state.as_str().len());
+    scope.extend_from_slice(user_id.into_inner().as_bytes());
+    scope.extend_from_slice(state.as_str().as_bytes());
+    scope
 }
 
 /// Discovers only enough accounts to cover one cleanup batch, then locks their
