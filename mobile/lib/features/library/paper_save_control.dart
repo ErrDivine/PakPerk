@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/account_providers.dart';
 import '../../app/library_providers.dart';
+import '../../core/account/account_profile.dart';
 import '../../core/database/library_dao.dart';
 import '../../core/library/library_models.dart';
 import '../../core/models/paper.dart';
@@ -38,20 +39,38 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
     if (!ref.watch(featureFlagsProvider).library) {
       return const SizedBox.shrink();
     }
-    final value = ref.watch(paperSavedStateProvider(widget.paper.paperId));
+    final displayScope = ref.watch(libraryDisplayScopeProvider);
+    final value = ref.watch(
+      paperSavedStateProvider((
+        accountId: displayScope?.accountId,
+        authEpoch: displayScope?.authEpoch,
+        paperId: widget.paper.paperId,
+      )),
+    );
     final state = value.value ?? const LibrarySavedState.notSaved();
+    final mutationScope = ref.watch(libraryMutationScopeProvider);
+    final readOnlyStatus = ref.watch(libraryReadOnlyAccountStatusProvider);
     return PaperSaveControlView(
       state: state,
       busy: _committing || value.isLoading,
       compact: widget.compact,
-      onPressed: () => unawaited(_toggle(state)),
+      disabledReason: readOnlyStatus == null
+          ? null
+          : _libraryReadOnlyMessage(readOnlyStatus),
+      onPressed:
+          readOnlyStatus != null ||
+              (displayScope != null && mutationScope == null)
+          ? null
+          : () => unawaited(_toggle(state)),
     );
   }
 
   Future<void> _toggle(LibrarySavedState current) async {
     if (_committing) return;
-    final scope = ref.read(libraryDisplayScopeProvider);
+    if (ref.read(libraryReadOnlyAccountStatusProvider) != null) return;
+    final scope = ref.read(libraryMutationScopeProvider);
     if (scope == null) {
+      if (ref.read(libraryDisplayScopeProvider) != null) return;
       final continueToSignIn = await _showSignInRationale();
       if (!mounted || !continueToSignIn) return;
       ref
@@ -127,6 +146,7 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
   }
 
   Future<void> _undoRemoval(ActiveLibraryScope scope) async {
+    if (ref.read(libraryMutationScopeProvider) != scope) return;
     final repository = ref.read(libraryRepositoryProvider);
     final sync = ref.read(librarySyncControllerProvider.notifier);
     try {
@@ -224,6 +244,7 @@ class PaperSaveControlView extends StatelessWidget {
     required this.onPressed,
     this.busy = false,
     this.compact = false,
+    this.disabledReason,
     super.key,
   });
 
@@ -231,6 +252,7 @@ class PaperSaveControlView extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool busy;
   final bool compact;
+  final String? disabledReason;
 
   @override
   Widget build(BuildContext context) {
@@ -263,11 +285,13 @@ class PaperSaveControlView extends StatelessWidget {
       button: true,
       enabled: onPressed != null && !busy,
       label: actionLabel,
-      value: state.syncPending
-          ? 'Waiting to sync'
-          : state.issue?.message ?? (saved ? 'Saved' : 'Not saved'),
+      value:
+          disabledReason ??
+          (state.syncPending
+              ? 'Waiting to sync'
+              : state.issue?.message ?? (saved ? 'Saved' : 'Not saved')),
       child: Tooltip(
-        message: actionLabel,
+        message: disabledReason ?? actionLabel,
         excludeFromSemantics: true,
         child: InkWell(
           key: const ValueKey('paper-save-control'),
@@ -351,3 +375,11 @@ class PaperSaveControlView extends StatelessWidget {
     return Material(color: colorScheme.surfaceContainerLow, child: action);
   }
 }
+
+String _libraryReadOnlyMessage(AccountStatus status) => switch (status) {
+  AccountStatus.suspended => 'Account suspended · To Read is read-only',
+  AccountStatus.deletionPending =>
+    'Account deletion pending · To Read is read-only',
+  AccountStatus.deleted => 'Account deleted · To Read is read-only',
+  AccountStatus.active => 'To Read is read-only',
+};

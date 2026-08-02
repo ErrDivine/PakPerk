@@ -22,7 +22,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts/drill_backup_restore.sh"
 HELPER = ROOT / "scripts/restore_drill_evidence.py"
 SOURCE_REVISION = "a" * 40
-PRIOR_CONTENT_ID = "pakperk-restore-evidence-v1:sha256:" + "b" * 64
+PRIOR_CONTENT_ID = "pakperk-restore-evidence-v2:sha256:" + "b" * 64
+LEDGER_INVENTORY_SHA256 = "sha256:" + "c" * 64
+LOCAL_DELETION_BINDINGS_SHA256 = "sha256:" + "e" * 64
 
 
 FAKE_GIT = r"""
@@ -68,20 +70,44 @@ try:
 except (ValueError, IndexError):
     raise SystemExit(2)
 
+set_search_path = "SET search_path TO public, pg_catalog;"
+verify_search_path = (
+    "pg_catalog.current_setting('search_path') = 'public, pg_catalog'"
+    "\n          AND pg_catalog.current_schema()::pg_catalog.text = 'public';"
+)
+if (
+    query.count(set_search_path) != 1
+    or query.count(verify_search_path) != 1
+    or query.index(set_search_path) > query.index(verify_search_path)
+):
+    raise SystemExit(4)
+print("t")
+
 failure = os.environ.get("FAKE_PSQL_FAILURE", "")
 if "pakperk_restore_drill_guard" in query:
-    if failure == "guard":
+    fractional_guard_is_rejected = (
+        "guard.recovery_point = pg_catalog.date_trunc('second', guard.recovery_point)"
+        in query
+    )
+    if failure == "guard" or (
+        failure == "guard_fractional" and fractional_guard_is_rejected
+    ):
         print("")
     else:
         backup_id = os.environ["PAKPERK_RESTORE_DRILL_BACKUP_ID"]
         recovery_point = os.environ["PAKPERK_RESTORE_DRILL_RECOVERY_POINT"]
         digest = os.environ["PAKPERK_RESTORE_DRILL_ATTESTATION_SHA256"]
+        inventory_digest = os.environ[
+            "PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_INVENTORY_SHA256"
+        ]
         if failure == "guard_backup":
             backup_id = "backup-wrong-protected-record"
         if failure == "guard_recovery":
             recovery_point = "2001-01-01T00:00:00Z"
         if failure == "guard_digest":
             digest = "sha256:" + "0" * 64
+        if failure == "guard_inventory":
+            inventory_digest = "sha256:" + "0" * 64
         marker = os.environ["PAKPERK_RESTORE_DRILL_MARKER"]
         if failure == "guard_marker":
             marker = "restore-wrong-marker"
@@ -91,8 +117,35 @@ if "pakperk_restore_drill_guard" in query:
             "backup_id": backup_id,
             "recovery_point": recovery_point,
             "restore_attestation_sha256": digest,
+            "expected_ledger_inventory_sha256": inventory_digest,
         }))
+elif "pg_catalog.pg_extension" in query:
+    required_extension_fragments = (
+        "('vector')",
+        "('pg_trgm')",
+        "('pgcrypto')",
+        "JOIN pg_catalog.pg_namespace AS namespace",
+        "namespace.oid = extension.extnamespace",
+        "namespace.nspname = 'public'",
+        ") <> 1",
+    )
+    if any(fragment not in query for fragment in required_extension_fragments):
+        raise SystemExit(4)
+    pathlib.Path(os.environ["FAKE_EXTENSION_PREFLIGHT_STATE"]).write_text(
+        "checked", encoding="utf-8"
+    )
+    print("1" if failure == "extension_namespace" else "0")
 elif "json_build_object" in query:
+    if not pathlib.Path(os.environ["FAKE_EXTENSION_PREFLIGHT_STATE"]).is_file():
+        raise SystemExit(4)
+    required_binding_fragments = (
+        "pakperk-local-account-deletion-bindings-v1",
+        "pakperk-local-account-deletion-provider-binding-v1",
+        "pg_catalog.jsonb_build_array",
+        "ORDER BY operation_id",
+    )
+    if any(fragment not in query for fragment in required_binding_fragments):
+        raise SystemExit(4)
     counter_path = pathlib.Path(os.environ["FAKE_PSQL_STATE"])
     count = int(counter_path.read_text(encoding="utf-8")) if counter_path.exists() else 0
     counter_path.write_text(str(count + 1), encoding="utf-8")
@@ -101,6 +154,10 @@ elif "json_build_object" in query:
     before_ledger = int(os.environ.get("FAKE_DB_LEDGER_BEFORE", str(expected)))
     after_ledger = int(os.environ.get("FAKE_DB_LEDGER_AFTER", str(expected)))
     ledger_records = before_ledger if count == 0 else after_ledger
+    bindings_before = os.environ.get(
+        "FAKE_DB_BINDINGS_BEFORE", "sha256:" + "e" * 64
+    )
+    bindings_after = os.environ.get("FAKE_DB_BINDINGS_AFTER", bindings_before)
     snapshot = {
         "migration": 10,
         "users": 1,
@@ -114,17 +171,27 @@ elif "json_build_object" in query:
         "user_blocks": 1,
         "ledger_records": ledger_records,
         "deletion_jobs": 1,
+        "local_deletion_bindings_sha256": (
+            bindings_before if count == 0 else bindings_after
+        ),
         "unfinished_jobs": 0 if phase == "finalize" else 1,
         "terminal_jobs": 0,
+        "matching_restored_users": 0 if phase == "finalize" else 1,
         "unsafe_restored_users": 0,
         "missing_jobs": 0,
     }
+    if failure == "pending_user_final":
+        snapshot["matching_restored_users"] = 1
     if count > 0 and failure == "unsafe_after":
         snapshot["unsafe_restored_users"] = 1
     if count > 0 and failure == "missing_jobs_after":
         snapshot["missing_jobs"] = 1
     if count > 0 and failure == "changed_papers_after":
         snapshot["papers"] += 1
+    if count > 0 and failure == "changed_users_after":
+        snapshot["users"] += 1
+    if count == 0 and failure == "unsafe_before":
+        snapshot["unsafe_restored_users"] = 1
     if count > 0 and failure == "unfinished_final":
         snapshot["unfinished_jobs"] = 1
     if count > 0 and failure == "terminal_final":
@@ -163,6 +230,9 @@ mode = os.environ.get("FAKE_WORKER_MODE", "")
 with pathlib.Path(os.environ["FAKE_WORKER_LOG"]).open("a", encoding="utf-8") as log:
     log.write(command + "\n")
     log.write("evidence-visible=" + str("PAKPERK_RESTORE_DRILL_EVIDENCE_DIR" in os.environ) + "\n")
+    log.write("run-migrations=" + os.environ.get("RUN_MIGRATIONS", "") + "\n")
+    if command == "reapply-ledger":
+        log.write("admin-actor=" + os.environ.get("PAKPERK_ADMIN_ACTOR", "") + "\n")
 
 if mode in {"secret_stderr", "failure_secret"}:
     print("provider-coordinate:secret-on-stderr", file=sys.stderr)
@@ -176,14 +246,29 @@ if mode == "malformed":
     raise SystemExit(0)
 
 records = int(os.environ.get("FAKE_WORKER_RECORDS", "1"))
+inventory_digest = os.environ.get(
+    "FAKE_WORKER_INVENTORY_SHA256", "sha256:" + "c" * 64
+)
 if command == "verify-ledger":
     if mode == "duplicate":
         print('{"verified_records":999,"verified_records":%d}' % records)
     elif mode == "multiple_documents":
         print('{"provider_coordinate":"secret-first-document"}')
-        print(json.dumps({"verified_records": records}))
+        print(json.dumps({
+            "verified_records": records,
+            "ledger_inventory_sha256": inventory_digest,
+        }))
     else:
-        payload = {"verified_records": records}
+        payload = {
+            "verified_records": records,
+            "ledger_inventory_sha256": (
+                "sha256:" + "d" * 64
+                if mode == "inventory_mismatch"
+                else inventory_digest
+            ),
+        }
+        if mode == "missing_inventory":
+            del payload["ledger_inventory_sha256"]
         if mode == "extra":
             payload["provider_coordinate"] = "must-not-enter-evidence"
         print(json.dumps(payload))
@@ -206,6 +291,11 @@ if command == "verify-ledger":
 elif command == "reapply-ledger":
     payload = {
         "verified_records": records,
+        "ledger_inventory_sha256": (
+            "sha256:" + "d" * 64
+            if mode == "reapply_inventory_mismatch"
+            else inventory_digest
+        ),
         "unchanged": 0,
         "restored_and_queued": records,
         "requeued_resurrected_data": 0,
@@ -249,7 +339,7 @@ class RestoreDrillTests(unittest.TestCase):
         latest = recovery + dt.timedelta(seconds=30)
         timestamp = lambda value: value.strftime("%Y-%m-%dT%H:%M:%SZ")
         self.attestation_value = {
-            "schema": 1,
+            "schema": 2,
             "database": "pakperk_restore_release_42",
             "environment": "staging",
             "marker": "restore-release-42",
@@ -258,6 +348,7 @@ class RestoreDrillTests(unittest.TestCase):
             "worker_sha256": self.worker_digest,
             "expected_migration": 10,
             "expected_ledger_records": 1,
+            "expected_ledger_inventory_sha256": LEDGER_INVENTORY_SHA256,
             "recovery_point": timestamp(recovery),
             "latest_recoverable_point": timestamp(latest),
             "backup_observed_at": timestamp(observed),
@@ -309,6 +400,7 @@ class RestoreDrillTests(unittest.TestCase):
                 "PAKPERK_RESTORE_DRILL_MARKER": self.attestation_value["marker"],
                 "PAKPERK_RESTORE_DRILL_EVIDENCE_DIR": str(evidence),
                 "PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_RECORDS": "1",
+                "PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_INVENTORY_SHA256": LEDGER_INVENTORY_SHA256,
                 "PAKPERK_RESTORE_DRILL_CONFIRM": "isolated-nonproduction-restore",
                 "PAKPERK_RESTORE_DRILL_PHASE": "reapply",
                 "PAKPERK_RESTORE_DRILL_EXPECTED_MIGRATION": "10",
@@ -324,7 +416,11 @@ class RestoreDrillTests(unittest.TestCase):
                 "ACCOUNT_DELETION_LEDGER_ENVIRONMENT_ID": "staging",
                 "FAKE_GIT_HEAD": SOURCE_REVISION,
                 "FAKE_PSQL_STATE": str(self.temporary / f"psql-{self.run_number}"),
+                "FAKE_EXTENSION_PREFLIGHT_STATE": str(
+                    self.temporary / f"extension-preflight-{self.run_number}"
+                ),
                 "FAKE_WORKER_LOG": str(self.temporary / f"worker-{self.run_number}.log"),
+                "FAKE_WORKER_INVENTORY_SHA256": LEDGER_INVENTORY_SHA256,
                 "FAKE_ORIGINAL_WORKER": str(self.worker),
                 "FAKE_SYMLINK_TARGET": str(self.temporary / "outside-secret-target"),
                 "PYTHONDONTWRITEBYTECODE": "1",
@@ -380,6 +476,77 @@ class RestoreDrillTests(unittest.TestCase):
                 files[member.name] = extracted.read()
         return package, files
 
+    @staticmethod
+    def _canonical_bytes(value: object) -> bytes:
+        return (
+            json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n"
+        ).encode()
+
+    @staticmethod
+    def _rewrite_package(evidence: pathlib.Path, files: dict[str, bytes]) -> None:
+        files = dict(files)
+        files.pop("SHA256SUMS", None)
+        files["SHA256SUMS"] = "".join(
+            f"{hashlib.sha256(files[name]).hexdigest()}  {name}\n"
+            for name in sorted(files)
+        ).encode("ascii")
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w", format=tarfile.USTAR_FORMAT) as archive:
+            for name in sorted(files):
+                data = files[name]
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                info.mode = 0o400
+                info.uid = 0
+                info.gid = 0
+                info.uname = ""
+                info.gname = ""
+                info.mtime = 0
+                info.type = tarfile.REGTYPE
+                archive.addfile(info, io.BytesIO(data))
+        archive_bytes = buffer.getvalue()
+        package = {
+            "schema": 2,
+            "archive_sha256": "sha256:"
+            + hashlib.sha256(archive_bytes).hexdigest(),
+            "content_id": "pakperk-restore-evidence-v2:sha256:"
+            + hashlib.sha256(
+                b"pakperk-restore-evidence-v2\0" + archive_bytes
+            ).hexdigest(),
+        }
+        evidence.chmod(0o700)
+        archive_path = evidence / "pakperk-restore-evidence.tar"
+        manifest_path = evidence / "PACKAGE_SHA256.json"
+        archive_path.chmod(0o600)
+        manifest_path.chmod(0o600)
+        archive_path.write_bytes(archive_bytes)
+        manifest_path.write_bytes(
+            (json.dumps(package, sort_keys=True, separators=(",", ":")) + "\n").encode()
+        )
+        archive_path.chmod(0o400)
+        manifest_path.chmod(0o400)
+        evidence.chmod(0o500)
+
+    def _create_prior_reapply(self) -> tuple[pathlib.Path, str]:
+        result, evidence, _ = self._run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        package, _ = self._package_files(evidence)
+        content_id = package["content_id"]
+        assert isinstance(content_id, str)
+        return evidence, content_id
+
+    @staticmethod
+    def _finalize_bindings(
+        prior_evidence: pathlib.Path, prior_content_id: str
+    ) -> dict[str, str]:
+        return {
+            "PAKPERK_RESTORE_DRILL_PHASE": "finalize",
+            "PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_CONTENT_ID": prior_content_id,
+            "PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_EVIDENCE_DIR": str(
+                prior_evidence
+            ),
+        }
+
     def test_reapply_publishes_closed_content_addressed_owner_only_package(self) -> None:
         result, evidence, worker_log = self._run()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -389,8 +556,11 @@ class RestoreDrillTests(unittest.TestCase):
             [
                 "verify-ledger",
                 "evidence-visible=False",
+                "run-migrations=false",
                 "reapply-ledger",
                 "evidence-visible=False",
+                "run-migrations=false",
+                "admin-actor=restore-release-42",
             ],
         )
         self.assertEqual(
@@ -405,15 +575,15 @@ class RestoreDrillTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(info.st_mode), 0o400)
         package, files = self._package_files(evidence)
         archive_bytes = (evidence / "pakperk-restore-evidence.tar").read_bytes()
-        self.assertEqual(package["schema"], 1)
+        self.assertEqual(package["schema"], 2)
         self.assertEqual(
             package["archive_sha256"],
             "sha256:" + hashlib.sha256(archive_bytes).hexdigest(),
         )
         self.assertEqual(
             package["content_id"],
-            "pakperk-restore-evidence-v1:sha256:"
-            + hashlib.sha256(b"pakperk-restore-evidence-v1\0" + archive_bytes).hexdigest(),
+            "pakperk-restore-evidence-v2:sha256:"
+            + hashlib.sha256(b"pakperk-restore-evidence-v2\0" + archive_bytes).hexdigest(),
         )
         self.assertEqual(
             set(files),
@@ -429,14 +599,49 @@ class RestoreDrillTests(unittest.TestCase):
             },
         )
         context = json.loads(files["drill-context.json"])
-        self.assertEqual(context["schema"], 3)
+        self.assertEqual(context["schema"], 4)
         self.assertEqual(context["backup_id"], self.attestation_value["backup_id"])
         self.assertEqual(context["recovery_point"], self.attestation_value["recovery_point"])
         self.assertEqual(context["rpo_seconds"], 60)
         self.assertEqual(context["rto_seconds"], 120)
         self.assertEqual(context["database_ledger_records"], 1)
+        self.assertEqual(
+            context["expected_ledger_inventory_sha256"],
+            LEDGER_INVENTORY_SHA256,
+        )
+        self.assertEqual(
+            context["verified_ledger_inventory_sha256"],
+            LEDGER_INVENTORY_SHA256,
+        )
+        self.assertEqual(
+            context["reapplied_ledger_inventory_sha256"],
+            LEDGER_INVENTORY_SHA256,
+        )
         self.assertEqual(context["restore_attestation_sha256"], self.attestation_digest)
-        self.assertIn("provider_attestation_is_bound_not_independently_verified", context["evidence_limitations"])
+        self.assertEqual(
+            json.loads(files["database-after-reapply.json"])[
+                "matching_restored_users"
+            ],
+            1,
+        )
+        self.assertEqual(
+            json.loads(files["database-after-reapply.json"])[
+                "local_deletion_bindings_sha256"
+            ],
+            LOCAL_DELETION_BINDINGS_SHA256,
+        )
+        self.assertIn(
+            "provider_attestation_is_bound_not_independently_verified",
+            context["evidence_limitations"],
+        )
+        self.assertIn(
+            "empty_inventory_digest_does_not_prove_physical_storage_identity",
+            context["evidence_limitations"],
+        )
+        self.assertNotIn(
+            "ledger_count_does_not_prove_exact_record_set",
+            context["evidence_limitations"],
+        )
         combined = b"\n".join(files.values())
         self.assertNotIn(b"restore-user:secret", combined)
         self.assertNotIn(str(self.worker).encode(), combined)
@@ -451,36 +656,149 @@ class RestoreDrillTests(unittest.TestCase):
         self.assertEqual(verified.stdout.strip(), package["content_id"])
 
     def test_finalize_binds_prior_reapply_and_exact_database_count(self) -> None:
-        result, evidence, worker_log = self._run(
-            {
-                "PAKPERK_RESTORE_DRILL_PHASE": "finalize",
-                "PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_CONTENT_ID": PRIOR_CONTENT_ID,
-            }
-        )
+        prior_evidence, prior_content_id = self._create_prior_reapply()
+        finalize = self._finalize_bindings(prior_evidence, prior_content_id)
+        result, evidence, worker_log = self._run(finalize)
         self.assertEqual(result.returncode, 0, result.stderr)
         _, files = self._package_files(evidence)
         context = json.loads(files["drill-context.json"])
-        self.assertEqual(context["prior_reapply_content_id"], PRIOR_CONTENT_ID)
+        self.assertEqual(context["prior_reapply_content_id"], prior_content_id)
+        self.assertIsNone(context["reapplied_ledger_inventory_sha256"])
         self.assertIn("database-final.json", files)
         self.assertEqual(
             worker_log.read_text(encoding="utf-8").splitlines(),
-            ["verify-ledger", "evidence-visible=False"],
+            ["verify-ledger", "evidence-visible=False", "run-migrations=false"],
         )
+        without_prior = subprocess.run(
+            ["python3", "-I", "-B", str(HELPER), "verify-package", str(evidence)],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        self.assertNotEqual(without_prior.returncode, 0)
+        with_prior = subprocess.run(
+            [
+                "python3",
+                "-I",
+                "-B",
+                str(HELPER),
+                "verify-package",
+                str(evidence),
+                "--prior-reapply-evidence-dir",
+                str(prior_evidence),
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        self.assertEqual(with_prior.returncode, 0, with_prior.stderr)
         self._assert_failure(
             {
-                "PAKPERK_RESTORE_DRILL_PHASE": "finalize",
-                "PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_CONTENT_ID": PRIOR_CONTENT_ID,
+                **finalize,
                 "FAKE_DB_LEDGER_AFTER": "0",
             }
         )
-        for failure in ("unfinished_final", "terminal_final"):
+        self._assert_failure(
+            {
+                **finalize,
+                "FAKE_DB_LEDGER_BEFORE": "0",
+                "FAKE_DB_LEDGER_AFTER": "0",
+            }
+        )
+        self._assert_failure(
+            {
+                **finalize,
+                "FAKE_DB_BINDINGS_BEFORE": "sha256:" + "d" * 64,
+                "FAKE_DB_BINDINGS_AFTER": "sha256:" + "d" * 64,
+            }
+        )
+        self._assert_failure(
+            {
+                **finalize,
+                "FAKE_DB_BINDINGS_AFTER": "sha256:" + "d" * 64,
+            }
+        )
+        for failure in (
+            "unfinished_final",
+            "terminal_final",
+            "changed_users_after",
+            "unsafe_before",
+            "pending_user_final",
+        ):
             with self.subTest(failure=failure):
                 self._assert_failure(
                     {
-                        "PAKPERK_RESTORE_DRILL_PHASE": "finalize",
-                        "PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_CONTENT_ID": PRIOR_CONTENT_ID,
+                        **finalize,
                         "FAKE_PSQL_FAILURE": failure,
                     }
+                )
+
+    def test_finalize_rejects_wrong_or_inconsistent_prior_reapply_package(self) -> None:
+        prior_evidence, _ = self._create_prior_reapply()
+        self._assert_failure(
+            self._finalize_bindings(prior_evidence, PRIOR_CONTENT_ID),
+            "prior reapply evidence content ID mismatch",
+        )
+
+        for mutation in (
+            "attestation",
+            "core_counts",
+            "local_bindings",
+            "chronology",
+        ):
+            with self.subTest(mutation=mutation):
+                prior_evidence, _ = self._create_prior_reapply()
+                _, files = self._package_files(prior_evidence)
+                if mutation == "attestation":
+                    attestation = json.loads(files["restore-attestation.json"])
+                    attestation["marker"] = "restore-other-release-42"
+                    attestation_bytes = self._canonical_bytes(attestation)
+                    files["restore-attestation.json"] = attestation_bytes
+                    attestation_digest = "sha256:" + hashlib.sha256(
+                        attestation_bytes
+                    ).hexdigest()
+                    guard = json.loads(files["restore-guard.json"])
+                    guard["marker"] = attestation["marker"]
+                    guard["restore_attestation_sha256"] = attestation_digest
+                    files["restore-guard.json"] = self._canonical_bytes(guard)
+                    context = json.loads(files["drill-context.json"])
+                    context["marker"] = attestation["marker"]
+                    context["restore_attestation_sha256"] = attestation_digest
+                    files["drill-context.json"] = self._canonical_bytes(context)
+                elif mutation == "core_counts":
+                    for name in (
+                        "database-before.json",
+                        "database-after-reapply.json",
+                    ):
+                        snapshot = json.loads(files[name])
+                        snapshot["papers"] += 1
+                        snapshot["core_jobs"] += 1
+                        files[name] = self._canonical_bytes(snapshot)
+                elif mutation == "local_bindings":
+                    snapshot = json.loads(files["database-after-reapply.json"])
+                    snapshot["local_deletion_bindings_sha256"] = (
+                        "sha256:" + "d" * 64
+                    )
+                    files["database-after-reapply.json"] = self._canonical_bytes(
+                        snapshot
+                    )
+                else:
+                    context = json.loads(files["drill-context.json"])
+                    context["recorded_at"] = (
+                        dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+                        + dt.timedelta(minutes=4)
+                    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    files["drill-context.json"] = self._canonical_bytes(context)
+                self._rewrite_package(prior_evidence, files)
+                package, _ = self._package_files(prior_evidence)
+                prior_content_id = package["content_id"]
+                assert isinstance(prior_content_id, str)
+                self._assert_failure(
+                    self._finalize_bindings(
+                        prior_evidence, prior_content_id
+                    )
                 )
 
     def test_attestation_independently_binds_backup_recovery_rpo_rto_and_count(self) -> None:
@@ -490,6 +808,10 @@ class RestoreDrillTests(unittest.TestCase):
             {"PAKPERK_RESTORE_DRILL_RPO_SECONDS": "0"},
             {"PAKPERK_RESTORE_DRILL_RTO_SECONDS": "1"},
             {"PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_RECORDS": "2"},
+            {
+                "PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_INVENTORY_SHA256": "sha256:"
+                + "d" * 64
+            },
         )
         for overrides in mismatches:
             with self.subTest(overrides=overrides):
@@ -531,13 +853,30 @@ class RestoreDrillTests(unittest.TestCase):
             with self.subTest(overrides=overrides):
                 self._assert_failure(overrides, "protected-input verification failed")
 
+    def test_attestation_schema_one_is_not_accepted_by_the_v2_gate(self) -> None:
+        old_value = dict(self.attestation_value)
+        old_value["schema"] = 1
+        old_value.pop("expected_ledger_inventory_sha256")
+        old_attestation = self._write_attestation(old_value)
+        self._assert_failure(
+            {
+                "PAKPERK_RESTORE_DRILL_ATTESTATION": str(old_attestation),
+                "PAKPERK_RESTORE_DRILL_ATTESTATION_SHA256": self._digest(
+                    old_attestation
+                ),
+            },
+            "protected-input verification failed",
+        )
+
     def test_guard_must_exactly_cross_check_attestation(self) -> None:
         for failure in (
             "guard",
             "guard_marker",
             "guard_backup",
             "guard_recovery",
+            "guard_fractional",
             "guard_digest",
+            "guard_inventory",
         ):
             with self.subTest(failure=failure):
                 self._assert_failure(
@@ -546,11 +885,39 @@ class RestoreDrillTests(unittest.TestCase):
                 )
 
     def test_worker_duplicate_and_multiple_documents_are_rejected_without_leakage(self) -> None:
-        for mode in ("duplicate", "multiple_documents", "malformed", "extra", "extra_reapply"):
+        for mode in (
+            "duplicate",
+            "multiple_documents",
+            "malformed",
+            "extra",
+            "extra_reapply",
+            "missing_inventory",
+        ):
             with self.subTest(mode=mode):
                 result = self._assert_failure({"FAKE_WORKER_MODE": mode})
                 self.assertNotIn("provider_coordinate", result.stderr)
                 self.assertNotIn("secret-first-document", result.stderr)
+
+    def test_same_count_inventory_substitution_and_reapply_drift_fail_closed(self) -> None:
+        for mode in ("inventory_mismatch", "reapply_inventory_mismatch"):
+            with self.subTest(mode=mode):
+                self._assert_failure(
+                    {"FAKE_WORKER_MODE": mode},
+                    "ledger verification failed",
+                )
+
+    def test_worker_inventory_digest_must_be_canonical_lowercase_sha256(self) -> None:
+        for digest in (
+            "sha256:short",
+            "SHA256:" + "c" * 64,
+            "sha256:" + "C" * 64,
+            "sha512:" + "c" * 64,
+        ):
+            with self.subTest(digest=digest):
+                self._assert_failure(
+                    {"FAKE_WORKER_INVENTORY_SHA256": digest},
+                    "ledger verification failed",
+                )
 
     def test_worker_stdout_stderr_and_partial_failure_remain_private(self) -> None:
         successful, evidence, _ = self._run({"FAKE_WORKER_MODE": "secret_stderr"})
@@ -562,6 +929,23 @@ class RestoreDrillTests(unittest.TestCase):
         failed = self._assert_failure({"FAKE_WORKER_MODE": "failure_secret"})
         self.assertNotIn("secret-partial-output", failed.stderr)
         self.assertNotIn("secret-on-stderr", failed.stderr)
+
+    def test_reapply_actor_is_the_attested_marker_not_a_caller_override(self) -> None:
+        result, _, worker_log = self._run(
+            {
+                "PAKPERK_ADMIN_ACTOR": "caller-controlled-actor",
+                "RUN_MIGRATIONS": "true",
+            }
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        log = worker_log.read_text(encoding="utf-8")
+        self.assertIn(
+            "admin-actor=" + str(self.attestation_value["marker"]),
+            log,
+        )
+        self.assertNotIn("caller-controlled-actor", log)
+        self.assertNotIn("run-migrations=true", log)
+        self.assertEqual(log.count("run-migrations=false"), 2)
 
     def test_worker_cannot_preplant_evidence_and_original_replacement_is_not_executed(self) -> None:
         outside = self.temporary / "outside-secret-target"
@@ -609,6 +993,7 @@ class RestoreDrillTests(unittest.TestCase):
             "database",
             "sessions",
             "migration",
+            "extension_namespace",
             "tables",
             "unsafe_after",
             "missing_jobs_after",
@@ -620,6 +1005,141 @@ class RestoreDrillTests(unittest.TestCase):
                     "database verification failed",
                 )
         self._assert_failure({"FAKE_DB_LEDGER_AFTER": "0"}, "database verification failed")
+        self._assert_failure(
+            {"FAKE_DB_BINDINGS_AFTER": "sha256:" + "D" * 64},
+            "database verification failed",
+        )
+
+        hostile_url, _, _ = self._run(
+            {
+                "DATABASE_URL": (
+                    "postgres://restore-user:secret@invalid/restore"
+                    "?options=-c%20search_path%3Dattacker,public"
+                )
+            }
+        )
+        self.assertEqual(hostile_url.returncode, 0, hostile_url.stderr)
+
+    def test_package_verifier_rejects_rehashed_cross_file_inventory_mismatch(self) -> None:
+        result, evidence, _ = self._run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        _, files = self._package_files(evidence)
+        verification = json.loads(files["ledger-verification.json"])
+        verification["ledger_inventory_sha256"] = "sha256:" + "d" * 64
+        files["ledger-verification.json"] = (
+            json.dumps(verification, sort_keys=True, separators=(",", ":")) + "\n"
+        ).encode()
+        self._rewrite_package(evidence, files)
+
+        checked = subprocess.run(
+            ["python3", "-I", "-B", str(HELPER), "verify-package", str(evidence)],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        self.assertNotEqual(checked.returncode, 0)
+
+    def test_package_verifier_rejects_rehashed_placeholder_and_future_claims(self) -> None:
+        for mutation in ("placeholder_backup", "future_recorded_at"):
+            with self.subTest(mutation=mutation):
+                result, evidence, _ = self._run()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                _, files = self._package_files(evidence)
+                context = json.loads(files["drill-context.json"])
+                if mutation == "placeholder_backup":
+                    attestation = json.loads(files["restore-attestation.json"])
+                    attestation["backup_id"] = "placeholder-backup-123"
+                    attestation_bytes = (
+                        json.dumps(
+                            attestation, sort_keys=True, separators=(",", ":")
+                        )
+                        + "\n"
+                    ).encode()
+                    files["restore-attestation.json"] = attestation_bytes
+                    attestation_digest = "sha256:" + hashlib.sha256(
+                        attestation_bytes
+                    ).hexdigest()
+                    guard = json.loads(files["restore-guard.json"])
+                    guard["backup_id"] = attestation["backup_id"]
+                    guard["restore_attestation_sha256"] = attestation_digest
+                    files["restore-guard.json"] = (
+                        json.dumps(guard, sort_keys=True, separators=(",", ":"))
+                        + "\n"
+                    ).encode()
+                    context["backup_id"] = attestation["backup_id"]
+                    context["restore_attestation_sha256"] = attestation_digest
+                else:
+                    context["recorded_at"] = "2099-01-01T00:00:00Z"
+                files["drill-context.json"] = (
+                    json.dumps(context, sort_keys=True, separators=(",", ":"))
+                    + "\n"
+                ).encode()
+                self._rewrite_package(evidence, files)
+
+                checked = subprocess.run(
+                    [
+                        "python3",
+                        "-I",
+                        "-B",
+                        str(HELPER),
+                        "verify-package",
+                        str(evidence),
+                    ],
+                    check=False,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                self.assertNotEqual(checked.returncode, 0)
+
+    def test_package_verifier_rejects_rehashed_stale_evidence_chronology(self) -> None:
+        result, evidence, _ = self._run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        _, files = self._package_files(evidence)
+        attestation = json.loads(files["restore-attestation.json"])
+        context = json.loads(files["drill-context.json"])
+        shifted: dict[str, str] = {}
+        for key in (
+            "recovery_point",
+            "latest_recoverable_point",
+            "backup_observed_at",
+            "restore_started_at",
+            "restore_completed_at",
+        ):
+            value = dt.datetime.strptime(
+                attestation[key], "%Y-%m-%dT%H:%M:%SZ"
+            ).replace(tzinfo=dt.timezone.utc) - dt.timedelta(days=3)
+            shifted[key] = value.strftime("%Y-%m-%dT%H:%M:%SZ")
+            attestation[key] = shifted[key]
+            context[key] = shifted[key]
+        completed = dt.datetime.strptime(
+            shifted["restore_completed_at"], "%Y-%m-%dT%H:%M:%SZ"
+        ).replace(tzinfo=dt.timezone.utc)
+        context["recorded_at"] = (
+            completed + dt.timedelta(hours=25)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        attestation_bytes = self._canonical_bytes(attestation)
+        files["restore-attestation.json"] = attestation_bytes
+        attestation_digest = "sha256:" + hashlib.sha256(
+            attestation_bytes
+        ).hexdigest()
+        guard = json.loads(files["restore-guard.json"])
+        guard["recovery_point"] = shifted["recovery_point"]
+        guard["restore_attestation_sha256"] = attestation_digest
+        context["restore_attestation_sha256"] = attestation_digest
+        files["restore-guard.json"] = self._canonical_bytes(guard)
+        files["drill-context.json"] = self._canonical_bytes(context)
+        self._rewrite_package(evidence, files)
+
+        checked = subprocess.run(
+            ["python3", "-I", "-B", str(HELPER), "verify-package", str(evidence)],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        self.assertNotEqual(checked.returncode, 0)
 
     def test_evidence_target_must_be_fresh_and_package_mutation_is_detected(self) -> None:
         existing = self.temporary / "existing-evidence"
@@ -676,8 +1196,51 @@ class RestoreDrillTests(unittest.TestCase):
             ({"PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_RECORDS": "-1"}, "JSON-safe integer"),
             ({"PAKPERK_RESTORE_DRILL_SOURCE_REVISION": "main"}, "full lowercase Git SHA"),
             (
+                {
+                    "PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_INVENTORY_SHA256": (
+                        "sha256:" + "C" * 64
+                    )
+                },
+                "artifact digests must use",
+            ),
+            (
                 {"PAKPERK_RESTORE_DRILL_PHASE": "finalize"},
                 "requires the externally anchored reapply",
+            ),
+            (
+                {
+                    "PAKPERK_RESTORE_DRILL_PHASE": "finalize",
+                    "PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_CONTENT_ID": (
+                        "pakperk-restore-evidence-v1:sha256:" + "b" * 64
+                    ),
+                },
+                "requires the externally anchored reapply",
+            ),
+            (
+                {
+                    "PAKPERK_RESTORE_DRILL_PHASE": "finalize",
+                    "PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_CONTENT_ID": PRIOR_CONTENT_ID,
+                    "PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_EVIDENCE_DIR": str(
+                        self.temporary / "missing-prior-reapply"
+                    ),
+                },
+                "prior reapply evidence verification failed",
+            ),
+            (
+                {
+                    "PAKPERK_RESTORE_DRILL_PHASE": "finalize",
+                    "PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_CONTENT_ID": PRIOR_CONTENT_ID,
+                    "PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_EVIDENCE_DIR": "relative",
+                },
+                "absolute evidence directory",
+            ),
+            (
+                {
+                    "PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_EVIDENCE_DIR": str(
+                        self.temporary
+                    )
+                },
+                "valid only during finalize",
             ),
         )
         for overrides, expected in cases:

@@ -146,8 +146,17 @@ void main() {
                 openingMotion: false,
               ),
             ),
+            libraryDisplayScopeProvider.overrideWithValue(const (
+              accountId: '018f47a6-4b56-7f4c-8c7a-e2656e820001',
+              authEpoch: 1,
+            )),
+            libraryMutationScopeProvider.overrideWithValue(const (
+              accountId: '018f47a6-4b56-7f4c-8c7a-e2656e820001',
+              authEpoch: 1,
+            )),
+            libraryReadOnlyAccountStatusProvider.overrideWithValue(null),
             paperSavedStateProvider.overrideWith(
-              (ref, paperId) => Stream.value(
+              (ref, view) => Stream.value(
                 const LibrarySavedState(saved: true, syncPending: false),
               ),
             ),
@@ -202,8 +211,17 @@ void main() {
                 openingMotion: false,
               ),
             ),
+            libraryDisplayScopeProvider.overrideWithValue(const (
+              accountId: '018f47a6-4b56-7f4c-8c7a-e2656e820001',
+              authEpoch: 1,
+            )),
+            libraryMutationScopeProvider.overrideWithValue(const (
+              accountId: '018f47a6-4b56-7f4c-8c7a-e2656e820001',
+              authEpoch: 1,
+            )),
+            libraryReadOnlyAccountStatusProvider.overrideWithValue(null),
             paperSavedStateProvider.overrideWith(
-              (ref, paperId) => Stream.value(
+              (ref, view) => Stream.value(
                 const LibrarySavedState(saved: false, syncPending: false),
               ),
             ),

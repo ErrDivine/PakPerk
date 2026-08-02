@@ -31,11 +31,11 @@ MAX_WORKER_OUTPUT_BYTES = 64 * 1024
 MAX_ARCHIVE_BYTES = 4 * 1024 * 1024
 WORKER_TIMEOUT_SECONDS = 120
 STAGE_PREFIX = ".pakperk-restore-drill-"
-CONTENT_DOMAIN = b"pakperk-restore-evidence-v1\0"
-CONTENT_PREFIX = "pakperk-restore-evidence-v1:sha256:"
+CONTENT_DOMAIN = b"pakperk-restore-evidence-v2\0"
+CONTENT_PREFIX = "pakperk-restore-evidence-v2:sha256:"
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 CONTENT_ID_RE = re.compile(
-    r"pakperk-restore-evidence-v1:sha256:[0-9a-f]{64}\Z"
+    r"pakperk-restore-evidence-v2:sha256:[0-9a-f]{64}\Z"
 )
 UTC_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 
@@ -49,6 +49,7 @@ ATTESTATION_KEYS = {
     "worker_sha256",
     "expected_migration",
     "expected_ledger_records",
+    "expected_ledger_inventory_sha256",
     "recovery_point",
     "latest_recoverable_point",
     "backup_observed_at",
@@ -61,6 +62,7 @@ GUARD_KEYS = {
     "backup_id",
     "recovery_point",
     "restore_attestation_sha256",
+    "expected_ledger_inventory_sha256",
 }
 SNAPSHOT_KEYS = {
     "migration",
@@ -75,19 +77,57 @@ SNAPSHOT_KEYS = {
     "user_blocks",
     "ledger_records",
     "deletion_jobs",
+    "local_deletion_bindings_sha256",
     "unfinished_jobs",
     "terminal_jobs",
+    "matching_restored_users",
     "unsafe_restored_users",
     "missing_jobs",
 }
-VERIFY_KEYS = {"verified_records"}
+VERIFY_KEYS = {"verified_records", "ledger_inventory_sha256"}
 REAPPLY_KEYS = {
     "verified_records",
+    "ledger_inventory_sha256",
     "unchanged",
     "restored_and_queued",
     "requeued_resurrected_data",
     "requeued_provider_reconciliation",
 }
+CONTEXT_KEYS = {
+    "schema",
+    "phase",
+    "database",
+    "environment",
+    "ledger_environment",
+    "marker",
+    "backup_id",
+    "recovery_point",
+    "latest_recoverable_point",
+    "backup_observed_at",
+    "restore_started_at",
+    "restore_completed_at",
+    "rpo_seconds",
+    "rto_seconds",
+    "expected_ledger_records",
+    "database_ledger_records",
+    "expected_ledger_inventory_sha256",
+    "verified_ledger_inventory_sha256",
+    "reapplied_ledger_inventory_sha256",
+    "expected_migration",
+    "source_revision",
+    "source_tree_clean",
+    "worker_sha256",
+    "restore_attestation_sha256",
+    "restore_guard_verified",
+    "prior_reapply_content_id",
+    "recorded_at",
+    "evidence_limitations",
+}
+EVIDENCE_LIMITATIONS = [
+    "provider_attestation_is_bound_not_independently_verified",
+    "session_count_is_point_in_time_not_network_isolation_proof",
+    "empty_inventory_digest_does_not_prove_physical_storage_identity",
+]
 
 
 class DrillError(Exception):
@@ -249,6 +289,12 @@ def require_int(value: Any, *, positive: bool = False) -> int:
     return value
 
 
+def require_sha256(value: Any) -> str:
+    if not isinstance(value, str) or SHA256_RE.fullmatch(value) is None:
+        raise DrillError("invalid SHA-256 digest")
+    return value
+
+
 def env_int(name: str, *, positive: bool = False) -> int:
     raw = os.environ.get(name, "")
     if re.fullmatch(r"0|[1-9][0-9]{0,15}", raw) is None:
@@ -287,7 +333,7 @@ def load_state(stage: pathlib.Path) -> dict[str, Any]:
 
 def validate_attestation(value: Any, digest: str) -> dict[str, Any]:
     manifest = require_exact_keys(value, ATTESTATION_KEYS)
-    if manifest["schema"] != 1:
+    if manifest["schema"] != 2:
         raise DrillError("unsupported attestation schema")
     strings = ATTESTATION_KEYS - {
         "schema",
@@ -308,6 +354,7 @@ def validate_attestation(value: Any, digest: str) -> dict[str, Any]:
         raise DrillError("invalid attested revision")
     if SHA256_RE.fullmatch(manifest["worker_sha256"]) is None:
         raise DrillError("invalid attested worker digest")
+    require_sha256(manifest["expected_ledger_inventory_sha256"])
     if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,127}", manifest["backup_id"]) is None:
         raise DrillError("invalid attested backup")
     if re.search(
@@ -361,6 +408,9 @@ def validate_attestation(value: Any, digest: str) -> dict[str, Any]:
         "expected_ledger_records": env_int(
             "PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_RECORDS"
         ),
+        "expected_ledger_inventory_sha256": require_sha256(
+            env_text("PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_INVENTORY_SHA256")
+        ),
         "recovery_point": env_text("PAKPERK_RESTORE_DRILL_RECOVERY_POINT"),
     }
     if any(manifest[key] != expected for key, expected in bindings.items()):
@@ -397,6 +447,9 @@ def cleanup_tree(stage: pathlib.Path) -> None:
 
 
 def command_prepare(_: argparse.Namespace) -> None:
+    _validate_fresh_evidence_target(
+        pathlib.Path(env_text("PAKPERK_RESTORE_DRILL_EVIDENCE_DIR"))
+    )
     stage = pathlib.Path(tempfile.mkdtemp(prefix=STAGE_PREFIX)).resolve()
     os.chmod(stage, 0o700)
     try:
@@ -533,6 +586,9 @@ def command_validate_guard(arguments: argparse.Namespace) -> None:
         "backup_id": manifest["backup_id"],
         "recovery_point": manifest["recovery_point"],
         "restore_attestation_sha256": state["attestation_sha256"],
+        "expected_ledger_inventory_sha256": manifest[
+            "expected_ledger_inventory_sha256"
+        ],
     }
     if guard != expected:
         raise DrillError("restore guard binding mismatch")
@@ -548,9 +604,16 @@ def command_capture_raw(arguments: argparse.Namespace) -> None:
     write_exclusive(destination, data, 0o600)
 
 
-def _snapshot(value: Any) -> dict[str, int]:
+def _snapshot(value: Any) -> dict[str, int | str]:
     snapshot = require_exact_keys(value, SNAPSHOT_KEYS)
-    return {key: require_int(snapshot[key]) for key in SNAPSHOT_KEYS}
+    result: dict[str, int | str] = {
+        key: require_int(snapshot[key])
+        for key in SNAPSHOT_KEYS - {"local_deletion_bindings_sha256"}
+    }
+    result["local_deletion_bindings_sha256"] = require_sha256(
+        snapshot["local_deletion_bindings_sha256"]
+    )
+    return result
 
 
 def command_validate_snapshot(arguments: argparse.Namespace) -> None:
@@ -588,10 +651,15 @@ def command_validate_snapshot(arguments: argparse.Namespace) -> None:
             raise DrillError("protected core counts changed")
         if snapshot["unsafe_restored_users"] != 0 or snapshot["missing_jobs"] != 0:
             raise DrillError("unsafe restored deletion state")
-        if arguments.position == "final" and (
-            snapshot["unfinished_jobs"] != 0 or snapshot["terminal_jobs"] != 0
-        ):
-            raise DrillError("restore finalization is incomplete")
+        if arguments.position == "final":
+            if snapshot != before:
+                raise DrillError("read-only finalization changed the database snapshot")
+            if (
+                snapshot["matching_restored_users"] != 0
+                or snapshot["unfinished_jobs"] != 0
+                or snapshot["terminal_jobs"] != 0
+            ):
+                raise DrillError("restore finalization is incomplete")
     write_exclusive(stage / arguments.output, canonical_json(snapshot), 0o600)
 
 
@@ -607,6 +675,7 @@ def _worker_environment(command: str) -> dict[str, str]:
         and key
         not in {
             "PAKPERK_DELETION_WORKER_BIN",
+            "PAKPERK_ADMIN_ACTOR",
             "GITHUB_ENV",
             "GITHUB_OUTPUT",
             "GITHUB_PATH",
@@ -617,8 +686,14 @@ def _worker_environment(command: str) -> dict[str, str]:
             "PYTHONHOME",
         }
     }
+    # A drill must inspect the restored migration history exactly as recovered.
+    # Development-mode workers otherwise default this to true and could repair
+    # an old restore before readiness evaluates it.
+    environment["RUN_MIGRATIONS"] = "false"
     if command == "reapply-ledger":
-        environment["PAKPERK_ADMIN_ACTOR"] = "restore-drill"
+        environment["PAKPERK_ADMIN_ACTOR"] = env_text(
+            "PAKPERK_RESTORE_DRILL_MARKER"
+        )
     return environment
 
 
@@ -747,6 +822,7 @@ def command_run_worker(arguments: argparse.Namespace) -> None:
         require_canonical=True,
     )
     expected = manifest["expected_ledger_records"]
+    expected_inventory = manifest["expected_ledger_inventory_sha256"]
     worker = stage_path(stage, "worker-bin") / "reviewed-worker"
 
     verified = require_exact_keys(
@@ -754,6 +830,8 @@ def command_run_worker(arguments: argparse.Namespace) -> None:
     )
     if require_int(verified["verified_records"]) != expected:
         raise DrillError("worker ledger count mismatch")
+    if require_sha256(verified["ledger_inventory_sha256"]) != expected_inventory:
+        raise DrillError("worker ledger inventory mismatch")
 
     reapplied: dict[str, Any] | None = None
     if arguments.phase == "reapply":
@@ -761,9 +839,18 @@ def command_run_worker(arguments: argparse.Namespace) -> None:
             _run_worker(worker, "reapply-ledger", state["worker_sha256"]),
             REAPPLY_KEYS,
         )
-        values = {key: require_int(reapplied[key]) for key in REAPPLY_KEYS}
+        values = {
+            key: require_int(reapplied[key])
+            for key in REAPPLY_KEYS - {"ledger_inventory_sha256"}
+        }
+        reapplied_inventory = require_sha256(reapplied["ledger_inventory_sha256"])
         if values["verified_records"] != expected:
             raise DrillError("worker reapply count mismatch")
+        if (
+            reapplied_inventory != expected_inventory
+            or reapplied_inventory != verified["ledger_inventory_sha256"]
+        ):
+            raise DrillError("worker reapply inventory mismatch")
         if (
             values["unchanged"]
             + values["restored_and_queued"]
@@ -788,8 +875,11 @@ def command_run_worker(arguments: argparse.Namespace) -> None:
 def command_build_context(arguments: argparse.Namespace) -> None:
     stage = pathlib.Path(arguments.stage)
     state = load_state(stage)
+    attestation_bytes = read_regular(
+        stage_path(stage, "restore-attestation.json"), max_bytes=MAX_JSON_BYTES
+    )
     manifest = strict_json(
-        read_regular(stage_path(stage, "restore-attestation.json"), max_bytes=MAX_JSON_BYTES),
+        attestation_bytes,
         require_canonical=True,
     )
     final_name = (
@@ -803,15 +893,84 @@ def command_build_context(arguments: argparse.Namespace) -> None:
             require_canonical=True,
         )
     )
+    verified = require_exact_keys(
+        strict_json(
+            read_regular(
+                stage_path(stage, "ledger-verification.json"),
+                max_bytes=MAX_JSON_BYTES,
+            ),
+            require_canonical=True,
+        ),
+        VERIFY_KEYS,
+    )
+    expected_inventory = manifest["expected_ledger_inventory_sha256"]
+    verified_inventory = require_sha256(verified["ledger_inventory_sha256"])
+    if (
+        require_int(verified["verified_records"])
+        != manifest["expected_ledger_records"]
+        or verified_inventory != expected_inventory
+    ):
+        raise DrillError("ledger verification evidence mismatch")
+    reapplied_inventory: str | None = None
+    if arguments.phase == "reapply":
+        reapplied = require_exact_keys(
+            strict_json(
+                read_regular(
+                    stage_path(stage, "ledger-reapply.json"),
+                    max_bytes=MAX_JSON_BYTES,
+                ),
+                require_canonical=True,
+            ),
+            REAPPLY_KEYS,
+        )
+        reapplied_inventory = require_sha256(reapplied["ledger_inventory_sha256"])
+        if reapplied_inventory != expected_inventory:
+            raise DrillError("ledger reapply evidence mismatch")
+    recorded_at_value = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+    restore_completed_at = parse_utc(manifest["restore_completed_at"])
+    if not (
+        restore_completed_at
+        <= recorded_at_value
+        <= restore_completed_at + dt.timedelta(hours=24)
+    ):
+        raise DrillError("restore evidence timestamp is outside its window")
+    if recorded_at_value > dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=5):
+        raise DrillError("restore evidence timestamp is future dated")
+    recorded_at = recorded_at_value.strftime("%Y-%m-%dT%H:%M:%SZ")
+
     prior: str | None = None
     if arguments.phase == "finalize":
         prior = env_text("PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_CONTENT_ID")
         if CONTENT_ID_RE.fullmatch(prior) is None:
             raise DrillError("invalid prior reapply content ID")
-    elif os.environ.get("PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_CONTENT_ID"):
-        raise DrillError("prior reapply content ID is finalize-only")
+        prior_target = pathlib.Path(
+            env_text("PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_EVIDENCE_DIR")
+        )
+        if not prior_target.is_absolute():
+            raise DrillError("prior reapply evidence path is not absolute")
+        finalize_database_before = _snapshot(
+            strict_json(
+                read_regular(
+                    stage_path(stage, "database-before.json"),
+                    max_bytes=MAX_JSON_BYTES,
+                ),
+                require_canonical=True,
+            )
+        )
+        _validate_prior_reapply_chain(
+            prior_target,
+            prior,
+            attestation_bytes,
+            finalize_database_before,
+            recorded_at,
+        )
+    elif (
+        os.environ.get("PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_CONTENT_ID")
+        or os.environ.get("PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_EVIDENCE_DIR")
+    ):
+        raise DrillError("prior reapply evidence is finalize-only")
     context = {
-        "schema": 3,
+        "schema": 4,
         "phase": arguments.phase,
         "database": manifest["database"],
         "environment": manifest["environment"],
@@ -827,6 +986,9 @@ def command_build_context(arguments: argparse.Namespace) -> None:
         "rto_seconds": state["rto_seconds"],
         "expected_ledger_records": manifest["expected_ledger_records"],
         "database_ledger_records": final_snapshot["ledger_records"],
+        "expected_ledger_inventory_sha256": expected_inventory,
+        "verified_ledger_inventory_sha256": verified_inventory,
+        "reapplied_ledger_inventory_sha256": reapplied_inventory,
         "expected_migration": manifest["expected_migration"],
         "source_revision": manifest["source_revision"],
         "source_tree_clean": True,
@@ -834,14 +996,8 @@ def command_build_context(arguments: argparse.Namespace) -> None:
         "restore_attestation_sha256": state["attestation_sha256"],
         "restore_guard_verified": True,
         "prior_reapply_content_id": prior,
-        "recorded_at": dt.datetime.now(dt.timezone.utc)
-        .replace(microsecond=0)
-        .strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "evidence_limitations": [
-            "provider_attestation_is_bound_not_independently_verified",
-            "session_count_is_point_in_time_not_network_isolation_proof",
-            "ledger_count_does_not_prove_exact_record_set",
-        ],
+        "recorded_at": recorded_at,
+        "evidence_limitations": EVIDENCE_LIMITATIONS,
     }
     write_exclusive(stage / "drill-context.json", canonical_json(context), 0o600)
 
@@ -897,7 +1053,7 @@ def build_archive(stage: pathlib.Path, phase: str) -> bytes:
 
 def package_manifest(archive_bytes: bytes) -> dict[str, Any]:
     return {
-        "schema": 1,
+        "schema": 2,
         "archive_sha256": "sha256:" + hashlib.sha256(archive_bytes).hexdigest(),
         "content_id": CONTENT_PREFIX
         + hashlib.sha256(CONTENT_DOMAIN + archive_bytes).hexdigest(),
@@ -916,6 +1072,19 @@ def _check_parent_without_links(path: pathlib.Path) -> None:
             raise DrillError("evidence parent contains a link")
 
 
+def _validate_fresh_evidence_target(target: pathlib.Path) -> None:
+    if not target.is_absolute() or target.name in {"", ".", ".."}:
+        raise DrillError("invalid evidence target")
+    _check_parent_without_links(target)
+    try:
+        target.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        raise DrillError("evidence target is unavailable") from error
+    raise DrillError("evidence target is not fresh")
+
+
 def _remove_published(path: pathlib.Path) -> None:
     for name in ("pakperk-restore-evidence.tar", "PACKAGE_SHA256.json"):
         try:
@@ -931,9 +1100,7 @@ def _remove_published(path: pathlib.Path) -> None:
 def command_publish(arguments: argparse.Namespace) -> None:
     stage = pathlib.Path(arguments.stage)
     target = pathlib.Path(arguments.target)
-    if not target.is_absolute() or target.name in {"", ".", ".."}:
-        raise DrillError("invalid evidence target")
-    _check_parent_without_links(target)
+    _validate_fresh_evidence_target(target)
     archive_bytes = build_archive(stage, arguments.phase)
     manifest_bytes = canonical_json(package_manifest(archive_bytes))
     created = False
@@ -991,7 +1158,223 @@ def _archive_members(archive_bytes: bytes) -> dict[str, bytes]:
     return files
 
 
-def verify_package(target: pathlib.Path) -> str:
+def _artifact_attestation(value: Any) -> dict[str, Any]:
+    manifest = require_exact_keys(value, ATTESTATION_KEYS)
+    if manifest["schema"] != 2:
+        raise DrillError("unsupported evidence attestation schema")
+    require_int(manifest["expected_migration"], positive=True)
+    require_int(manifest["expected_ledger_records"])
+    require_sha256(manifest["worker_sha256"])
+    require_sha256(manifest["expected_ledger_inventory_sha256"])
+    strings = ATTESTATION_KEYS - {
+        "schema",
+        "expected_migration",
+        "expected_ledger_records",
+    }
+    if any(not isinstance(manifest[key], str) or not manifest[key] for key in strings):
+        raise DrillError("invalid evidence attestation")
+    if re.fullmatch(r"[A-Za-z0-9_-]{1,63}", manifest["database"]) is None:
+        raise DrillError("invalid evidence database")
+    if manifest["environment"] not in {"development", "staging"}:
+        raise DrillError("invalid evidence environment")
+    if re.fullmatch(r"[A-Za-z0-9._:-]{8,128}", manifest["marker"]) is None:
+        raise DrillError("invalid evidence marker")
+    if re.fullmatch(r"[0-9a-f]{40}", manifest["source_revision"]) is None:
+        raise DrillError("invalid evidence source revision")
+    if re.fullmatch(
+        r"[A-Za-z0-9][A-Za-z0-9._:-]{7,127}", manifest["backup_id"]
+    ) is None or re.search(
+        r"placeholder|change-me|example|fixture|dummy|ci-snapshot",
+        manifest["backup_id"],
+        re.IGNORECASE,
+    ):
+        raise DrillError("invalid evidence backup")
+    times = {
+        key: parse_utc(manifest[key])
+        for key in (
+            "recovery_point",
+            "latest_recoverable_point",
+            "backup_observed_at",
+            "restore_started_at",
+            "restore_completed_at",
+        )
+    }
+    if not (
+        times["recovery_point"]
+        <= times["latest_recoverable_point"]
+        <= times["backup_observed_at"]
+        <= times["restore_started_at"]
+        < times["restore_completed_at"]
+    ):
+        raise DrillError("invalid evidence chronology")
+    return manifest
+
+
+def _validate_evidence_contract(
+    files: dict[str, bytes], context: dict[str, Any], phase: str
+) -> None:
+    manifest = _artifact_attestation(
+        strict_json(files["restore-attestation.json"], require_canonical=True)
+    )
+    attestation_sha256 = "sha256:" + hashlib.sha256(
+        files["restore-attestation.json"]
+    ).hexdigest()
+    expected_inventory = manifest["expected_ledger_inventory_sha256"]
+    expected_records = manifest["expected_ledger_records"]
+
+    guard = require_exact_keys(
+        strict_json(files["restore-guard.json"], require_canonical=True), GUARD_KEYS
+    )
+    expected_guard = {
+        "database": manifest["database"],
+        "marker": manifest["marker"],
+        "backup_id": manifest["backup_id"],
+        "recovery_point": manifest["recovery_point"],
+        "restore_attestation_sha256": attestation_sha256,
+        "expected_ledger_inventory_sha256": expected_inventory,
+    }
+    if guard != expected_guard:
+        raise DrillError("evidence guard binding mismatch")
+
+    verified = require_exact_keys(
+        strict_json(files["ledger-verification.json"], require_canonical=True),
+        VERIFY_KEYS,
+    )
+    if (
+        require_int(verified["verified_records"]) != expected_records
+        or require_sha256(verified["ledger_inventory_sha256"])
+        != expected_inventory
+    ):
+        raise DrillError("evidence ledger verification mismatch")
+
+    reapplied_inventory: str | None = None
+    if phase == "reapply":
+        reapplied = require_exact_keys(
+            strict_json(files["ledger-reapply.json"], require_canonical=True),
+            REAPPLY_KEYS,
+        )
+        reapply_values = {
+            key: require_int(reapplied[key])
+            for key in REAPPLY_KEYS - {"ledger_inventory_sha256"}
+        }
+        reapplied_inventory = require_sha256(reapplied["ledger_inventory_sha256"])
+        if (
+            reapply_values["verified_records"] != expected_records
+            or reapplied_inventory != expected_inventory
+            or sum(
+                reapply_values[key]
+                for key in (
+                    "unchanged",
+                    "restored_and_queued",
+                    "requeued_resurrected_data",
+                    "requeued_provider_reconciliation",
+                )
+            )
+            != expected_records
+        ):
+            raise DrillError("evidence ledger reapply mismatch")
+
+    before = _snapshot(
+        strict_json(files["database-before.json"], require_canonical=True)
+    )
+    final_name = (
+        "database-after-reapply.json" if phase == "reapply" else "database-final.json"
+    )
+    final_snapshot = _snapshot(
+        strict_json(files[final_name], require_canonical=True)
+    )
+    if (
+        before["migration"] != manifest["expected_migration"]
+        or before["ledger_records"] > expected_records
+        or final_snapshot["migration"] != manifest["expected_migration"]
+        or final_snapshot["ledger_records"] != expected_records
+        or final_snapshot["papers"] != before["papers"]
+        or final_snapshot["core_jobs"] != before["core_jobs"]
+        or final_snapshot["unsafe_restored_users"] != 0
+        or final_snapshot["missing_jobs"] != 0
+        or (phase == "finalize" and final_snapshot != before)
+        or (
+            phase == "finalize"
+            and (
+                final_snapshot["matching_restored_users"] != 0
+                or final_snapshot["unfinished_jobs"] != 0
+                or final_snapshot["terminal_jobs"] != 0
+            )
+        )
+    ):
+        raise DrillError("evidence database snapshot mismatch")
+
+    times = {
+        key: parse_utc(manifest[key])
+        for key in (
+            "recovery_point",
+            "backup_observed_at",
+            "restore_started_at",
+            "restore_completed_at",
+        )
+    }
+    require_int(context["rpo_seconds"])
+    require_int(context["rto_seconds"], positive=True)
+    require_int(context["expected_ledger_records"])
+    require_int(context["database_ledger_records"])
+    require_int(context["expected_migration"], positive=True)
+    if (
+        context["source_tree_clean"] is not True
+        or context["restore_guard_verified"] is not True
+    ):
+        raise DrillError("evidence context boolean mismatch")
+    expected_context = {
+        "schema": 4,
+        "phase": phase,
+        "database": manifest["database"],
+        "environment": manifest["environment"],
+        "ledger_environment": manifest["environment"],
+        "marker": manifest["marker"],
+        "backup_id": manifest["backup_id"],
+        "recovery_point": manifest["recovery_point"],
+        "latest_recoverable_point": manifest["latest_recoverable_point"],
+        "backup_observed_at": manifest["backup_observed_at"],
+        "restore_started_at": manifest["restore_started_at"],
+        "restore_completed_at": manifest["restore_completed_at"],
+        "rpo_seconds": int(
+            (times["backup_observed_at"] - times["recovery_point"]).total_seconds()
+        ),
+        "rto_seconds": int(
+            (times["restore_completed_at"] - times["restore_started_at"]).total_seconds()
+        ),
+        "expected_ledger_records": expected_records,
+        "database_ledger_records": final_snapshot["ledger_records"],
+        "expected_ledger_inventory_sha256": expected_inventory,
+        "verified_ledger_inventory_sha256": expected_inventory,
+        "reapplied_ledger_inventory_sha256": reapplied_inventory,
+        "expected_migration": manifest["expected_migration"],
+        "source_revision": manifest["source_revision"],
+        "source_tree_clean": True,
+        "worker_sha256": manifest["worker_sha256"],
+        "restore_attestation_sha256": attestation_sha256,
+        "restore_guard_verified": True,
+        "evidence_limitations": EVIDENCE_LIMITATIONS,
+    }
+    if any(context.get(key) != value for key, value in expected_context.items()):
+        raise DrillError("evidence context binding mismatch")
+    recorded_at = parse_utc(context["recorded_at"])
+    if recorded_at < times["restore_completed_at"]:
+        raise DrillError("evidence context predates restore completion")
+    if recorded_at > times["restore_completed_at"] + dt.timedelta(hours=24):
+        raise DrillError("evidence context exceeds restore evidence window")
+    if recorded_at > dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=5):
+        raise DrillError("evidence context is future dated")
+    prior = context["prior_reapply_content_id"]
+    if phase == "reapply":
+        if prior is not None:
+            raise DrillError("reapply evidence has a prior content ID")
+    elif not isinstance(prior, str) or CONTENT_ID_RE.fullmatch(prior) is None:
+        raise DrillError("final evidence has an invalid prior content ID")
+
+
+def _verified_package(
+    target: pathlib.Path,
+) -> tuple[str, dict[str, bytes], dict[str, Any]]:
     try:
         directory_info = target.lstat()
     except OSError as error:
@@ -1020,8 +1403,11 @@ def verify_package(target: pathlib.Path) -> str:
     contexts = [name for name in files if name == "drill-context.json"]
     if len(contexts) != 1:
         raise DrillError("evidence context is missing")
-    context = strict_json(files["drill-context.json"], require_canonical=True)
-    phase = context.get("phase") if isinstance(context, dict) else None
+    context = require_exact_keys(
+        strict_json(files["drill-context.json"], require_canonical=True),
+        CONTEXT_KEYS,
+    )
+    phase = context["phase"]
     if phase not in {"reapply", "finalize"}:
         raise DrillError("invalid evidence phase")
     expected_names = set(evidence_names(phase)) | {"SHA256SUMS"}
@@ -1037,15 +1423,78 @@ def verify_package(target: pathlib.Path) -> str:
     for name, data in files.items():
         if name.endswith(".json"):
             strict_json(data, require_canonical=True)
+    _validate_evidence_contract(files, context, phase)
     if archive_bytes != _tar_bytes(files):
         raise DrillError("evidence archive is not canonical")
     if CONTENT_ID_RE.fullmatch(manifest["content_id"]) is None:
         raise DrillError("invalid evidence content ID")
-    return manifest["content_id"]
+    return manifest["content_id"], files, context
+
+
+def _validate_prior_reapply_chain(
+    prior_target: pathlib.Path,
+    expected_content_id: str,
+    restore_attestation: bytes,
+    finalize_database_before: dict[str, int | str],
+    finalize_recorded_at: str,
+) -> None:
+    prior_content_id, prior_files, prior_context = _verified_package(prior_target)
+    if prior_context["phase"] != "reapply":
+        raise DrillError("prior restore evidence is not a reapply package")
+    if prior_content_id != expected_content_id:
+        raise DrillError("prior reapply content ID mismatch")
+    if prior_files["restore-attestation.json"] != restore_attestation:
+        raise DrillError("prior reapply attestation mismatch")
+    prior_database_after = _snapshot(
+        strict_json(
+            prior_files["database-after-reapply.json"], require_canonical=True
+        )
+    )
+    if any(
+        prior_database_after[key] != finalize_database_before[key]
+        for key in (
+            "migration",
+            "papers",
+            "core_jobs",
+            "ledger_records",
+            "local_deletion_bindings_sha256",
+        )
+    ):
+        raise DrillError("prior reapply protected snapshot mismatch")
+    if parse_utc(prior_context["recorded_at"]) > parse_utc(finalize_recorded_at):
+        raise DrillError("finalize evidence predates prior reapply evidence")
+
+
+def verify_package(
+    target: pathlib.Path, prior_reapply_target: pathlib.Path | None = None
+) -> str:
+    content_id, files, context = _verified_package(target)
+    if context["phase"] == "finalize":
+        if prior_reapply_target is None:
+            raise DrillError("finalize package requires prior reapply evidence")
+        _validate_prior_reapply_chain(
+            prior_reapply_target,
+            context["prior_reapply_content_id"],
+            files["restore-attestation.json"],
+            _snapshot(
+                strict_json(
+                    files["database-before.json"], require_canonical=True
+                )
+            ),
+            context["recorded_at"],
+        )
+    elif prior_reapply_target is not None:
+        raise DrillError("prior reapply evidence is finalize-only")
+    return content_id
 
 
 def command_verify_package(arguments: argparse.Namespace) -> None:
-    print(verify_package(pathlib.Path(arguments.target)))
+    prior = (
+        pathlib.Path(arguments.prior_reapply_evidence_dir)
+        if arguments.prior_reapply_evidence_dir is not None
+        else None
+    )
+    print(verify_package(pathlib.Path(arguments.target), prior))
 
 
 def command_remove_package(arguments: argparse.Namespace) -> None:
@@ -1117,6 +1566,7 @@ def parser() -> argparse.ArgumentParser:
 
     verify = subparsers.add_parser("verify-package", add_help=False)
     verify.add_argument("target")
+    verify.add_argument("--prior-reapply-evidence-dir")
     verify.set_defaults(handler=command_verify_package)
 
     remove = subparsers.add_parser("remove-package", add_help=False)

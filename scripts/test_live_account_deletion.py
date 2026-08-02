@@ -15,15 +15,24 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Any, Iterable
 from urllib.parse import parse_qs, urljoin, urlparse
 import unittest
 import uuid
+
+from validate_account_keyring import (
+    MAXIMUM_FILE_BYTES,
+    KeyringValidationError,
+    validate_keyring_bytes,
+    validate_keyring_file,
+)
 
 
 requests: Any = None
@@ -603,6 +612,7 @@ def psql(config: Config, sql: str) -> str:
             "DOCKER_CONFIG",
             "DOCKER_TLS_VERIFY",
             "DOCKER_CERT_PATH",
+            "COMPOSE_PROJECT_NAME",
         )
         if name in os.environ
     }
@@ -1021,9 +1031,14 @@ def verify(config: Config) -> None:
     assert_refresh_revoked(config, refresh_token)
 
     ledger_check = maintenance_command(config, "verify-ledger")
-    if ledger_check.get("verified_records") != 1:
+    ledger_inventory = ledger_check.get("ledger_inventory_sha256")
+    if (
+        ledger_check.get("verified_records") != 1
+        or not isinstance(ledger_inventory, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", ledger_inventory) is None
+    ):
         raise AcceptanceError(
-            "signed external ledger verification did not find one record"
+            "signed external ledger verification did not bind one-record inventory"
         )
 
     replay = expect_status(
@@ -1044,6 +1059,7 @@ def verify(config: Config) -> None:
     reapply = maintenance_command(config, "reapply-ledger")
     if (
         reapply.get("verified_records") != 1
+        or reapply.get("ledger_inventory_sha256") != ledger_inventory
         or reapply.get("requeued_provider_reconciliation") != 1
         or any(
             reapply.get(field) != 0
@@ -1163,6 +1179,30 @@ def audit_logs(config: Config) -> None:
 
 
 class ContractTests(unittest.TestCase):
+    def test_provider_keyring_width_is_exact(self) -> None:
+        valid = b"provider_1:" + base64.b64encode(b"p" * 32) + b"\n"
+        validate_keyring_bytes(
+            valid,
+            minimum_key_bytes=32,
+            maximum_key_bytes=32,
+        )
+        invalid = b"provider_1:" + base64.b64encode(b"p" * 48) + b"\n"
+        with self.assertRaises(KeyringValidationError):
+            validate_keyring_bytes(
+                invalid,
+                minimum_key_bytes=32,
+                maximum_key_bytes=32,
+            )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            oversized = Path(temporary_directory) / "provider.keyring"
+            oversized.write_bytes(b"x" * (MAXIMUM_FILE_BYTES + 1))
+            with self.assertRaises(KeyringValidationError):
+                validate_keyring_file(
+                    oversized,
+                    minimum_key_bytes=32,
+                    maximum_key_bytes=32,
+                )
+
     def test_loopback_origins_are_bounded(self) -> None:
         self.assertEqual(
             loopback_http_origin("http://127.0.0.1:18084", "TEST"),
@@ -1239,6 +1279,16 @@ class ContractTests(unittest.TestCase):
         wrapper = (root / "scripts/test_live_account_deletion.sh").read_text(
             encoding="utf-8"
         )
+        dev_secrets = (root / "scripts/prepare_dev_account_secrets.sh").read_text(
+            encoding="utf-8"
+        )
+        driver = Path(__file__).read_text(encoding="utf-8")
+        psql_contract = driver.split(
+            "def psql(config: Config, sql: str) -> str:", maxsplit=1
+        )
+        realm = json.loads(
+            (root / "deploy/keycloak/pakperk-realm.json").read_text(encoding="utf-8")
+        )
         workflow = (root / ".github/workflows/live-account-deletion.yml").read_text(
             encoding="utf-8"
         )
@@ -1247,6 +1297,33 @@ class ContractTests(unittest.TestCase):
         self.assertIn("RUN_DISPOSABLE_KEYCLOAK_DELETION", wrapper)
         self.assertIn("ACCOUNT_DELETION_ENABLED=true", wrapper)
         self.assertIn('"$worker_binary" run', wrapper)
+        provider_generation = [
+            line
+            for line in wrapper.splitlines()
+            if "live-account-deletion-provider:%s" in line
+        ]
+        self.assertEqual(len(provider_generation), 1)
+        self.assertIn("openssl rand -base64 32", provider_generation[0])
+        self.assertEqual(len(psql_contract), 2)
+        self.assertIn(
+            '"COMPOSE_PROJECT_NAME",',
+            psql_contract[1].split("\ndef sql_json", maxsplit=1)[0],
+        )
+        self.assertEqual(
+            realm.get("clientScopeMappings"),
+            {
+                "realm-management": [
+                    {
+                        "client": "pakperk-deletion-worker-dev",
+                        "roles": ["manage-users"],
+                    }
+                ]
+            },
+        )
+        self.assertIn(
+            'generate_keyring "$secret_dir/ACCOUNT_DELETION_PROVIDER_IDENTITY_KEYS" 32 32 32',
+            dev_secrets,
+        )
         self.assertIn("workflow_dispatch:", workflow)
         self.assertNotIn("pull_request:", workflow)
         self.assertIn("RUN_DISPOSABLE_KEYCLOAK_DELETION", workflow)

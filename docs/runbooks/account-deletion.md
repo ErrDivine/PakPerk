@@ -102,6 +102,22 @@ violation, signature/AEAD failure, fingerprint mismatch, or record conflict
 fails the entire scan closed. Do not move diagnostic files into the ledger
 directory.
 
+Both commands emit `ledger_inventory_sha256` alongside `verified_records`.
+Inventory v1 is SHA-256 over the literal root
+`pakperk/account-deletion-ledger/inventory/v1\0`, followed by
+`environment\0 || u64be(environment byte length) || environment bytes`, then,
+for each exact canonical signed-envelope JSON document (including its final LF)
+in strict operation-ID order,
+`record\0 || u64be(envelope byte length) || envelope bytes`, and finally
+`count\0 || u64be(record count)`. It therefore binds the signer environment
+and distinguishes different logical signed-record sets with the same count
+without exposing record contents. Two physically different empty stores in the
+same environment have the same logical digest, so protected storage inventory
+must separately identify the mounted volume or object version. Record the
+lowercase `sha256:<hex>` value with every protected backup inventory; any field
+order, JSON encoding, framing, or domain change must use a new inventory version
+rather than reinterpret v1.
+
 The worker treats an already absent Keycloak session or identity as success.
 Network failures, provider 408/429/5xx, step timeouts, and post-start `401`/`403`
 responses use the same bounded attempt budget and backoff. The latter allows a
@@ -183,13 +199,25 @@ make restore verification fail closed.
    (`development`, `staging`, or `production`). Never reapply one environment's
    records to another.
 5. Run `pakperk-deletion-worker verify-ledger`. Stop on any failure; do not skip
-   or rewrite the offending record.
+   or rewrite the offending record. Require both its count and
+   `ledger_inventory_sha256` to equal the protected current-ledger inventory.
 6. Run
    `PAKPERK_ADMIN_ACTOR=<restore-change-id> pakperk-deletion-worker reapply-ledger`.
    This restores missing tombstones, immediately disables any resurrected local
    account, decrypts provider coordinates, and queues provider deletion even
    when the local user row is absent. A completed local operation is
    intentionally requeued because Keycloak may have an older recovery point.
+   The replay resolves a restored account by the authenticated original UUID,
+   retained fingerprint, or decrypted issuer/subject. It fails closed on
+   multiple/conflicting rows or a cross-wired job, safely rebinds a genuinely
+   reissued local UUID for deletion, and returns the completed job to its
+   canonical historical UUID after application-data purge. A missing job on a
+   completed ledger resets the stale completion/expiry timeline when restored.
+   Require its count and inventory digest to equal the preceding verification
+   and protected inventory. Keep the ledger read-only and prohibit concurrent
+   append/purge operations across both scans. When using the protected restore
+   harness, its attested/guard-bound marker is the durable restore change ID and
+   is forced into `PAKPERK_ADMIN_ACTOR`; an inherited caller value is removed.
 7. Start `pakperk-deletion-worker run` with the correctly scoped Keycloak
    service account. Monitor the queue until requeued operations complete.
 8. Repeat `verify-ledger`, but do not run a second post-completion reapply for
@@ -200,9 +228,10 @@ make restore verification fail closed.
    are absent, accounts cannot be JIT-provisioned from the same issuer/subject,
    private application rows are gone, and retained moderation evidence is
    pseudonymized.
-10. Record recovery point/time, ledger verification count, reapply summary,
-    terminal-failure count, operator, and timestamps. Re-enable traffic only
-    after the privacy owner approves this evidence.
+10. Record recovery point/time, ledger verification count and inventory digest,
+    reapply summary and matching digest, terminal-failure count, operator, and
+    timestamps. Re-enable traffic only after the privacy owner approves this
+    evidence.
 
 Exercise this procedure against a non-production restore whenever the backup
 topology, retention, signing-key set, Keycloak realm, or deletion schema

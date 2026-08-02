@@ -1170,6 +1170,9 @@ impl ApiConfig {
             anyhow::bail!("API rate limits must be greater than zero");
         }
         if self.environment.is_deployed() {
+            if self.run_migrations {
+                anyhow::bail!("RUN_MIGRATIONS must be false in staging and production");
+            }
             if self.cors_allowed_origins.is_empty() {
                 anyhow::bail!("CORS_ALLOWED_ORIGINS is required in staging and production");
             }
@@ -1183,9 +1186,6 @@ impl ApiConfig {
             }
         }
         if self.environment == ApiEnvironment::Production {
-            if self.run_migrations {
-                anyhow::bail!("RUN_MIGRATIONS must be false in production");
-            }
             if self.fulltext_policy != FulltextPolicy::Strict {
                 anyhow::bail!("FULLTEXT_POLICY must be strict in production");
             }
@@ -2088,7 +2088,10 @@ mod tests {
         assert!(config.validate().is_ok());
 
         config.run_migrations = true;
-        assert!(config.validate().is_err());
+        assert_eq!(
+            config.validate().unwrap_err().to_string(),
+            "RUN_MIGRATIONS must be false in staging and production",
+        );
         config.run_migrations = false;
 
         config.fulltext_policy = FulltextPolicy::Prototype;
@@ -2099,6 +2102,18 @@ mod tests {
             embedding_dimension: 8,
         });
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn staging_validation_forbids_runtime_migrations() {
+        let mut config = production_config();
+        config.environment = ApiEnvironment::Staging;
+        config.run_migrations = true;
+
+        assert_eq!(
+            config.validate().unwrap_err().to_string(),
+            "RUN_MIGRATIONS must be false in staging and production",
+        );
     }
 
     #[test]

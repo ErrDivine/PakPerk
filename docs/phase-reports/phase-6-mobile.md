@@ -27,6 +27,15 @@
   cannot repopulate a repaired cache. Request-scoped store leases also make
   repair/replacement wait for in-flight session/deletion recovery before
   closing its store.
+- Account-owned library/comment projections are keyed by account identity and
+  auth epoch, and composer drafts additionally by paper. Cross-account binding
+  revokes old write scopes before secure cleanup and generation-guards racing
+  refresh, bind, profile, and status work. An offline-auth-unknown session keeps
+  only its bound account cache and drafts, disables remote mutations, and can
+  recover through the shared reconnect/manual path after `/v1/me` re-verifies
+  the same epoch. Authoritative suspended/deletion-pending responses immediately
+  revoke writes; suspended accounts retain their account-bound cache/draft
+  identity while reading published comments through the anonymous endpoint.
 - Reduced-motion behavior is centralized across startup, paper-stage, and feed
   transitions and can react while the opening transition is active. Explicit
   navigation becomes immediate and animation-only haptics are suppressed.
@@ -71,9 +80,11 @@ count completeness, shared save-control state, environment-relative moderation
 support links, build-bound Terms/Community Guidelines acceptance, post-`401`
 response provenance, and bounded safety-intent recovery after authenticated
 thread rehydration. Legal-document futures are cached by loader, kind, and
-policy version instead of being recreated during rebuilds. Final Flutter
-analysis and all 544 locked tests passed after these changes. No physical-device
-or protected signed-artifact run was executed on this final tree.
+policy version instead of being recreated during rebuilds. On the final source
+tree, Flutter analysis and all 601 locked tests passed, including cold restored-
+identity rebinding, same-epoch account isolation, terminal deletion latching,
+and generation-guarded comment-cache purging. No physical-device or protected
+signed-artifact run was executed at this checkpoint.
 
 At the Phase 6 implementation checkpoint, the full Flutter analyzer and 437
 tests, the focused account-deletion/auth/error-mapper/telemetry/config suites,
@@ -98,19 +109,20 @@ made save/removal outbox draining plus Undo independent of widget disposal or
 haptic and semantics platform failures. Direct Dart format and analysis passed
 on that resulting tree. Focused widget coverage passed for the shared
 save-control Undo path before the final widget-lifecycle hardening; those later
-Settings, lifecycle, and haptic regressions are included in the final 544-test
-run recorded above. This report does not infer a final-tree device run.
+Settings, lifecycle, and haptic regressions are included in the complete
+canonical checkpoint recorded below. This report does not infer a final-tree
+device run.
 
 The subsequent startup/accessibility hardening described above is newer than
 that direct-analysis checkpoint. Checked-in regressions cover concurrent local
 hydration/session inspection, session-only retries without provider-tree
 replacement, superseded store closure/draining around retry/repair, repair or
-replacement waiting for leased session store use, active reduced-motion
-changes, one settled page-commit haptic, unavailable haptics, canonical arXiv
-links, contrast, and 200% stage labels. Direct Dart formatting and analysis
-passed on the settled current tree. The complete locked Flutter/widget suite
-subsequently passed on those changes; that headless evidence remains distinct
-from physical-device and signed-build evidence.
+  replacement waiting for leased session store use, active reduced-motion
+  changes, one settled page-commit haptic, unavailable haptics, canonical arXiv
+  links, contrast, and 200% stage labels. Direct Dart formatting and analysis
+  passed at that checkpoint. The complete locked Flutter/widget suite
+  subsequently passed on those changes; both results remain checkpoint-scoped
+  and distinct from physical-device and signed-build evidence.
 
 Repository supply-chain validators and tamper regressions passed for the exact
 mobile-release source/toolchain contract, including the pre-dependency MRI Ruby
@@ -134,11 +146,11 @@ backup, packaged Apple privacy manifest, and no strict derived-content asset.
 Negative gates were also exercised: Android release fails immediately without
 all `PAKPERK_ANDROID_*` values; iOS production IPA resolution is manual Apple
 Distribution signing and produces no IPA without a protected team/profile.
-On the settled current tree, the canonical check passed Dart formatting,
-Flutter analysis, all 544 tests, all three Android debug flavors, all three iOS
-simulator flavors, and strict inspection of staging/production Android archives
-and the final production iOS simulator app. This is not physical-device or
-distribution-signing evidence.
+On the final current-tree canonical run, the check passed Dart formatting,
+Flutter analysis, all 601 locked tests, all three Android debug flavors, all
+three iOS simulator flavors, and strict inspection of staging/production
+Android archives and the production iOS simulator app. None of these results is
+physical-device or distribution-signing evidence.
 
 The signed-release workflow now derives content-addressed candidate and
 provenance manifests from the retained AAB/APK/IPA and observed signers, binds

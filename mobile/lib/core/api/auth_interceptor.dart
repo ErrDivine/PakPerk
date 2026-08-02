@@ -11,12 +11,25 @@ const _authPolicyKey = 'pakperk.auth_policy';
 const _authRetryPolicyKey = 'pakperk.auth_retry_policy';
 const _authRetriedKey = 'pakperk.auth_retried';
 const _expectedAuthEpochKey = 'pakperk.expected_auth_epoch';
+const _requestAccountIdKey = 'pakperk.request_account_id';
 const _strictRawResponseStreamKey = 'pakperk.strict_raw_response_stream';
 const _authorizationHeader = 'Authorization';
+const _unboundRequestAccount = '<unbound-account>';
 final _bearerToken = RegExp(r'^[A-Za-z0-9\-._~+/]+=*$');
 
 typedef AccountDeletionPendingHandler =
-    Future<void> Function(int expectedAuthEpoch, String? requestId);
+    Future<void> Function(
+      int expectedAuthEpoch,
+      String? requestAccountId,
+      String? requestId,
+    );
+typedef AccountReadOnlyHandler =
+    Future<void> Function(
+      int expectedAuthEpoch,
+      String? requestAccountId,
+      String errorCode,
+    );
+typedef AuthenticatedAccountIdReader = String? Function(int expectedAuthEpoch);
 
 /// Builds request metadata consumed only by [AuthInterceptor].
 ///
@@ -84,16 +97,22 @@ final class AuthInterceptor extends Interceptor {
     required Dio dio,
     required Uri apiBaseUri,
     required AuthTokenSource tokenSource,
+    AuthenticatedAccountIdReader? accountIdForRequest,
     AccountDeletionPendingHandler? onAccountDeletionPending,
+    AccountReadOnlyHandler? onAccountReadOnly,
   }) : _dio = dio,
        _apiOrigin = _Origin.fromUri(apiBaseUri),
        _tokenSource = tokenSource,
-       _onAccountDeletionPending = onAccountDeletionPending;
+       _accountIdForRequest = accountIdForRequest,
+       _onAccountDeletionPending = onAccountDeletionPending,
+       _onAccountReadOnly = onAccountReadOnly;
 
   final Dio _dio;
   final _Origin _apiOrigin;
   final AuthTokenSource _tokenSource;
+  final AuthenticatedAccountIdReader? _accountIdForRequest;
   final AccountDeletionPendingHandler? _onAccountDeletionPending;
+  final AccountReadOnlyHandler? _onAccountReadOnly;
 
   @override
   void onRequest(
@@ -111,12 +130,20 @@ final class AuthInterceptor extends Interceptor {
         handler.reject(_authFailure(options, 'AUTH_EPOCH_REQUIRED'));
         return;
       }
+      if (!_requestAccountIsCurrent(options, expectedAuthEpoch)) {
+        handler.reject(_authFailure(options, 'AUTH_SUPERSEDED'));
+        return;
+      }
       try {
         final token = await _tokenSource.accessTokenForRequest(
           expectedAuthEpoch: expectedAuthEpoch,
         );
         if (token == null || token.isEmpty) {
           handler.reject(_authFailure(options, 'UNAUTHENTICATED'));
+          return;
+        }
+        if (!_requestAccountIsCurrent(options, expectedAuthEpoch)) {
+          handler.reject(_authFailure(options, 'AUTH_SUPERSEDED'));
           return;
         }
         options.headers[_authorizationHeader] = 'Bearer $token';
@@ -145,6 +172,11 @@ final class AuthInterceptor extends Interceptor {
         );
         return;
       }
+      _captureRequestAccount(options, expectedAuthEpoch);
+      if (!_requestAccountIsCurrent(options, expectedAuthEpoch)) {
+        handler.reject(_authFailure(options, 'AUTH_SUPERSEDED'));
+        return;
+      }
       await _dispatchOrContinue(options, handler);
       return;
     }
@@ -164,12 +196,17 @@ final class AuthInterceptor extends Interceptor {
       handler.reject(_authFailure(options, 'AUTH_EPOCH_REQUIRED'));
       return;
     }
+    _captureRequestAccount(options, expectedAuthEpoch);
     try {
       final token = await _tokenSource.accessTokenForRequest(
         expectedAuthEpoch: expectedAuthEpoch,
       );
       if (token == null || token.isEmpty) {
         handler.reject(_authFailure(options, 'UNAUTHENTICATED'));
+        return;
+      }
+      if (!_requestAccountIsCurrent(options, expectedAuthEpoch)) {
+        handler.reject(_authFailure(options, 'AUTH_SUPERSEDED'));
         return;
       }
       options.headers[_authorizationHeader] = 'Bearer $token';
@@ -264,11 +301,31 @@ final class AuthInterceptor extends Interceptor {
         try {
           await pendingHandler(
             expectedAuthEpoch,
+            _requestAccountId(options),
             _safeResponseRequestId(err.response?.data),
           );
         } on Object {
           // The handler is itself fail-closed and records local failures. The
           // stable server error remains the result of this HTTP request.
+        }
+      }
+      handler.next(err);
+      return;
+    }
+    final readOnlyCode = _accountReadOnlyCode(err);
+    final readOnlyHandler = _onAccountReadOnly;
+    if (readOnlyCode != null && readOnlyHandler != null) {
+      final expectedAuthEpoch = _expectedAuthEpoch(options);
+      if (expectedAuthEpoch != null) {
+        try {
+          await readOnlyHandler(
+            expectedAuthEpoch,
+            _requestAccountId(options),
+            readOnlyCode,
+          );
+        } on Object {
+          // The response remains authoritative even if presentation state was
+          // disposed while this request completed.
         }
       }
       handler.next(err);
@@ -296,6 +353,13 @@ final class AuthInterceptor extends Interceptor {
       );
       return;
     }
+    if (!_requestAccountIsCurrent(options, expectedAuthEpoch)) {
+      handler.reject(
+        _authFailure(options, 'AUTH_SUPERSEDED', response: err.response),
+        true,
+      );
+      return;
+    }
     try {
       final token = await _tokenSource.refreshAfterUnauthorized(
         rejectedAccessToken: rejectedToken,
@@ -304,6 +368,13 @@ final class AuthInterceptor extends Interceptor {
       if (token == null || token.isEmpty) {
         handler.reject(
           _authFailure(options, 'UNAUTHENTICATED', response: err.response),
+          true,
+        );
+        return;
+      }
+      if (!_requestAccountIsCurrent(options, expectedAuthEpoch)) {
+        handler.reject(
+          _authFailure(options, 'AUTH_SUPERSEDED', response: err.response),
           true,
         );
         return;
@@ -338,6 +409,28 @@ final class AuthInterceptor extends Interceptor {
     return value is int && value >= 0 ? value : null;
   }
 
+  void _captureRequestAccount(RequestOptions options, int expectedAuthEpoch) {
+    if (options.extra.containsKey(_requestAccountIdKey)) return;
+    final reader = _accountIdForRequest;
+    if (reader == null) return;
+    options.extra[_requestAccountIdKey] =
+        reader(expectedAuthEpoch) ?? _unboundRequestAccount;
+  }
+
+  String? _requestAccountId(RequestOptions options) {
+    final value = options.extra[_requestAccountIdKey];
+    if (value == _unboundRequestAccount) return null;
+    return value is String ? value : null;
+  }
+
+  bool _requestAccountIsCurrent(RequestOptions options, int expectedAuthEpoch) {
+    final reader = _accountIdForRequest;
+    if (reader == null || !options.extra.containsKey(_requestAccountIdKey)) {
+      return true;
+    }
+    return _requestAccountId(options) == reader(expectedAuthEpoch);
+  }
+
   bool _isApiRequest(RequestOptions options) =>
       _Origin.fromUri(options.uri) == _apiOrigin;
 
@@ -366,6 +459,19 @@ bool _accountDeletionPending(DioException error) {
   final nested = root['error'];
   final details = nested is Map ? Map<String, Object?>.from(nested) : root;
   return details['code'] == 'ACCOUNT_DELETION_PENDING';
+}
+
+String? _accountReadOnlyCode(DioException error) {
+  final data = error.response?.data;
+  if (data is! Map) return null;
+  final root = Map<String, Object?>.from(data);
+  final nested = root['error'];
+  final details = nested is Map ? Map<String, Object?>.from(nested) : root;
+  return switch (details['code']) {
+    'ACCOUNT_SUSPENDED' => 'ACCOUNT_SUSPENDED',
+    'ACCOUNT_DELETED' => 'ACCOUNT_DELETED',
+    _ => null,
+  };
 }
 
 String? _safeResponseRequestId(Object? data) {

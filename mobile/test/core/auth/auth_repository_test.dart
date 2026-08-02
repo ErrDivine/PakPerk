@@ -132,6 +132,78 @@ void main() {
     },
   );
 
+  test(
+    'refresh completion preserves an account binding made while network waits',
+    () async {
+      const firstAccountId = '00000000-0000-4000-8000-000000000111';
+      const secondAccountId = '00000000-0000-4000-8000-000000000222';
+      final refreshResult = Completer<OidcTokenSet>();
+      final oidc = FakeOidcClient()
+        ..refreshHandler = (_) => refreshResult.future;
+      final store = MemorySecureTokenStore(
+        storedRecord(refreshToken: 'first-refresh', accountId: firstAccountId),
+      );
+      final auth = repository(oidc: oidc, store: store);
+      await auth.inspectStoredSession();
+
+      final refreshing = auth.accessTokenForRequest();
+      await Future<void>.delayed(Duration.zero);
+      expect(oidc.refreshCalls, 1);
+
+      await auth.bindAccountId(secondAccountId);
+      refreshResult.complete(
+        tokenSet(
+          accessToken: 'rotated-access',
+          refreshToken: 'rotated-refresh',
+          idToken: 'rotated-id-token',
+        ),
+      );
+
+      expect(await refreshing, 'rotated-access');
+      expect(auth.accountId, secondAccountId);
+      expect(store.record?.accountId, secondAccountId);
+      expect(store.record?.refreshToken, 'rotated-refresh');
+      expect(store.record?.idTokenHint, 'rotated-id-token');
+    },
+  );
+
+  test(
+    'account binding queued behind refresh storage preserves rotated tokens',
+    () async {
+      const firstAccountId = '00000000-0000-4000-8000-000000000111';
+      const secondAccountId = '00000000-0000-4000-8000-000000000222';
+      final oidc = FakeOidcClient()
+        ..refreshHandler = (_) async => tokenSet(
+          accessToken: 'rotated-access',
+          refreshToken: 'rotated-refresh',
+          idToken: 'rotated-id-token',
+        );
+      final storageGate = Completer<void>();
+      final store = MemorySecureTokenStore(
+        storedRecord(refreshToken: 'first-refresh', accountId: firstAccountId),
+      )..writeGate = storageGate;
+      final auth = repository(oidc: oidc, store: store);
+      await auth.inspectStoredSession();
+
+      final refreshing = auth.accessTokenForRequest();
+      while (store.writeCalls == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      final binding = auth.bindAccountId(secondAccountId);
+      await Future<void>.delayed(Duration.zero);
+      expect(store.writeCalls, 1);
+
+      storageGate.complete();
+      expect(await refreshing, 'rotated-access');
+      await binding;
+
+      expect(auth.accountId, secondAccountId);
+      expect(store.record?.accountId, secondAccountId);
+      expect(store.record?.refreshToken, 'rotated-refresh');
+      expect(store.record?.idTokenHint, 'rotated-id-token');
+    },
+  );
+
   test('401 challenge reuses a refresh won by another request', () async {
     final oidc = FakeOidcClient()
       ..authorizeHandler = (() async =>

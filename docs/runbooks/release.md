@@ -45,7 +45,7 @@ protected release system can retrieve and verify those bytes.
 | `strictContentReviewId` | Exact strict backend/mobile policy, displayed and retained introduction behavior, metadata-only behavior, and qualified content-rights approval | legal/content owner |
 | `moderationReadinessId` | Protected live comment/user-report/comment-report/block/admin and kill-switch flow; dedicated operator audience/allowlist rejection matrix; moderation fallback; sanitized output; staffed response targets; support/deletion/retention dependencies; and alert/ticket canary | Trust & Safety owner |
 | `accountDeletionE2eId` | Protected staging recent-auth request through provider/session/app-data completion using the real secret manager, independent ledger, and alert route | privacy/on-call owner |
-| `restoreDrillId` | Isolated PostgreSQL/Keycloak restore, exact current-ledger count, reapply/finalize results, RPO/RTO, and recovery/privacy approvals | database and privacy owners |
+| `restoreDrillId` | Isolated PostgreSQL/Keycloak restore, exact current-ledger count, external inventory digest, local ledger/job-binding digest continuity, exact `public, pg_catalog` mutation-session binding, attested change marker used as the reapply audit actor, schema-2/v2 reapply/finalize packages with the actual prior package reverified for ID/attestation/chronology/core-count continuity, RPO/RTO, and recovery/privacy approvals | database and privacy owners |
 
 These bindings cover server deployment obligations whose applicability follows
 the production feature map. They deliberately do **not** turn Helm into the
@@ -150,6 +150,11 @@ ledger.
    manifest. The repository staging fixture is never deployable.
 4. Confirm the migration role alone can perform DDL; application roles cannot.
    Confirm worker, API, and synchronization roles use distinct Secret keys.
+   Each runtime role must have only `USAGE` on `public` plus column-level
+   `SELECT (version, success, checksum)` on `public._sqlx_migrations` for the
+   shared readiness check; it must have no migration-history write privilege.
+   Exercise readiness through every exact role after the migration: a missing,
+   failed, old, gapped, or checksum-divergent embedded history must fail closed.
 5. Confirm the deletion worker's `manage-users`-only service account readiness,
    current independent ledger, and alert coverage before enabling deletion.
 6. Apply the reviewed `deploy/helm/ingress-nginx-production-values.yaml` to the

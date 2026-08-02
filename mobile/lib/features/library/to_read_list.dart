@@ -10,15 +10,17 @@ class ToReadListView extends StatelessWidget {
     this.onRefresh,
     this.offline = false,
     this.syncIssue,
+    this.readOnlyMessage,
     super.key,
   });
 
   final List<LibraryListItem> items;
   final ValueChanged<LibraryListItem> onOpen;
-  final ValueChanged<LibraryListItem> onRemove;
+  final ValueChanged<LibraryListItem>? onRemove;
   final Future<void> Function()? onRefresh;
   final bool offline;
   final LibrarySyncIssue? syncIssue;
+  final String? readOnlyMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -40,6 +42,8 @@ class ToReadListView extends StatelessWidget {
             empty: ordered.isEmpty,
             offline: offline,
             issue: syncIssue,
+            readOnlyMessage: readOnlyMessage,
+            refreshable: onRefresh != null,
           );
         }
         final item = ordered[index - 1];
@@ -47,7 +51,7 @@ class ToReadListView extends StatelessWidget {
           key: ValueKey('to-read-${item.paper.paperId}'),
           item: item,
           onOpen: () => onOpen(item),
-          onRemove: () => onRemove(item),
+          onRemove: onRemove == null ? null : () => onRemove!(item),
         );
       },
     );
@@ -61,83 +65,117 @@ class _ListStatus extends StatelessWidget {
     required this.empty,
     required this.offline,
     required this.issue,
+    required this.readOnlyMessage,
+    required this.refreshable,
   });
 
   final bool empty;
   final bool offline;
   final LibrarySyncIssue? issue;
+  final String? readOnlyMessage;
+  final bool refreshable;
 
   @override
   Widget build(BuildContext context) {
-    if (empty) {
-      return ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 320),
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.bookmarks_outlined, size: 52),
-                const SizedBox(height: 16),
-                Text(
-                  'Your To Read list is empty',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Save a paper from any Read stage and it will appear here.',
-                  textAlign: TextAlign.center,
-                ),
-                if (offline) ...[
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Offline. Pull to refresh when you reconnect.',
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-                if (issue != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    issue!.message,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
+    final status = empty
+        ? ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 320),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.bookmarks_outlined, size: 52),
+                    const SizedBox(height: 16),
+                    Text(
+                      readOnlyMessage == null
+                          ? 'Your To Read list is empty'
+                          : 'No saved papers are available',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Text(
+                      readOnlyMessage == null
+                          ? 'Save a paper from any Read stage and it will appear here.'
+                          : 'This account is read-only, so the empty list cannot '
+                                'be changed.',
+                      textAlign: TextAlign.center,
+                    ),
+                    if (offline) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        refreshable
+                            ? 'Offline. Pull to refresh when you reconnect.'
+                            : 'Offline. Showing cached saves.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                    if (issue != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        issue!.message,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          )
+        : !offline && issue == null
+        ? const SizedBox(height: 4)
+        : Semantics(
+            liveRegion: true,
+            child: Card(
+              color: issue == null
+                  ? Theme.of(context).colorScheme.surfaceContainerHigh
+                  : Theme.of(context).colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Icon(
+                      issue == null
+                          ? Icons.cloud_off_outlined
+                          : Icons.sync_problem,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        issue?.message ??
+                            'Offline. Cached saves and pending changes remain available.',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+    if (readOnlyMessage == null) return status;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Card(
+          key: const ValueKey('to-read-read-only'),
+          color: Theme.of(context).colorScheme.secondaryContainer,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                const Icon(Icons.lock_outline),
+                const SizedBox(width: 10),
+                Expanded(child: Text(readOnlyMessage!)),
               ],
             ),
           ),
         ),
-      );
-    }
-    if (!offline && issue == null) return const SizedBox(height: 4);
-    return Semantics(
-      liveRegion: true,
-      child: Card(
-        color: issue == null
-            ? Theme.of(context).colorScheme.surfaceContainerHigh
-            : Theme.of(context).colorScheme.errorContainer,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Icon(
-                issue == null ? Icons.cloud_off_outlined : Icons.sync_problem,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  issue?.message ??
-                      'Offline. Cached saves and pending changes remain available.',
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+        status,
+      ],
     );
   }
 }
@@ -152,7 +190,7 @@ class _ToReadCard extends StatelessWidget {
 
   final LibraryListItem item;
   final VoidCallback onOpen;
-  final VoidCallback onRemove;
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -206,7 +244,9 @@ class _ToReadCard extends StatelessWidget {
               ),
               IconButton(
                 key: ValueKey('remove-to-read-${paper.paperId}'),
-                tooltip: 'Remove from To Read',
+                tooltip: onRemove == null
+                    ? 'To Read is read-only'
+                    : 'Remove from To Read',
                 onPressed: onRemove,
                 icon: const Icon(Icons.bookmark_remove_outlined),
               ),

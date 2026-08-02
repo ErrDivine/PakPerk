@@ -35,7 +35,8 @@
   always requires legal, reviewer-flow, and strict-content-review evidence.
   Any production account surface requires account deletion and its provider-
   E2E/restore-drill evidence; comments additionally require moderation
-  readiness. Guest-only production remains a valid dark-launch shape. Its
+  readiness. Guest-only production remains a valid chart dark-launch shape,
+  not a release acceptance. Its
   versioned canonical release contract is retained in the ConfigMap alongside
   split image/chart/legal projections and the full binding digest.
 - Process OTLP plus backend stdout collection/redaction/export; a closed,
@@ -87,15 +88,33 @@
   latency, optional authenticated library/comments reads, explicitly capped
   serialized library mutations and cleanup, deterministic client fault
   profiles, and redacted owner-only aggregate evidence.
-- Published release-candidate Privacy, Terms, Community Guidelines, Support,
+- Checked-in release-candidate Privacy, Terms, Community Guidelines, Support,
   open-source notices route, association documents, disclosures worksheet, and
   account-deletion route.
 - Release, incident, moderation, deletion, observability, and backup/PITR/
   restore-replay runbooks plus an executable, fail-closed two-phase drill
   harness bound to a canonical protected restore attestation, exact database
   guard, reviewed worker digest, computed RPO/RTO, immutable ledger-record
-  count, and content-addressed owner-only evidence. It includes an explicit
-  zero-count case, so an empty or wrong ledger mount cannot pass.
+  count plus domain-separated signed-record inventory digest, and
+  content-addressed owner-only evidence. Its schema-2/v2 evidence contract
+  requires verification/reapply/guard/context digest equality and forces the
+  attested guard marker as the reapply audit actor. Finalize reopens the actual
+  prior package and binds its content ID, exact attestation, chronology, and
+  protected core counts, including the explicit zero-count case. A second,
+  domain-separated database digest commits to the exact ordered local ledger
+  identity tuples and joined deletion-job bindings without exposing provider
+  subjects; reapply-after, finalize-before/final, and prior-package validation
+  require its continuity. It closes same-count record-set substitution; protected
+  storage inventory remains the separate proof of physical volume/object
+  identity, especially when the environment-bound logical inventory is empty.
+  Restore replay also rejects cross-wired ledger/job bindings, resolves a
+  resurrected identity across authenticated UUID/fingerprint/provider
+  coordinates, safely deletes a provider-matched row reissued under a new local
+  UUID, resets stale completion when recreating a missing job, and requires a
+  read-only finalize snapshot with zero surviving matched users.
+  Standalone migration and every pooled worker connection also force and verify
+  the exact `public, pg_catalog` search path before locks or mutations, overriding
+  hostile URL startup options.
 
 Migration `0009_account_deletion.sql` adds deletion ledger/jobs/events/purge
 audit and moderation-retention pseudonyms. Follow-on additive migration
@@ -120,9 +139,11 @@ that exact expected schema version.
   an account token for a guest, and a token from another viewer whose block
   filter can produce a different result set. The complete locked Rust
   workspace test command, formatting, check, and warning-denying all-feature
-  Clippy passed after this change. Database-backed tests were invoked but keep
-  their documented early-return/ignore boundary without `TEST_DATABASE_URL`;
-  this local run is not live PostgreSQL evidence.
+  Clippy passed after this change. A fresh disposable PostgreSQL/pgvector
+  database supplied `TEST_DATABASE_URL` and `DATABASE_URL`, so the opt-in
+  database and authenticated-router bodies executed and passed. This is local
+  disposable-database integration evidence, not protected staging, production,
+  or exact-source CI evidence.
 - Mobile closure checks now use one process-wide transport status for anonymous
   and authenticated requests. Only a raw response-bearing Dio result can mark
   the service online; local authentication/input failures cannot erase an
@@ -136,8 +157,15 @@ that exact expected schema version.
   Acceptance UI is disabled when server policy versions differ from the exact
   bundled Terms or Community Guidelines marker, and signed staging/production
   evidence binds both markers to the protected public-document version. Legal
-  document loads are stable across rebuilds. Full Flutter analysis and all 544
-  locked tests passed on the final tree.
+  document loads are stable across rebuilds. Subsequent account-scope hardening
+  keys library/comment projections and drafts to the account, auth epoch, and
+  paper as applicable; revokes mutation authority during account rebinding and
+  authoritative suspended/deletion-pending responses; preserves only bound
+  cache/draft access while authentication is offline-unknown; and permits
+  read-only accounts to fetch published comments anonymously. On the final
+  source tree, Flutter analysis and all 601 locked tests passed, including cold
+  restored-identity rebinding, same-epoch account isolation, terminal deletion
+  latching, async comment-intent guards, and fail-closed cache purging.
 - The public deletion page now retains signed deletion authority through both
   the 400-day minimum and the no-recoverable-backup condition. The environment-
   relative bundled moderation support link resolves to the staging or
@@ -165,9 +193,10 @@ that exact expected schema version.
   conflict/report/block filtering/delete, account/library/library-write/comment/
   comment-create feature gates, CORS, recent-auth deletion replay, and strict
   full-text masking while metadata, library state, and comments remain
-  available. The target intentionally returns early without
-  `TEST_DATABASE_URL`, while CI supplies the disposable database and executes
-  the complete body.
+  available. The target intentionally returns early only when
+  `TEST_DATABASE_URL` is absent. This local audit supplied a fresh disposable
+  database and executed the complete body; CI must repeat it for the exact
+  release revision.
 - Helm lint/render and positive/negative production-contract validation passed
   with the pinned Helm binary, including feature-dependent release-evidence
   requirements, exact packaged alert digest, production-only alert attachment,
@@ -237,19 +266,26 @@ that exact expected schema version.
   signed candidate is inferred. GitHub deployment-branch/environment protection
   is still required to prevent dispatching historical refs that contain an
   older copy of either workflow.
-- The protected physical-mobile acceptance lane passed 37 closed-evidence and
-  53 workflow-tamper regressions. It requires exact staging coordinates from the
+- The repository contract for the protected physical-mobile acceptance lane
+  passed 37 closed-evidence and 53 workflow-tamper regressions. The lane requires
+  exact staging coordinates from the
   reviewed config, content-addressed signed-release provenance, a short-lived
   root-owned dedicated/ephemeral runner attestation, four distinct
   challenge-keyed physical identities, direct exclusive archive publication,
   pre-upload verification, and a digest-bound upload. No protected runner,
   staging account, or physical device was exercised locally.
-- The restore harness passed 12 hermetic adversarial regressions for canonical
-  attestation and guard bindings, exact ledger counts, private bounded worker
-  output, source-concealment flags, atomic cleanup, finalize/reapply binding,
-  and content-addressed evidence tamper detection. A real provider backup,
-  independent ledger set, isolated database, and external content-ID anchor
-  remain protected evidence.
+- The restore harness passed 20 hermetic adversarial regressions for canonical
+  schema-2 attestation and guard bindings, exact ledger counts and inventory
+  digests, exact local ledger/job binding continuity, same-count substitution,
+  hostile URL search-path, and reapply-drift rejection, private bounded worker
+  output, source-concealment flags, bound actor override rejection, atomic
+  cleanup, and content-addressed cross-file evidence tamper detection.
+  Its v2 finalize and standalone verifier reopen the actual reapply package and
+  require its phase, computed content ID, byte-identical attestation, protected
+  snapshot continuity, prior-before-final chronology, and
+  `restore_completed_at <= recorded_at <= restore_completed_at + 24h`. A real
+  provider backup, independent ledger set, isolated database, and external
+  content-ID anchor remain protected evidence.
 - All nine deterministic loopback backend-load contract tests passed, including
   response-identity binding, token/content redaction, mutation serialization
   and cleanup, threshold failures, and request caps. A new structural validator
@@ -259,18 +295,22 @@ that exact expected schema version.
   upload, and final enforcement; non-`main` dispatch now fails in the executable
   trust gate. No staging endpoint was called; the protected staging workflow
   result remains required evidence.
-- The reference deletion driver's five no-service contract tests and its
+- The reference deletion driver's six no-service contract tests and its
   hash-locked workflow validator passed. Eight workflow-validation tests also
   enforce manual-only execution, least privilege, immutable scope upload, and
-  the non-release classification. The destructive Docker/Keycloak suite and a
-  protected staging/provider run were not executed in this verification.
+  the non-release classification. On a fresh isolated Docker project, the full
+  Keycloak/PostgreSQL suite passed PKCE/recent-auth, immediate disablement,
+  signed-ledger creation and exact replay, worker session/provider/data purge,
+  restore-ledger reconciliation, log redaction, and scoped cleanup. This does
+  not replace a protected staging/provider run.
 - The live-comments workflow validator's 51 validation tests cover manual
   dispatch, unconditional exact-main source trust, least privilege,
   dependency/image pins, dedicated operator audience, evidence-only upload,
   bounded retention, disposable cleanup, and non-recoverable final enforcement.
-  They do not invoke Docker. The updated live-comments workflow and reference
-  stack were not executed in this verification, and no staging moderation-
-  readiness approval is inferred.
+  Separately, a fresh isolated Docker reference stack passed the three-user
+  PKCE, audience/allowlist denials, create/edit/delete/report/block, moderator
+  audit, creation-kill, unavailable-IdP guest-read, log-redaction, and cleanup
+  matrix. No staging moderation-readiness approval is inferred.
 - The public-edge evidence/verifier regressions passed 24 hermetic cases,
   including closed success/failure matrices, hostile JSON/header/body shapes,
   stable route markers, source mismatch, unsafe origins, private/multicast/
@@ -295,21 +335,28 @@ that exact expected schema version.
 - The locked Rust workspace test and documentation suites passed locally with
   all features, as did format and warning-denying Clippy across all targets and
   features. The migration CI service runs the opt-in database extension/
-  readiness test, then exercises unique isolated schemas for empty-to-latest,
-  version-one-to-latest with a representative paper row, and repeated latest-
-  schema no-op runs. Locally the database-backed migration and authenticated-
-  router bodies intentionally skip without their explicit database URL, and
-  the readiness test remains ignored; a green database-backed CI lane is still
-  the evidence for those bodies.
-- The settled mobile source passed direct Dart formatting, Flutter analysis,
-  all 544 locked tests, all Android debug flavors, all iOS simulator flavors,
-  and strict staging/production artifact inspection. The physical-device matrix
-  remains unexecuted, as detailed in the companion report.
+  readiness test, including a negative regression that relocates `pgcrypto`
+  outside `public` and requires readiness to fail before restoring it, then
+  exercises the real standalone migrator against unique disposable databases
+  for hostile-path empty-to-latest, version-one-to-latest with a representative
+  paper row, wrong-extension-namespace rejection, and repeated latest-schema
+  no-op runs. Locally, a fresh disposable PostgreSQL/pgvector database
+  ran the database-backed migration, deletion, comment, behavior, and
+  authenticated-router bodies. The explicitly ignored extension/readiness test
+  was also invoked with its exact ignored-test selector and passed. These are
+  local disposable-database results; a current exact-source green CI lane and
+  protected target-environment execution remain separate release evidence.
+- On the final current-tree canonical run, direct Dart formatting, Flutter
+  analysis, all 601 locked tests, every Android debug flavor, every iOS
+  simulator flavor, and strict staging/production artifact inspection passed.
+  The physical-device matrix remains unexecuted, as detailed in the companion
+  report.
 - Curated-site static and browser security tests passed all 31 cases against an
   actual staging Helm render, including the CSP/runtime-config assertion and
   distinct report-user/report-comment/block copy. The opt-in Collector
-  container E2E was not run by the canonical local check and remains separate
-  from live sink/retention evidence.
+  container E2E also passed twice in separate local runs against the pinned
+  image. That remains local process/stdout/export/redaction evidence, separate
+  from a deployed sink, retention job, alert route, and protected canaries.
 
 The security workflow uses CVSS-4-capable scanner versions. The reachable
 `quick-xml` advisory found during final audit was remediated by upgrading to

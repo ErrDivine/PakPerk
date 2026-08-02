@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -12,6 +14,7 @@ import '../core/api/safe_retry_interceptor.dart';
 import '../core/api/transport_network_status.dart';
 import '../core/auth/auth.dart';
 import '../core/cache/drift_local_store.dart';
+import '../core/comments/comment_cache_barrier.dart';
 import '../core/database/account_cache_dao.dart';
 import '../core/providers.dart';
 import 'feature_flags.dart';
@@ -20,7 +23,7 @@ import 'startup_controller.dart';
 /// The one application transport. It is owned by the root provider container,
 /// not by an individual repository, so rotating the anonymous session cannot
 /// close the transport used by account requests.
-final pakPerkDioProvider = Provider<Dio>((ref) {
+final Provider<Dio> pakPerkDioProvider = Provider<Dio>((ref) {
   final config = ref.watch(appBuildConfigProvider);
   final dio = Dio(
     BaseOptions(
@@ -42,36 +45,64 @@ final pakPerkDioProvider = Provider<Dio>((ref) {
         dio: dio,
         apiBaseUri: config.apiBaseUri,
         tokenSource: ref.watch(authSessionProvider.notifier),
-        onAccountDeletionPending: (expectedAuthEpoch, requestId) async {
+        accountIdForRequest: (expectedAuthEpoch) {
           final session = ref.read(authSessionProvider);
-          if (session.epoch != expectedAuthEpoch) return;
-          final accountId = session.accountId;
-          final guard = AccountDeletionGuardRecord(
-            acceptance: LocalAccountDeletionAcceptance.serviceUnavailable,
-            accountId: accountId,
-            requestId: requestId,
-            acceptedAt: DateTime.now().toUtc(),
-            localCleanupComplete: false,
-          );
-          final store = ref.read(accountDeletionGuardStoreProvider);
-          Object? guardFailure;
-          try {
-            await store.write(guard);
-          } on Object catch (error) {
-            guardFailure = error;
+          if (session.epoch != expectedAuthEpoch ||
+              !session.mayHaveRecoverableCredentials) {
+            return null;
           }
-          final cleaned = await ref.read(accountDeletionLocalFinalizerProvider)(
-            accountId,
-          );
-          if (cleaned) {
-            try {
-              await store.write(guard.cleanupCompleted());
-            } on Object {
-              guardFailure ??= StateError('Deletion guard update failed.');
-            }
-          }
-          if (guardFailure != null) throw guardFailure;
+          return session.accountId;
         },
+        onAccountDeletionPending:
+            (expectedAuthEpoch, requestAccountId, requestId) async {
+              final auth = ref.read(authSessionProvider.notifier);
+              if (!auth.reserveAccountDeletion(
+                expectedAuthEpoch: expectedAuthEpoch,
+                expectedAccountId: requestAccountId,
+              )) {
+                return;
+              }
+              final guard = AccountDeletionGuardRecord(
+                acceptance: LocalAccountDeletionAcceptance.serviceUnavailable,
+                accountId: requestAccountId,
+                requestId: requestId,
+                acceptedAt: DateTime.now().toUtc(),
+                localCleanupComplete: false,
+              );
+              final store = ref.read(accountDeletionGuardStoreProvider);
+              Object? guardFailure;
+              try {
+                await store.write(guard);
+              } on Object catch (error) {
+                guardFailure = error;
+              }
+              final cleaned = await ref.read(
+                accountDeletionLocalFinalizerProvider,
+              )(requestAccountId);
+              if (cleaned) {
+                try {
+                  await store.write(guard.cleanupCompleted());
+                } on Object {
+                  guardFailure ??= StateError('Deletion guard update failed.');
+                }
+              }
+              if (guardFailure != null) throw guardFailure;
+            },
+        onAccountReadOnly:
+            (expectedAuthEpoch, requestAccountId, errorCode) async {
+              final session = ref.read(authSessionProvider);
+              if (session.epoch != expectedAuthEpoch ||
+                  session.accountId != requestAccountId ||
+                  !session.mayHaveRecoverableCredentials) {
+                return;
+              }
+              ref
+                  .read(currentAccountProvider.notifier)
+                  .recordAuthoritativeReadOnlyStatus(
+                    errorCode: errorCode,
+                    authEpoch: expectedAuthEpoch,
+                  );
+            },
       ),
     );
   }
@@ -138,6 +169,12 @@ final accountDataWriteBarrierProvider = Provider<AccountDataWriteBarrier>(
   (ref) => AccountDataWriteBarrier(),
 );
 
+/// Coordinates every cached-comment write with the stronger all-snapshot
+/// purge required by account deletion.
+final commentCacheBarrierProvider = Provider<CommentCacheBarrier>(
+  (ref) => CommentCacheBarrier(),
+);
+
 final accountOwnedDataClearerProvider = Provider<AccountOwnedDataClearer>((
   ref,
 ) {
@@ -161,9 +198,12 @@ typedef AccountDeletionLocalFinalizer =
 
 final accountDeletionCommentCachePurgerProvider =
     Provider<Future<void> Function()>((ref) {
-      return () async {
-        final store = await ref.read(localStoreWhenReadyProvider)();
-        await store.purgeAccountDeletionCommentSnapshots();
+      return () {
+        final barrier = ref.read(commentCacheBarrierProvider);
+        return barrier.invalidateAndPurge(() async {
+          final store = await ref.read(localStoreWhenReadyProvider)();
+          await store.purgeAccountDeletionCommentSnapshots();
+        });
       };
     });
 
@@ -206,6 +246,78 @@ final authSessionProvider =
         telemetry: ref.watch(telemetrySinkProvider),
       );
     });
+
+/// Identity-provider refresh failures do not necessarily pass through the
+/// shared Dio transport, so authenticated surfaces need this independent
+/// offline signal in addition to [networkOfflineProvider].
+final authSessionOfflineUnknownProvider = Provider<bool>((ref) {
+  if (!ref.watch(featureFlagsProvider).accounts) return false;
+  return ref.watch(
+    authSessionProvider.select(
+      (session) => session.phase == AuthSessionPhase.offlineAuthUnknown,
+    ),
+  );
+});
+
+/// Serializes recovery of a retained offline identity. A successful OIDC
+/// refresh is not enough by itself: `/v1/me` must rebind the same auth epoch
+/// before account-owned remote reads or writes become available again.
+final accountSessionRecoveryProvider = Provider<AccountSessionRecovery>((ref) {
+  return AccountSessionRecovery(() async {
+    if (!ref.read(featureFlagsProvider).accounts) return false;
+    var session = ref.read(authSessionProvider);
+    final wasOfflineUnknown =
+        session.phase == AuthSessionPhase.offlineAuthUnknown;
+    if (wasOfflineUnknown) {
+      final restored = await ref
+          .read(authSessionProvider.notifier)
+          .restoreSession();
+      if (!restored) return false;
+      session = ref.read(authSessionProvider);
+    }
+    if (session.phase != AuthSessionPhase.authenticated) return false;
+
+    final account = ref.read(currentAccountProvider);
+    final alreadyVerified =
+        !wasOfflineUnknown &&
+        account.phase == CurrentAccountPhase.ready &&
+        account.verifiedAuthEpoch == session.epoch &&
+        account.profile?.id == session.accountId;
+    if (alreadyVerified) return true;
+    return await ref.read(currentAccountProvider.notifier).load() != null;
+  });
+});
+
+/// One application-level recovery listener shared by library and comments.
+/// Their individual runtimes react to the resulting verified scopes and do
+/// not perform additional identity refreshes.
+final accountSessionRecoveryRuntimeProvider = Provider<void>((ref) {
+  if (!ref.watch(featureFlagsProvider).accounts) return;
+  final recovery = ref.watch(accountSessionRecoveryProvider);
+  ref.listen<AsyncValue<bool>>(networkOfflineProvider, (previous, next) {
+    if (previous?.value == true && next.value == false) {
+      unawaited(recovery.recover());
+    }
+  });
+});
+
+final class AccountSessionRecovery {
+  AccountSessionRecovery(Future<bool> Function() recover) : _recover = recover;
+
+  final Future<bool> Function() _recover;
+  Future<bool>? _flight;
+
+  Future<bool> recover() {
+    final active = _flight;
+    if (active != null) return active;
+    late final Future<bool> flight;
+    flight = _recover().whenComplete(() {
+      if (identical(_flight, flight)) _flight = null;
+    });
+    _flight = flight;
+    return flight;
+  }
+}
 
 final accountDeletionGuardStoreProvider = Provider<AccountDeletionGuardStore>(
   (ref) => const SharedPreferencesAccountDeletionGuardStore(),
@@ -257,15 +369,63 @@ final currentAccountProvider =
       final controller = CurrentAccountController(
         repository: ref.watch(accountRepositoryProvider),
         sessionEpoch: () => ref.read(authSessionProvider).epoch,
+        sessionAccountId: () => ref.read(authSessionProvider).accountId,
         bindAccountId: ref.read(authSessionProvider.notifier).bindAccountId,
       );
       ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
-        if (previous != null && previous.epoch != next.epoch) {
+        if (previous == null) return;
+        final epochChanged = previous.epoch != next.epoch;
+        final accountDeparted =
+            previous.accountId != null && previous.accountId != next.accountId;
+        final loadingFirstVerifiedIdentity =
+            controller.isLoadingFirstVerifiedIdentity;
+        // A cold `/v1/me` load can deliberately rebind a stale offline cache
+        // key. Its own captured-account guard still rejects an unrelated
+        // same-epoch identity change; avoid invalidating only the unverified
+        // load while its binder briefly publishes a null account scope.
+        if (epochChanged ||
+            (accountDeparted && !loadingFirstVerifiedIdentity)) {
           controller.clear();
         }
       });
       return controller;
     });
+
+/// Effective non-active status for the current auth epoch. `/v1/me` itself is
+/// protected by backend account-status middleware, so suspended/deleting
+/// accounts can be represented by a stable 403 code rather than a profile
+/// payload. A retained older active profile must not hide that boundary.
+final effectiveAccountReadOnlyStatusProvider = Provider<AccountStatus?>((ref) {
+  if (!ref.watch(featureFlagsProvider).accounts) return null;
+  final session = ref.watch(authSessionProvider);
+  if (session.phase == AuthSessionPhase.deletionPending) {
+    return AccountStatus.deletionPending;
+  }
+  final accountId = session.accountId;
+  if (accountId == null || !session.mayHaveRecoverableCredentials) return null;
+  final account = ref.watch(currentAccountProvider);
+  final knownStatus = account.knownReadOnlyStatus;
+  if (account.knownReadOnlyAuthEpoch == session.epoch && knownStatus != null) {
+    return knownStatus;
+  }
+  if (account.errorAuthEpoch == session.epoch) {
+    final status = switch (account.error?.code) {
+      'ACCOUNT_SUSPENDED' => AccountStatus.suspended,
+      'ACCOUNT_DELETION_PENDING' => AccountStatus.deletionPending,
+      'ACCOUNT_DELETED' => AccountStatus.deleted,
+      _ => null,
+    };
+    if (status != null) return status;
+  }
+  final profile = account.profile;
+  if (account.verifiedAuthEpoch != session.epoch ||
+      profile == null ||
+      profile.id != accountId ||
+      profile.isActive) {
+    return null;
+  }
+  return profile.status;
+});
 
 enum AppPendingActionKind {
   savePaper,
@@ -359,7 +519,10 @@ final class AccountAwareStartupBootstrapper implements StartupBootstrapper {
 
   Future<StartupSessionStatus> _inspectAuthenticatedSession() async {
     _deletionPending = await _accountDeletion.recoverAtStartup();
-    if (_deletionPending) return StartupSessionStatus.anonymous;
+    if (_deletionPending) {
+      _authSession.holdAccountDeletionPending();
+      return StartupSessionStatus.anonymous;
+    }
     final status = await _authSession.inspectStoredSession();
     return switch (status) {
       AuthStoredSessionStatus.guest => StartupSessionStatus.anonymous,

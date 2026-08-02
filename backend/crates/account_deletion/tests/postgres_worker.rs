@@ -21,6 +21,9 @@ use domain::AccountDeletionState;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+#[path = "../../../test_support/account_deletion_queue_guard.rs"]
+mod account_deletion_queue_guard;
+
 const IDENTITY_KEY: &str = "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=";
 const SIGNING_KEY: &str = "YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmI=";
 
@@ -86,6 +89,9 @@ async fn postgres_worker_retries_times_out_and_recovers_external_append_crash() 
     };
     let database = Database::connect(&database_url, 24).await.unwrap();
     database.migrate_embedded().await.unwrap();
+    let _queue_isolation = account_deletion_queue_guard::acquire(&database)
+        .await
+        .unwrap();
     let unique = Uuid::now_v7().simple().to_string();
     let issuer = format!("https://deletion-worker.test/{unique}");
     let keyring = IdentityFingerprintKeyring::parse(&format!("identity_1:{IDENTITY_KEY}")).unwrap();

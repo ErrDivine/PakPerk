@@ -3,7 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/app/account_providers.dart';
 import 'package:pakperk/app/comments_providers.dart';
 import 'package:pakperk/app/feature_flags.dart';
+import 'package:pakperk/core/auth/auth.dart';
 import 'package:pakperk/core/providers.dart';
+
+import '../core/auth/auth_fakes.dart';
 
 void main() {
   const accountId = '018f47a6-4b56-7f4c-8c7a-e2656e820001';
@@ -95,4 +98,104 @@ void main() {
     );
     expect(container.read(commentUiIntentProvider), isNull);
   });
+
+  test('bound A intent is revoked before account B can consume it', () async {
+    const accountB = '018f47a6-4b56-7f4c-8c7a-e2656e820003';
+    final auth = await _restoredAuth(accountId);
+    final container = _identityRuntimeContainer(auth);
+    addTearDown(container.dispose);
+    container.read(commentsRuntimeProvider);
+    final intents = container.read(commentUiIntentProvider.notifier);
+    final intent = CommentUiIntent(
+      kind: CommentUiIntentKind.blockUser,
+      targetId: targetId,
+    );
+    intents.show(intent);
+
+    await auth.bindAccountId(accountB);
+
+    expect(container.read(authSessionProvider).accountId, accountB);
+    expect(container.read(commentUiIntentProvider), isNull);
+    expect(intents.takeIfCurrent(intent), isNull);
+  });
+
+  test('sign-out revokes a bound comment intent', () async {
+    final auth = await _restoredAuth(accountId);
+    final container = _identityRuntimeContainer(auth);
+    addTearDown(container.dispose);
+    container.read(commentsRuntimeProvider);
+    final intents = container.read(commentUiIntentProvider.notifier);
+    final intent = CommentUiIntent(
+      kind: CommentUiIntentKind.blockUser,
+      targetId: targetId,
+    );
+    intents.show(intent);
+
+    await auth.signOut();
+
+    expect(container.read(authSessionProvider).phase, AuthSessionPhase.guest);
+    expect(container.read(commentUiIntentProvider), isNull);
+    expect(intents.takeIfCurrent(intent), isNull);
+  });
+
+  test(
+    'null to A binding preserves only the pre-auth pending handoff',
+    () async {
+      final auth = await _restoredAuth(null);
+      final container = _identityRuntimeContainer(auth);
+      addTearDown(container.dispose);
+      container.read(commentsRuntimeProvider);
+      final pending = AppPendingAuthenticatedAction(
+        kind: AppPendingActionKind.blockUser,
+        targetId: targetId,
+      );
+      container
+          .read(pendingAuthenticatedActionProvider.notifier)
+          .replace(pending);
+
+      await auth.bindAccountId(accountId);
+
+      expect(container.read(authSessionProvider).accountId, accountId);
+      expect(container.read(pendingAuthenticatedActionProvider), same(pending));
+      expect(container.read(commentUiIntentProvider), isNull);
+    },
+  );
 }
+
+Future<AuthSessionController> _restoredAuth(String? accountId) async {
+  final repository = AuthRepository(
+    configuration: testOidcConfiguration,
+    oidcClient: FakeOidcClient(),
+    secureTokenStore: MemorySecureTokenStore(
+      storedRecord(accountId: accountId),
+    ),
+  );
+  final controller = AuthSessionController(
+    repository: repository,
+    clearAccountOwnedData: (_, __) async {},
+  );
+  if (!await controller.restoreSession()) {
+    controller.dispose();
+    throw StateError('The test auth session could not be restored.');
+  }
+  return controller;
+}
+
+ProviderContainer _identityRuntimeContainer(AuthSessionController auth) =>
+    ProviderContainer(
+      overrides: [
+        featureFlagsProvider.overrideWithValue(
+          const FeatureFlags(
+            accounts: true,
+            library: true,
+            comments: true,
+            openingMotion: false,
+          ),
+        ),
+        authSessionProvider.overrideWith((ref) => auth),
+        verifiedCommentScopeProvider.overrideWithValue(null),
+        commentBlockReconcilerProvider.overrideWithValue(
+          CommentBlockReconciler(reconcile: (_) async {}),
+        ),
+      ],
+    );

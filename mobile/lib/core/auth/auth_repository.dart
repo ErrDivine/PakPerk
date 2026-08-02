@@ -37,10 +37,14 @@ final class AuthRepository implements AuthTokenSource {
   _RefreshFlight? _refreshFlight;
   Future<void> _storageTail = Future<void>.value();
   int _epoch = 0;
+  int _accountIdentityVersion = 0;
+  int _accountBindingsInProgress = 0;
   bool _durableSessionBlocked = false;
 
   int get epoch => _epoch;
   String? get accountId => _secureRecord?.accountId;
+  int get accountIdentityVersion => _accountIdentityVersion;
+  bool get hasAccountBindingInProgress => _accountBindingsInProgress > 0;
   bool get hasStoredSessionInMemory => _secureRecord != null;
   @override
   bool isCurrentEpoch(int value) => value >= 0 && value == _epoch;
@@ -171,27 +175,25 @@ final class AuthRepository implements AuthTokenSource {
   /// Persists the non-secret Pakperk account UUID alongside the refresh token.
   Future<void> bindAccountId(String accountId) async {
     final operationEpoch = _epoch;
-    final current = _secureRecord;
-    if (current == null) {
-      throw AuthFailure(
-        AuthFailureKind.invalidGrant,
-        AuthFailureCode.authSessionMissing,
-        sessionEpoch: operationEpoch,
-      );
-    }
-    late final SecureAuthRecord updated;
+    // Account binding is a second identity coordinate within one credential
+    // epoch. Advance it for every intent before the first await: while a B write
+    // is pending, a queued A intent must not disappear into an A -> B -> A ABA.
+    _accountIdentityVersion += 1;
+    _accountBindingsInProgress += 1;
     try {
-      updated = current.copyWith(accountId: accountId);
+      await _mutateSecureRecord(
+        operationEpoch,
+        (current) => current.copyWith(accountId: accountId),
+      );
     } on ArgumentError {
       throw AuthFailure(
         AuthFailureKind.invalidResponse,
         AuthFailureCode.accountIdInvalid,
         sessionEpoch: operationEpoch,
       );
+    } finally {
+      _accountBindingsInProgress -= 1;
     }
-    await _writeSecureRecord(updated, operationEpoch);
-    _ensureEpoch(operationEpoch);
-    _secureRecord = updated;
   }
 
   /// Obtains a fresh, one-use bearer without mutating the normal session.
@@ -325,17 +327,18 @@ final class AuthRepository implements AuthTokenSource {
       operationEpoch: operationEpoch,
     );
 
-    final updatedRecord = record.copyWith(
-      refreshToken: tokens.refreshToken,
-      idTokenHint: tokens.idToken,
+    await _mutateSecureRecord(
+      operationEpoch,
+      (current) => current.copyWith(
+        refreshToken: tokens.refreshToken,
+        idTokenHint: tokens.idToken,
+      ),
     );
-    await _writeSecureRecord(updatedRecord, operationEpoch);
     _ensureEpoch(operationEpoch);
     final credential = AuthAccessCredential(
       value: tokens.accessToken,
       expiresAt: tokens.accessTokenExpiresAt.toUtc(),
     );
-    _secureRecord = updatedRecord;
     _accessCredential = credential;
     return credential;
   }
@@ -412,6 +415,48 @@ final class AuthRepository implements AuthTokenSource {
       });
       _ensureEpoch(operationEpoch);
     } on AuthFailure {
+      rethrow;
+    } on Object {
+      throw AuthFailure(
+        AuthFailureKind.secureStorage,
+        AuthFailureCode.secureStorageWrite,
+        sessionEpoch: operationEpoch,
+      );
+    }
+  }
+
+  /// Serializes read-modify-write updates against the latest in-memory record.
+  ///
+  /// Refresh and account binding deliberately update disjoint fields. Reading
+  /// the record inside the same storage critical section prevents either one
+  /// from restoring the other's stale snapshot when their asynchronous work
+  /// completes in the opposite order.
+  Future<SecureAuthRecord> _mutateSecureRecord(
+    int operationEpoch,
+    SecureAuthRecord Function(SecureAuthRecord current) mutate,
+  ) async {
+    try {
+      final updated = await _withSerializedStorage(() async {
+        _ensureEpoch(operationEpoch);
+        final current = _secureRecord;
+        if (current == null) {
+          throw AuthFailure(
+            AuthFailureKind.invalidGrant,
+            AuthFailureCode.authSessionMissing,
+            sessionEpoch: operationEpoch,
+          );
+        }
+        final next = mutate(current);
+        await _secureTokenStore.write(next);
+        _ensureEpoch(operationEpoch);
+        _secureRecord = next;
+        return next;
+      });
+      _ensureEpoch(operationEpoch);
+      return updated;
+    } on AuthFailure {
+      rethrow;
+    } on ArgumentError {
       rethrow;
     } on Object {
       throw AuthFailure(

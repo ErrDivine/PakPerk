@@ -40,7 +40,10 @@ not considered a functioning adapter.
 The chart is fail-closed: images require immutable SHA-256 digests, staging and
 production require OTLP export and reviewed network CIDRs, automatic migrations
 are disabled in long-running processes, and the migration job requires a
-verified backup identifier. Production also requires strict full-text policy,
+verified backup identifier. The standalone migrator overrides connection URL
+options by forcing and verifying `public, pg_catalog` before its advisory lock
+or any unqualified migration statement. Production also requires strict
+full-text policy,
 two API/site replicas, exact HTTPS origins, distinct native/browser OIDC
 clients, a separately backed-up deletion ledger claim, the exact packaged
 alert-policy digest, and content-addressed release-evidence references.
@@ -144,13 +147,30 @@ The external Secret maps a different database URL key for every component. The
 platform database owner creates and audits these roles; never point two keys at
 the same login.
 
+Every long-running application role, plus any operational admin role that uses
+the shared database library, needs this read-only readiness grant in addition
+to its component-specific table privileges:
+
+```sql
+GRANT USAGE ON SCHEMA public TO <runtime_role>;
+GRANT SELECT (version, success, checksum)
+  ON TABLE public._sqlx_migrations TO <runtime_role>;
+```
+
+The application queries `public._sqlx_migrations` by its exact schema and
+refuses readiness for an absent, failed, old, gapped, or checksum-divergent
+embedded history. The grant does not confer migration ownership or DDL. Audit
+it after initial bootstrap and any role replacement; do not grant runtime roles
+`INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, or `TRIGGER` on the
+migration table.
+
 | Component | Required scope | Explicitly excluded |
 | --- | --- | --- |
 | migration Job | connect plus reviewed schema DDL/migration ownership | identity-provider administration, application serving |
-| API | serving DML for paper/account/library/comment/deletion request and shared-limit tables | schema ownership/DDL, Keycloak admin credentials |
-| paper worker | paper/job/cache/provider-result DML and shared arXiv gate | account-deletion/provider-admin tables and credentials |
-| metadata sync | bounded metadata ingestion/cache and shared arXiv gate | model key, GROBID, full-text/embedding pipeline, account, UGC, deletion, DDL |
-| deletion worker | deletion/jobs/ledger binding, account-owned purge and retention DML | schema DDL, paper-provider/model credentials |
+| API | migration-history readiness read plus serving DML for paper/account/library/comment/deletion request and shared-limit tables | schema ownership/DDL, migration-history writes, Keycloak admin credentials |
+| paper worker | migration-history readiness read plus paper/job/cache/provider-result DML and shared arXiv gate | account-deletion/provider-admin tables and credentials, migration-history writes |
+| metadata sync | migration-history readiness read plus bounded metadata ingestion/cache and shared arXiv gate | model key, GROBID, full-text/embedding pipeline, account, UGC, deletion, DDL, migration-history writes |
+| deletion worker | migration-history readiness read plus deletion/jobs/ledger binding, account-owned purge and retention DML | schema DDL, migration-history writes, paper-provider/model credentials |
 | Keycloak | its separate Keycloak database only | Pakperk application database |
 
 The Keycloak deletion service account has only

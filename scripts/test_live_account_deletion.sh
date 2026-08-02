@@ -89,7 +89,7 @@ openssl rand -hex 48 >"$origin_secret"
 printf 'live-account-deletion-cursor:%s\n' "$(openssl rand -base64 32 | tr -d '\n')" >"$cursor_keys"
 printf 'live-account-deletion-current:%s\n' "$(openssl rand -base64 48 | tr -d '\n')" >"$identity_keys"
 printf 'live-account-deletion-signing:%s\n' "$(openssl rand -base64 48 | tr -d '\n')" >"$signing_keys"
-printf 'live-account-deletion-provider:%s\n' "$(openssl rand -base64 48 | tr -d '\n')" >"$provider_keys"
+printf 'live-account-deletion-provider:%s\n' "$(openssl rand -base64 32 | tr -d '\n')" >"$provider_keys"
 chmod 0600 "$origin_secret" "$cursor_keys" "$identity_keys" "$signing_keys" "$provider_keys"
 
 run_id="$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"

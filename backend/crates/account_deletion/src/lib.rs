@@ -6,6 +6,7 @@ mod worker;
 
 pub use external_ledger::{
     DeletionLedgerSigner, ExternalDeletionLedger, ExternalDeletionLedgerError,
+    ExternalDeletionLedgerInventory, ExternalDeletionLedgerInventoryBuilder,
     ExternalDeletionRecord, FileExternalDeletionLedger, SignedExternalDeletionRecord,
 };
 pub use provider_identity::{

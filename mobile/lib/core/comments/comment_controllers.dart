@@ -117,12 +117,20 @@ final class CommentThreadController extends StateNotifier<CommentThreadState> {
         }
       }
     }
+    if (_viewer.cacheOnly) {
+      _settleRetainedLocal(generation);
+      return;
+    }
     await refresh(generation: generation);
   }
 
   Future<void> refresh({int? generation}) async {
     if (!mounted) return;
     final activeGeneration = generation ?? ++_generation;
+    if (_viewer.cacheOnly) {
+      _settleRetainedLocal(activeGeneration);
+      return;
+    }
     state = state.copyWith(
       refreshing: state.items.isNotEmpty,
       loadingInitial: state.items.isEmpty,
@@ -167,6 +175,10 @@ final class CommentThreadController extends StateNotifier<CommentThreadState> {
 
   Future<void> loadMore() async {
     if (!mounted) return;
+    if (_viewer.cacheOnly) {
+      state = state.copyWith(nextCursor: null, loadingMore: false);
+      return;
+    }
     final cursor = state.nextCursor;
     if (cursor == null || state.loadingMore) return;
     final generation = _generation;
@@ -199,6 +211,22 @@ final class CommentThreadController extends StateNotifier<CommentThreadState> {
         );
       }
     }
+  }
+
+  void _settleRetainedLocal(int generation) {
+    if (!_current(generation)) return;
+    state = state.copyWith(
+      nextCursor: null,
+      loadingInitial: false,
+      refreshing: false,
+      loadingMore: false,
+      initialLoadSettled: true,
+      errorMessage:
+          state.errorMessage ??
+          (state.items.isEmpty
+              ? 'Account verification unavailable · reconnect to refresh comments.'
+              : 'Account verification unavailable · showing saved comments.'),
+    );
   }
 
   Future<void> saveDraft(String body) async {

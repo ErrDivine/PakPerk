@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:pakperk/app/account_providers.dart';
 import 'package:pakperk/app/feature_flags.dart';
 import 'package:pakperk/app/library_providers.dart';
+import 'package:pakperk/core/account/account_profile.dart';
 import 'package:pakperk/core/auth/auth.dart';
 import 'package:pakperk/core/database/app_database.dart';
 import 'package:pakperk/core/database/library_dao.dart';
@@ -23,7 +24,95 @@ import 'package:pakperk/features/library/paper_save_control.dart';
 import 'package:pakperk/features/library/to_read_list.dart';
 import 'package:pakperk/features/library/to_read_screen.dart';
 
+import '../core/auth/auth_fakes.dart';
+
 void main() {
+  testWidgets(
+    'account-keyed library projections never retain account A values for B',
+    (tester) async {
+      const accountB = '018f47a6-4b56-7f4c-8c7a-e2656e820002';
+      const scopeA = (accountId: _accountId, authEpoch: 7);
+      const scopeB = (accountId: accountB, authEpoch: 7);
+      final paperA = _paper('Private paper for A', 8);
+      final database = PakPerkDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final dao = LibraryDao(database);
+      await dao.enqueueMutation(
+        accountId: _accountId,
+        paperId: paperA.paperId,
+        saved: true,
+        paper: paperA,
+      );
+      final repository = LibraryRepository(
+        local: dao,
+        remote: _UnusedLibraryRemote(),
+        sessionScope: () => scopeA,
+        verifiedScope: () => null,
+      );
+      final activeScopeProvider = StateProvider<ActiveLibraryScope>(
+        (ref) => scopeA,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [libraryRepositoryProvider.overrideWithValue(repository)],
+          child: Consumer(
+            builder: (context, ref, child) {
+              final scope = ref.watch(activeScopeProvider);
+              final items = ref.watch(toReadItemsProvider(scope));
+              final saved = ref.watch(
+                paperSavedStateProvider((
+                  accountId: scope.accountId,
+                  authEpoch: scope.authEpoch,
+                  paperId: paperA.paperId,
+                )),
+              );
+              final pending = ref.watch(libraryPendingCountProvider(scope));
+              final itemLabel = items.isLoading
+                  ? 'loading'
+                  : '[${items.value?.map((item) => item.paper.title).join(',')} ]';
+              final savedLabel = saved.isLoading
+                  ? 'loading'
+                  : '${saved.value?.saved}';
+              final pendingLabel = pending.isLoading
+                  ? 'loading'
+                  : '${pending.value}';
+              return MaterialApp(
+                home: Text(
+                  '${scope.accountId}|$itemLabel|$savedLabel|$pendingLabel',
+                  key: const ValueKey('library-scope-projection'),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await _pumpUntil(
+        tester,
+        () =>
+            _projectionText(tester).contains('Private paper for A') &&
+            _projectionText(tester).endsWith('|true|1'),
+      );
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byKey(const ValueKey('library-scope-projection'))),
+      );
+      container.read(activeScopeProvider.notifier).state = scopeB;
+      await tester.pump();
+
+      expect(_projectionText(tester), startsWith('$accountB|'));
+      expect(_projectionText(tester), isNot(contains('Private paper for A')));
+      expect(_projectionText(tester), isNot(endsWith('|true|1')));
+      await _pumpUntil(
+        tester,
+        () => _projectionText(tester).endsWith('|false|0'),
+      );
+      expect(_projectionText(tester), isNot(contains('Private paper for A')));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 1));
+    },
+  );
+
   testWidgets('guest save records one credential-free intent before auth', (
     tester,
   ) async {
@@ -49,8 +138,10 @@ void main() {
         overrides: [
           featureFlagsProvider.overrideWithValue(_libraryFlags),
           libraryDisplayScopeProvider.overrideWithValue(null),
+          libraryMutationScopeProvider.overrideWithValue(null),
+          libraryReadOnlyAccountStatusProvider.overrideWithValue(null),
           paperSavedStateProvider.overrideWith(
-            (ref, paperId) => Stream.value(const LibrarySavedState.notSaved()),
+            (ref, view) => Stream.value(const LibrarySavedState.notSaved()),
           ),
           pendingAuthenticatedActionProvider.overrideWith((ref) => pending),
         ],
@@ -71,6 +162,84 @@ void main() {
     expect(pending.state?.kind, AppPendingActionKind.savePaper);
     expect(pending.state?.targetId, _paper('Guest paper', 3).paperId);
   });
+
+  testWidgets(
+    'deletion-pending library stays read-only without a retained account ID',
+    (tester) async {
+      final auth = AuthSessionController(
+        repository: AuthRepository(
+          configuration: testOidcConfiguration,
+          oidcClient: FakeOidcClient(),
+          secureTokenStore: MemorySecureTokenStore(
+            storedRecord(accountId: _accountId),
+          ),
+        ),
+        clearAccountOwnedData: (_, __) async {},
+      );
+      await auth.inspectStoredSession();
+      expect(
+        await auth.enterAccountDeletionPending(accountId: _accountId),
+        isTrue,
+      );
+      final pending =
+          PendingAuthenticatedActionController<AppPendingAuthenticatedAction>();
+      final container = ProviderContainer(
+        overrides: [
+          featureFlagsProvider.overrideWithValue(_libraryFlags),
+          authSessionProvider.overrideWith((ref) => auth),
+          paperSavedStateProvider.overrideWith(
+            (ref, view) => Stream.value(const LibrarySavedState.notSaved()),
+          ),
+          pendingAuthenticatedActionProvider.overrideWith((ref) => pending),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(libraryDisplayScopeProvider), isNull);
+      expect(container.read(libraryMutationScopeProvider), isNull);
+      expect(
+        container.read(libraryReadOnlyAccountStatusProvider),
+        AccountStatus.deletionPending,
+      );
+
+      final paper = _paper('Deletion-pending paper', 4);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(body: PaperSaveControl(paper: paper)),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.byTooltip('Account deletion pending · To Read is read-only'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<InkWell>(find.byKey(const ValueKey('paper-save-control')))
+            .onTap,
+        isNull,
+      );
+      expect(find.text('Save across your devices'), findsNothing);
+      expect(pending.state, isNull);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(home: ToReadScreen(onOpenPaper: (_) {})),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Account deletion is pending'), findsOneWidget);
+      expect(find.text('Sign in'), findsNothing);
+      expect(find.byType(RefreshIndicator), findsNothing);
+      expect(pending.state, isNull);
+    },
+  );
 
   testWidgets('save control exposes exact action and pending semantics', (
     tester,
@@ -131,10 +300,15 @@ void main() {
               accountId: _accountId,
               authEpoch: 7,
             )),
+            libraryMutationScopeProvider.overrideWithValue(const (
+              accountId: _accountId,
+              authEpoch: 7,
+            )),
+            libraryReadOnlyAccountStatusProvider.overrideWithValue(null),
             libraryRepositoryProvider.overrideWithValue(repository),
-            paperSavedStateProvider.overrideWith((ref, paperId) {
+            paperSavedStateProvider.overrideWith((ref, view) {
               savedStateStreams += 1;
-              return repository.watchSavedState(_accountId, paperId);
+              return repository.watchSavedState(_accountId, view.paperId);
             }),
           ],
           child: MaterialApp(
@@ -218,6 +392,11 @@ void main() {
             accountId: _accountId,
             authEpoch: 7,
           )),
+          libraryMutationScopeProvider.overrideWithValue(const (
+            accountId: _accountId,
+            authEpoch: 7,
+          )),
+          libraryReadOnlyAccountStatusProvider.overrideWithValue(null),
           libraryRepositoryProvider.overrideWithValue(repository),
         ],
         child: MaterialApp(
@@ -301,8 +480,14 @@ void main() {
               accountId: _accountId,
               authEpoch: 7,
             )),
+            libraryMutationScopeProvider.overrideWithValue(const (
+              accountId: _accountId,
+              authEpoch: 7,
+            )),
+            libraryReadOnlyAccountStatusProvider.overrideWithValue(null),
             libraryRepositoryProvider.overrideWithValue(repository),
             librarySyncControllerProvider.overrideWith((ref) => sync),
+            authSessionOfflineUnknownProvider.overrideWithValue(false),
             networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
           ],
           child: MaterialApp(home: ToReadScreen(onOpenPaper: (_) {})),
@@ -347,6 +532,183 @@ void main() {
       await tester.pump(const Duration(milliseconds: 1));
     },
   );
+
+  testWidgets(
+    'OIDC offline state marks cached To Read offline when transport is online',
+    (tester) async {
+      final database = PakPerkDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final repository = LibraryRepository(
+        local: LibraryDao(database),
+        remote: _UnusedLibraryRemote(),
+        sessionScope: () => (accountId: _accountId, authEpoch: 7),
+        verifiedScope: () => null,
+        localMutationScope: () => (accountId: _accountId, authEpoch: 7),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            featureFlagsProvider.overrideWithValue(_libraryFlags),
+            libraryDisplayScopeProvider.overrideWithValue(const (
+              accountId: _accountId,
+              authEpoch: 7,
+            )),
+            libraryMutationScopeProvider.overrideWithValue(const (
+              accountId: _accountId,
+              authEpoch: 7,
+            )),
+            libraryReadOnlyAccountStatusProvider.overrideWithValue(null),
+            libraryRepositoryProvider.overrideWithValue(repository),
+            toReadItemsProvider.overrideWith(
+              (ref, scope) => Stream.value(const <LibraryListItem>[]),
+            ),
+            authSessionOfflineUnknownProvider.overrideWithValue(true),
+            networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
+          ],
+          child: MaterialApp(home: ToReadScreen(onOpenPaper: (_) {})),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Offline. Pull to refresh when you reconnect.'),
+        findsOneWidget,
+      );
+      expect(find.byType(RefreshIndicator), findsOneWidget);
+    },
+  );
+
+  testWidgets('suspended account is read-only and cannot enqueue outbox work', (
+    tester,
+  ) async {
+    final paper = _paper('Read-only paper', 7);
+    final database = PakPerkDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final repository = LibraryRepository(
+      local: LibraryDao(database),
+      remote: _UnusedLibraryRemote(),
+      sessionScope: () => (accountId: _accountId, authEpoch: 7),
+      verifiedScope: () => null,
+      localMutationScope: () => null,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          featureFlagsProvider.overrideWithValue(_libraryFlags),
+          libraryDisplayScopeProvider.overrideWithValue(const (
+            accountId: _accountId,
+            authEpoch: 7,
+          )),
+          libraryMutationScopeProvider.overrideWithValue(null),
+          libraryReadOnlyAccountStatusProvider.overrideWithValue(
+            AccountStatus.suspended,
+          ),
+          libraryRepositoryProvider.overrideWithValue(repository),
+          paperSavedStateProvider.overrideWith(
+            (ref, view) => Stream.value(const LibrarySavedState.notSaved()),
+          ),
+        ],
+        child: MaterialApp(
+          home: Scaffold(body: PaperSaveControl(paper: paper)),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byTooltip('Account suspended · To Read is read-only'),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<InkWell>(find.byKey(const ValueKey('paper-save-control')))
+          .onTap,
+      isNull,
+    );
+    expect(
+      () => repository.setSaved(
+        accountId: _accountId,
+        authEpoch: 7,
+        paperId: paper.paperId,
+        saved: true,
+        paper: paper,
+      ),
+      throwsA(isA<LibraryScopeChanged>()),
+    );
+    expect(await database.select(database.syncOutbox).get(), isEmpty);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ToReadListView(
+            items: [_item('Read-only paper', 7)],
+            onOpen: (_) {},
+            onRemove: null,
+            readOnlyMessage:
+                'Account suspended. Saved papers are read-only on this device.',
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('to-read-read-only')), findsOneWidget);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(
+              ValueKey(
+                'remove-to-read-${_item('Read-only paper', 7).paper.paperId}',
+              ),
+            ),
+          )
+          .onPressed,
+      isNull,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: ToReadListView(
+            items: [],
+            onOpen: _ignoreLibraryItem,
+            onRemove: null,
+            readOnlyMessage:
+                'Account suspended. Saved papers are read-only on this device.',
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('No saved papers are available'), findsOneWidget);
+    expect(
+      find.textContaining('Save a paper from any Read stage'),
+      findsNothing,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: ToReadListView(
+            items: [],
+            onOpen: _ignoreLibraryItem,
+            onRemove: null,
+            offline: true,
+            readOnlyMessage:
+                'Account suspended. Saved papers are read-only on this device.',
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Offline. Showing cached saves.'), findsOneWidget);
+    expect(
+      find.text('Offline. Pull to refresh when you reconnect.'),
+      findsNothing,
+    );
+  });
 
   testWidgets('To Read is newest first with explicit remove and open actions', (
     tester,
@@ -422,6 +784,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
+String _projectionText(WidgetTester tester) => tester
+    .widget<Text>(find.byKey(const ValueKey('library-scope-projection')))
+    .data!;
 
 Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
   for (var attempt = 0; attempt < 40 && !condition(); attempt += 1) {
@@ -524,6 +890,8 @@ final class _RecordingLibraryRemote implements LibraryRemoteDataSource {
 }
 
 const _accountId = '018f47a6-4b56-7f4c-8c7a-e2656e820001';
+
+void _ignoreLibraryItem(LibraryListItem _) {}
 const _dualControlOperationId = '018f47a6-4b56-7f4c-8c7a-e2656e820200';
 const _seedOperationId = '018f47a6-4b56-7f4c-8c7a-e2656e820201';
 const _removeOperationId = '018f47a6-4b56-7f4c-8c7a-e2656e820202';

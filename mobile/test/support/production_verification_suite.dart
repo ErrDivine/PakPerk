@@ -14,6 +14,7 @@ import 'package:pakperk/core/api/request_cancellation.dart';
 import 'package:pakperk/core/cache/drift_local_store.dart';
 import 'package:pakperk/core/cache/feed_cache_persistence.dart';
 import 'package:pakperk/core/cache/feed_prefetch_config.dart';
+import 'package:pakperk/core/comments/comment_cache_barrier.dart';
 import 'package:pakperk/core/comments/comment_controllers.dart';
 import 'package:pakperk/core/comments/comment_models.dart';
 import 'package:pakperk/core/comments/comment_repository.dart';
@@ -374,6 +375,7 @@ void registerProductionVerificationTests({bool physicalDevice = false}) {
       local: CommentsDao(database),
       remote: remote,
       accountWrites: AccountDataWriteBarrier(),
+      commentCache: CommentCacheBarrier(),
       cachePolicy: const FeedPrefetchConfig(),
       sessionScope: () => (accountId: null, authEpoch: 0),
       verifiedScope: () => null,

@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/account_providers.dart';
 import '../../app/library_providers.dart';
+import '../../core/account/account_profile.dart';
 import '../../core/database/library_dao.dart';
 import '../../core/library/library_models.dart';
 import '../../core/models/paper.dart';
@@ -30,18 +32,26 @@ class ToReadScreen extends ConsumerWidget {
         icon: Icons.bookmarks_outlined,
       );
     }
+    final readOnlyStatus = ref.watch(libraryReadOnlyAccountStatusProvider);
     final scope = ref.watch(libraryDisplayScopeProvider);
-    if (scope == null) return const _SignedOutLibraryScreen();
+    if (scope == null) {
+      return readOnlyStatus == null
+          ? const _SignedOutLibraryScreen()
+          : _UnavailableReadOnlyLibraryScreen(status: readOnlyStatus);
+    }
+    final mutationScope = ref.watch(libraryMutationScopeProvider);
 
-    final items = ref.watch(toReadItemsProvider);
+    final items = ref.watch(toReadItemsProvider(scope));
     final sync = ref.watch(librarySyncControllerProvider);
-    final offline = ref
-        .watch(networkOfflineProvider)
-        .when(
-          data: (value) => value,
-          loading: () => false,
-          error: (_, __) => true,
-        );
+    final offline =
+        ref.watch(authSessionOfflineUnknownProvider) ||
+        ref
+            .watch(networkOfflineProvider)
+            .when(
+              data: (value) => value,
+              loading: () => false,
+              error: (_, __) => true,
+            );
     final cached = items.value;
     return Scaffold(
       appBar: AppBar(
@@ -72,12 +82,24 @@ class ToReadScreen extends ConsumerWidget {
                   (items.hasError
                       ? LibrarySyncIssue.fromCode('LOCAL_SYNC_UNAVAILABLE')
                       : null),
-              onRefresh: () =>
-                  ref.read(librarySyncControllerProvider.notifier).refresh(),
+              readOnlyMessage: readOnlyStatus == null
+                  ? null
+                  : _libraryReadOnlyMessage(readOnlyStatus),
+              onRefresh: mutationScope == null ? null : () => _refresh(ref),
               onOpen: (item) => onOpenPaper(item.paper),
-              onRemove: (item) => unawaited(_remove(context, ref, scope, item)),
+              onRemove: mutationScope == null
+                  ? null
+                  : (item) =>
+                        unawaited(_remove(context, ref, mutationScope, item)),
             ),
     );
+  }
+
+  Future<void> _refresh(WidgetRef ref) async {
+    if (ref.read(authSessionOfflineUnknownProvider)) {
+      await ref.read(accountSessionRecoveryProvider).recover();
+    }
+    await ref.read(librarySyncControllerProvider.notifier).refresh();
   }
 
   Future<void> _remove(
@@ -147,6 +169,7 @@ class ToReadScreen extends ConsumerWidget {
     ActiveLibraryScope scope,
     LibraryListItem item,
   ) async {
+    if (ref.read(libraryMutationScopeProvider) != scope) return;
     try {
       await ref
           .read(libraryRepositoryProvider)
@@ -164,6 +187,16 @@ class ToReadScreen extends ConsumerWidget {
     }
   }
 }
+
+String _libraryReadOnlyMessage(AccountStatus status) => switch (status) {
+  AccountStatus.suspended =>
+    'Account suspended. Saved papers are read-only on this device.',
+  AccountStatus.deletionPending =>
+    'Account deletion is pending. Saved papers are read-only.',
+  AccountStatus.deleted =>
+    'This account is deleted. Saved papers are read-only.',
+  AccountStatus.active => 'Saved papers are read-only.',
+};
 
 class _SignedOutLibraryScreen extends StatelessWidget {
   const _SignedOutLibraryScreen();
@@ -195,6 +228,51 @@ class _SignedOutLibraryScreen extends StatelessWidget {
               FilledButton(
                 onPressed: () => context.push<void>('/auth'),
                 child: const Text('Sign in'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _UnavailableReadOnlyLibraryScreen extends StatelessWidget {
+  const _UnavailableReadOnlyLibraryScreen({required this.status});
+
+  final AccountStatus status;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('To Read')),
+    body: SafeArea(
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.lock_outline, size: 52),
+              const SizedBox(height: 16),
+              Text(
+                switch (status) {
+                  AccountStatus.suspended => 'Account suspended',
+                  AccountStatus.deletionPending =>
+                    'Account deletion is pending',
+                  AccountStatus.deleted => 'Account deleted',
+                  AccountStatus.active => 'To Read is read-only',
+                },
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                status == AccountStatus.deletionPending
+                    ? 'Saved papers are unavailable while account-owned '
+                          'data is being removed. Public reading remains available.'
+                    : 'Saved papers are unavailable for this read-only '
+                          'account session. Public reading remains available.',
+                textAlign: TextAlign.center,
               ),
             ],
           ),

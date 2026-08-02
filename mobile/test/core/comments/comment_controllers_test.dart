@@ -4,6 +4,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/core/account/account_data_write_barrier.dart';
 import 'package:pakperk/core/cache/feed_prefetch_config.dart';
+import 'package:pakperk/core/comments/comment_cache_barrier.dart';
 import 'package:pakperk/core/comments/comment_controllers.dart';
 import 'package:pakperk/core/comments/comment_models.dart';
 import 'package:pakperk/core/comments/comment_repository.dart';
@@ -149,6 +150,7 @@ _fixture({required _Remote remote}) async {
       local: local,
       remote: remote,
       accountWrites: AccountDataWriteBarrier(),
+      commentCache: CommentCacheBarrier(),
       cachePolicy: const FeedPrefetchConfig(),
       sessionScope: () =>
           (accountId: scope.accountId, authEpoch: scope.authEpoch),

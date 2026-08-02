@@ -37,6 +37,7 @@ done
 : "${PAKPERK_RESTORE_DRILL_MARKER:?Set the expiring guard marker installed in the restored database.}"
 : "${PAKPERK_RESTORE_DRILL_EVIDENCE_DIR:?Set a new absolute evidence directory.}"
 : "${PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_RECORDS:?Set the exact record count from the protected pre-restore ledger inventory.}"
+: "${PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_INVENTORY_SHA256:?Set the exact domain-separated digest from the protected pre-restore ledger inventory.}"
 : "${PAKPERK_RESTORE_DRILL_CONFIRM:?Explicit non-production confirmation is required.}"
 : "${PAKPERK_RESTORE_DRILL_SOURCE_REVISION:?Set the reviewed full source revision.}"
 : "${PAKPERK_RESTORE_DRILL_WORKER_SHA256:?Set the reviewed deletion-worker sha256 digest.}"
@@ -52,6 +53,7 @@ environment="${APP_ENV:-}"
 ledger_environment="${ACCOUNT_DELETION_LEDGER_ENVIRONMENT_ID:-}"
 expected_migration="${PAKPERK_RESTORE_DRILL_EXPECTED_MIGRATION:-10}"
 expected_ledger_records="$PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_RECORDS"
+expected_ledger_inventory_sha256="$PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_INVENTORY_SHA256"
 database_name="$PAKPERK_RESTORE_DRILL_DATABASE"
 marker="$PAKPERK_RESTORE_DRILL_MARKER"
 evidence_dir="$PAKPERK_RESTORE_DRILL_EVIDENCE_DIR"
@@ -92,7 +94,8 @@ if ! [[ "$source_revision" =~ ^[0-9a-f]{40}$ ]]; then
   exit 2
 fi
 if ! [[ "$expected_worker_sha256" =~ ^sha256:[0-9a-f]{64}$ ]] || \
-   ! [[ "$attestation_sha256" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+   ! [[ "$attestation_sha256" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+   ! [[ "$expected_ledger_inventory_sha256" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   echo "Restore drill artifact digests must use sha256:<lowercase-hex>." >&2
   exit 2
 fi
@@ -102,12 +105,25 @@ if [[ "$attestation_path" != /* || "$evidence_dir" != /* || -e "$evidence_dir" |
 fi
 if [[ "$phase" == finalize ]]; then
   prior_reapply_content_id="${PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_CONTENT_ID:-}"
-  if ! [[ "$prior_reapply_content_id" =~ ^pakperk-restore-evidence-v1:sha256:[0-9a-f]{64}$ ]]; then
-    echo "Finalize requires the externally anchored reapply evidence content ID." >&2
+  prior_reapply_evidence_dir="${PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_EVIDENCE_DIR:-}"
+  if ! [[ "$prior_reapply_content_id" =~ ^pakperk-restore-evidence-v2:sha256:[0-9a-f]{64}$ ]] || \
+     [[ "$prior_reapply_evidence_dir" != /* ]]; then
+    echo "Finalize requires the externally anchored reapply content ID and absolute evidence directory." >&2
     exit 2
   fi
-elif [[ -n "${PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_CONTENT_ID:-}" ]]; then
-  echo "The prior reapply content ID is valid only during finalize." >&2
+  verified_prior_reapply_content_id="$(
+    python3 -I -B "$helper" verify-package "$prior_reapply_evidence_dir"
+  )" || {
+    echo "Finalize prior reapply evidence verification failed." >&2
+    exit 1
+  }
+  if [[ "$verified_prior_reapply_content_id" != "$prior_reapply_content_id" ]]; then
+    echo "Finalize prior reapply evidence content ID mismatch." >&2
+    exit 1
+  fi
+elif [[ -n "${PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_CONTENT_ID:-}" || \
+        -n "${PAKPERK_RESTORE_DRILL_PRIOR_REAPPLY_EVIDENCE_DIR:-}" ]]; then
+  echo "Prior reapply evidence is valid only during finalize." >&2
   exit 2
 fi
 
@@ -136,10 +152,25 @@ if ! staging_dir="$(python3 -I -B "$helper" prepare)" || [[ -z "$staging_dir" ]]
 fi
 
 export PGAPPNAME="pakperk-restore-drill-$phase"
-export PGOPTIONS="-c search_path=pg_catalog,public"
+export PGOPTIONS="-c search_path=public,pg_catalog"
 psql_value() {
-  psql --dbname="$DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 \
-    --tuples-only --no-align --command "$1" 2>/dev/null
+  local output
+  local search_path_verified
+  output="$(
+    psql --dbname="$DATABASE_URL" --no-psqlrc --set ON_ERROR_STOP=1 \
+      --quiet --tuples-only --no-align --command "
+        SET search_path TO public, pg_catalog;
+        SELECT
+          pg_catalog.current_setting('search_path') = 'public, pg_catalog'
+          AND pg_catalog.current_schema()::pg_catalog.text = 'public';
+        $1
+      " 2>/dev/null
+  )" || return 1
+  search_path_verified="${output%%$'\n'*}"
+  if [[ "$search_path_verified" != t || "$output" == "$search_path_verified" ]]; then
+    return 1
+  fi
+  printf '%s\n' "${output#*$'\n'}"
 }
 database_failure() {
   echo "Restore drill database verification failed." >&2
@@ -160,10 +191,12 @@ if ! psql_value "
       guard.recovery_point AT TIME ZONE 'UTC',
       'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'
     ),
-    'restore_attestation_sha256', guard.restore_attestation_sha256
+    'restore_attestation_sha256', guard.restore_attestation_sha256,
+    'expected_ledger_inventory_sha256', guard.expected_ledger_inventory_sha256
   )::text
   FROM public.pakperk_restore_drill_guard AS guard
   WHERE guard.marker = '$marker'
+    AND guard.recovery_point = pg_catalog.date_trunc('second', guard.recovery_point)
     AND guard.expires_at > pg_catalog.statement_timestamp()
     AND guard.expires_at <= pg_catalog.statement_timestamp() + interval '24 hours'
 " | python3 -I -B "$helper" capture-raw "$staging_dir" "restore-guard.raw"; then
@@ -188,11 +221,31 @@ if ! check_sessions; then
 fi
 
 migration="$(psql_value '
-  SELECT pg_catalog.coalesce(pg_catalog.max(version), 0)
+  SELECT COALESCE(pg_catalog.max(version), 0)
   FROM public._sqlx_migrations
   WHERE success
 ')" || database_failure
 if [[ "$migration" != "$expected_migration" ]]; then
+  database_failure
+fi
+
+invalid_required_extensions="$(psql_value "
+  SELECT pg_catalog.count(*)
+  FROM (VALUES
+    ('vector'),
+    ('pg_trgm'),
+    ('pgcrypto')
+  ) AS required(extension_name)
+  WHERE (
+    SELECT pg_catalog.count(*)
+    FROM pg_catalog.pg_extension AS extension
+    JOIN pg_catalog.pg_namespace AS namespace
+      ON namespace.oid = extension.extnamespace
+    WHERE extension.extname = required.extension_name
+      AND namespace.nspname = 'public'
+  ) <> 1
+")" || database_failure
+if [[ "$invalid_required_extensions" != 0 ]]; then
   database_failure
 fi
 
@@ -219,8 +272,43 @@ fi
 
 database_snapshot() {
   psql_value "
+    WITH local_deletion_bindings AS (
+      SELECT
+        ledger.operation_id,
+        ledger.original_user_id,
+        ledger.identity_fingerprint_key_id AS ledger_fingerprint_key_id,
+        ledger.identity_fingerprint AS ledger_fingerprint,
+        jobs.operation_id AS job_operation_id,
+        jobs.user_id AS job_user_id,
+        jobs.identity_fingerprint_key_id AS job_fingerprint_key_id,
+        jobs.identity_fingerprint AS job_fingerprint,
+        jobs.oidc_issuer,
+        jobs.oidc_subject
+      FROM public.account_deletion_ledger AS ledger
+      LEFT JOIN public.account_deletion_jobs AS jobs USING (operation_id)
+    ),
+    deletion_user_matches AS (
+      SELECT users.id, users.status
+      FROM public.users AS users
+      WHERE EXISTS (
+        SELECT 1
+        FROM public.account_deletion_ledger AS ledger
+        LEFT JOIN public.account_deletion_jobs AS jobs USING (operation_id)
+        WHERE users.id = ledger.original_user_id
+           OR users.id = jobs.user_id
+           OR (
+                users.identity_fingerprint_key_id = ledger.identity_fingerprint_key_id
+                AND users.identity_fingerprint = ledger.identity_fingerprint
+           )
+           OR (
+                jobs.oidc_issuer IS NOT NULL
+                AND users.oidc_issuer = jobs.oidc_issuer
+                AND users.oidc_subject = jobs.oidc_subject
+           )
+      )
+    )
     SELECT pg_catalog.json_build_object(
-      'migration', (SELECT pg_catalog.coalesce(pg_catalog.max(version), 0) FROM public._sqlx_migrations WHERE success),
+      'migration', (SELECT COALESCE(pg_catalog.max(version), 0) FROM public._sqlx_migrations WHERE success),
       'users', (SELECT pg_catalog.count(*) FROM public.users),
       'papers', (SELECT pg_catalog.count(*) FROM public.papers),
       'core_jobs', (SELECT pg_catalog.count(*) FROM public.jobs),
@@ -232,19 +320,66 @@ database_snapshot() {
       'user_blocks', (SELECT pg_catalog.count(*) FROM public.user_blocks),
       'ledger_records', (SELECT pg_catalog.count(*) FROM public.account_deletion_ledger),
       'deletion_jobs', (SELECT pg_catalog.count(*) FROM public.account_deletion_jobs),
+      'local_deletion_bindings_sha256', (
+        SELECT 'sha256:' || pg_catalog.encode(
+          public.digest(
+            pg_catalog.convert_to(
+              pg_catalog.jsonb_build_array(
+                'pakperk-local-account-deletion-bindings-v1',
+                COALESCE(
+                  pg_catalog.jsonb_agg(
+                    pg_catalog.jsonb_build_array(
+                      operation_id::pg_catalog.text,
+                      original_user_id::pg_catalog.text,
+                      ledger_fingerprint_key_id,
+                      pg_catalog.encode(ledger_fingerprint, 'hex'),
+                      job_operation_id::pg_catalog.text,
+                      job_user_id::pg_catalog.text,
+                      job_fingerprint_key_id,
+                      pg_catalog.encode(job_fingerprint, 'hex'),
+                      CASE
+                        WHEN oidc_issuer IS NULL THEN NULL
+                        ELSE 'sha256:' || pg_catalog.encode(
+                          public.digest(
+                            pg_catalog.convert_to(
+                              pg_catalog.jsonb_build_array(
+                                'pakperk-local-account-deletion-provider-binding-v1',
+                                oidc_issuer,
+                                oidc_subject
+                              )::pg_catalog.text,
+                              'UTF8'
+                            ),
+                            'sha256'
+                          ),
+                          'hex'
+                        )
+                      END
+                    )
+                    ORDER BY operation_id
+                  ),
+                  '[]'::pg_catalog.jsonb
+                )
+              )::pg_catalog.text,
+              'UTF8'
+            ),
+            'sha256'
+          ),
+          'hex'
+        )
+        FROM local_deletion_bindings
+      ),
       'unfinished_jobs', (
         SELECT pg_catalog.count(*) FROM public.account_deletion_jobs WHERE state <> 'completed'
       ),
       'terminal_jobs', (
         SELECT pg_catalog.count(*) FROM public.account_deletion_jobs WHERE state = 'failed_terminal'
       ),
+      'matching_restored_users', (
+        SELECT pg_catalog.count(*) FROM deletion_user_matches
+      ),
       'unsafe_restored_users', (
-        SELECT pg_catalog.count(*)
-        FROM public.users AS users
-        JOIN public.account_deletion_ledger AS ledger
-          ON ledger.identity_fingerprint_key_id = users.identity_fingerprint_key_id
-         AND ledger.identity_fingerprint = users.identity_fingerprint
-        WHERE users.status <> 'deletion_pending'
+        SELECT pg_catalog.count(*) FROM deletion_user_matches
+        WHERE status <> 'deletion_pending'
       ),
       'missing_jobs', (
         SELECT pg_catalog.count(*)
@@ -305,7 +440,15 @@ content_id="$(python3 -I -B "$helper" publish "$staging_dir" "$evidence_dir" "$p
   exit 1
 }
 package_published=1
-verified_content_id="$(python3 -I -B "$helper" verify-package "$evidence_dir")" || {
+verify_package_arguments=("$evidence_dir")
+if [[ "$phase" == finalize ]]; then
+  verify_package_arguments+=(
+    --prior-reapply-evidence-dir "$prior_reapply_evidence_dir"
+  )
+fi
+verified_content_id="$(
+  python3 -I -B "$helper" verify-package "${verify_package_arguments[@]}"
+)" || {
   echo "Restore drill evidence re-verification failed." >&2
   exit 1
 }

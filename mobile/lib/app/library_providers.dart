@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/account/current_account_controller.dart';
-import '../core/auth/auth.dart';
+import '../core/account/account_profile.dart';
 import '../core/cache/drift_local_store.dart';
 import '../core/database/library_dao.dart';
 import '../core/library/library_api.dart';
@@ -35,27 +35,48 @@ final libraryRepositoryProvider = Provider<LibraryRepository>(
       return (accountId: session.accountId, authEpoch: session.epoch);
     },
     verifiedScope: () => ref.read(verifiedLibraryScopeProvider),
+    localMutationScope: () => ref.read(libraryMutationScopeProvider),
   ),
 );
 
 typedef ActiveLibraryScope = ({String accountId, int authEpoch});
+typedef LibraryPaperViewScope = ({
+  String? accountId,
+  int? authEpoch,
+  String paperId,
+});
 
-/// The credential-store account is sufficient for offline display and local
-/// optimistic intent. It must never authorize remote synchronization until
-/// `/v1/me` independently verifies the identity for this auth epoch.
+/// The credential-store account is sufficient for offline display. It must
+/// never authorize remote synchronization until `/v1/me` independently
+/// verifies the identity for this auth epoch.
 final libraryDisplayScopeProvider = Provider<ActiveLibraryScope?>((ref) {
   if (!ref.watch(featureFlagsProvider).library) return null;
   final session = ref.watch(authSessionProvider);
   final accountId = session.accountId;
-  if (accountId == null ||
-      session.phase == AuthSessionPhase.guest ||
-      session.phase == AuthSessionPhase.authenticating ||
-      session.phase == AuthSessionPhase.checkingStoredSession ||
-      session.phase == AuthSessionPhase.signingOut ||
-      session.phase == AuthSessionPhase.deletionPending) {
+  if (accountId == null || !session.mayHaveRecoverableCredentials) {
     return null;
   }
   return (accountId: accountId, authEpoch: session.epoch);
+});
+
+/// A status learned from `/v1/me` remains authoritative for this auth epoch.
+/// Suspended/deleting/deleted accounts may inspect retained local saves, but
+/// must not add more durable outbox work.
+final libraryReadOnlyAccountStatusProvider = Provider<AccountStatus?>((ref) {
+  if (!ref.watch(featureFlagsProvider).library) return null;
+  return ref.watch(effectiveAccountReadOnlyStatusProvider);
+});
+
+/// Local optimistic writes remain available while identity verification is
+/// temporarily unavailable, but stop once this exact session is known to be
+/// non-active.
+final libraryMutationScopeProvider = Provider<ActiveLibraryScope?>((ref) {
+  final scope = ref.watch(libraryDisplayScopeProvider);
+  if (scope == null ||
+      ref.watch(libraryReadOnlyAccountStatusProvider) != null) {
+    return null;
+  }
+  return scope;
 });
 
 /// Remote library work is authorized only by a profile loaded from `/v1/me`
@@ -77,31 +98,27 @@ final verifiedLibraryScopeProvider = Provider<ActiveLibraryScope?>((ref) {
 });
 
 final paperSavedStateProvider = StreamProvider.autoDispose
-    .family<LibrarySavedState, String>((ref, paperId) {
-      final scope = ref.watch(libraryDisplayScopeProvider);
-      if (scope == null) {
+    .family<LibrarySavedState, LibraryPaperViewScope>((ref, view) {
+      final accountId = view.accountId;
+      if (accountId == null) {
         return Stream.value(const LibrarySavedState.notSaved());
       }
       return ref
           .watch(libraryRepositoryProvider)
-          .watchSavedState(scope.accountId, paperId);
+          .watchSavedState(accountId, view.paperId);
     });
 
-final toReadItemsProvider = StreamProvider.autoDispose<List<LibraryListItem>>((
-  ref,
-) {
-  final scope = ref.watch(libraryDisplayScopeProvider);
-  if (scope == null) return Stream.value(const <LibraryListItem>[]);
-  return ref.watch(libraryRepositoryProvider).watchToRead(scope.accountId);
-});
+final toReadItemsProvider = StreamProvider.autoDispose
+    .family<List<LibraryListItem>, ActiveLibraryScope>((ref, scope) {
+      return ref.watch(libraryRepositoryProvider).watchToRead(scope.accountId);
+    });
 
-final libraryPendingCountProvider = StreamProvider.autoDispose<int>((ref) {
-  final scope = ref.watch(libraryDisplayScopeProvider);
-  if (scope == null) return Stream.value(0);
-  return ref
-      .watch(libraryRepositoryProvider)
-      .watchPendingCount(scope.accountId);
-});
+final libraryPendingCountProvider = StreamProvider.autoDispose
+    .family<int, ActiveLibraryScope>((ref, scope) {
+      return ref
+          .watch(libraryRepositoryProvider)
+          .watchPendingCount(scope.accountId);
+    });
 
 final libraryOutboxControllerProvider = Provider<LibraryOutboxController>(
   (ref) =>

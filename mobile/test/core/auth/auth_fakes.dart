@@ -99,6 +99,7 @@ final class MemorySecureTokenStore implements SecureTokenStore {
   int readCalls = 0;
   int writeCalls = 0;
   int clearCalls = 0;
+  Completer<void>? readGate;
   Completer<void>? writeGate;
   Object? readError;
   Object? writeError;
@@ -107,6 +108,7 @@ final class MemorySecureTokenStore implements SecureTokenStore {
   @override
   Future<SecureAuthRecord?> read() async {
     readCalls += 1;
+    await readGate?.future;
     if (await invalidationStore.isInvalidated()) return null;
     final error = readError;
     if (error != null) throw error;

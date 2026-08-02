@@ -14,16 +14,20 @@ final class MyCommentsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final scope = ref.watch(verifiedCommentScopeProvider);
     if (scope == null) {
+      final viewer = ref.watch(commentViewerScopeProvider);
+      final readOnlyStatus = ref.watch(commentReadOnlyAccountStatusProvider);
       return Scaffold(
         appBar: AppBar(title: const Text('My comments')),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: FilledButton.icon(
-              onPressed: () => context.push<void>(PakPerkRoutes.auth),
-              icon: const Icon(Icons.login),
-              label: const Text('Sign in to view your comments'),
-            ),
+            child: viewer.authenticated
+                ? _UnavailableAccountComments(readOnly: readOnlyStatus != null)
+                : FilledButton.icon(
+                    onPressed: () => context.push<void>(PakPerkRoutes.auth),
+                    icon: const Icon(Icons.login),
+                    label: const Text('Sign in to view your comments'),
+                  ),
           ),
         ),
       );
@@ -98,6 +102,35 @@ final class MyCommentsScreen extends ConsumerWidget {
       },
     );
   }
+}
+
+class _UnavailableAccountComments extends StatelessWidget {
+  const _UnavailableAccountComments({required this.readOnly});
+
+  final bool readOnly;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      const Icon(Icons.lock_outline, size: 48),
+      const SizedBox(height: 12),
+      Text(
+        readOnly ? 'Account comments are read-only' : 'Account is offline',
+        style: Theme.of(context).textTheme.titleLarge,
+        textAlign: TextAlign.center,
+      ),
+      const SizedBox(height: 8),
+      Text(
+        readOnly
+            ? 'Public comments remain readable from each paper, but My '
+                  'Comments is unavailable for this account.'
+            : 'Reconnect and verify this saved session to load My Comments. '
+                  'Paper-level cached comments and drafts remain on this device.',
+        textAlign: TextAlign.center,
+      ),
+    ],
+  );
 }
 
 String _statusLabel(PaperComment comment) => switch (comment.status) {

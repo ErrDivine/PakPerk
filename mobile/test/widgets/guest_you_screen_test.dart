@@ -11,6 +11,9 @@ void main() {
         theme: PakPerkTheme.light(),
         home: Scaffold(
           body: GuestYouScreen(
+            accountsEnabled: false,
+            libraryEnabled: false,
+            commentsEnabled: false,
             onOpenSettings: () => settingsOpened = true,
             onOpenPrivacy: () {},
             onOpenTerms: () {},
@@ -20,21 +23,62 @@ void main() {
       ),
     );
 
+    expect(find.text('Reading works without an account'), findsOneWidget);
     expect(
       find.text(
-        'Sign in to sync your To Read list and join paper discussions.',
+        'Account services are not enabled in this build. Public reading '
+        'and on-device settings remain available.',
       ),
       findsOneWidget,
     );
-    expect(
-      find.text('Account services are not enabled in this build.'),
-      findsOneWidget,
-    );
-    final signIn = tester.widget<FilledButton>(find.byType(FilledButton));
-    expect(signIn.onPressed, isNull);
+    expect(find.byType(FilledButton), findsNothing);
 
     await tester.tap(find.text('Settings'));
     expect(settingsOpened, isTrue);
+  });
+
+  testWidgets('guest account card describes only enabled capabilities', (
+    tester,
+  ) async {
+    Future<void> pump({required bool library, required bool comments}) =>
+        tester.pumpWidget(
+          MaterialApp(
+            home: GuestYouScreen(
+              accountsEnabled: true,
+              libraryEnabled: library,
+              commentsEnabled: comments,
+              onSignIn: () {},
+              onOpenSettings: () {},
+              onOpenPrivacy: () {},
+              onOpenTerms: () {},
+              onOpenCommunityGuidelines: () {},
+            ),
+          ),
+        );
+
+    await pump(library: true, comments: false);
+    expect(
+      find.text('Sign in to sync your To Read list across devices.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('paper discussions'), findsNothing);
+
+    await pump(library: false, comments: true);
+    expect(find.text('Join paper discussions'), findsOneWidget);
+    expect(
+      find.text('Sign in to participate in moderated paper discussions.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('To Read'), findsNothing);
+
+    await pump(library: false, comments: false);
+    expect(find.text('Your Pakperk account'), findsOneWidget);
+    expect(
+      find.text('Sign in to manage your Pakperk account.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('To Read'), findsNothing);
+    expect(find.textContaining('discussions'), findsNothing);
   });
 
   testWidgets('guest You remains usable at 200% text scaling', (tester) async {

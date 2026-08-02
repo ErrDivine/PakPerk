@@ -8,12 +8,18 @@ class GuestYouScreen extends StatelessWidget {
     required this.onOpenPrivacy,
     required this.onOpenTerms,
     required this.onOpenCommunityGuidelines,
+    this.accountsEnabled = true,
+    this.libraryEnabled = true,
+    this.commentsEnabled = true,
     this.onOpenSupport,
     this.onSignIn,
     super.key,
   });
 
   final VoidCallback? onSignIn;
+  final bool accountsEnabled;
+  final bool libraryEnabled;
+  final bool commentsEnabled;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenPrivacy;
   final VoidCallback onOpenTerms;
@@ -22,6 +28,11 @@ class GuestYouScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accountCard = _accountCardCopy(
+      accountsEnabled: accountsEnabled,
+      libraryEnabled: libraryEnabled,
+      commentsEnabled: commentsEnabled,
+    );
     return Material(
       color: Colors.transparent,
       child: SafeArea(
@@ -43,32 +54,30 @@ class GuestYouScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(Icons.bookmark_outline, size: 40),
+                    Icon(accountCard.icon, size: 40),
                     const SizedBox(height: 14),
                     Text(
-                      'Keep your reading with you',
+                      accountCard.title,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Sign in to sync your To Read list and join paper '
-                      'discussions.',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 18),
-                    FilledButton.icon(
-                      onPressed: onSignIn,
-                      icon: const Icon(Icons.login),
-                      label: const Text('Sign in / Create account'),
-                    ),
-                    if (onSignIn == null) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        'Account services are not enabled in this build.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall,
+                    Text(accountCard.message, textAlign: TextAlign.center),
+                    if (accountsEnabled) ...[
+                      const SizedBox(height: 18),
+                      FilledButton.icon(
+                        onPressed: onSignIn,
+                        icon: const Icon(Icons.login),
+                        label: const Text('Sign in / Create account'),
                       ),
+                      if (onSignIn == null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          'Sign in is temporarily unavailable.',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
                     ],
                   ],
                 ),
@@ -120,6 +129,48 @@ class GuestYouScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+({IconData icon, String title, String message}) _accountCardCopy({
+  required bool accountsEnabled,
+  required bool libraryEnabled,
+  required bool commentsEnabled,
+}) {
+  if (!accountsEnabled) {
+    return (
+      icon: Icons.menu_book_outlined,
+      title: 'Reading works without an account',
+      message:
+          'Account services are not enabled in this build. Public reading '
+          'and on-device settings remain available.',
+    );
+  }
+  if (libraryEnabled && commentsEnabled) {
+    return (
+      icon: Icons.bookmark_outline,
+      title: 'Keep your reading with you',
+      message: 'Sign in to sync your To Read list and join paper discussions.',
+    );
+  }
+  if (libraryEnabled) {
+    return (
+      icon: Icons.bookmark_outline,
+      title: 'Keep your reading with you',
+      message: 'Sign in to sync your To Read list across devices.',
+    );
+  }
+  if (commentsEnabled) {
+    return (
+      icon: Icons.forum_outlined,
+      title: 'Join paper discussions',
+      message: 'Sign in to participate in moderated paper discussions.',
+    );
+  }
+  return (
+    icon: Icons.account_circle_outlined,
+    title: 'Your Pakperk account',
+    message: 'Sign in to manage your Pakperk account.',
+  );
 }
 
 class _YouDestination extends StatelessWidget {

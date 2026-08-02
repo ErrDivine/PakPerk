@@ -18,7 +18,7 @@ use domain::IdentityFingerprint;
 use hmac::{Hmac, Mac as _};
 use secrecy::{ExposeSecret as _, SecretSlice};
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
+use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
 use crate::{
@@ -32,6 +32,10 @@ const MAXIMUM_PAGE_SIZE: usize = 1_000;
 const MINIMUM_PENDING_AGE: Duration = Duration::from_secs(5 * 60);
 const MAXIMUM_PENDING_AGE: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 const SIGNATURE_DOMAIN: &[u8] = b"pakperk/account-deletion-ledger/signature/v1";
+const INVENTORY_DOMAIN: &[u8] = b"pakperk/account-deletion-ledger/inventory/v1\0";
+const INVENTORY_ENVIRONMENT_DOMAIN: &[u8] = b"environment\0";
+const INVENTORY_RECORD_DOMAIN: &[u8] = b"record\0";
+const INVENTORY_COUNT_DOMAIN: &[u8] = b"count\0";
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -169,6 +173,26 @@ pub struct SignedExternalDeletionRecord {
     pub record: ExternalDeletionRecord,
     pub signing_key_id: String,
     pub signature_base64: String,
+}
+
+/// A closed commitment to one exact, verified external-ledger record set.
+///
+/// The digest covers the length-framed signer environment, canonical
+/// signed-record bytes in strictly increasing operation-ID order, their
+/// individual lengths, the final record count, and a format-specific domain.
+/// It can therefore distinguish cross-environment or same-count ledger
+/// substitutions without exposing provider coordinates or record contents.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ExternalDeletionLedgerInventory {
+    pub verified_records: usize,
+    pub ledger_inventory_sha256: String,
+}
+
+pub struct ExternalDeletionLedgerInventoryBuilder<'a> {
+    signer: &'a DeletionLedgerSigner,
+    hasher: Sha256,
+    verified_records: usize,
+    last_operation_id: Option<Uuid>,
 }
 
 impl fmt::Debug for SignedExternalDeletionRecord {
@@ -328,6 +352,72 @@ impl DeletionLedgerSigner {
         mac.verify_slice(&received)
             .map_err(|_| ExternalDeletionLedgerError::InvalidSignature)
     }
+
+    #[must_use]
+    pub fn inventory_builder(&self) -> ExternalDeletionLedgerInventoryBuilder<'_> {
+        ExternalDeletionLedgerInventoryBuilder::new(self)
+    }
+}
+
+impl<'a> ExternalDeletionLedgerInventoryBuilder<'a> {
+    fn new(signer: &'a DeletionLedgerSigner) -> Self {
+        let mut hasher = Sha256::new();
+        hasher.update(INVENTORY_DOMAIN);
+        hasher.update(INVENTORY_ENVIRONMENT_DOMAIN);
+        hasher.update(
+            u64::try_from(signer.environment_id.len())
+                .expect("validated environment identifiers fit in u64")
+                .to_be_bytes(),
+        );
+        hasher.update(signer.environment_id.as_bytes());
+        Self {
+            signer,
+            hasher,
+            verified_records: 0,
+            last_operation_id: None,
+        }
+    }
+
+    /// Includes one signer-verified record in canonical operation-ID order.
+    pub fn include(
+        &mut self,
+        signed: &SignedExternalDeletionRecord,
+    ) -> Result<(), ExternalDeletionLedgerError> {
+        self.signer.verify(signed)?;
+        let operation_id = signed.record.operation_id;
+        if self
+            .last_operation_id
+            .is_some_and(|previous| operation_id <= previous)
+        {
+            return Err(ExternalDeletionLedgerError::InvalidRecord);
+        }
+        let encoded = canonical_signed_record_bytes(signed)?;
+        let length =
+            u64::try_from(encoded.len()).map_err(|_| ExternalDeletionLedgerError::InvalidRecord)?;
+        self.hasher.update(INVENTORY_RECORD_DOMAIN);
+        self.hasher.update(length.to_be_bytes());
+        self.hasher.update(encoded);
+        self.verified_records = self
+            .verified_records
+            .checked_add(1)
+            .ok_or(ExternalDeletionLedgerError::InvalidRecord)?;
+        self.last_operation_id = Some(operation_id);
+        Ok(())
+    }
+
+    pub fn finish(
+        mut self,
+    ) -> Result<ExternalDeletionLedgerInventory, ExternalDeletionLedgerError> {
+        let count = u64::try_from(self.verified_records)
+            .map_err(|_| ExternalDeletionLedgerError::InvalidRecord)?;
+        self.hasher.update(INVENTORY_COUNT_DOMAIN);
+        self.hasher.update(count.to_be_bytes());
+        let digest = self.hasher.finalize();
+        Ok(ExternalDeletionLedgerInventory {
+            verified_records: self.verified_records,
+            ledger_inventory_sha256: format!("sha256:{digest:x}"),
+        })
+    }
 }
 
 #[async_trait]
@@ -467,13 +557,7 @@ impl FileExternalDeletionLedger {
         record: &SignedExternalDeletionRecord,
     ) -> Result<Vec<u8>, ExternalDeletionLedgerError> {
         self.signer.verify(record)?;
-        let mut encoded =
-            serde_json::to_vec(record).map_err(|_| ExternalDeletionLedgerError::InvalidRecord)?;
-        encoded.push(b'\n');
-        if u64::try_from(encoded.len()).unwrap_or(u64::MAX) > MAXIMUM_RECORD_BYTES {
-            return Err(ExternalDeletionLedgerError::InvalidRecord);
-        }
-        Ok(encoded)
+        canonical_signed_record_bytes(record)
     }
 
     fn read_path(
@@ -946,6 +1030,18 @@ fn parse_signing_key_line(line: &str) -> Result<(&str, &str), ExternalDeletionLe
     Ok((key_id, encoded))
 }
 
+fn canonical_signed_record_bytes(
+    record: &SignedExternalDeletionRecord,
+) -> Result<Vec<u8>, ExternalDeletionLedgerError> {
+    let mut encoded =
+        serde_json::to_vec(record).map_err(|_| ExternalDeletionLedgerError::InvalidRecord)?;
+    encoded.push(b'\n');
+    if u64::try_from(encoded.len()).unwrap_or(u64::MAX) > MAXIMUM_RECORD_BYTES {
+        return Err(ExternalDeletionLedgerError::InvalidRecord);
+    }
+    Ok(encoded)
+}
+
 fn map_io(_error: std::io::Error) -> ExternalDeletionLedgerError {
     ExternalDeletionLedgerError::Unavailable
 }
@@ -1020,6 +1116,126 @@ mod tests {
         )
         .unwrap();
         ledger.signer().sign(&record).unwrap()
+    }
+
+    #[test]
+    fn inventory_digest_binds_the_exact_ordered_signed_record_set() {
+        let (_directory, ledger, source) = fixture();
+        let second_source = DeletionLedgerRecord {
+            operation_id: Uuid::now_v7(),
+            original_user_id: Uuid::now_v7(),
+            fingerprint: IdentityFingerprint::new("identity_2", [0x43; 32]).unwrap(),
+            requested_at: source.requested_at + chrono::TimeDelta::milliseconds(1),
+        };
+        let mut records = vec![
+            signed_record(&ledger, &source),
+            signed_record(&ledger, &second_source),
+        ];
+        records.sort_by_key(|signed| signed.record.operation_id);
+
+        let inventory = |selected: &[SignedExternalDeletionRecord]| {
+            let mut builder = ledger.signer().inventory_builder();
+            for signed in selected {
+                builder.include(signed).unwrap();
+            }
+            builder.finish().unwrap()
+        };
+        let complete = inventory(&records);
+        assert_eq!(complete.verified_records, 2);
+        assert!(complete.ledger_inventory_sha256.starts_with("sha256:"));
+        assert_eq!(complete.ledger_inventory_sha256.len(), 71);
+        assert_eq!(complete, inventory(&records));
+
+        let first_only = inventory(&records[..1]);
+        let second_only = inventory(&records[1..]);
+        assert_eq!(first_only.verified_records, second_only.verified_records);
+        assert_ne!(
+            first_only.ledger_inventory_sha256,
+            second_only.ledger_inventory_sha256
+        );
+
+        let mut reversed = ledger.signer().inventory_builder();
+        reversed.include(&records[1]).unwrap();
+        assert_eq!(
+            reversed.include(&records[0]),
+            Err(ExternalDeletionLedgerError::InvalidRecord)
+        );
+
+        let mut tampered = records[0].clone();
+        tampered.signature_base64 = STANDARD.encode([0; 32]);
+        assert_eq!(
+            ledger.signer().inventory_builder().include(&tampered),
+            Err(ExternalDeletionLedgerError::InvalidSignature)
+        );
+    }
+
+    #[test]
+    fn empty_inventory_has_a_stable_domain_separated_digest() {
+        let (_directory, ledger, _source) = fixture();
+        let inventory = ledger.signer().inventory_builder().finish().unwrap();
+        assert_eq!(inventory.verified_records, 0);
+        assert_eq!(
+            inventory.ledger_inventory_sha256,
+            "sha256:c785aa1a1f2beccd8e39fe496554b578cdcdcddbfdad7029f45e5dec7c2687fe"
+        );
+
+        let staging = DeletionLedgerSigner::new("staging", "signing_1", vec![0x51; 32])
+            .unwrap()
+            .inventory_builder()
+            .finish()
+            .unwrap();
+        assert_eq!(
+            staging.ledger_inventory_sha256,
+            "sha256:ff73a265b3753e2503e4f7c5cbf8e87d7cba3b71a0e859f3d469e064b3381e01"
+        );
+        assert_ne!(
+            inventory.ledger_inventory_sha256,
+            staging.ledger_inventory_sha256
+        );
+    }
+
+    #[test]
+    fn inventory_v1_has_a_fixed_nonempty_envelope_and_digest_vector() {
+        let signer = DeletionLedgerSigner::new("test", "signing_1", vec![0x51; 32]).unwrap();
+        let record = ExternalDeletionRecord {
+            schema_version: 2,
+            environment_id: "test".to_owned(),
+            operation_id: Uuid::parse_str("01900000-0000-7001-8000-000000000001").unwrap(),
+            original_user_id: Uuid::parse_str("01900000-0000-7001-8000-000000000101").unwrap(),
+            identity_fingerprint_key_id: "identity_1".to_owned(),
+            identity_fingerprint_base64: "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=".to_owned(),
+            requested_at: "2026-08-02T01:02:03.004Z".to_owned(),
+            provider_identity: serde_json::from_value(serde_json::json!({
+                "key_id": "provider_1",
+                "nonce_base64": "AAAAAAAAAAAAAAAA",
+                "ciphertext_base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            }))
+            .unwrap(),
+        };
+        let envelope = signer.sign(&record).unwrap();
+        assert_eq!(
+            envelope.signature_base64,
+            "+bhuKY0t4n3c5IKIpyentMdEIymUGQ0Af59XTUTvo6o="
+        );
+        let encoded = canonical_signed_record_bytes(&envelope).unwrap();
+        let expected = concat!(
+            r#"{"record":{"schema_version":2,"environment_id":"test","operation_id":"01900000-0000-7001-8000-000000000001","original_user_id":"01900000-0000-7001-8000-000000000101","identity_fingerprint_key_id":"identity_1","identity_fingerprint_base64":"QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=","requested_at":"2026-08-02T01:02:03.004Z","provider_identity":{"key_id":"provider_1","nonce_base64":"AAAAAAAAAAAAAAAA","ciphertext_base64":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}},"signing_key_id":"signing_1","signature_base64":"+bhuKY0t4n3c5IKIpyentMdEIymUGQ0Af59XTUTvo6o="}"#,
+            "\n",
+        );
+        assert_eq!(encoded, expected.as_bytes());
+        assert_eq!(encoded.len(), 558);
+
+        let mut inventory = signer.inventory_builder();
+        inventory.include(&envelope).unwrap();
+        assert_eq!(
+            inventory.finish().unwrap(),
+            ExternalDeletionLedgerInventory {
+                verified_records: 1,
+                ledger_inventory_sha256:
+                    "sha256:9ea97d3144ad673959277b0e35ca66ce1c54f589b833316cd546c6da269d65a5"
+                        .to_owned(),
+            }
+        );
     }
 
     #[tokio::test]

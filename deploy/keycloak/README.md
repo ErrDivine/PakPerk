@@ -55,8 +55,10 @@ to the container itself, while changing the issuer hostname for just one
 participant breaks OIDC exact-issuer validation.
 
 The initializer creates the API request-origin key, cursor-encryption keyring,
-rotation-capable identity fingerprint/deletion-ledger/provider-coordinate keyrings, and the ledger
-directory. It never prints key values, never overwrites an existing keyring,
+rotation-capable identity fingerprint/deletion-ledger/provider-coordinate
+keyrings, and the ledger directory. The provider-coordinate AES-256-GCM key is
+exactly 32 random bytes; the fingerprint and signing key generators retain 48
+random bytes. It never prints key values, never overwrites an existing keyring,
 rejects symlinks, and enforces owner-only modes. The account/deletion keyrings
 are consumed only by the documented host-run API/worker commands and are not
 bind-mounted into Compose. The generic request-origin and cursor-encryption
@@ -67,6 +69,11 @@ on a host UID mapping that is not portable across Linux and Docker Desktop.
 Account/deletion development still keeps Keycloak/PostgreSQL in Compose and
 runs the matching Rust process on the host. Deployed containers use the
 equivalent Helm init-copy contract.
+
+The deletion worker service account is least-privilege twice: its user receives
+only `realm-management/manage-users`, and the confidential client scope exposes
+only that same role while `fullScopeAllowed` remains false. Omitting either
+mapping yields a deliberately failing worker permission probe.
 
 Self-registration, email verification, password recovery, refresh-token
 rotation, brute-force protection, exact redirect URIs, and PKCE S256 are

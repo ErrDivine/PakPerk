@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/core/account/account_data_write_barrier.dart';
 import 'package:pakperk/core/api/api_exception.dart';
 import 'package:pakperk/core/cache/feed_prefetch_config.dart';
+import 'package:pakperk/core/comments/comment_cache_barrier.dart';
+import 'package:pakperk/core/comments/comment_controllers.dart';
 import 'package:pakperk/core/comments/comment_models.dart';
 import 'package:pakperk/core/comments/comment_repository.dart';
 import 'package:pakperk/core/comments/comments_api.dart';
@@ -198,6 +200,313 @@ void main() {
       cachePolicy.firstCommentsPageTtl,
     );
   });
+
+  test(
+    'deletion purge rejects a delayed guest page and reopens a fresh generation',
+    () async {
+      final entered = Completer<void>();
+      final release = Completer<void>();
+      final remote = _Remote(
+        page: CommentPage(
+          items: [
+            _comment(
+              authorId: accountA,
+              pending: false,
+              body: 'Deleted author snapshot must not return or persist.',
+            ),
+          ],
+          nextCursor: null,
+        ),
+      );
+      final fixture = await _fixture(
+        viewerAccountId: null,
+        page: remote.page,
+        remote: remote,
+        cacheFactory: (database) =>
+            _DelayedCacheDao(database, entered: entered, release: release),
+      );
+      addTearDown(fixture.database.close);
+
+      final staleRequest = fixture.repository.loadPage(
+        paperId: samplePaper.paperId,
+        viewer: const CommentViewerScope.guest(),
+      );
+      await entered.future;
+      final purge = fixture.commentCache.invalidateAndPurge(
+        AccountCacheDao(fixture.database).purgeCommentPagesForAccountDeletion,
+      );
+      release.complete();
+
+      await expectLater(staleRequest, throwsA(isA<CommentScopeChanged>()));
+      await purge;
+      expect(
+        await fixture.database
+            .select(fixture.database.cachedCommentPages)
+            .get(),
+        isEmpty,
+      );
+
+      remote.page = CommentPage(
+        items: [
+          _comment(
+            authorId: accountB,
+            pending: false,
+            body: 'Fresh public snapshot after cleanup.',
+          ),
+        ],
+        nextCursor: null,
+      );
+      final fresh = await fixture.repository.loadPage(
+        paperId: samplePaper.paperId,
+        viewer: const CommentViewerScope.guest(),
+      );
+      expect(fresh.items.single.body, 'Fresh public snapshot after cleanup.');
+      expect(
+        await fixture.database
+            .select(fixture.database.cachedCommentPages)
+            .get(),
+        hasLength(1),
+      );
+    },
+  );
+
+  test(
+    'deletion purge rejects delayed account cache while preserving its draft',
+    () async {
+      final entered = Completer<void>();
+      final release = Completer<void>();
+      final remote = _Remote(
+        page: CommentPage(
+          items: [
+            _comment(
+              authorId: accountA,
+              pending: true,
+              body: 'Private pending review must not survive deletion purge.',
+            ),
+          ],
+          nextCursor: null,
+        ),
+        listEntered: entered,
+        listRelease: release,
+      );
+      final fixture = await _fixture(
+        viewerAccountId: accountA,
+        page: remote.page,
+        remote: remote,
+      );
+      addTearDown(fixture.database.close);
+      const viewer = CommentViewerScope.authenticated(
+        accountId: accountA,
+        authEpoch: 1,
+      );
+      await fixture.repository.saveDraft(
+        accountId: accountA,
+        authEpoch: 1,
+        paperId: samplePaper.paperId,
+        body: 'Draft lifetime is controlled by account cleanup.',
+      );
+
+      final staleRequest = fixture.repository.loadPage(
+        paperId: samplePaper.paperId,
+        viewer: viewer,
+      );
+      await entered.future;
+      await fixture.commentCache.invalidateAndPurge(
+        AccountCacheDao(fixture.database).purgeCommentPagesForAccountDeletion,
+      );
+      release.complete();
+
+      await expectLater(staleRequest, throwsA(isA<CommentScopeChanged>()));
+      expect(
+        await fixture.database
+            .select(fixture.database.cachedCommentPages)
+            .get(),
+        isEmpty,
+      );
+      expect(
+        (await fixture.local.loadDraft(accountA, samplePaper.paperId))?.body,
+        'Draft lifetime is controlled by account cleanup.',
+      );
+
+      remote.page = CommentPage(
+        items: [
+          _comment(
+            authorId: accountB,
+            pending: false,
+            body: 'Fresh account snapshot after cleanup.',
+          ),
+        ],
+        nextCursor: null,
+      );
+      final fresh = await fixture.repository.loadPage(
+        paperId: samplePaper.paperId,
+        viewer: viewer,
+      );
+      expect(fresh.items.single.body, 'Fresh account snapshot after cleanup.');
+      expect(
+        await fixture.database
+            .select(fixture.database.cachedCommentPages)
+            .get(),
+        hasLength(1),
+      );
+    },
+  );
+
+  test(
+    'failed deletion purge keeps comment cache reads and writes closed',
+    () async {
+      final remote = _Remote(
+        page: CommentPage(
+          items: [
+            _comment(
+              authorId: accountB,
+              pending: false,
+              body: 'Pre-purge cached snapshot.',
+            ),
+          ],
+          nextCursor: null,
+        ),
+      );
+      final fixture = await _fixture(
+        viewerAccountId: null,
+        page: remote.page,
+        remote: remote,
+      );
+      addTearDown(fixture.database.close);
+      const viewer = CommentViewerScope.guest();
+      await fixture.repository.loadPage(
+        paperId: samplePaper.paperId,
+        viewer: viewer,
+      );
+
+      await expectLater(
+        fixture.commentCache.invalidateAndPurge(
+          () async => throw StateError('injected purge failure'),
+        ),
+        throwsStateError,
+      );
+      expect(
+        await fixture.repository.loadCachedFirstPage(
+          paperId: samplePaper.paperId,
+          viewer: viewer,
+        ),
+        isNull,
+      );
+      final callsBeforeBlockedRefresh = remote.listAuthEpochs.length;
+      await expectLater(
+        fixture.repository.loadPage(
+          paperId: samplePaper.paperId,
+          viewer: viewer,
+        ),
+        throwsA(isA<CommentScopeChanged>()),
+      );
+      expect(remote.listAuthEpochs, hasLength(callsBeforeBlockedRefresh));
+
+      await fixture.commentCache.invalidateAndPurge(
+        AccountCacheDao(fixture.database).purgeCommentPagesForAccountDeletion,
+      );
+      expect(
+        await fixture.database
+            .select(fixture.database.cachedCommentPages)
+            .get(),
+        isEmpty,
+      );
+      remote.page = const CommentPage(items: [], nextCursor: null);
+      await fixture.repository.loadPage(
+        paperId: samplePaper.paperId,
+        viewer: viewer,
+      );
+      expect(
+        await fixture.repository.loadCachedFirstPage(
+          paperId: samplePaper.paperId,
+          viewer: viewer,
+        ),
+        isNotNull,
+      );
+    },
+  );
+
+  test(
+    'cold offline restore reopens account cache and draft without mutation authority',
+    () async {
+      final cachedPage = CommentPage(
+        items: [
+          _comment(
+            authorId: accountB,
+            pending: false,
+            body: 'Account-scoped cached observation.',
+          ),
+        ],
+        nextCursor: null,
+      );
+      final remote = _Remote(
+        page: CommentPage(
+          items: [
+            _comment(
+              authorId: accountB,
+              pending: false,
+              body: 'Anonymous remote observation.',
+            ),
+          ],
+          nextCursor: null,
+        ),
+      );
+      final fixture = await _fixture(
+        viewerAccountId: accountA,
+        page: cachedPage,
+        remote: remote,
+      );
+      addTearDown(fixture.database.close);
+      const verifiedViewer = CommentViewerScope.authenticated(
+        accountId: accountA,
+        authEpoch: 1,
+      );
+      await fixture.repository.cacheVisibleFirstPage(
+        paperId: samplePaper.paperId,
+        viewer: verifiedViewer,
+        page: cachedPage,
+      );
+      await fixture.repository.saveDraft(
+        accountId: accountA,
+        authEpoch: 1,
+        paperId: samplePaper.paperId,
+        body: 'Draft restored after process death.',
+      );
+      fixture.scope.remoteVerified = false;
+      final controller = CommentThreadController(
+        repository: fixture.repository,
+        paperId: samplePaper.paperId,
+        viewer: const CommentViewerScope.retained(
+          accountId: accountA,
+          authEpoch: 1,
+        ),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.load();
+
+      expect(controller.state.items, hasLength(1));
+      expect(
+        controller.state.items.single.body,
+        'Account-scoped cached observation.',
+      );
+      expect(controller.state.showingCached, isTrue);
+      expect(controller.state.draft, 'Draft restored after process death.');
+      expect(
+        remote.listAuthEpochs,
+        isEmpty,
+        reason: 'retained account cache must never be replaced by a guest read',
+      );
+
+      await controller.saveDraft('Updated while still offline.');
+      expect(
+        (await fixture.local.loadDraft(accountA, samplePaper.paperId))?.body,
+        'Updated while still offline.',
+      );
+      expect(await controller.send(), isNull);
+      expect(remote.createCalls, 0);
+    },
+  );
 }
 
 Future<
@@ -206,6 +515,7 @@ Future<
     CommentRepository repository,
     CommentsDao local,
     AccountDataWriteBarrier barrier,
+    CommentCacheBarrier commentCache,
     _MutableScope scope,
   })
 >
@@ -220,16 +530,18 @@ _fixture({
   await PaperCacheDao(database).save(samplePaper);
   final scope = _MutableScope(viewerAccountId, 1);
   final barrier = AccountDataWriteBarrier();
+  final commentCache = CommentCacheBarrier();
   final local = CommentsDao(database);
   final repository = CommentRepository(
     cache: cacheFactory?.call(database) ?? CommentCacheDao(database),
     local: local,
     remote: remote ?? _Remote(page: page),
     accountWrites: barrier,
+    commentCache: commentCache,
     cachePolicy: cachePolicy,
     sessionScope: () =>
         (accountId: scope.accountId, authEpoch: scope.authEpoch),
-    verifiedScope: () => scope.accountId == null
+    verifiedScope: () => scope.accountId == null || !scope.remoteVerified
         ? null
         : (accountId: scope.accountId!, authEpoch: scope.authEpoch),
   );
@@ -238,6 +550,7 @@ _fixture({
     repository: repository,
     local: local,
     barrier: barrier,
+    commentCache: commentCache,
     scope: scope,
   );
 }
@@ -247,6 +560,7 @@ final class _MutableScope {
 
   String? accountId;
   int authEpoch;
+  bool remoteVerified = true;
 }
 
 typedef _CreateHandler =
@@ -258,10 +572,19 @@ typedef _CreateHandler =
     });
 
 final class _Remote implements CommentsRemoteDataSource {
-  _Remote({required this.page, this.createHandler});
+  _Remote({
+    required this.page,
+    this.createHandler,
+    this.listEntered,
+    this.listRelease,
+  });
 
-  final CommentPage page;
+  CommentPage page;
   final _CreateHandler? createHandler;
+  final Completer<void>? listEntered;
+  final Completer<void>? listRelease;
+  final List<int?> listAuthEpochs = [];
+  int createCalls = 0;
 
   @override
   Future<CommentPage> listPaper({
@@ -269,7 +592,15 @@ final class _Remote implements CommentsRemoteDataSource {
     required int? expectedAuthEpoch,
     String? cursor,
     int limit = 50,
-  }) async => page;
+  }) async {
+    listAuthEpochs.add(expectedAuthEpoch);
+    final entered = listEntered;
+    if (entered != null && !entered.isCompleted) {
+      entered.complete();
+    }
+    await listRelease?.future;
+    return page;
+  }
 
   @override
   Future<PaperComment> create({
@@ -277,12 +608,15 @@ final class _Remote implements CommentsRemoteDataSource {
     required String clientRequestId,
     required String body,
     required int expectedAuthEpoch,
-  }) => createHandler!(
-    paperId: paperId,
-    clientRequestId: clientRequestId,
-    body: body,
-    expectedAuthEpoch: expectedAuthEpoch,
-  );
+  }) {
+    createCalls += 1;
+    return createHandler!(
+      paperId: paperId,
+      clientRequestId: clientRequestId,
+      body: body,
+      expectedAuthEpoch: expectedAuthEpoch,
+    );
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -303,7 +637,7 @@ final class _DelayedCacheDao extends CommentCacheDao {
     CachedCommentPageValue value, {
     int maximumPages = 3,
   }) async {
-    entered.complete();
+    if (!entered.isCompleted) entered.complete();
     await release.future;
     await super.saveBounded(value, maximumPages: maximumPages);
   }

@@ -49,6 +49,9 @@ use tower::ServiceExt as _;
 use url::Url;
 use uuid::Uuid;
 
+#[path = "../../../test_support/account_deletion_queue_guard.rs"]
+mod account_deletion_queue_guard;
+
 const AUDIENCE: &str = "pakperk-api";
 const KEY_ID: &str = "integration-current";
 const REPLACEMENT_KEY_ID: &str = "integration-replacement";
@@ -950,6 +953,9 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
         .unwrap();
     assert_eq!(status, "active");
 
+    let _queue_isolation = account_deletion_queue_guard::acquire(&database)
+        .await
+        .unwrap();
     let deletion = first
         .clone()
         .oneshot(delete_request(&recent_token))

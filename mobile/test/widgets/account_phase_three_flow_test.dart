@@ -20,6 +20,115 @@ import '../core/auth/auth_fakes.dart';
 
 void main() {
   testWidgets(
+    'auth route clears pending intent and cannot sign in during deletion',
+    (tester) async {
+      final oidc = FakeOidcClient();
+      final controllers = _controllers(
+        oidc: oidc,
+        secureStore: MemorySecureTokenStore(storedRecord()),
+        adapter: _ProfileAdapter(),
+      );
+      await controllers.auth.inspectStoredSession();
+      expect(await controllers.auth.enterAccountDeletionPending(), isTrue);
+      final pending =
+          PendingAuthenticatedActionController<AppPendingAuthenticatedAction>()
+            ..replace(
+              AppPendingAuthenticatedAction(
+                kind: AppPendingActionKind.savePaper,
+                targetId: '17060376-2000-4000-8000-000000000001',
+              ),
+            );
+      final router = _authRouter();
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appBuildConfigProvider.overrideWithValue(_accountConfig()),
+            authSessionProvider.overrideWith((ref) => controllers.auth),
+            currentAccountProvider.overrideWith((ref) => controllers.account),
+            pendingAuthenticatedActionProvider.overrideWith((ref) => pending),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Account deletion is pending'), findsOneWidget);
+      expect(
+        find.textContaining('Continue with public reading'),
+        findsOneWidget,
+      );
+      expect(oidc.authorizeCalls, 0);
+      expect(pending.state, isNull);
+      expect(controllers.auth.state.phase, AuthSessionPhase.deletionPending);
+    },
+  );
+
+  testWidgets(
+    'Account You never renders a profile from a different bound identity',
+    (tester) async {
+      const accountB = '018f47a6-4b56-7f4c-8c7a-e2656e820002';
+      final controllers = _controllers(
+        oidc: FakeOidcClient(),
+        secureStore: MemorySecureTokenStore(
+          storedRecord(accountId: _accountId),
+        ),
+        adapter: _ProfileAdapter(),
+      );
+      expect(await controllers.auth.restoreSession(), isTrue);
+      final load = controllers.account.load();
+      for (
+        var attempt = 0;
+        attempt < 100 &&
+            controllers.account.state.phase == CurrentAccountPhase.loading;
+        attempt += 1
+      ) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect((await load)?.id, _accountId);
+      expect(controllers.account.state.profile?.displayName, 'Ada Reader');
+
+      await controllers.auth.bindAccountId(accountB);
+      expect(controllers.auth.state.accountId, accountB);
+      expect(controllers.account.state.profile?.id, _accountId);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appBuildConfigProvider.overrideWithValue(_accountConfig()),
+            authSessionProvider.overrideWith((ref) => controllers.auth),
+            currentAccountProvider.overrideWith((ref) => controllers.account),
+          ],
+          child: MaterialApp(
+            home: AccountYouScreen(
+              onSignIn: () {},
+              onCompleteProfile: () {},
+              onOpenLibrary: () {},
+              onOpenComments: () {},
+              onOpenBlockedUsers: () {},
+              onOpenSettings: () {},
+              onOpenPrivacy: () {},
+              onOpenTerms: () {},
+              onOpenCommunityGuidelines: () {},
+              onOpenSupport: () {},
+              onOpenDeleteAccount: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Ada Reader'), findsNothing);
+      expect(find.text('@ada_reader'), findsNothing);
+      expect(
+        find.textContaining('Account details do not match this session'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
     'system sign-in provisions profile, completes onboarding, resumes once',
     (tester) async {
       final oidc = FakeOidcClient();
@@ -383,6 +492,184 @@ void main() {
     expect(adapter.requests, isEmpty);
   });
 
+  testWidgets('offline saved session can open cached To Read from You', (
+    tester,
+  ) async {
+    final oidc = FakeOidcClient()
+      ..refreshHandler = (_) async => throw const OidcClientException.network();
+    final controllers = _controllers(
+      oidc: oidc,
+      secureStore: MemorySecureTokenStore(storedRecord(accountId: _accountId)),
+      adapter: _ProfileAdapter(),
+    );
+    expect(await controllers.auth.restoreSession(), isFalse);
+    expect(controllers.auth.state.phase, AuthSessionPhase.offlineAuthUnknown);
+    var libraryOpened = false;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          featureFlagsProvider.overrideWithValue(
+            const FeatureFlags(
+              accounts: true,
+              library: true,
+              comments: true,
+              openingMotion: false,
+            ),
+          ),
+          authSessionProvider.overrideWith((ref) => controllers.auth),
+        ],
+        child: MaterialApp(
+          home: AccountYouScreen(
+            onSignIn: () {},
+            onCompleteProfile: () {},
+            onOpenLibrary: () => libraryOpened = true,
+            onOpenComments: () {},
+            onOpenBlockedUsers: () {},
+            onOpenSettings: () {},
+            onOpenPrivacy: () {},
+            onOpenTerms: () {},
+            onOpenCommunityGuidelines: () {},
+            onOpenSupport: () {},
+            onOpenDeleteAccount: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Account status is offline'), findsOneWidget);
+    expect(find.text('Open cached To Read'), findsOneWidget);
+    final toRead = find.byKey(const ValueKey('offline-account-to-read'));
+    await tester.ensureVisible(toRead);
+    await tester.tap(toRead);
+    expect(libraryOpened, isTrue);
+  });
+
+  testWidgets('offline unbound session does not offer an empty To Read hop', (
+    tester,
+  ) async {
+    final oidc = FakeOidcClient()
+      ..refreshHandler = (_) async => throw const OidcClientException.network();
+    final controllers = _controllers(
+      oidc: oidc,
+      secureStore: MemorySecureTokenStore(storedRecord()),
+      adapter: _ProfileAdapter(),
+    );
+    expect(await controllers.auth.restoreSession(), isFalse);
+    expect(controllers.auth.state.phase, AuthSessionPhase.offlineAuthUnknown);
+    expect(controllers.auth.state.accountId, isNull);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          featureFlagsProvider.overrideWithValue(
+            const FeatureFlags(
+              accounts: true,
+              library: true,
+              comments: true,
+              openingMotion: false,
+            ),
+          ),
+          authSessionProvider.overrideWith((ref) => controllers.auth),
+        ],
+        child: MaterialApp(
+          home: AccountYouScreen(
+            onSignIn: () {},
+            onCompleteProfile: () {},
+            onOpenLibrary: () {},
+            onOpenComments: () {},
+            onOpenBlockedUsers: () {},
+            onOpenSettings: () {},
+            onOpenPrivacy: () {},
+            onOpenTerms: () {},
+            onOpenCommunityGuidelines: () {},
+            onOpenSupport: () {},
+            onOpenDeleteAccount: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Account status is offline'), findsOneWidget);
+    expect(find.text('Open cached To Read'), findsNothing);
+    expect(find.byKey(const ValueKey('offline-account-to-read')), findsNothing);
+  });
+
+  testWidgets(
+    'suspended account keeps support, sign-out, and in-app deletion access',
+    (tester) async {
+      final controllers = _controllers(
+        oidc: FakeOidcClient(),
+        secureStore: MemorySecureTokenStore(
+          storedRecord(accountId: _accountId),
+        ),
+        adapter: _ProfileAdapter(),
+      );
+      expect(await controllers.auth.restoreSession(), isTrue);
+      final profileLoad = controllers.account.load();
+      for (
+        var attempt = 0;
+        attempt < 100 &&
+            controllers.account.state.phase == CurrentAccountPhase.loading;
+        attempt += 1
+      ) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(await profileLoad, isNotNull);
+      controllers.account.recordAuthoritativeReadOnlyStatus(
+        errorCode: 'ACCOUNT_SUSPENDED',
+        authEpoch: controllers.auth.state.epoch,
+      );
+      var supportOpened = false;
+      var deletionOpened = false;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appBuildConfigProvider.overrideWithValue(_accountConfig()),
+            authSessionProvider.overrideWith((ref) => controllers.auth),
+            currentAccountProvider.overrideWith((ref) => controllers.account),
+          ],
+          child: MaterialApp(
+            home: AccountYouScreen(
+              onSignIn: () {},
+              onCompleteProfile: () {},
+              onOpenLibrary: () {},
+              onOpenComments: () {},
+              onOpenBlockedUsers: () {},
+              onOpenSettings: () {},
+              onOpenPrivacy: () {},
+              onOpenTerms: () {},
+              onOpenCommunityGuidelines: () {},
+              onOpenSupport: () => supportOpened = true,
+              onOpenDeleteAccount: () => deletionOpened = true,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Account suspended'), findsOneWidget);
+      final support = find.widgetWithText(TextButton, 'Support');
+      expect(support, findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Sign out'), findsOneWidget);
+      final deletion = find.byKey(const ValueKey('read-only-account-delete'));
+      expect(deletion, findsOneWidget);
+
+      await tester.ensureVisible(support);
+      await tester.pump();
+      await tester.tap(support);
+      await tester.ensureVisible(deletion);
+      await tester.pump();
+      await tester.tap(deletion);
+      expect(supportOpened, isTrue);
+      expect(deletionOpened, isTrue);
+      expect(controllers.auth.state.phase, AuthSessionPhase.authenticated);
+    },
+  );
+
   testWidgets('authenticated You signs out without clearing public reading', (
     tester,
   ) async {
@@ -456,9 +743,7 @@ void main() {
     await tester.pump();
 
     expect(
-      find.text(
-        'Sign in to sync your To Read list and join paper discussions.',
-      ),
+      find.text('Sign in to manage your Pakperk account.'),
       findsOneWidget,
     );
     expect(accountRows, isEmpty);
@@ -536,6 +821,7 @@ void main() {
   final account = CurrentAccountController(
     repository: AccountRepository(AccountApi(dio)),
     sessionEpoch: () => auth.state.epoch,
+    sessionAccountId: () => auth.state.accountId,
     bindAccountId: auth.bindAccountId,
   );
   return (auth: auth, account: account);

@@ -49,17 +49,26 @@ final class AccountDeletionRepository {
       throw ArgumentError('Invalid account deletion scope.');
     }
     emitTelemetry(_telemetry, PakPerkTelemetryEvent.accountDeletionRequested);
+    final accountIdentityVersion = _auth.accountIdentityVersion;
 
     // Bind the session that initiated deletion using a normal credential first.
     // This covers process death before the app persisted its internal account
     // UUID, including accounts that were suspended before the next launch.
     // The API returns only its opaque internal ID; client JWT claims are never
     // parsed or trusted for this comparison.
-    _requireCurrentEpoch(expectedAuthEpoch);
+    _requireCurrentSession(
+      expectedAuthEpoch: expectedAuthEpoch,
+      expectedAccountId: accountId,
+      expectedAccountIdentityVersion: accountIdentityVersion,
+    );
     final normalIdentity = await _remote.verifyCurrentSession(
       expectedAuthEpoch: expectedAuthEpoch,
     );
-    _requireCurrentEpoch(expectedAuthEpoch);
+    _requireCurrentSession(
+      expectedAuthEpoch: expectedAuthEpoch,
+      expectedAccountId: accountId,
+      expectedAccountIdentityVersion: accountIdentityVersion,
+    );
     if (accountId != null && normalIdentity.accountId != accountId) {
       throw const AccountDeletionIdentityMismatch();
     }
@@ -86,15 +95,24 @@ final class AccountDeletionRepository {
     emitTelemetry(_telemetry, PakPerkTelemetryEvent.authCompleted, {
       'purpose': 'account_deletion',
     });
-    if (recent.sessionEpoch != expectedAuthEpoch) {
+    _requireCurrentSession(
+      expectedAuthEpoch: expectedAuthEpoch,
+      expectedAccountId: accountId,
+      expectedAccountIdentityVersion: accountIdentityVersion,
+    );
+    if (recent.sessionEpoch != expectedAuthEpoch ||
+        recent.accountId != accountId) {
       throw const AccountDeletionIdentityMismatch();
     }
-    _requireCurrentEpoch(expectedAuthEpoch);
     final recentIdentity = await _remote.verifyRecentSession(
       recentBearer: recent.bearer,
       expectedAuthEpoch: expectedAuthEpoch,
     );
-    _requireCurrentEpoch(expectedAuthEpoch);
+    _requireCurrentSession(
+      expectedAuthEpoch: expectedAuthEpoch,
+      expectedAccountId: accountId,
+      expectedAccountIdentityVersion: accountIdentityVersion,
+    );
     if (recentIdentity.accountId != normalIdentity.accountId) {
       throw const AccountDeletionIdentityMismatch();
     }
@@ -123,7 +141,11 @@ final class AccountDeletionRepository {
       );
     }
     try {
-      _requireCurrentEpoch(expectedAuthEpoch);
+      _requireCurrentSession(
+        expectedAuthEpoch: expectedAuthEpoch,
+        expectedAccountId: accountId,
+        expectedAccountIdentityVersion: accountIdentityVersion,
+      );
     } on AuthFailure {
       await _guardStore.clearInFlight();
       rethrow;
@@ -287,8 +309,15 @@ final class AccountDeletionRepository {
     await _guardStore.write(record.cleanupCompleted());
   }
 
-  void _requireCurrentEpoch(int expectedAuthEpoch) {
-    if (!_auth.isCurrentEpoch(expectedAuthEpoch)) {
+  void _requireCurrentSession({
+    required int expectedAuthEpoch,
+    required String? expectedAccountId,
+    required int expectedAccountIdentityVersion,
+  }) {
+    if (!_auth.isCurrentEpoch(expectedAuthEpoch) ||
+        _auth.hasAccountBindingInProgress ||
+        _auth.accountIdentityVersion != expectedAccountIdentityVersion ||
+        _auth.accountId != expectedAccountId) {
       throw AuthFailure(
         AuthFailureKind.superseded,
         AuthFailureCode.operationSuperseded,

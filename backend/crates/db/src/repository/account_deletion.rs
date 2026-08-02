@@ -223,6 +223,26 @@ struct ExternalPurgeAuditRow {
     purged_at: Option<DateTime<Utc>>,
 }
 
+#[derive(FromRow)]
+struct RestoredDeletionUserRow {
+    id: Uuid,
+    status: String,
+    identity_fingerprint_key_id: Option<String>,
+    identity_fingerprint: Option<Vec<u8>>,
+    oidc_issuer: Option<String>,
+    oidc_subject: Option<String>,
+}
+
+#[derive(FromRow)]
+struct ExistingReapplyJobRow {
+    user_id: Uuid,
+    identity_fingerprint_key_id: String,
+    identity_fingerprint: Vec<u8>,
+    state: String,
+    oidc_issuer: Option<String>,
+    oidc_subject: Option<String>,
+}
+
 impl DeletionRow {
     fn fingerprint(&self) -> Result<IdentityFingerprint, DbError> {
         let digest: [u8; 32] = self
@@ -975,8 +995,9 @@ impl AccountDeletionRepository {
             .await?;
         let advanced = sqlx::query(
             r"
-            UPDATE account_deletion_jobs
-            SET state = 'app_data_deleted',
+            UPDATE account_deletion_jobs AS jobs
+            SET user_id = ledger.original_user_id,
+                state = 'app_data_deleted',
                 retry_from = NULL,
                 app_data_deleted_at = COALESCE(app_data_deleted_at, statement_timestamp()),
                 lease_owner = NULL,
@@ -987,12 +1008,17 @@ impl AccountDeletionRepository {
                 last_error_message = NULL,
                 attempts = 0,
                 updated_at = statement_timestamp()
-            WHERE operation_id = $1
-              AND lease_owner = $2
-              AND lease_expires_at > statement_timestamp()
+            FROM account_deletion_ledger AS ledger
+            WHERE jobs.operation_id = $1
+              AND ledger.operation_id = jobs.operation_id
+              AND jobs.lease_owner = $2
+              AND jobs.lease_expires_at > statement_timestamp()
               AND (
-                    state = 'identity_deleted'
-                    OR (state = 'failed_retryable' AND retry_from = 'identity_deleted')
+                    jobs.state = 'identity_deleted'
+                    OR (
+                        jobs.state = 'failed_retryable'
+                        AND jobs.retry_from = 'identity_deleted'
+                    )
               )
             ",
         )
@@ -1303,32 +1329,66 @@ impl AccountDeletionRepository {
             .await?;
         }
 
-        let restored_user: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        let restored_users: Vec<RestoredDeletionUserRow> = sqlx::query_as(
             r"
-            SELECT status, oidc_issuer, oidc_subject
+            SELECT id, status,
+                   identity_fingerprint_key_id, identity_fingerprint,
+                   oidc_issuer, oidc_subject
             FROM users
             WHERE id = $1
+               OR (
+                    identity_fingerprint_key_id = $2
+                    AND identity_fingerprint = $3
+               )
+               OR (oidc_issuer = $4 AND oidc_subject = $5)
             FOR UPDATE
             ",
         )
         .bind(ledger.original_user_id)
-        .fetch_optional(&mut *transaction)
+        .bind(ledger.fingerprint.key_id())
+        .bind(ledger.fingerprint.digest().as_slice())
+        .bind(provider_issuer)
+        .bind(provider_subject)
+        .fetch_all(&mut *transaction)
         .await?;
-        let resurrected = restored_user
-            .as_ref()
-            .is_some_and(|(status, _, _)| status != "deletion_pending");
-        if restored_user.as_ref().is_some_and(|(_, issuer, subject)| {
-            issuer
-                .as_ref()
-                .zip(subject.as_ref())
-                .is_some_and(|(issuer, subject)| {
-                    issuer != provider_issuer || subject != provider_subject
-                })
-        }) {
+        if restored_users.len() > 1 {
             return Err(DbError::InvalidData(
-                "restored provider identity conflicts with external tombstone".to_owned(),
+                "restored user identity conflicts with external tombstone".to_owned(),
             ));
         }
+        let restored_user = restored_users.first();
+        let resurrected = restored_user.is_some_and(|user| user.status != "deletion_pending");
+        let restored_user_identity_conflicts = restored_user.is_some_and(|user| {
+            let fingerprint_matches = match (
+                user.identity_fingerprint_key_id.as_deref(),
+                user.identity_fingerprint.as_deref(),
+            ) {
+                (Some(key_id), Some(digest)) => {
+                    key_id == ledger.fingerprint.key_id()
+                        && digest == ledger.fingerprint.digest().as_slice()
+                }
+                (None, None) => false,
+                _ => return true,
+            };
+            let provider_matches = match (user.oidc_issuer.as_deref(), user.oidc_subject.as_deref())
+            {
+                (Some(issuer), Some(subject)) => {
+                    if issuer != provider_issuer || subject != provider_subject {
+                        return true;
+                    }
+                    true
+                }
+                (None, None) => false,
+                _ => return true,
+            };
+            !fingerprint_matches && !provider_matches
+        });
+        if restored_user_identity_conflicts {
+            return Err(DbError::InvalidData(
+                "restored user identity conflicts with external tombstone".to_owned(),
+            ));
+        }
+        let target_user_id = restored_user.map_or(ledger.original_user_id, |user| user.id);
         if restored_user.is_some() {
             sqlx::query(
                 r"
@@ -1350,30 +1410,44 @@ impl AccountDeletionRepository {
                   )
                 ",
             )
-            .bind(ledger.original_user_id)
+            .bind(target_user_id)
             .bind(ledger.fingerprint.key_id())
             .bind(ledger.fingerprint.digest().as_slice())
             .execute(&mut *transaction)
             .await?;
         }
 
-        let existing_job: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
-            "SELECT state, oidc_issuer, oidc_subject FROM account_deletion_jobs WHERE operation_id = $1 FOR UPDATE",
+        let existing_job: Option<ExistingReapplyJobRow> = sqlx::query_as(
+            r"
+            SELECT user_id, identity_fingerprint_key_id, identity_fingerprint,
+                   state, oidc_issuer, oidc_subject
+            FROM account_deletion_jobs
+            WHERE operation_id = $1
+            FOR UPDATE
+            ",
         )
         .bind(ledger.operation_id)
         .fetch_optional(&mut *transaction)
         .await?;
-        let existing_job_state = existing_job.as_ref().map(|(state, _, _)| state.as_str());
+        if existing_job.as_ref().is_some_and(|job| {
+            job.identity_fingerprint_key_id != ledger.fingerprint.key_id()
+                || job.identity_fingerprint.as_slice() != ledger.fingerprint.digest().as_slice()
+                || (job.user_id != ledger.original_user_id && job.user_id != target_user_id)
+        }) {
+            return Err(DbError::InvalidData(
+                "restored deletion job conflicts with external tombstone".to_owned(),
+            ));
+        }
+        let existing_job_state = existing_job.as_ref().map(|job| job.state.as_str());
         let restored_state = AccountDeletionState::Requested;
         let should_restore_job = existing_job.is_none();
-        let should_requeue = existing_job
-            .as_ref()
-            .is_some_and(|(state, issuer, subject)| {
-                state != AccountDeletionState::Requested.as_str()
-                    || issuer.as_deref() != Some(provider_issuer)
-                    || subject.as_deref() != Some(provider_subject)
-                    || resurrected
-            });
+        let should_requeue = existing_job.as_ref().is_some_and(|job| {
+            job.state != AccountDeletionState::Requested.as_str()
+                || job.oidc_issuer.as_deref() != Some(provider_issuer)
+                || job.oidc_subject.as_deref() != Some(provider_subject)
+                || job.user_id != target_user_id
+                || resurrected
+        });
         if should_restore_job {
             sqlx::query(
                 r"
@@ -1386,7 +1460,7 @@ impl AccountDeletionRepository {
                 ",
             )
             .bind(ledger.operation_id)
-            .bind(ledger.original_user_id)
+            .bind(target_user_id)
             .bind(ledger.fingerprint.key_id())
             .bind(ledger.fingerprint.digest().as_slice())
             .bind(provider_issuer)
@@ -1400,6 +1474,7 @@ impl AccountDeletionRepository {
                 r"
                 UPDATE account_deletion_jobs
                 SET state = $2,
+                    user_id = $6,
                     retry_from = NULL,
                     attempts = 0,
                     max_attempts = $3,
@@ -1422,8 +1497,11 @@ impl AccountDeletionRepository {
             .bind(i32::try_from(maximum_attempts).unwrap_or(i32::MAX))
             .bind(provider_issuer)
             .bind(provider_subject)
+            .bind(target_user_id)
             .execute(&mut *transaction)
             .await?;
+        }
+        if should_restore_job || should_requeue {
             sqlx::query(
                 r"
                 UPDATE account_deletion_ledger

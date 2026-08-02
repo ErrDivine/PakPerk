@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/account/current_account_controller.dart';
+import '../core/account/account_profile.dart';
 import '../core/cache/drift_local_store.dart';
 import '../core/comments/comment_controllers.dart';
 import '../core/comments/comment_repository.dart';
@@ -10,6 +11,7 @@ import '../core/comments/comments_api.dart';
 import '../core/database/comment_cache_dao.dart';
 import '../core/database/comments_dao.dart';
 import '../core/database/library_dao.dart';
+import '../core/auth/auth_models.dart';
 import '../core/providers.dart';
 import '../features/feed/feed_prefetch_config.dart';
 import 'account_providers.dart';
@@ -41,10 +43,16 @@ final commentRepositoryProvider = Provider<CommentRepository>(
     local: ref.watch(commentsDaoProvider),
     remote: ref.watch(commentsApiProvider),
     accountWrites: ref.watch(accountDataWriteBarrierProvider),
+    commentCache: ref.watch(commentCacheBarrierProvider),
     cachePolicy: ref.watch(feedPrefetchConfigProvider),
     sessionScope: () {
       final session = ref.read(authSessionProvider);
-      return (accountId: session.accountId, authEpoch: session.epoch);
+      return (
+        accountId: session.mayHaveRecoverableCredentials
+            ? session.accountId
+            : null,
+        authEpoch: session.epoch,
+      );
     },
     verifiedScope: () => ref.read(verifiedCommentScopeProvider),
   ),
@@ -70,12 +78,38 @@ final verifiedCommentScopeProvider = Provider<VerifiedCommentScope?>((ref) {
 
 final commentViewerScopeProvider = Provider<CommentViewerScope>((ref) {
   final verified = ref.watch(verifiedCommentScopeProvider);
-  return verified == null
-      ? const CommentViewerScope.guest()
-      : CommentViewerScope.authenticated(
-          accountId: verified.accountId,
-          authEpoch: verified.authEpoch,
-        );
+  if (verified != null) {
+    return CommentViewerScope.authenticated(
+      accountId: verified.accountId,
+      authEpoch: verified.authEpoch,
+    );
+  }
+  if (!ref.watch(featureFlagsProvider).comments) {
+    return const CommentViewerScope.guest();
+  }
+  final session = ref.watch(authSessionProvider);
+  final accountId = session.accountId;
+  if (accountId == null || !session.mayHaveRecoverableCredentials) {
+    return const CommentViewerScope.guest();
+  }
+  if (ref.watch(effectiveAccountReadOnlyStatusProvider) != null) {
+    return CommentViewerScope.readOnly(
+      accountId: accountId,
+      authEpoch: session.epoch,
+    );
+  }
+  return CommentViewerScope.retained(
+    accountId: accountId,
+    authEpoch: session.epoch,
+  );
+});
+
+/// A non-active status already verified for this exact auth epoch is a durable
+/// read-only boundary. It must not be mistaken for a guest or for a temporary
+/// inability to reach `/v1/me`.
+final commentReadOnlyAccountStatusProvider = Provider<AccountStatus?>((ref) {
+  if (!ref.watch(featureFlagsProvider).comments) return null;
+  return ref.watch(effectiveAccountReadOnlyStatusProvider);
 });
 
 final commentComposerEligibleProvider = Provider<bool>((ref) {
@@ -98,13 +132,12 @@ final commentThreadProvider = StateNotifierProvider.autoDispose
       return controller;
     });
 
-final blockedUsersProvider = StreamProvider.autoDispose((ref) {
-  final scope = ref.watch(verifiedCommentScopeProvider);
-  if (scope == null) return const Stream<List<BlockedUserValue>>.empty();
-  return ref
-      .watch(commentRepositoryProvider)
-      .watchBlockedUsers(scope.accountId);
-});
+final blockedUsersProvider = StreamProvider.autoDispose
+    .family<List<BlockedUserValue>, VerifiedCommentScope>((ref, scope) {
+      return ref
+          .watch(commentRepositoryProvider)
+          .watchBlockedUsers(scope.accountId);
+    });
 
 final myCommentsControllerProvider =
     StateNotifierProvider.autoDispose<MyCommentsController, MyCommentsState>((
@@ -145,9 +178,13 @@ final class CommentUiIntentController extends StateNotifier<CommentUiIntent?> {
 
   CommentUiIntent? take() {
     final value = state;
+    clear();
+    return value;
+  }
+
+  void clear() {
     _remainingPageLoads = 0;
     state = null;
-    return value;
   }
 
   CommentUiIntent? takeIfCurrent(CommentUiIntent expected) {
@@ -181,6 +218,14 @@ final commentBlockReconcilerProvider = Provider<CommentBlockReconciler>(
 final commentsRuntimeProvider = Provider<void>((ref) {
   if (!ref.watch(featureFlagsProvider).comments) return;
   final reconciler = ref.watch(commentBlockReconcilerProvider);
+  ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
+    if (previous == null) return;
+    final departedBoundAccount =
+        previous.accountId != null && previous.accountId != next.accountId;
+    if (previous.epoch != next.epoch || departedBoundAccount) {
+      ref.read(commentUiIntentProvider.notifier).clear();
+    }
+  });
   ref.listen<VerifiedCommentScope?>(verifiedCommentScopeProvider, (
     previous,
     next,

@@ -7,6 +7,7 @@ import '../api/api_exception.dart';
 import '../cache/feed_prefetch_config.dart';
 import '../database/comment_cache_dao.dart';
 import '../database/comments_dao.dart';
+import 'comment_cache_barrier.dart';
 import 'comment_models.dart';
 import 'comments_api.dart';
 
@@ -17,17 +18,45 @@ typedef VerifiedCommentScopeReader = VerifiedCommentScope? Function();
 typedef CommentScopeGuard = bool Function();
 
 final class CommentViewerScope {
-  const CommentViewerScope.guest() : accountId = null, authEpoch = null;
+  const CommentViewerScope.guest()
+    : accountId = null,
+      authEpoch = null,
+      remotelyVerified = false,
+      allowsPublicRemoteRead = true;
 
   const CommentViewerScope.authenticated({
     required String this.accountId,
     required int this.authEpoch,
-  });
+  }) : remotelyVerified = true,
+       allowsPublicRemoteRead = true;
+
+  /// Retains the secure-store identity solely for account-bound local cache
+  /// and draft access. No remote read or mutation may use this scope until
+  /// `/v1/me` verifies it again.
+  const CommentViewerScope.retained({
+    required String this.accountId,
+    required int this.authEpoch,
+  }) : remotelyVerified = false,
+       allowsPublicRemoteRead = false;
+
+  /// A known non-active account keeps its account-bound cache/draft identity
+  /// while reading the anonymous published discussion endpoint. It never
+  /// supplies an auth epoch to remote comments and cannot mutate anything.
+  const CommentViewerScope.readOnly({
+    required String this.accountId,
+    required int this.authEpoch,
+  }) : remotelyVerified = false,
+       allowsPublicRemoteRead = true;
 
   final String? accountId;
   final int? authEpoch;
+  final bool remotelyVerified;
+  final bool allowsPublicRemoteRead;
 
   bool get authenticated => accountId != null && authEpoch != null;
+  bool get retainedLocally => authenticated && !remotelyVerified;
+  bool get cacheOnly => authenticated && !allowsPublicRemoteRead;
+  int? get remoteAuthEpoch => remotelyVerified ? authEpoch : null;
 }
 
 final class CommentRepository {
@@ -36,6 +65,7 @@ final class CommentRepository {
     required CommentsDao local,
     required CommentsRemoteDataSource remote,
     required AccountDataWriteBarrier accountWrites,
+    required CommentCacheBarrier commentCache,
     required FeedPrefetchConfig cachePolicy,
     required CommentSessionScopeReader sessionScope,
     required VerifiedCommentScopeReader verifiedScope,
@@ -43,6 +73,7 @@ final class CommentRepository {
        _local = local,
        _remote = remote,
        _accountWrites = accountWrites,
+       _commentCache = commentCache,
        _cachePolicy = cachePolicy,
        _sessionScope = sessionScope,
        _verifiedScope = verifiedScope;
@@ -51,15 +82,26 @@ final class CommentRepository {
   final CommentsDao _local;
   final CommentsRemoteDataSource _remote;
   final AccountDataWriteBarrier _accountWrites;
+  final CommentCacheBarrier _commentCache;
   final FeedPrefetchConfig _cachePolicy;
   final CommentSessionScopeReader _sessionScope;
   final VerifiedCommentScopeReader _verifiedScope;
 
   CommentScopeGuard viewerGuard(CommentViewerScope viewer) => () {
     if (!viewer.authenticated) return true;
-    final verified = _verifiedScope();
-    return verified?.accountId == viewer.accountId &&
-        verified?.authEpoch == viewer.authEpoch;
+    if (viewer.remotelyVerified) {
+      final verified = _verifiedScope();
+      return verified?.accountId == viewer.accountId &&
+          verified?.authEpoch == viewer.authEpoch;
+    }
+    final session = _sessionScope();
+    return session.accountId == viewer.accountId &&
+        session.authEpoch == viewer.authEpoch;
+  };
+
+  CommentScopeGuard localAccountGuard(String accountId, int authEpoch) => () {
+    final session = _sessionScope();
+    return session.accountId == accountId && session.authEpoch == authEpoch;
   };
 
   CommentScopeGuard mutationGuard(String accountId, int authEpoch) => () {
@@ -76,16 +118,34 @@ final class CommentRepository {
     required CommentViewerScope viewer,
   }) async {
     final guard = viewerGuard(viewer);
+    final cacheGeneration = _commentCache.captureGeneration();
+    if (!_commentCache.isAvailable(
+      generation: cacheGeneration,
+      isCurrent: guard,
+    )) {
+      return null;
+    }
     final cached = await _cache.load(
       _pageKey(paperId: paperId, viewerAccountId: viewer.accountId),
       allowExpired: true,
     );
-    if (cached == null || !guard()) return null;
+    if (cached == null ||
+        !_commentCache.isAvailable(
+          generation: cacheGeneration,
+          isCurrent: guard,
+        )) {
+      return null;
+    }
     try {
       final page = CommentPage.fromJson(_map(cached.payload));
       _validatePaperPage(page, paperId, viewer.accountId);
       final visible = await _filterBlocked(page, viewer.accountId);
-      return guard() ? visible : null;
+      return _commentCache.isAvailable(
+            generation: cacheGeneration,
+            isCurrent: guard,
+          )
+          ? visible
+          : null;
     } on FormatException {
       return null;
     }
@@ -101,19 +161,32 @@ final class CommentRepository {
     required CommentViewerScope viewer,
     String? cursor,
   }) async {
+    if (!viewer.allowsPublicRemoteRead) throw const CommentScopeChanged();
     final guard = viewerGuard(viewer);
-    if (!guard()) throw const CommentScopeChanged();
+    final cacheGeneration = _commentCache.captureGeneration();
+    if (!_commentCache.isAvailable(
+      generation: cacheGeneration,
+      isCurrent: guard,
+    )) {
+      throw const CommentScopeChanged();
+    }
     final page = await _remote.listPaper(
       paperId: paperId,
-      expectedAuthEpoch: viewer.authEpoch,
+      expectedAuthEpoch: viewer.remoteAuthEpoch,
       cursor: cursor,
     );
-    if (!guard()) throw const CommentScopeChanged();
+    if (!_commentCache.isAvailable(
+      generation: cacheGeneration,
+      isCurrent: guard,
+    )) {
+      throw const CommentScopeChanged();
+    }
     _validatePaperPage(page, paperId, viewer.accountId);
     final fetchedAt = DateTime.now().toUtc();
     final cached = await _writeForViewer(
       viewer,
       guard,
+      cacheGeneration,
       () => _cache.saveBounded(
         CachedCommentPageValue(
           pageKey: _pageKey(
@@ -131,9 +204,13 @@ final class CommentRepository {
       ),
     );
     if (!cached) throw const CommentScopeChanged();
-    if (!guard()) throw const CommentScopeChanged();
     final visible = await _filterBlocked(page, viewer.accountId);
-    if (!guard()) throw const CommentScopeChanged();
+    if (!_commentCache.isAvailable(
+      generation: cacheGeneration,
+      isCurrent: guard,
+    )) {
+      throw const CommentScopeChanged();
+    }
     return visible;
   }
 
@@ -142,6 +219,7 @@ final class CommentRepository {
     required CommentViewerScope viewer,
     required CommentPage page,
   }) async {
+    final cacheGeneration = _commentCache.captureGeneration();
     _validatePaperPage(page, paperId, viewer.accountId);
     final guard = viewerGuard(viewer);
     if (!guard()) return;
@@ -149,6 +227,7 @@ final class CommentRepository {
     await _writeForViewer(
       viewer,
       guard,
+      cacheGeneration,
       () => _cache.saveBounded(
         CachedCommentPageValue(
           pageKey: _pageKey(
@@ -170,7 +249,7 @@ final class CommentRepository {
     required int authEpoch,
     required String paperId,
   }) async {
-    final guard = mutationGuard(accountId, authEpoch);
+    final guard = localAccountGuard(accountId, authEpoch);
     if (!guard()) throw const CommentScopeChanged();
     final value = await _local.loadDraft(accountId, paperId);
     if (!guard()) throw const CommentScopeChanged();
@@ -183,7 +262,7 @@ final class CommentRepository {
     required String paperId,
     required String body,
   }) async {
-    final guard = mutationGuard(accountId, authEpoch);
+    final guard = localAccountGuard(accountId, authEpoch);
     final written = await _accountWrite(
       accountId: accountId,
       authEpoch: authEpoch,
@@ -516,22 +595,27 @@ final class CommentRepository {
   Future<bool> _writeForViewer(
     CommentViewerScope viewer,
     CommentScopeGuard guard,
+    int cacheGeneration,
     Future<void> Function() write,
-  ) async {
-    final accountId = viewer.accountId;
-    final authEpoch = viewer.authEpoch;
-    if (accountId == null || authEpoch == null) {
-      if (!guard()) return false;
-      await write();
-      return guard();
-    }
-    return _accountWrite(
-      accountId: accountId,
-      authEpoch: authEpoch,
-      guard: guard,
-      write: write,
-    );
-  }
+  ) => _commentCache.writeIfCurrent(
+    generation: cacheGeneration,
+    isCurrent: guard,
+    write: () async {
+      final accountId = viewer.accountId;
+      final authEpoch = viewer.authEpoch;
+      if (accountId == null || authEpoch == null) {
+        if (!guard()) return false;
+        await write();
+        return guard();
+      }
+      return _accountWrite(
+        accountId: accountId,
+        authEpoch: authEpoch,
+        guard: guard,
+        write: write,
+      );
+    },
+  );
 
   Future<bool> _accountWrite({
     required String accountId,

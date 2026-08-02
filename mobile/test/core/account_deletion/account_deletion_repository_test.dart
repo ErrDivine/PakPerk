@@ -100,6 +100,158 @@ void main() {
       expect(harness.guard.record, isNull);
     });
 
+    test(
+      'same-epoch account switch before recent verification supersedes deletion',
+      () async {
+        final harness = await _Harness.create();
+        harness.remote.recentVerifyHandler = () async {
+          await harness.auth.bindAccountId(otherAccountId);
+          return _verification(accountId);
+        };
+
+        await expectLater(
+          harness.repository.request(
+            accountId: accountId,
+            expectedAuthEpoch: harness.auth.epoch,
+          ),
+          throwsA(
+            isA<AuthFailure>().having(
+              (failure) => failure.kind,
+              'kind',
+              AuthFailureKind.superseded,
+            ),
+          ),
+        );
+
+        expect(harness.auth.accountId, otherAccountId);
+        expect(harness.remote.recentVerifyCalls, 1);
+        expect(harness.remote.deleteCalls, 0);
+        expect(harness.guard.record, isNull);
+        expect(harness.cleanupScopes, isEmpty);
+      },
+    );
+
+    test(
+      'settled same-epoch A to B to A verification is still superseded',
+      () async {
+        final harness = await _Harness.create();
+        final startingVersion = harness.auth.accountIdentityVersion;
+        harness.remote.normalVerifyHandler = () async {
+          await harness.auth.bindAccountId(otherAccountId);
+          await harness.auth.bindAccountId(accountId);
+          return _verification(accountId);
+        };
+
+        await expectLater(
+          harness.repository.request(
+            accountId: accountId,
+            expectedAuthEpoch: harness.auth.epoch,
+          ),
+          throwsA(
+            isA<AuthFailure>().having(
+              (failure) => failure.kind,
+              'kind',
+              AuthFailureKind.superseded,
+            ),
+          ),
+        );
+
+        expect(harness.auth.accountId, accountId);
+        expect(harness.auth.accountIdentityVersion, startingVersion + 2);
+        expect(harness.auth.hasAccountBindingInProgress, isFalse);
+        expect(harness.remote.normalVerifyCalls, 1);
+        expect(harness.remote.recentVerifyCalls, 0);
+        expect(harness.remote.deleteCalls, 0);
+        expect(harness.guard.record, isNull);
+        expect(harness.cleanupScopes, isEmpty);
+      },
+    );
+
+    test(
+      'same-epoch A to B to A binding intents block deletion until settled',
+      () async {
+        final harness = await _Harness.create();
+        final firstWriteGate = Completer<void>();
+        harness.tokens.writeGate = firstWriteGate;
+
+        final bindB = harness.auth.bindAccountId(otherAccountId);
+        while (harness.tokens.writeCalls == 0) {
+          await Future<void>.delayed(Duration.zero);
+        }
+        final versionAfterBIntent = harness.auth.accountIdentityVersion;
+        expect(harness.auth.hasAccountBindingInProgress, isTrue);
+
+        final deletionExpectation = expectLater(
+          harness.repository.request(
+            accountId: accountId,
+            expectedAuthEpoch: harness.auth.epoch,
+          ),
+          throwsA(
+            isA<AuthFailure>().having(
+              (failure) => failure.kind,
+              'kind',
+              AuthFailureKind.superseded,
+            ),
+          ),
+        );
+
+        final bindA = harness.auth.bindAccountId(accountId);
+        expect(harness.auth.accountIdentityVersion, versionAfterBIntent + 1);
+
+        final secondWriteGate = Completer<void>();
+        harness.tokens.writeGate = secondWriteGate;
+        firstWriteGate.complete();
+        await bindB;
+        while (harness.tokens.writeCalls < 2) {
+          await Future<void>.delayed(Duration.zero);
+        }
+
+        expect(harness.auth.accountId, otherAccountId);
+        expect(harness.auth.hasAccountBindingInProgress, isTrue);
+        secondWriteGate.complete();
+        await bindA;
+        await deletionExpectation;
+
+        expect(harness.auth.accountId, accountId);
+        expect(harness.auth.hasAccountBindingInProgress, isFalse);
+        expect(harness.remote.normalVerifyCalls, 0);
+        expect(harness.remote.recentVerifyCalls, 0);
+        expect(harness.remote.deleteCalls, 0);
+        expect(harness.guard.record, isNull);
+        expect(harness.cleanupScopes, isEmpty);
+      },
+    );
+
+    test(
+      'unbound deletion is superseded by any concurrent account bind',
+      () async {
+        final harness = await _Harness.create(boundAccountId: null);
+        harness.remote.normalVerifyHandler = () async {
+          await harness.auth.bindAccountId(accountId);
+          return _verification(accountId);
+        };
+
+        await expectLater(
+          harness.repository.request(
+            accountId: null,
+            expectedAuthEpoch: harness.auth.epoch,
+          ),
+          throwsA(
+            isA<AuthFailure>().having(
+              (failure) => failure.kind,
+              'kind',
+              AuthFailureKind.superseded,
+            ),
+          ),
+        );
+
+        expect(harness.remote.recentVerifyCalls, 0);
+        expect(harness.remote.deleteCalls, 0);
+        expect(harness.guard.record, isNull);
+        expect(harness.cleanupScopes, isEmpty);
+      },
+    );
+
     test('same-account verification prevents cross-account deletion', () async {
       final harness = await _Harness.create();
       harness.remote.recentVerifyHandler = () async =>

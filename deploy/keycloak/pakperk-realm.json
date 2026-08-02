@@ -221,6 +221,16 @@
       "optionalClientScopes": []
     }
   ],
+  "clientScopeMappings": {
+    "realm-management": [
+      {
+        "client": "pakperk-deletion-worker-dev",
+        "roles": [
+          "manage-users"
+        ]
+      }
+    ]
+  },
   "users": [
     {
       "username": "service-account-pakperk-deletion-worker-dev",

@@ -62,6 +62,9 @@ class _PakPerkAppState extends ConsumerState<PakPerkApp>
   @override
   Widget build(BuildContext context) {
     _observeAccountSession();
+    if (ref.watch(featureFlagsProvider).accounts) {
+      ref.watch(accountSessionRecoveryRuntimeProvider);
+    }
     if (ref.watch(featureFlagsProvider).library) {
       ref.watch(libraryRuntimeProvider);
     }

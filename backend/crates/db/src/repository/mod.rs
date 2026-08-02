@@ -83,6 +83,83 @@ use rows::{
 use rows::{decode_authors, legacy_numeric_citations, parse_processing_stage, parse_section_kind};
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
+const REQUIRED_POSTGRES_EXTENSIONS: [&str; 3] = ["vector", "pg_trgm", "pgcrypto"];
+
+fn latest_embedded_migration_version() -> Result<i64, DbError> {
+    MIGRATOR
+        .iter()
+        .filter(|migration| migration.migration_type.is_up_migration())
+        .map(|migration| migration.version)
+        .max()
+        .ok_or_else(|| DbError::InvalidData("no database migrations are embedded".to_owned()))
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct AppliedSchemaMigration {
+    version: i64,
+    success: bool,
+    checksum: Vec<u8>,
+}
+
+fn validate_schema_migration_readiness(
+    applied_migrations: &[AppliedSchemaMigration],
+    latest_successful_version: Option<i64>,
+    minimum_version: i64,
+) -> Result<(), DbError> {
+    if applied_migrations
+        .iter()
+        .any(|migration| !migration.success)
+    {
+        return Err(DbError::InvalidData(
+            "database migration history contains an unsuccessful migration".to_owned(),
+        ));
+    }
+    if latest_successful_version.is_none_or(|version| version < minimum_version) {
+        return Err(DbError::InvalidData(
+            "database schema is older than this binary; apply database migrations".to_owned(),
+        ));
+    }
+    for embedded in MIGRATOR
+        .iter()
+        .filter(|migration| migration.migration_type.is_up_migration())
+    {
+        let Some(applied) = applied_migrations
+            .iter()
+            .find(|migration| migration.version == embedded.version)
+        else {
+            return Err(DbError::InvalidData(
+                "database migration history is incomplete; apply database migrations".to_owned(),
+            ));
+        };
+        if applied.checksum.as_slice() != embedded.checksum.as_ref() {
+            return Err(DbError::InvalidData(format!(
+                "database migration {} checksum does not match this binary",
+                embedded.version
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_required_extension_readiness(
+    installed_extensions: &[(String, String)],
+) -> Result<(), DbError> {
+    for required_extension in REQUIRED_POSTGRES_EXTENSIONS {
+        let mut matching_extensions = installed_extensions
+            .iter()
+            .filter(|(extension, _)| extension == required_extension);
+        let exactly_once_in_public = matching_extensions
+            .next()
+            .is_some_and(|(_, namespace)| namespace == "public")
+            && matching_extensions.next().is_none();
+        if !exactly_once_in_public {
+            return Err(DbError::InvalidData(format!(
+                "required PostgreSQL extension {required_extension} must be installed exactly once in public"
+            )));
+        }
+    }
+    Ok(())
+}
 
 #[derive(Debug, Error)]
 pub enum DbError {
@@ -117,6 +194,35 @@ impl Database {
             .min_connections(1)
             .acquire_timeout(Duration::from_secs(10))
             .idle_timeout(Duration::from_secs(300))
+            .after_connect(|connection, _metadata| {
+                Box::pin(async move {
+                    // URL-level `options` can set a hostile startup path. Reset
+                    // and verify every physical connection before the pool can
+                    // hand it to migrations, restore replay, or application
+                    // repositories.
+                    sqlx::query("SET search_path TO public, pg_catalog")
+                        .execute(&mut *connection)
+                        .await?;
+                    let (search_path, current_schema): (String, Option<String>) = sqlx::query_as(
+                        r"
+                            SELECT
+                                pg_catalog.current_setting('search_path'),
+                                pg_catalog.current_schema()::text
+                            ",
+                    )
+                    .fetch_one(&mut *connection)
+                    .await?;
+                    if search_path != "public, pg_catalog"
+                        || current_schema.as_deref() != Some("public")
+                    {
+                        return Err(sqlx::Error::Protocol(
+                            "database search_path could not be bound to public, pg_catalog"
+                                .to_owned(),
+                        ));
+                    }
+                    Ok(())
+                })
+            })
             .connect(database_url)
             .await?;
         Ok(Self {
@@ -161,32 +267,57 @@ impl Database {
 
     pub async fn ready(&self) -> Result<(), DbError> {
         sqlx::query("SELECT 1").execute(&self.pool).await?;
-        // Fail startup/readiness if required extensions were not installed.
-        let extension_count: i64 = sqlx::query_scalar(
+        let minimum_version = latest_embedded_migration_version()?;
+        let applied_migrations = sqlx::query_as::<_, AppliedSchemaMigration>(
             r"
-            SELECT count(*)
-            FROM pg_extension
-            WHERE extname IN ('vector', 'pg_trgm', 'pgcrypto')
+            SELECT version, success, checksum
+            FROM public._sqlx_migrations
+            ORDER BY version
             ",
         )
-        .fetch_one(&self.pool)
+        .fetch_all(&self.pool)
         .await?;
-        if extension_count != 3 {
-            return Err(DbError::InvalidData(
-                "required PostgreSQL extensions are missing".to_owned(),
-            ));
-        }
+        let latest_successful_version = applied_migrations
+            .iter()
+            .filter(|migration| migration.success)
+            .map(|migration| migration.version)
+            .max();
+        // A newer schema remains acceptable during expand/contract rollouts,
+        // but this binary must never serve against an older, dirty, gapped, or
+        // checksum-divergent schema.
+        validate_schema_migration_readiness(
+            &applied_migrations,
+            latest_successful_version,
+            minimum_version,
+        )?;
+        // Fail startup/readiness unless every required extension resolves from
+        // the application-owned public schema. Name-only presence is not
+        // enough because repositories deliberately call public.digest and
+        // otherwise rely on public-qualified extension objects.
+        let installed_extensions = sqlx::query_as::<_, (String, String)>(
+            r"
+            SELECT extension.extname, namespace.nspname
+            FROM pg_catalog.pg_extension AS extension
+            JOIN pg_catalog.pg_namespace AS namespace
+              ON namespace.oid = extension.extnamespace
+            WHERE extension.extname IN ('vector', 'pg_trgm', 'pgcrypto')
+            ORDER BY extension.extname
+            ",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        validate_required_extension_readiness(&installed_extensions)?;
         let arxiv_gate_ready: bool = sqlx::query_scalar(
             r"
             SELECT EXISTS (
                 SELECT 1
                 FROM information_schema.columns
-                WHERE table_schema = current_schema()
+                WHERE table_schema = 'public'
                   AND table_name = 'external_rate_limits'
                   AND column_name = 'blocked_until'
             ) AND EXISTS (
                 SELECT 1
-                FROM external_rate_limits
+                FROM public.external_rate_limits
                 WHERE service = 'arxiv'
             )
             ",
@@ -340,6 +471,176 @@ impl PaperRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn embedded_migration_history() -> Vec<AppliedSchemaMigration> {
+        MIGRATOR
+            .iter()
+            .filter(|migration| migration.migration_type.is_up_migration())
+            .map(|migration| AppliedSchemaMigration {
+                version: migration.version,
+                success: true,
+                checksum: migration.checksum.to_vec(),
+            })
+            .collect()
+    }
+
+    fn latest_successful_version(applied_migrations: &[AppliedSchemaMigration]) -> Option<i64> {
+        applied_migrations
+            .iter()
+            .filter(|migration| migration.success)
+            .map(|migration| migration.version)
+            .max()
+    }
+
+    fn validate_test_migration_history(
+        applied_migrations: &[AppliedSchemaMigration],
+    ) -> Result<(), DbError> {
+        validate_schema_migration_readiness(
+            applied_migrations,
+            latest_successful_version(applied_migrations),
+            latest_embedded_migration_version().unwrap(),
+        )
+    }
+
+    fn required_extensions_in_public() -> Vec<(String, String)> {
+        REQUIRED_POSTGRES_EXTENSIONS
+            .into_iter()
+            .map(|extension| (extension.to_owned(), "public".to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn database_readiness_rejects_an_old_schema() {
+        let minimum_version = latest_embedded_migration_version().unwrap();
+        let mut applied_migrations = embedded_migration_history();
+        applied_migrations.retain(|migration| migration.version != minimum_version);
+        let error = validate_test_migration_history(&applied_migrations).unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "persisted data is invalid: database schema is older than this binary; apply database migrations",
+        );
+    }
+
+    #[test]
+    fn database_readiness_rejects_absent_migration_history() {
+        let error = validate_test_migration_history(&[]).unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "persisted data is invalid: database schema is older than this binary; apply database migrations",
+        );
+    }
+
+    #[test]
+    fn database_readiness_rejects_an_unsuccessful_migration() {
+        let minimum_version = latest_embedded_migration_version().unwrap();
+        let mut applied_migrations = embedded_migration_history();
+        applied_migrations
+            .iter_mut()
+            .find(|migration| migration.version == minimum_version)
+            .unwrap()
+            .success = false;
+        let error = validate_test_migration_history(&applied_migrations).unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "persisted data is invalid: database migration history contains an unsuccessful migration",
+        );
+    }
+
+    #[test]
+    fn database_readiness_accepts_the_current_schema() {
+        validate_test_migration_history(&embedded_migration_history()).unwrap();
+    }
+
+    #[test]
+    fn database_readiness_accepts_a_future_schema_for_rollouts() {
+        let minimum_version = latest_embedded_migration_version().unwrap();
+        let future_version = minimum_version.checked_add(1).unwrap();
+        let mut applied_migrations = embedded_migration_history();
+        applied_migrations.push(AppliedSchemaMigration {
+            version: future_version,
+            success: true,
+            checksum: vec![0x42; 48],
+        });
+
+        validate_test_migration_history(&applied_migrations).unwrap();
+    }
+
+    #[test]
+    fn database_readiness_rejects_a_gapped_history_with_a_future_version() {
+        let minimum_version = latest_embedded_migration_version().unwrap();
+        let future_version = minimum_version.checked_add(1).unwrap();
+        let mut applied_migrations = embedded_migration_history();
+        applied_migrations.retain(|migration| migration.version != minimum_version);
+        applied_migrations.push(AppliedSchemaMigration {
+            version: future_version,
+            success: true,
+            checksum: vec![0x42; 48],
+        });
+        let error = validate_test_migration_history(&applied_migrations).unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "persisted data is invalid: database migration history is incomplete; apply database migrations",
+        );
+    }
+
+    #[test]
+    fn database_readiness_rejects_checksum_drift() {
+        let mut applied_migrations = embedded_migration_history();
+        applied_migrations[0].checksum[0] ^= 0xff;
+        let divergent_version = applied_migrations[0].version;
+        let error = validate_test_migration_history(&applied_migrations).unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "persisted data is invalid: database migration {divergent_version} checksum does not match this binary"
+            ),
+        );
+    }
+
+    #[test]
+    fn database_readiness_accepts_required_extensions_exactly_once_in_public() {
+        validate_required_extension_readiness(&required_extensions_in_public()).unwrap();
+    }
+
+    #[test]
+    fn database_readiness_rejects_missing_duplicate_or_wrong_namespace_extensions() {
+        let mut missing = required_extensions_in_public();
+        missing.retain(|(extension, _)| extension != "pgcrypto");
+        let missing_error = validate_required_extension_readiness(&missing).unwrap_err();
+        assert_eq!(
+            missing_error.to_string(),
+            "persisted data is invalid: required PostgreSQL extension pgcrypto must be installed exactly once in public",
+        );
+
+        let mut duplicated = required_extensions_in_public();
+        duplicated.push(("vector".to_owned(), "public".to_owned()));
+        let duplicate_error = validate_required_extension_readiness(&duplicated).unwrap_err();
+        assert_eq!(
+            duplicate_error.to_string(),
+            "persisted data is invalid: required PostgreSQL extension vector must be installed exactly once in public",
+        );
+
+        for extension in REQUIRED_POSTGRES_EXTENSIONS {
+            let mut wrong_namespace = required_extensions_in_public();
+            wrong_namespace
+                .iter_mut()
+                .find(|(installed, _)| installed == extension)
+                .unwrap()
+                .1 = "extensions".to_owned();
+            let error = validate_required_extension_readiness(&wrong_namespace).unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "persisted data is invalid: required PostgreSQL extension {extension} must be installed exactly once in public"
+                ),
+            );
+        }
+    }
 
     #[test]
     fn enums_round_trip_database_names() {
@@ -623,5 +924,50 @@ mod tests {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations");
         database.migrate(path).await.unwrap();
         database.ready().await.unwrap();
+
+        let mut hostile_search_path_url = Url::parse(&url).unwrap();
+        hostile_search_path_url
+            .query_pairs_mut()
+            .append_pair("options", "-c search_path=pg_catalog");
+        let bound_database = Database::connect(hostile_search_path_url.as_str(), 2)
+            .await
+            .unwrap();
+        let effective_search_path: String =
+            sqlx::query_scalar("SELECT pg_catalog.current_setting('search_path')")
+                .fetch_one(bound_database.pool())
+                .await
+                .unwrap();
+        let current_schema: Option<String> =
+            sqlx::query_scalar("SELECT pg_catalog.current_schema()::text")
+                .fetch_one(bound_database.pool())
+                .await
+                .unwrap();
+        assert_eq!(effective_search_path, "public, pg_catalog");
+        assert_eq!(current_schema.as_deref(), Some("public"));
+        bound_database.ready().await.unwrap();
+
+        sqlx::query("CREATE SCHEMA pakperk_wrong_extension_namespace")
+            .execute(bound_database.pool())
+            .await
+            .unwrap();
+        sqlx::query("ALTER EXTENSION pgcrypto SET SCHEMA pakperk_wrong_extension_namespace")
+            .execute(bound_database.pool())
+            .await
+            .unwrap();
+        let wrong_namespace = bound_database.ready().await;
+        sqlx::query("ALTER EXTENSION pgcrypto SET SCHEMA public")
+            .execute(bound_database.pool())
+            .await
+            .unwrap();
+        sqlx::query("DROP SCHEMA pakperk_wrong_extension_namespace")
+            .execute(bound_database.pool())
+            .await
+            .unwrap();
+        assert!(matches!(
+            wrong_namespace,
+            Err(DbError::InvalidData(message))
+                if message == "required PostgreSQL extension pgcrypto must be installed exactly once in public"
+        ));
+        bound_database.ready().await.unwrap();
     }
 }

@@ -1,9 +1,23 @@
 import 'dart:async';
 
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pakperk/core/account/account_data_write_barrier.dart';
 import 'package:pakperk/core/auth/auth.dart';
+import 'package:pakperk/core/cache/feed_prefetch_config.dart';
+import 'package:pakperk/core/comments/comment_cache_barrier.dart';
+import 'package:pakperk/core/comments/comment_repository.dart';
+import 'package:pakperk/core/comments/comments_api.dart';
+import 'package:pakperk/core/database/app_database.dart';
+import 'package:pakperk/core/database/comment_cache_dao.dart';
+import 'package:pakperk/core/database/comments_dao.dart';
+import 'package:pakperk/core/database/library_dao.dart';
+import 'package:pakperk/core/database/paper_cache_dao.dart';
+import 'package:pakperk/core/library/library_api.dart';
+import 'package:pakperk/core/library/library_repository.dart';
 
 import 'auth_fakes.dart';
+import '../../support/fakes.dart';
 
 void main() {
   final now = DateTime.utc(2030, 1, 1);
@@ -125,6 +139,570 @@ void main() {
   );
 
   test(
+    'cross-account binding revokes old local and token scopes before cleanup',
+    () async {
+      const accountA = '00000000-0000-4000-8000-000000000123';
+      const accountB = '00000000-0000-4000-8000-000000000456';
+      const paperId = '00000000-0000-4000-8000-000000000789';
+      final oidc = FakeOidcClient();
+      final store = MemorySecureTokenStore(storedRecord(accountId: accountA));
+      var cleanupFinished = false;
+      final controller = AuthSessionController(
+        repository: repository(oidc: oidc, store: store),
+        clearAccountOwnedData: (accountId, _) async {
+          expect(accountId, accountA);
+          cleanupFinished = true;
+        },
+      );
+      addTearDown(controller.dispose);
+      expect(await controller.restoreSession(), isTrue);
+      final epoch = controller.state.epoch;
+
+      final bindGate = Completer<void>();
+      store.writeGate = bindGate;
+      final writesBeforeBind = store.writeCalls;
+      final binding = controller.bindAccountId(accountB);
+      while (store.writeCalls == writesBeforeBind) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(cleanupFinished, isTrue);
+      expect(controller.state.accountId, isNull);
+      expect(controller.isCurrentEpoch(epoch), isFalse);
+      expect(await controller.accessTokenForRequest(), isNull);
+      expect(
+        await controller.refreshAfterUnauthorized(
+          rejectedAccessToken: 'access-token',
+          expectedAuthEpoch: epoch,
+        ),
+        isNull,
+      );
+      expect(controller.state.accountId, isNull);
+
+      final database = PakPerkDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final library = LibraryRepository(
+        local: LibraryDao(database),
+        remote: _UnusedLibraryRemote(),
+        sessionScope: () => (
+          accountId: controller.state.accountId,
+          authEpoch: controller.state.epoch,
+        ),
+        verifiedScope: () => null,
+        localMutationScope: () {
+          final session = controller.state;
+          final accountId = session.accountId;
+          if (accountId == null || !session.mayHaveRecoverableCredentials) {
+            return null;
+          }
+          return (accountId: accountId, authEpoch: session.epoch);
+        },
+      );
+      expect(
+        () => library.setSaved(
+          accountId: accountA,
+          authEpoch: epoch,
+          paperId: paperId,
+          saved: false,
+        ),
+        throwsA(isA<LibraryScopeChanged>()),
+      );
+      expect(await database.select(database.syncOutbox).get(), isEmpty);
+
+      bindGate.complete();
+      await binding;
+      expect(controller.state.accountId, accountB);
+      expect(controller.state.phase, AuthSessionPhase.authenticated);
+      expect(controller.isCurrentEpoch(epoch), isTrue);
+    },
+  );
+
+  test(
+    'same-account binding preserves local drafts while remote auth is blocked',
+    () async {
+      const accountA = '00000000-0000-4000-8000-000000000123';
+      final paperId = samplePaper.paperId;
+      final store = MemorySecureTokenStore(storedRecord(accountId: accountA));
+      final controller = AuthSessionController(
+        repository: repository(oidc: FakeOidcClient(), store: store),
+        clearAccountOwnedData: (_, __) async {},
+      );
+      addTearDown(controller.dispose);
+      expect(await controller.restoreSession(), isTrue);
+      final epoch = controller.state.epoch;
+
+      final bindGate = Completer<void>();
+      store.writeGate = bindGate;
+      final writesBeforeBind = store.writeCalls;
+      final binding = controller.bindAccountId(accountA);
+      while (store.writeCalls == writesBeforeBind) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(controller.state.phase, AuthSessionPhase.refreshing);
+      expect(controller.state.accountId, accountA);
+      expect(controller.isCurrentEpoch(epoch), isFalse);
+      expect(await controller.accessTokenForRequest(), isNull);
+
+      final database = PakPerkDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      await PaperCacheDao(database).save(samplePaper);
+      final local = CommentsDao(database);
+      final comments = CommentRepository(
+        cache: CommentCacheDao(database),
+        local: local,
+        remote: _UnusedCommentsRemote(),
+        accountWrites: AccountDataWriteBarrier(),
+        commentCache: CommentCacheBarrier(),
+        cachePolicy: const FeedPrefetchConfig(),
+        sessionScope: () => (
+          accountId: controller.state.accountId,
+          authEpoch: controller.state.epoch,
+        ),
+        verifiedScope: () => null,
+      );
+      await comments.saveDraft(
+        accountId: accountA,
+        authEpoch: epoch,
+        paperId: paperId,
+        body: 'Latest text while the same identity is rebound.',
+      );
+      expect(
+        (await local.loadDraft(accountA, paperId))?.body,
+        'Latest text while the same identity is rebound.',
+      );
+
+      bindGate.complete();
+      await binding;
+      expect(controller.state.phase, AuthSessionPhase.authenticated);
+      expect(controller.state.accountId, accountA);
+    },
+  );
+
+  group('deletion reservation during identity binding', () {
+    test('exact same-account deletion supersedes a preserved rebind', () async {
+      const accountA = '00000000-0000-4000-8000-000000000123';
+      final store = MemorySecureTokenStore(storedRecord(accountId: accountA));
+      final controller = AuthSessionController(
+        repository: repository(oidc: FakeOidcClient(), store: store),
+        clearAccountOwnedData: (_, __) async {},
+      );
+      addTearDown(controller.dispose);
+      expect(await controller.restoreSession(), isTrue);
+      final epoch = controller.state.epoch;
+
+      final bindGate = Completer<void>();
+      store.writeGate = bindGate;
+      final writesBeforeBind = store.writeCalls;
+      final binding = controller.bindAccountId(accountA);
+      while (store.writeCalls == writesBeforeBind) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(controller.state.accountId, accountA);
+      expect(
+        controller.reserveAccountDeletion(
+          expectedAuthEpoch: epoch,
+          expectedAccountId: accountA,
+        ),
+        isTrue,
+      );
+      expect(controller.state.phase, AuthSessionPhase.deletionPending);
+      expect(controller.isCurrentEpoch(epoch), isFalse);
+      expect(await controller.accessTokenForRequest(), isNull);
+
+      final superseded = expectLater(binding, throwsA(isA<AuthFailure>()));
+      bindGate.complete();
+      await superseded;
+      expect(controller.state.phase, AuthSessionPhase.deletionPending);
+      expect(controller.state.accountId, isNull);
+    });
+
+    test('unbound request cannot cancel a bind to a new account', () async {
+      const accountB = '00000000-0000-4000-8000-000000000456';
+      final store = MemorySecureTokenStore(storedRecord());
+      final controller = AuthSessionController(
+        repository: repository(oidc: FakeOidcClient(), store: store),
+        clearAccountOwnedData: (_, __) async {},
+      );
+      addTearDown(controller.dispose);
+      expect(await controller.restoreSession(), isTrue);
+      final epoch = controller.state.epoch;
+
+      final bindGate = Completer<void>();
+      store.writeGate = bindGate;
+      final writesBeforeBind = store.writeCalls;
+      final binding = controller.bindAccountId(accountB);
+      while (store.writeCalls == writesBeforeBind) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(controller.state.accountId, isNull);
+      expect(
+        controller.reserveAccountDeletion(
+          expectedAuthEpoch: epoch,
+          expectedAccountId: null,
+        ),
+        isFalse,
+      );
+      expect(controller.state.phase, AuthSessionPhase.refreshing);
+
+      bindGate.complete();
+      await binding;
+      expect(controller.state.phase, AuthSessionPhase.authenticated);
+      expect(controller.state.accountId, accountB);
+      expect(store.record?.accountId, accountB);
+    });
+  });
+
+  group('deletion reservation during auth completion', () {
+    test('successful token refresh cannot reopen a reserved session', () async {
+      const accountA = '00000000-0000-4000-8000-000000000123';
+      final refreshGate = Completer<OidcTokenSet>();
+      final oidc = FakeOidcClient();
+      final controller = AuthSessionController(
+        repository: repository(
+          oidc: oidc,
+          store: MemorySecureTokenStore(storedRecord(accountId: accountA)),
+        ),
+        clearAccountOwnedData: (_, __) async {},
+      );
+      addTearDown(controller.dispose);
+      expect(await controller.restoreSession(), isTrue);
+      final epoch = controller.state.epoch;
+      oidc.refreshHandler = (_) => refreshGate.future;
+
+      final refreshing = controller.refreshAfterUnauthorized(
+        rejectedAccessToken: 'access-token',
+        expectedAuthEpoch: epoch,
+      );
+      while (oidc.refreshCalls < 2) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(
+        controller.reserveAccountDeletion(
+          expectedAuthEpoch: epoch,
+          expectedAccountId: accountA,
+        ),
+        isTrue,
+      );
+      refreshGate.complete(
+        tokenSet(
+          accessToken: 'late-access-token',
+          refreshToken: 'late-refresh-token',
+        ),
+      );
+
+      expect(await refreshing, isNull);
+      expect(controller.state.phase, AuthSessionPhase.deletionPending);
+      expect(controller.state.accountId, isNull);
+      expect(controller.isCurrentEpoch(epoch), isFalse);
+      expect(await controller.accessTokenForRequest(), isNull);
+    });
+
+    test('network failure cannot overwrite a reserved session', () async {
+      const accountA = '00000000-0000-4000-8000-000000000123';
+      final refreshGate = Completer<OidcTokenSet>();
+      final oidc = FakeOidcClient();
+      final controller = AuthSessionController(
+        repository: repository(
+          oidc: oidc,
+          store: MemorySecureTokenStore(storedRecord(accountId: accountA)),
+        ),
+        clearAccountOwnedData: (_, __) async {},
+      );
+      addTearDown(controller.dispose);
+      expect(await controller.restoreSession(), isTrue);
+      final epoch = controller.state.epoch;
+      oidc.refreshHandler = (_) => refreshGate.future;
+
+      final refreshing = controller.refreshAfterUnauthorized(
+        rejectedAccessToken: 'access-token',
+        expectedAuthEpoch: epoch,
+      );
+      while (oidc.refreshCalls < 2) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      final failureExpectation = expectLater(
+        refreshing,
+        throwsA(
+          isA<AuthFailure>().having(
+            (failure) => failure.kind,
+            'kind',
+            AuthFailureKind.network,
+          ),
+        ),
+      );
+      expect(
+        controller.reserveAccountDeletion(
+          expectedAuthEpoch: epoch,
+          expectedAccountId: accountA,
+        ),
+        isTrue,
+      );
+      refreshGate.completeError(const OidcClientException.network());
+
+      await failureExpectation;
+      expect(controller.state.phase, AuthSessionPhase.deletionPending);
+      expect(controller.state.accountId, isNull);
+      expect(controller.state.failure, isNull);
+      expect(controller.isCurrentEpoch(epoch), isFalse);
+    });
+
+    test('restore completion cannot reopen a reserved session', () async {
+      const accountA = '00000000-0000-4000-8000-000000000123';
+      final refreshGate = Completer<OidcTokenSet>();
+      final oidc = FakeOidcClient()..refreshHandler = (_) => refreshGate.future;
+      final controller = AuthSessionController(
+        repository: repository(
+          oidc: oidc,
+          store: MemorySecureTokenStore(storedRecord(accountId: accountA)),
+        ),
+        clearAccountOwnedData: (_, __) async {},
+      );
+      addTearDown(controller.dispose);
+
+      final restoring = controller.restoreSession();
+      while (oidc.refreshCalls == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      final epoch = controller.state.epoch;
+      expect(controller.state.phase, AuthSessionPhase.refreshing);
+      expect(
+        controller.reserveAccountDeletion(
+          expectedAuthEpoch: epoch,
+          expectedAccountId: accountA,
+        ),
+        isTrue,
+      );
+      refreshGate.complete(tokenSet(accessToken: 'late-access-token'));
+
+      expect(await restoring, isFalse);
+      expect(controller.state.phase, AuthSessionPhase.deletionPending);
+      expect(controller.state.accountId, isNull);
+      expect(controller.isCurrentEpoch(epoch), isFalse);
+    });
+
+    test(
+      'stored-session inspection cannot reopen a reserved session',
+      () async {
+        const accountA = '00000000-0000-4000-8000-000000000123';
+        final readGate = Completer<void>();
+        final store = MemorySecureTokenStore(storedRecord(accountId: accountA))
+          ..readGate = readGate;
+        final controller = AuthSessionController(
+          repository: repository(oidc: FakeOidcClient(), store: store),
+          clearAccountOwnedData: (_, __) async {},
+        );
+        addTearDown(controller.dispose);
+
+        final inspection = controller.inspectStoredSession();
+        while (store.readCalls == 0) {
+          await Future<void>.delayed(Duration.zero);
+        }
+        final epoch = controller.state.epoch;
+        expect(
+          controller.reserveAccountDeletion(
+            expectedAuthEpoch: epoch,
+            expectedAccountId: null,
+          ),
+          isTrue,
+        );
+        readGate.complete();
+
+        expect(await inspection, AuthStoredSessionStatus.guest);
+        expect(controller.state.phase, AuthSessionPhase.deletionPending);
+        expect(controller.state.accountId, isNull);
+        expect(controller.isCurrentEpoch(epoch), isFalse);
+      },
+    );
+  });
+
+  test(
+    'refresh racing account bind keeps controller and durable identity aligned',
+    () async {
+      const accountA = '00000000-0000-4000-8000-000000000123';
+      const accountB = '00000000-0000-4000-8000-000000000456';
+      final refreshGate = Completer<OidcTokenSet>();
+      final oidc = FakeOidcClient()..refreshHandler = (_) => refreshGate.future;
+      final store = MemorySecureTokenStore(
+        storedRecord(refreshToken: 'account-a-refresh', accountId: accountA),
+      );
+      final auth = repository(oidc: oidc, store: store);
+      final controller = AuthSessionController(
+        repository: auth,
+        clearAccountOwnedData: (_, __) async {},
+      );
+      addTearDown(controller.dispose);
+      expect(
+        await controller.inspectStoredSession(),
+        AuthStoredSessionStatus.refreshRequired,
+      );
+
+      final refreshing = controller.refreshAfterUnauthorized(
+        rejectedAccessToken: 'expired-account-a-access',
+      );
+      while (oidc.refreshCalls == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      await controller.bindAccountId(accountB);
+      expect(controller.state.accountId, accountB);
+      refreshGate.complete(
+        tokenSet(
+          accessToken: 'rotated-access',
+          refreshToken: 'rotated-refresh',
+          idToken: 'rotated-id-token',
+        ),
+      );
+
+      expect(await refreshing, 'rotated-access');
+      expect(controller.state.phase, AuthSessionPhase.authenticated);
+      expect(controller.state.accountId, accountB);
+      expect(auth.accountId, accountB);
+      expect(store.record?.accountId, accountB);
+      expect(store.record?.refreshToken, 'rotated-refresh');
+      expect(store.record?.idTokenHint, 'rotated-id-token');
+    },
+  );
+
+  test(
+    'invalid grant racing identity bind clears all data and remains guest',
+    () async {
+      const accountA = '00000000-0000-4000-8000-000000000123';
+      const accountB = '00000000-0000-4000-8000-000000000456';
+      final refreshGate = Completer<OidcTokenSet>();
+      final oidc = FakeOidcClient();
+      final store = MemorySecureTokenStore(storedRecord(accountId: accountA));
+      final cleared = <String?>[];
+      final controller = AuthSessionController(
+        repository: repository(oidc: oidc, store: store),
+        clearAccountOwnedData: (accountId, _) async => cleared.add(accountId),
+      );
+      addTearDown(controller.dispose);
+      expect(await controller.restoreSession(), isTrue);
+      oidc.refreshHandler = (_) => refreshGate.future;
+
+      final refresh = controller.refreshAfterUnauthorized(
+        rejectedAccessToken: 'access-token',
+      );
+      while (oidc.refreshCalls < 2) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      final binding = controller.bindAccountId(accountB);
+      expect(controller.state.accountId, isNull);
+      final refreshExpectation = expectLater(
+        refresh,
+        throwsA(isA<AuthFailure>()),
+      );
+      final bindingExpectation = expectLater(
+        binding,
+        throwsA(isA<AuthFailure>()),
+      );
+      refreshGate.completeError(const OidcClientException.invalidGrant());
+
+      await refreshExpectation;
+      await bindingExpectation;
+      expect(controller.state.phase, AuthSessionPhase.guest);
+      expect(controller.state.accountId, isNull);
+      expect(store.record, isNull);
+      expect(cleared, contains(null));
+    },
+  );
+
+  test('newer same-identity bind cannot republish a stale account', () async {
+    const accountA = '00000000-0000-4000-8000-000000000123';
+    const accountB = '00000000-0000-4000-8000-000000000456';
+    final store = MemorySecureTokenStore(storedRecord(accountId: accountA));
+    final controller = AuthSessionController(
+      repository: repository(oidc: FakeOidcClient(), store: store),
+      clearAccountOwnedData: (_, __) async {},
+    );
+    addTearDown(controller.dispose);
+    expect(await controller.restoreSession(), isTrue);
+    final bindGate = Completer<void>();
+    store.writeGate = bindGate;
+    final writesBeforeBind = store.writeCalls;
+    final staleBinding = controller.bindAccountId(accountB);
+    while (store.writeCalls == writesBeforeBind) {
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    final newestBinding = controller.bindAccountId(accountA);
+    final staleExpectation = expectLater(
+      staleBinding,
+      throwsA(isA<AuthFailure>()),
+    );
+    expect(controller.state.accountId, isNull);
+    expect(await controller.accessTokenForRequest(), isNull);
+    bindGate.complete();
+
+    await staleExpectation;
+    await newestBinding;
+    expect(controller.state.phase, AuthSessionPhase.authenticated);
+    expect(controller.state.accountId, accountA);
+    expect(store.record?.accountId, accountA);
+  });
+
+  test(
+    'failed cross-account bind cannot reopen the old comment draft scope',
+    () async {
+      const accountA = '00000000-0000-4000-8000-000000000123';
+      const accountB = '00000000-0000-4000-8000-000000000456';
+      const paperId = '00000000-0000-4000-8000-000000000789';
+      final oidc = FakeOidcClient();
+      final store = MemorySecureTokenStore(storedRecord(accountId: accountA));
+      final controller = AuthSessionController(
+        repository: repository(oidc: oidc, store: store),
+        clearAccountOwnedData: (_, __) async {},
+      );
+      addTearDown(controller.dispose);
+      expect(await controller.restoreSession(), isTrue);
+      final epoch = controller.state.epoch;
+      store.writeError = StateError('injected binding write failure');
+
+      await expectLater(
+        controller.bindAccountId(accountB),
+        throwsA(isA<AuthFailure>()),
+      );
+      expect(controller.state.phase, AuthSessionPhase.unavailable);
+      expect(controller.state.accountId, accountA);
+
+      final database = PakPerkDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final comments = CommentRepository(
+        cache: CommentCacheDao(database),
+        local: CommentsDao(database),
+        remote: _UnusedCommentsRemote(),
+        accountWrites: AccountDataWriteBarrier(),
+        commentCache: CommentCacheBarrier(),
+        cachePolicy: const FeedPrefetchConfig(),
+        sessionScope: () {
+          final session = controller.state;
+          return (
+            accountId: session.mayHaveRecoverableCredentials
+                ? session.accountId
+                : null,
+            authEpoch: session.epoch,
+          );
+        },
+        verifiedScope: () => null,
+      );
+      expect(comments.localAccountGuard(accountA, epoch)(), isFalse);
+      await expectLater(
+        comments.saveDraft(
+          accountId: accountA,
+          authEpoch: epoch,
+          paperId: paperId,
+          body: 'Must not be resurrected.',
+        ),
+        throwsA(isA<CommentScopeChanged>()),
+      );
+      expect(await database.select(database.commentDrafts).get(), isEmpty);
+    },
+  );
+
+  test(
     'late sign-in completion cannot resurrect a signed-out session',
     () async {
       final authorization = Completer<OidcTokenSet>();
@@ -151,6 +729,66 @@ void main() {
       expect(controller.state.phase, AuthSessionPhase.guest);
       expect(store.record, isNull);
       expect(accountDataClearCount, 2);
+    },
+  );
+
+  test(
+    'deletion pending blocks sign-in until explicit continue as guest',
+    () async {
+      final oidc = FakeOidcClient();
+      final controller = AuthSessionController(
+        repository: repository(
+          oidc: oidc,
+          store: MemorySecureTokenStore(storedRecord()),
+        ),
+        clearAccountOwnedData: (_, __) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.inspectStoredSession();
+      expect(await controller.enterAccountDeletionPending(), isTrue);
+
+      expect(await controller.signIn(), isFalse);
+      expect(oidc.authorizeCalls, 0);
+      expect(controller.state.phase, AuthSessionPhase.deletionPending);
+
+      controller.continueAsGuestAfterDeletion();
+      expect(controller.state.phase, AuthSessionPhase.guest);
+      expect(await controller.signIn(), isTrue);
+      expect(oidc.authorizeCalls, 1);
+      expect(controller.state.phase, AuthSessionPhase.authenticated);
+    },
+  );
+
+  test(
+    'deletion pending is published before account cleanup completes',
+    () async {
+      const accountA = '00000000-0000-4000-8000-000000000123';
+      final cleanupGate = Completer<void>();
+      final controller = AuthSessionController(
+        repository: repository(
+          oidc: FakeOidcClient(),
+          store: MemorySecureTokenStore(storedRecord(accountId: accountA)),
+        ),
+        clearAccountOwnedData: (accountId, _) {
+          expect(accountId, accountA);
+          return cleanupGate.future;
+        },
+      );
+      addTearDown(controller.dispose);
+      expect(await controller.restoreSession(), isTrue);
+
+      final deletion = controller.enterAccountDeletionPending(
+        accountId: accountA,
+      );
+
+      expect(controller.state.phase, AuthSessionPhase.deletionPending);
+      expect(controller.state.accountId, isNull);
+      expect(controller.isCurrentEpoch(controller.state.epoch), isFalse);
+      expect(await controller.accessTokenForRequest(), isNull);
+
+      cleanupGate.complete();
+      expect(await deletion, isTrue);
+      expect(controller.state.phase, AuthSessionPhase.deletionPending);
     },
   );
 
@@ -191,7 +829,7 @@ void main() {
         repository: repository(oidc: FakeOidcClient(), store: store),
         clearAccountOwnedData: (accountId, _) async {
           expect(store.record?.accountId, accountA);
-          expect(controller.state.accountId, accountA);
+          expect(controller.state.accountId, isNull);
           cleared.add(accountId);
         },
       );
@@ -374,4 +1012,16 @@ void main() {
       expect(controller.state.phase, AuthSessionPhase.guest);
     },
   );
+}
+
+final class _UnusedLibraryRemote implements LibraryRemoteDataSource {
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('The fail-closed test must not reach the network.');
+}
+
+final class _UnusedCommentsRemote implements CommentsRemoteDataSource {
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('The fail-closed test must not reach the network.');
 }

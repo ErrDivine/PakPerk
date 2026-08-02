@@ -497,7 +497,11 @@ TEST_DATABASE_URL=postgres://pakperk:pakperk@localhost:5432/pakperk \
 ```
 
 Without `TEST_DATABASE_URL`, the PostgreSQL behavior test returns early; all
-pure unit, fixture, HTTP-boundary, and widget tests still run.
+pure unit, fixture, HTTP-boundary, and widget tests still run. The URL must
+always name a disposable test database. Account-deletion binaries serialize
+their global queue claims and reject unfinished residue; provision a fresh
+database after an interrupted run rather than letting a later test claim an
+abandoned job.
 
 The repository architecture, generation rules, and trust boundaries are
 summarized in [`docs/architecture.md`](docs/architecture.md).

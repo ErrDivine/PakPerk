@@ -45,6 +45,7 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
   bool _running = false;
   bool _termsAccepted = false;
   bool _guidelinesAccepted = false;
+  bool _deletionBlocked = false;
   String? _safeError;
   AppPendingActionKind? _failedPendingKind;
   String? _initializedProfileId;
@@ -134,14 +135,18 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              saveFailed
+              _deletionBlocked
+                  ? Icons.person_off_outlined
+                  : saveFailed
                   ? Icons.bookmark_add_outlined
                   : Icons.lock_clock_outlined,
               size: 48,
             ),
             const SizedBox(height: 16),
             Text(
-              saveFailed
+              _deletionBlocked
+                  ? 'Account deletion is pending'
+                  : saveFailed
                   ? 'Save could not be completed'
                   : 'Account service unavailable',
               style: Theme.of(context).textTheme.headlineSmall,
@@ -152,11 +157,17 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
             FilledButton.icon(
               onPressed: _running
                   ? null
-                  : actionFailed
+                  : _deletionBlocked || actionFailed
                   ? _close
                   : _begin,
-              icon: Icon(actionFailed ? Icons.arrow_back : Icons.refresh),
-              label: Text(actionFailed ? 'Return' : 'Try again'),
+              icon: Icon(
+                _deletionBlocked || actionFailed
+                    ? Icons.arrow_back
+                    : Icons.refresh,
+              ),
+              label: Text(
+                _deletionBlocked || actionFailed ? 'Return' : 'Try again',
+              ),
             ),
             TextButton(onPressed: _cancelAndClose, child: const Text('Cancel')),
           ],
@@ -337,8 +348,14 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
 
   Future<void> _begin() async {
     if (!mounted || _running) return;
+    if (ref.read(authSessionProvider).phase ==
+        AuthSessionPhase.deletionPending) {
+      _showDeletionPendingBlock();
+      return;
+    }
     setState(() {
       _running = true;
+      _deletionBlocked = false;
       _safeError = null;
       _failedPendingKind = null;
     });
@@ -350,6 +367,10 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
     if (!mounted) return;
     if (!signedIn) {
       final next = ref.read(authSessionProvider);
+      if (next.phase == AuthSessionPhase.deletionPending) {
+        _showDeletionPendingBlock();
+        return;
+      }
       if (next.phase == AuthSessionPhase.guest && next.failure == null) {
         ref.read(pendingAuthenticatedActionProvider.notifier).clear();
         _close();
@@ -396,6 +417,19 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
       return;
     }
     setState(() => _running = false);
+  }
+
+  void _showDeletionPendingBlock() {
+    ref.read(pendingAuthenticatedActionProvider.notifier).clear();
+    if (!mounted) return;
+    setState(() {
+      _running = false;
+      _deletionBlocked = true;
+      _failedPendingKind = null;
+      _safeError =
+          'Finish local deletion cleanup and choose “Continue with public '
+          'reading” before starting a new sign-in.';
+    });
   }
 
   Future<void> _submit(AccountProfile profile) async {

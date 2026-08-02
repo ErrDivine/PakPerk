@@ -43,6 +43,9 @@ class AccountYouScreen extends ConsumerWidget {
     final features = ref.watch(featureFlagsProvider);
     if (!features.accounts) {
       return GuestYouScreen(
+        accountsEnabled: false,
+        libraryEnabled: features.library,
+        commentsEnabled: features.comments,
         onSignIn: null,
         onOpenSettings: onOpenSettings,
         onOpenPrivacy: onOpenPrivacy,
@@ -53,8 +56,15 @@ class AccountYouScreen extends ConsumerWidget {
     }
 
     final auth = ref.watch(authSessionProvider);
+    final offlineLibraryScope =
+        auth.phase == AuthSessionPhase.offlineAuthUnknown && features.library
+        ? ref.watch(libraryDisplayScopeProvider)
+        : null;
     return switch (auth.phase) {
       AuthSessionPhase.guest || AuthSessionPhase.unavailable => GuestYouScreen(
+        accountsEnabled: true,
+        libraryEnabled: features.library,
+        commentsEnabled: features.comments,
         onSignIn: onSignIn,
         onOpenSettings: onOpenSettings,
         onOpenPrivacy: onOpenPrivacy,
@@ -64,8 +74,9 @@ class AccountYouScreen extends ConsumerWidget {
       ),
       AuthSessionPhase.offlineAuthUnknown => _OfflineAccountScreen(
         onRetry: () =>
-            unawaited(ref.read(authSessionProvider.notifier).restoreSession()),
+            unawaited(ref.read(accountSessionRecoveryProvider).recover()),
         onSignOut: () => _signOut(ref),
+        onOpenLibrary: offlineLibraryScope == null ? null : onOpenLibrary,
         onOpenSettings: onOpenSettings,
       ),
       AuthSessionPhase.authenticated => _AuthenticatedAccountLoader(
@@ -121,18 +132,46 @@ class _AuthenticatedAccountLoader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final account = ref.watch(currentAccountProvider);
+    final session = ref.watch(authSessionProvider);
+    final readOnlyStatus = ref.watch(effectiveAccountReadOnlyStatusProvider);
+    final features = ref.watch(featureFlagsProvider);
+    if (readOnlyStatus != null) {
+      final libraryScope = features.library
+          ? ref.watch(libraryDisplayScopeProvider)
+          : null;
+      return _ReadOnlyAccountScreen(
+        status: readOnlyStatus,
+        onRetry: () =>
+            unawaited(ref.read(currentAccountProvider.notifier).load()),
+        onOpenLibrary: libraryScope == null ? null : onOpenLibrary,
+        onOpenSettings: onOpenSettings,
+        onOpenSupport: onOpenSupport,
+        onDeleteAccount: readOnlyStatus == AccountStatus.suspended
+            ? onOpenDeleteAccount
+            : null,
+        onSignOut: () => _signOut(ref),
+      );
+    }
     if (account.phase == CurrentAccountPhase.idle) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ref.read(currentAccountProvider.notifier).load();
       });
     }
-    final profile = account.profile;
+    final retainedProfile = account.profile;
+    final profile =
+        account.verifiedAuthEpoch == session.epoch &&
+            retainedProfile?.id == session.accountId
+        ? retainedProfile
+        : null;
     if (profile == null) {
-      if (account.phase == CurrentAccountPhase.failed) {
+      if (account.phase == CurrentAccountPhase.failed ||
+          (retainedProfile != null &&
+              account.phase != CurrentAccountPhase.loading)) {
         return _AccountLoadFailureScreen(
           message:
               account.error?.message ??
-              'Your account could not be loaded safely.',
+              'Account details do not match this session. Reload them before '
+                  'continuing.',
           onRetry: () =>
               unawaited(ref.read(currentAccountProvider.notifier).load()),
           onSignOut: () => _signOut(ref),
@@ -142,13 +181,16 @@ class _AuthenticatedAccountLoader extends ConsumerWidget {
       return const _AccountProgressScreen();
     }
 
-    final libraryEnabled = ref.watch(featureFlagsProvider).library;
-    final commentsEnabled = ref.watch(featureFlagsProvider).comments;
-    final libraryCount = libraryEnabled
-        ? ref.watch(toReadItemsProvider).value?.length
+    final libraryEnabled = features.library;
+    final commentsEnabled = features.comments;
+    final libraryScope = libraryEnabled
+        ? ref.watch(libraryDisplayScopeProvider)
         : null;
-    final pendingLibraryCount = libraryEnabled
-        ? ref.watch(libraryPendingCountProvider).value ?? 0
+    final libraryCount = libraryScope != null
+        ? ref.watch(toReadItemsProvider(libraryScope)).value?.length
+        : null;
+    final pendingLibraryCount = libraryScope != null
+        ? ref.watch(libraryPendingCountProvider(libraryScope)).value ?? 0
         : 0;
 
     return AuthenticatedAccountHomeScreen(
@@ -324,7 +366,7 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
                 ),
                 onTap: onOpenLibrary,
               ),
-            if (commentsEnabled) ...[
+            if (commentsEnabled && profile.isActive) ...[
               _AccountDestination(
                 icon: Icons.comment_outlined,
                 label: 'My comments',
@@ -447,11 +489,13 @@ class _OfflineAccountScreen extends StatelessWidget {
   const _OfflineAccountScreen({
     required this.onRetry,
     required this.onSignOut,
+    required this.onOpenLibrary,
     required this.onOpenSettings,
   });
 
   final VoidCallback onRetry;
   final VoidCallback onSignOut;
+  final VoidCallback? onOpenLibrary;
   final VoidCallback onOpenSettings;
 
   @override
@@ -464,6 +508,13 @@ class _OfflineAccountScreen extends StatelessWidget {
     primaryLabel: 'Try again',
     onPrimary: onRetry,
     secondary: [
+      if (onOpenLibrary != null)
+        TextButton.icon(
+          key: const ValueKey('offline-account-to-read'),
+          onPressed: onOpenLibrary,
+          icon: const Icon(Icons.bookmarks_outlined),
+          label: const Text('Open cached To Read'),
+        ),
       TextButton(onPressed: onOpenSettings, child: const Text('Settings')),
       TextButton(onPressed: onSignOut, child: const Text('Sign out')),
     ],
@@ -495,6 +546,67 @@ class _AccountLoadFailureScreen extends StatelessWidget {
         onPressed: onDeleteAccount,
         child: const Text('Delete account'),
       ),
+      TextButton(onPressed: onSignOut, child: const Text('Sign out')),
+    ],
+  );
+}
+
+class _ReadOnlyAccountScreen extends StatelessWidget {
+  const _ReadOnlyAccountScreen({
+    required this.status,
+    required this.onRetry,
+    required this.onOpenLibrary,
+    required this.onOpenSettings,
+    required this.onOpenSupport,
+    required this.onDeleteAccount,
+    required this.onSignOut,
+  });
+
+  final AccountStatus status;
+  final VoidCallback onRetry;
+  final VoidCallback? onOpenLibrary;
+  final VoidCallback onOpenSettings;
+  final VoidCallback onOpenSupport;
+  final VoidCallback? onDeleteAccount;
+  final VoidCallback onSignOut;
+
+  @override
+  Widget build(BuildContext context) => _AccountMessageScreen(
+    icon: Icons.lock_person_outlined,
+    title: _statusLabel(status),
+    message: switch (status) {
+      AccountStatus.suspended =>
+        'This account is read-only. Published paper discussions and cached '
+            'saved papers remain available, but account changes are disabled.',
+      AccountStatus.deletionPending =>
+        'Account deletion is pending. Account-owned changes are disabled '
+            'while public reading remains available.',
+      AccountStatus.deleted =>
+        'This account is deleted. Public reading remains available.',
+      AccountStatus.active => 'This account is temporarily read-only.',
+    },
+    primaryLabel: 'Retry account status',
+    onPrimary: onRetry,
+    secondary: [
+      if (onOpenLibrary != null)
+        TextButton.icon(
+          key: const ValueKey('read-only-account-to-read'),
+          onPressed: onOpenLibrary,
+          icon: const Icon(Icons.bookmarks_outlined),
+          label: const Text('Open cached To Read'),
+        ),
+      TextButton(onPressed: onOpenSettings, child: const Text('Settings')),
+      TextButton(onPressed: onOpenSupport, child: const Text('Support')),
+      if (onDeleteAccount != null)
+        TextButton.icon(
+          key: const ValueKey('read-only-account-delete'),
+          style: TextButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.error,
+          ),
+          onPressed: onDeleteAccount,
+          icon: const Icon(Icons.person_off_outlined),
+          label: const Text('Delete account'),
+        ),
       TextButton(onPressed: onSignOut, child: const Text('Sign out')),
     ],
   );

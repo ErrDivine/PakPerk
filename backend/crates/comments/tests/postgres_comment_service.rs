@@ -14,8 +14,8 @@ use comments::{
 };
 use db::{Database, RateLimitRequest};
 use domain::{
-    ArxivIdentifier, Author, CommentReportReason, CommunityGuidelinesVersion, PaperMetadata,
-    TermsVersion,
+    ArxivIdentifier, Author, CommentReportReason, CommunityGuidelinesVersion, Handle,
+    PaperMetadata, TermsVersion,
 };
 use moderation::{ContentModerator, ModerationDecision, ModerationError, ModerationInput};
 use tokio::{
@@ -119,9 +119,11 @@ async fn accepted_replays_and_noops_bypass_exhausted_shared_buckets() {
         .unwrap();
     let terms = TermsVersion::parse("2026-08-01").unwrap();
     let guidelines = CommunityGuidelinesVersion::parse("2026-08-01").unwrap();
+    let author_handle = test_handle("svc_author", &unique);
+    let reporter_handle = test_handle("svc_reporter", &unique);
     for (user_id, handle) in [
-        (author.id, "service_author"),
-        (reporter.id, "service_reporter"),
+        (author.id, author_handle.as_str()),
+        (reporter.id, reporter_handle.as_str()),
     ] {
         sqlx::query(
             r"
@@ -143,9 +145,10 @@ async fn accepted_replays_and_noops_bypass_exhausted_shared_buckets() {
         .await
         .unwrap();
     }
+    let policy_pending_handle = test_handle("svc_policy", &unique);
     sqlx::query("UPDATE users SET handle = $2 WHERE id = $1")
         .bind(policy_pending.id.into_inner())
-        .bind("service_policy_pending")
+        .bind(policy_pending_handle)
         .execute(database.pool())
         .await
         .unwrap();
@@ -170,11 +173,11 @@ async fn accepted_replays_and_noops_bypass_exhausted_shared_buckets() {
         Arc::new(CountingModerator(Arc::clone(&moderation_calls))),
         config,
     );
-    let origin_a = "a".repeat(64);
-    let origin_b = "b".repeat(64);
-    let origin_c = "c".repeat(64);
-    let origin_d = "d".repeat(64);
-    let origin_e = "e".repeat(64);
+    let origin_a = test_origin_scope(&unique, 'a');
+    let origin_b = test_origin_scope(&unique, 'b');
+    let origin_c = test_origin_scope(&unique, 'c');
+    let origin_d = test_origin_scope(&unique, 'd');
+    let origin_e = test_origin_scope(&unique, 'e');
     let request_id = Uuid::now_v7();
     let created = service
         .create(
@@ -249,7 +252,7 @@ async fn accepted_replays_and_noops_bypass_exhausted_shared_buckets() {
                 CreateCommentRequest {
                     client_request_id: Uuid::now_v7(),
                     body: "This account must accept the current policies.".to_owned(),
-                    origin_scope: origin_d,
+                    origin_scope: origin_d.clone(),
                 },
             )
             .await,
@@ -530,11 +533,12 @@ async fn accepted_replays_and_noops_bypass_exhausted_shared_buckets() {
         .await
         .unwrap();
     sqlx::query(
-        "DELETE FROM shared_rate_limit_buckets WHERE scope_key = $1 OR scope_key = $2 OR scope_key = $3 OR scope_key = $4",
+        "DELETE FROM shared_rate_limit_buckets WHERE scope_key = $1 OR scope_key = $2 OR scope_key = $3 OR scope_key = $4 OR scope_key = $5",
     )
         .bind(format!("origin:{origin_a}"))
         .bind(format!("origin:{origin_b}"))
         .bind(format!("origin:{origin_c}"))
+        .bind(format!("origin:{origin_d}"))
         .bind(format!("origin:{origin_e}"))
         .execute(database.pool())
         .await
@@ -555,20 +559,22 @@ async fn concurrent_retries_are_coordinated_before_limits_and_moderation() {
     let issuer = format!("https://comment-concurrency.test/{unique}");
     let terms = TermsVersion::parse("2026-08-01").unwrap();
     let guidelines = CommunityGuidelinesVersion::parse("2026-08-01").unwrap();
+    let author_handle = test_handle("conc_author", &unique);
     let author = provision_active_user(
         &database,
         &issuer,
         "author",
-        "concurrent_author",
+        &author_handle,
         &terms,
         &guidelines,
     )
     .await;
+    let reporter_handle = test_handle("conc_reporter", &unique);
     let reporter = provision_active_user(
         &database,
         &issuer,
         "reporter",
-        "concurrent_reporter",
+        &reporter_handle,
         &terms,
         &guidelines,
     )
@@ -603,7 +609,7 @@ async fn concurrent_retries_are_coordinated_before_limits_and_moderation() {
     ));
 
     let request_id = Uuid::now_v7();
-    let create_origin = "d".repeat(64);
+    let create_origin = test_origin_scope(&unique, 'd');
     let first_service = Arc::clone(&service);
     let first_origin = create_origin.clone();
     let first_create = tokio::spawn(async move {
@@ -678,7 +684,7 @@ async fn concurrent_retries_are_coordinated_before_limits_and_moderation() {
         1
     );
 
-    let report_origin = "e".repeat(64);
+    let report_origin = test_origin_scope(&unique, 'e');
     let report_barrier = Arc::new(Barrier::new(CONCURRENT_DUPLICATES + 1));
     let mut reports = JoinSet::new();
     for _ in 0..CONCURRENT_DUPLICATES {
@@ -728,7 +734,7 @@ async fn concurrent_retries_are_coordinated_before_limits_and_moderation() {
         assert_eq!(bucket_count(&database, bucket, &scope_key).await, 1);
     }
 
-    let user_report_origin = "f".repeat(64);
+    let user_report_origin = test_origin_scope(&unique, 'f');
     let user_report_barrier = Arc::new(Barrier::new(CONCURRENT_DUPLICATES + 1));
     let mut user_reports = JoinSet::new();
     for _ in 0..CONCURRENT_DUPLICATES {
@@ -936,6 +942,17 @@ async fn provision_active_user(
     .await
     .unwrap();
     user.id
+}
+
+fn test_origin_scope(test_id: &str, discriminator: char) -> String {
+    debug_assert_eq!(test_id.len(), 32);
+    format!("{test_id}{}", discriminator.to_string().repeat(32))
+}
+
+fn test_handle(prefix: &str, test_id: &str) -> String {
+    let suffix_length = 30_usize.saturating_sub(prefix.len() + 1).min(test_id.len());
+    let candidate = format!("{prefix}_{}", &test_id[..suffix_length]);
+    Handle::parse(&candidate).unwrap().into_inner()
 }
 
 async fn bucket_count(database: &Database, bucket: &str, scope_key: &str) -> i64 {

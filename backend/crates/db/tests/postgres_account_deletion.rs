@@ -14,6 +14,9 @@ use domain::{
 use url::Url;
 use uuid::Uuid;
 
+#[path = "../../../test_support/account_deletion_queue_guard.rs"]
+mod account_deletion_queue_guard;
+
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn postgres_deletion_request_rotation_lease_retention_and_restore_reapply() {
@@ -23,6 +26,9 @@ async fn postgres_deletion_request_rotation_lease_retention_and_restore_reapply(
     };
     let database = Database::connect(&database_url, 24).await.unwrap();
     database.migrate_embedded().await.unwrap();
+    let _queue_isolation = account_deletion_queue_guard::acquire(&database)
+        .await
+        .unwrap();
     let unique = Uuid::now_v7().simple().to_string();
     let issuer = format!("https://deletion.test/{unique}");
     let subject = format!("subject-{unique}");
@@ -488,6 +494,286 @@ async fn postgres_deletion_request_rotation_lease_retention_and_restore_reapply(
         ("requested".to_owned(), issuer.clone(), subject.clone())
     );
 
+    // A restore can retain the completed ledger while losing its job. The
+    // recreated obligation must reset the old completion/expiry timeline.
+    sqlx::query("DELETE FROM account_deletion_jobs WHERE operation_id = $1")
+        .bind(request.operation.operation_id)
+        .execute(database.pool())
+        .await
+        .unwrap();
+    sqlx::query(
+        r"
+        UPDATE account_deletion_ledger
+        SET completed_at = statement_timestamp(),
+            expires_at = statement_timestamp() + interval '1 day'
+        WHERE operation_id = $1
+        ",
+    )
+    .bind(request.operation.operation_id)
+    .execute(database.pool())
+    .await
+    .unwrap();
+    let restored_missing_job = deletion_repository
+        .reapply_verified_tombstone(
+            &request.ledger,
+            &issuer,
+            &subject,
+            12,
+            "restore-missing-job",
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        restored_missing_job.action,
+        DeletionReapplyAction::RestoredAndQueued
+    );
+    let reset_completion: (bool, bool) = sqlx::query_as(
+        r"
+        SELECT completed_at IS NULL, expires_at IS NULL
+        FROM account_deletion_ledger
+        WHERE operation_id = $1
+        ",
+    )
+    .bind(request.operation.operation_id)
+    .fetch_one(database.pool())
+    .await
+    .unwrap();
+    assert_eq!(reset_completion, (true, true));
+
+    // A restored job can satisfy the schema's separate operation and
+    // fingerprint foreign keys while cross-wiring two tombstones. Reapply
+    // must fail closed instead of deleting the unrelated job user.
+    let decoy_operation_id = Uuid::now_v7();
+    let decoy_user_id = Uuid::now_v7();
+    let decoy_fingerprint = fingerprint("decoy", 0x44);
+    sqlx::query(
+        r"
+        INSERT INTO account_deletion_ledger (
+            operation_id, original_user_id,
+            identity_fingerprint_key_id, identity_fingerprint,
+            requested_at, externalized_at
+        ) VALUES ($1, $2, $3, $4, statement_timestamp(), statement_timestamp())
+        ",
+    )
+    .bind(decoy_operation_id)
+    .bind(decoy_user_id)
+    .bind(decoy_fingerprint.key_id())
+    .bind(decoy_fingerprint.digest().as_slice())
+    .execute(database.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        r"
+        UPDATE account_deletion_jobs
+        SET identity_fingerprint_key_id = $2,
+            identity_fingerprint = $3
+        WHERE operation_id = $1
+        ",
+    )
+    .bind(request.operation.operation_id)
+    .bind(decoy_fingerprint.key_id())
+    .bind(decoy_fingerprint.digest().as_slice())
+    .execute(database.pool())
+    .await
+    .unwrap();
+    assert!(
+        deletion_repository
+            .reapply_verified_tombstone(
+                &request.ledger,
+                &issuer,
+                &subject,
+                12,
+                "restore-crosswired-fingerprint",
+            )
+            .await
+            .is_err()
+    );
+    sqlx::query(
+        r"
+        UPDATE account_deletion_jobs
+        SET identity_fingerprint_key_id = $2,
+            identity_fingerprint = $3
+        WHERE operation_id = $1
+        ",
+    )
+    .bind(request.operation.operation_id)
+    .bind(request.ledger.fingerprint.key_id())
+    .bind(request.ledger.fingerprint.digest().as_slice())
+    .execute(database.pool())
+    .await
+    .unwrap();
+    sqlx::query("UPDATE account_deletion_jobs SET user_id = $2 WHERE operation_id = $1")
+        .bind(request.operation.operation_id)
+        .bind(decoy_user_id)
+        .execute(database.pool())
+        .await
+        .unwrap();
+    assert!(
+        deletion_repository
+            .reapply_verified_tombstone(
+                &request.ledger,
+                &issuer,
+                &subject,
+                12,
+                "restore-crosswired-user",
+            )
+            .await
+            .is_err()
+    );
+    sqlx::query("UPDATE account_deletion_jobs SET user_id = $2 WHERE operation_id = $1")
+        .bind(request.operation.operation_id)
+        .bind(request.ledger.original_user_id)
+        .execute(database.pool())
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM account_deletion_ledger WHERE operation_id = $1")
+        .bind(decoy_operation_id)
+        .execute(database.pool())
+        .await
+        .unwrap();
+
+    // The historical UUID is only a locator, not sufficient identity proof.
+    // Ambiguous rows must fail closed instead of having unrelated data erased.
+    sqlx::query("INSERT INTO users (id, status) VALUES ($1, 'active')")
+        .bind(request.ledger.original_user_id)
+        .execute(database.pool())
+        .await
+        .unwrap();
+    assert!(
+        deletion_repository
+            .reapply_verified_tombstone(
+                &request.ledger,
+                &issuer,
+                &subject,
+                12,
+                "restore-unbound-original-uuid",
+            )
+            .await
+            .is_err()
+    );
+    let unbound_status: String = sqlx::query_scalar("SELECT status FROM users WHERE id = $1")
+        .bind(request.ledger.original_user_id)
+        .fetch_one(database.pool())
+        .await
+        .unwrap();
+    assert_eq!(unbound_status, "active");
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(request.ledger.original_user_id)
+        .execute(database.pool())
+        .await
+        .unwrap();
+
+    sqlx::query(
+        r"
+        INSERT INTO users (
+            id, status, identity_fingerprint_key_id, identity_fingerprint
+        ) VALUES ($1, 'active', $2, $3)
+        ",
+    )
+    .bind(request.ledger.original_user_id)
+    .bind(legacy.key_id())
+    .bind(legacy.digest().as_slice())
+    .execute(database.pool())
+    .await
+    .unwrap();
+    assert!(
+        deletion_repository
+            .reapply_verified_tombstone(
+                &request.ledger,
+                &issuer,
+                &subject,
+                12,
+                "restore-mismatched-original-uuid",
+            )
+            .await
+            .is_err()
+    );
+    let mismatched_fingerprint: Vec<u8> =
+        sqlx::query_scalar("SELECT identity_fingerprint FROM users WHERE id = $1")
+            .bind(request.ledger.original_user_id)
+            .fetch_one(database.pool())
+            .await
+            .unwrap();
+    assert_eq!(mismatched_fingerprint, legacy.digest().as_slice());
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(request.ledger.original_user_id)
+        .execute(database.pool())
+        .await
+        .unwrap();
+
+    sqlx::query(
+        r"
+        INSERT INTO users (
+            id, oidc_issuer, oidc_subject, status,
+            identity_fingerprint_key_id, identity_fingerprint
+        ) VALUES ($1, $2, $3, 'active', $4, $5)
+        ",
+    )
+    .bind(request.ledger.original_user_id)
+    .bind(format!("https://unrelated-restore.test/{unique}"))
+    .bind(format!("unrelated-subject-{unique}"))
+    .bind(request.ledger.fingerprint.key_id())
+    .bind(request.ledger.fingerprint.digest().as_slice())
+    .execute(database.pool())
+    .await
+    .unwrap();
+    assert!(
+        deletion_repository
+            .reapply_verified_tombstone(
+                &request.ledger,
+                &issuer,
+                &subject,
+                12,
+                "restore-conflicting-provider-original-uuid",
+            )
+            .await
+            .is_err()
+    );
+    let conflicting_provider_status: String =
+        sqlx::query_scalar("SELECT status FROM users WHERE id = $1")
+            .bind(request.ledger.original_user_id)
+            .fetch_one(database.pool())
+            .await
+            .unwrap();
+    assert_eq!(conflicting_provider_status, "active");
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(request.ledger.original_user_id)
+        .execute(database.pool())
+        .await
+        .unwrap();
+
+    // Once the provider identity has been deleted, the exact retained
+    // tombstone fingerprint remains sufficient proof for the original row.
+    sqlx::query(
+        r"
+        INSERT INTO users (
+            id, status, identity_fingerprint_key_id, identity_fingerprint
+        ) VALUES ($1, 'deletion_pending', $2, $3)
+        ",
+    )
+    .bind(request.ledger.original_user_id)
+    .bind(request.ledger.fingerprint.key_id())
+    .bind(request.ledger.fingerprint.digest().as_slice())
+    .execute(database.pool())
+    .await
+    .unwrap();
+    let provider_deleted = deletion_repository
+        .reapply_verified_tombstone(
+            &request.ledger,
+            &issuer,
+            &subject,
+            12,
+            "restore-provider-deleted-original-uuid",
+        )
+        .await
+        .unwrap();
+    assert_eq!(provider_deleted.action, DeletionReapplyAction::Unchanged);
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(request.ledger.original_user_id)
+        .execute(database.pool())
+        .await
+        .unwrap();
+
     // Restore an older active user row, then replay the independently verified
     // tombstone. Access is disabled and provider/app cleanup is queued again.
     sqlx::query(
@@ -542,6 +828,121 @@ async fn postgres_deletion_request_rotation_lease_retention_and_restore_reapply(
             .unwrap()
     );
 
+    // A restored identity can also exist under a newly issued local UUID with
+    // the same authenticated provider coordinates. Reapply must bind the job
+    // to that row, disable it, and purge it rather than deleting only the
+    // historical UUID recorded by the external ledger.
+    let reissued_user_id = Uuid::now_v7();
+    sqlx::query(
+        r"
+        INSERT INTO users (
+            id, oidc_issuer, oidc_subject, status,
+            identity_fingerprint_key_id, identity_fingerprint
+        ) VALUES ($1, $2, $3, 'active', $4, $5)
+        ",
+    )
+    .bind(reissued_user_id)
+    .bind(&issuer)
+    .bind(&subject)
+    .bind(legacy.key_id())
+    .bind(legacy.digest().as_slice())
+    .execute(database.pool())
+    .await
+    .unwrap();
+    let reissued = deletion_repository
+        .reapply_verified_tombstone(
+            &request.ledger,
+            &issuer,
+            &subject,
+            12,
+            "restore-reissued-user",
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        reissued.action,
+        DeletionReapplyAction::RequeuedResurrectedData
+    );
+    let rebound_job_user: Uuid =
+        sqlx::query_scalar("SELECT user_id FROM account_deletion_jobs WHERE operation_id = $1")
+            .bind(request.operation.operation_id)
+            .fetch_one(database.pool())
+            .await
+            .unwrap();
+    assert_eq!(rebound_job_user, reissued_user_id);
+    let rebound_status: String = sqlx::query_scalar("SELECT status FROM users WHERE id = $1")
+        .bind(reissued_user_id)
+        .fetch_one(database.pool())
+        .await
+        .unwrap();
+    assert_eq!(rebound_status, "deletion_pending");
+    drive_to_app_data_deleted(&deletion_repository, "restore-reissued-worker").await;
+    let canonical_job_user: Uuid =
+        sqlx::query_scalar("SELECT user_id FROM account_deletion_jobs WHERE operation_id = $1")
+            .bind(request.operation.operation_id)
+            .fetch_one(database.pool())
+            .await
+            .unwrap();
+    assert_eq!(canonical_job_user, request.ledger.original_user_id);
+    let reissued_completion = deletion_repository
+        .claim("restore-reissued-worker", Duration::from_secs(30))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        deletion_repository
+            .complete(
+                reissued_completion.operation_id,
+                "restore-reissued-worker",
+                Duration::from_secs(24 * 60 * 60),
+            )
+            .await
+            .unwrap()
+    );
+    let reissued_users: i64 = sqlx::query_scalar("SELECT count(*) FROM users WHERE id = $1")
+        .bind(reissued_user_id)
+        .fetch_one(database.pool())
+        .await
+        .unwrap();
+    assert_eq!(reissued_users, 0);
+
+    let repeated_reapply = deletion_repository
+        .reapply_verified_tombstone(
+            &request.ledger,
+            &issuer,
+            &subject,
+            12,
+            "restore-reissued-repeat",
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        repeated_reapply.action,
+        DeletionReapplyAction::RequeuedProviderReconciliation
+    );
+    drive_to_app_data_deleted(&deletion_repository, "restore-repeat-worker").await;
+    let repeat_completion = deletion_repository
+        .claim("restore-repeat-worker", Duration::from_secs(30))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        deletion_repository
+            .complete(
+                repeat_completion.operation_id,
+                "restore-repeat-worker",
+                Duration::from_secs(24 * 60 * 60),
+            )
+            .await
+            .unwrap()
+    );
+    let unrelated_status: String = sqlx::query_scalar("SELECT status FROM users WHERE id = $1")
+        .bind(denied_user.id.into_inner())
+        .fetch_one(database.pool())
+        .await
+        .unwrap();
+    assert_eq!(unrelated_status, "active");
+
     sqlx::query("DELETE FROM account_deletion_events WHERE operation_id = $1")
         .bind(request.operation.operation_id)
         .execute(database.pool())
@@ -573,6 +974,9 @@ async fn postgres_deletion_purge_and_library_cleanup_have_acyclic_lock_order() {
     };
     let database = Database::connect(&database_url, 24).await.unwrap();
     database.migrate_embedded().await.unwrap();
+    let _queue_isolation = account_deletion_queue_guard::acquire(&database)
+        .await
+        .unwrap();
 
     let unique = Uuid::now_v7().simple().to_string();
     let issuer = format!("https://deletion-library-race.test/{unique}");
@@ -845,6 +1249,9 @@ async fn postgres_deletion_hides_comments_and_serializes_user_admin_actor() {
     };
     let database = Database::connect(&database_url, 24).await.unwrap();
     database.migrate_embedded().await.unwrap();
+    let _queue_isolation = account_deletion_queue_guard::acquire(&database)
+        .await
+        .unwrap();
     let unique = Uuid::now_v7().simple().to_string();
     let issuer = format!("https://deletion-actor.test/{unique}");
     let actor_fingerprint = fingerprint("current", 0x44);

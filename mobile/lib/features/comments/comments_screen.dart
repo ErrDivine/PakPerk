@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/account_providers.dart';
 import '../../app/comments_providers.dart';
 import '../../app/router.dart';
+import '../../core/account/account_profile.dart';
 import '../../core/comments/comment_models.dart';
 import '../../core/comments/comment_controllers.dart';
 import '../../core/comments/comment_repository.dart';
@@ -34,6 +35,9 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   final _composerFocus = FocusNode();
   final _scroll = ScrollController();
   bool _intentResumeScheduled = false;
+  bool _draftHydrationScheduled = false;
+  String? _composerScopeIdentity;
+  int _draftHydrationGeneration = 0;
 
   @override
   void initState() {
@@ -65,18 +69,28 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(commentThreadProvider(widget.paperId));
     final viewer = ref.watch(commentViewerScopeProvider);
+    final composerScopeIdentity = _localViewerIdentity(
+      paperId: widget.paperId,
+      viewer: viewer,
+    );
+    _synchronizeComposerScope(composerScopeIdentity);
+    final state = ref.watch(commentThreadProvider(widget.paperId));
     final canCompose = ref.watch(commentComposerEligibleProvider);
-    final offline = ref
-        .watch(networkOfflineProvider)
-        .maybeWhen(data: (value) => value, orElse: () => false);
+    final readOnlyStatus = ref.watch(commentReadOnlyAccountStatusProvider);
+    final offline =
+        ref.watch(authSessionOfflineUnknownProvider) ||
+        ref
+            .watch(networkOfflineProvider)
+            .maybeWhen(data: (value) => value, orElse: () => false);
     final commentCountLabel = _knownCommentCountLabel(state);
+    _hydrateComposerFromLoadedDraft(state);
 
     ref.listen<CommentThreadState>(commentThreadProvider(widget.paperId), (
       previous,
       next,
     ) {
+      if (_composerScopeIdentity != composerScopeIdentity) return;
       if (next.draft.isEmpty && _composer.text.isNotEmpty && !next.sending) {
         _composer.clear();
       } else if (_composer.text.isEmpty && next.draft.isNotEmpty) {
@@ -140,14 +154,38 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
                       .read(commentThreadProvider(widget.paperId).notifier)
                       .dismissError,
                 ),
-              Expanded(child: _buildList(state)),
+              Expanded(
+                child: _buildList(
+                  state,
+                  currentAccountId: viewer.remotelyVerified
+                      ? viewer.accountId
+                      : null,
+                  actionsEnabled:
+                      readOnlyStatus == null &&
+                      !offline &&
+                      (!viewer.authenticated || viewer.remotelyVerified),
+                  cacheOnly: viewer.cacheOnly,
+                  accountReadOnly: readOnlyStatus != null,
+                ),
+              ),
               const Divider(height: 1),
               ConstrainedBox(
                 constraints: BoxConstraints(
                   maxHeight: constraints.maxHeight * .55,
                 ),
                 child: viewer.authenticated && canCompose
-                    ? _buildComposer(state, offline)
+                    ? _buildComposer(state, offline: offline)
+                    : readOnlyStatus != null
+                    ? _buildReadOnlyAccount(readOnlyStatus)
+                    : viewer.authenticated && !viewer.remotelyVerified
+                    ? _buildComposer(
+                        state,
+                        offline: offline,
+                        draftOnlyMessage: offline
+                            ? 'Offline · your draft stays on this device.'
+                            : 'Account verification unavailable · your draft '
+                                  'stays on this device.',
+                      )
                     : _buildSignInOrSetup(viewer),
               ),
             ],
@@ -157,7 +195,13 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     );
   }
 
-  Widget _buildList(CommentThreadState state) {
+  Widget _buildList(
+    CommentThreadState state, {
+    required String? currentAccountId,
+    required bool actionsEnabled,
+    required bool cacheOnly,
+    required bool accountReadOnly,
+  }) {
     if (state.loadingInitial && state.items.isEmpty) {
       return Center(
         child: Semantics(
@@ -169,26 +213,36 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     }
     if (state.items.isEmpty) {
       return RefreshIndicator(
-        onRefresh: ref
-            .read(commentThreadProvider(widget.paperId).notifier)
-            .refresh,
+        onRefresh: _refreshComments,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
-            SizedBox(height: 96),
-            Icon(Icons.forum_outlined, size: 48),
-            SizedBox(height: 12),
-            Center(child: Text('No published comments yet.')),
-            SizedBox(height: 6),
-            Center(child: Text('Start a thoughtful paper discussion.')),
+          children: [
+            const SizedBox(height: 96),
+            const Icon(Icons.forum_outlined, size: 48),
+            const SizedBox(height: 12),
+            Center(
+              child: Text(
+                cacheOnly
+                    ? 'No saved comments are available.'
+                    : 'No published comments yet.',
+              ),
+            ),
+            const SizedBox(height: 6),
+            Center(
+              child: Text(
+                accountReadOnly
+                    ? 'This account is read-only.'
+                    : cacheOnly
+                    ? 'Reconnect to refresh the paper discussion.'
+                    : 'Start a thoughtful paper discussion.',
+              ),
+            ),
           ],
         ),
       );
     }
     return RefreshIndicator(
-      onRefresh: ref
-          .read(commentThreadProvider(widget.paperId).notifier)
-          .refresh,
+      onRefresh: _refreshComments,
       child: ListView.builder(
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(),
@@ -216,9 +270,8 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
           }
           return _CommentCard(
             comment: state.items[index],
-            currentAccountId: ref
-                .watch(verifiedCommentScopeProvider)
-                ?.accountId,
+            currentAccountId: currentAccountId,
+            actionsEnabled: actionsEnabled,
             onEdit: () => _edit(state.items[index]),
             onDelete: () => _delete(state.items[index]),
             onReportComment: () => _reportComment(state.items[index]),
@@ -230,8 +283,16 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     );
   }
 
-  Widget _buildComposer(CommentThreadState state, bool offline) {
-    final disabled = state.sending || state.creationDisabled || offline;
+  Widget _buildComposer(
+    CommentThreadState state, {
+    required bool offline,
+    String? draftOnlyMessage,
+  }) {
+    final disabled =
+        state.sending ||
+        state.creationDisabled ||
+        offline ||
+        draftOnlyMessage != null;
     return Material(
       color: Theme.of(context).colorScheme.surface,
       child: SingleChildScrollView(
@@ -244,6 +305,8 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
               const Text(
                 'New comments are paused. Existing discussions remain available.',
               )
+            else if (draftOnlyMessage != null)
+              Text(draftOnlyMessage)
             else if (offline)
               const Text('Offline · your draft stays on this device.'),
             Row(
@@ -277,6 +340,8 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
                   key: const ValueKey('comment-send'),
                   tooltip: offline
                       ? 'Reconnect to send comment'
+                      : draftOnlyMessage != null
+                      ? 'Wait for account verification to send comment'
                       : 'Send public comment',
                   onPressed: disabled ? null : _send,
                   icon: state.sending
@@ -306,6 +371,33 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
           viewer.authenticated
               ? 'Complete profile and community acceptance'
               : 'Sign in to join the discussion',
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyAccount(AccountStatus status) {
+    final message = switch (status) {
+      AccountStatus.suspended =>
+        'Account suspended · public comments remain readable, but posting, '
+            'editing, reporting, and blocking are unavailable.',
+      AccountStatus.deletionPending =>
+        'Account deletion is pending · comments are read-only.',
+      AccountStatus.deleted =>
+        'This account is deleted · comments are read-only.',
+      AccountStatus.active => 'Comments are read-only for this account.',
+    };
+    return Material(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      child: Padding(
+        key: const ValueKey('comments-account-read-only'),
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            const Icon(Icons.lock_outline),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
         ),
       ),
     );
@@ -344,6 +436,8 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   }
 
   Future<void> _edit(PaperComment comment) async {
+    final actionScope = _verifiedActionScope();
+    if (actionScope == null) return;
     final controller = TextEditingController(text: comment.body);
     final body = await showDialog<String>(
       context: context,
@@ -370,13 +464,19 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       ),
     );
     controller.dispose();
-    if (!mounted || body == null || validateCommentBody(body) != null) return;
+    if (!_actionScopeIsCurrent(actionScope) ||
+        body == null ||
+        validateCommentBody(body) != null) {
+      return;
+    }
     await ref
         .read(commentThreadProvider(widget.paperId).notifier)
         .edit(comment, body);
   }
 
   Future<void> _delete(PaperComment comment) async {
+    final actionScope = _verifiedActionScope();
+    if (actionScope == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -394,7 +494,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
         ],
       ),
     );
-    if (confirmed == true && mounted) {
+    if (confirmed == true && _actionScopeIsCurrent(actionScope)) {
       await ref
           .read(commentThreadProvider(widget.paperId).notifier)
           .delete(comment);
@@ -402,7 +502,8 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   }
 
   Future<void> _reportComment(PaperComment comment) async {
-    if (ref.read(verifiedCommentScopeProvider) == null) {
+    final actionScope = _verifiedActionScope();
+    if (actionScope == null) {
       await _authenticateFor(AppPendingActionKind.reportComment, comment.id);
       return;
     }
@@ -411,7 +512,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
           context: context,
           builder: (_) => const _ReportDialog(title: 'Report comment'),
         );
-    if (!mounted || selection == null) return;
+    if (selection == null || !_actionScopeIsCurrent(actionScope)) return;
     final sent = await ref
         .read(commentThreadProvider(widget.paperId).notifier)
         .report(
@@ -432,7 +533,8 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   }
 
   Future<void> _reportUser(CommentAuthor author) async {
-    if (ref.read(verifiedCommentScopeProvider) == null) {
+    final actionScope = _verifiedActionScope();
+    if (actionScope == null) {
       await _authenticateFor(AppPendingActionKind.reportUser, author.id);
       return;
     }
@@ -441,7 +543,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
           context: context,
           builder: (_) => _ReportDialog(title: 'Report ${author.visibleName}'),
         );
-    if (!mounted || selection == null) return;
+    if (selection == null || !_actionScopeIsCurrent(actionScope)) return;
     final sent = await ref
         .read(commentThreadProvider(widget.paperId).notifier)
         .reportUser(
@@ -466,6 +568,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   }
 
   Future<void> _block(CommentAuthor author) async {
+    final actionScope = _verifiedActionScope();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -485,8 +588,11 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
-    if (ref.read(verifiedCommentScopeProvider) == null) {
+    if (confirmed != true ||
+        !_actionScopeIsCurrent(actionScope, allowUnverified: true)) {
+      return;
+    }
+    if (actionScope == null) {
       await _authenticateFor(AppPendingActionKind.blockUser, author.id);
       return;
     }
@@ -495,11 +601,37 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
         .block(author);
   }
 
+  VerifiedCommentScope? _verifiedActionScope() {
+    final scope = ref.read(verifiedCommentScopeProvider);
+    final viewer = ref.read(commentViewerScopeProvider);
+    if (scope == null ||
+        !viewer.remotelyVerified ||
+        viewer.accountId != scope.accountId ||
+        viewer.authEpoch != scope.authEpoch) {
+      return null;
+    }
+    return scope;
+  }
+
+  bool _actionScopeIsCurrent(
+    VerifiedCommentScope? expected, {
+    bool allowUnverified = false,
+  }) {
+    if (!mounted) return false;
+    final current = _verifiedActionScope();
+    if (expected == null) {
+      return allowUnverified && current == null;
+    }
+    return current == expected;
+  }
+
   Future<void> _authenticateFor(
     AppPendingActionKind kind,
     String targetId,
   ) async {
-    if (!ref.read(commentViewerScopeProvider).authenticated) {
+    final viewer = ref.read(commentViewerScopeProvider);
+    if (viewer.authenticated && !viewer.remotelyVerified) return;
+    if (!viewer.authenticated) {
       final continueToSignIn = await _showSignInRationale(kind);
       if (!mounted || !continueToSignIn) return;
     }
@@ -650,6 +782,50 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     });
   }
 
+  void _hydrateComposerFromLoadedDraft(CommentThreadState state) {
+    if (_draftHydrationScheduled ||
+        _composer.text.isNotEmpty ||
+        state.draft.isEmpty) {
+      return;
+    }
+    _draftHydrationScheduled = true;
+    final generation = _draftHydrationGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _draftHydrationScheduled = false;
+      if (!mounted ||
+          generation != _draftHydrationGeneration ||
+          _composer.text.isNotEmpty) {
+        return;
+      }
+      final draft = ref.read(commentThreadProvider(widget.paperId)).draft;
+      if (draft.isEmpty) return;
+      _composer.value = TextEditingValue(
+        text: draft,
+        selection: TextSelection.collapsed(offset: draft.length),
+      );
+    });
+  }
+
+  void _synchronizeComposerScope(String nextIdentity) {
+    if (_composerScopeIdentity == nextIdentity) return;
+    final hadScope = _composerScopeIdentity != null;
+    _composerScopeIdentity = nextIdentity;
+    _draftHydrationGeneration += 1;
+    _draftHydrationScheduled = false;
+    if (hadScope) _composer.clear();
+  }
+
+  String _localViewerIdentity({
+    required String paperId,
+    required CommentViewerScope viewer,
+  }) {
+    final accountId = viewer.accountId;
+    final viewerIdentity = accountId == null
+        ? 'guest'
+        : 'account:$accountId:${viewer.authEpoch}';
+    return 'paper:$paperId|$viewerIdentity';
+  }
+
   void _showUnavailableIntent(CommentUiIntentKind kind) {
     final message = switch (kind) {
       CommentUiIntentKind.openComposer =>
@@ -676,12 +852,21 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       ref.read(commentThreadProvider(widget.paperId).notifier).loadMore(),
     );
   }
+
+  Future<void> _refreshComments() async {
+    if (ref.read(authSessionOfflineUnknownProvider)) {
+      await ref.read(accountSessionRecoveryProvider).recover();
+    }
+    if (!mounted) return;
+    await ref.read(commentThreadProvider(widget.paperId).notifier).refresh();
+  }
 }
 
 final class _CommentCard extends StatelessWidget {
   const _CommentCard({
     required this.comment,
     required this.currentAccountId,
+    required this.actionsEnabled,
     required this.onEdit,
     required this.onDelete,
     required this.onReportComment,
@@ -691,6 +876,7 @@ final class _CommentCard extends StatelessWidget {
 
   final PaperComment comment;
   final String? currentAccountId;
+  final bool actionsEnabled;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onReportComment;
@@ -719,51 +905,55 @@ final class _CommentCard extends StatelessWidget {
                         style: Theme.of(context).textTheme.labelLarge,
                       ),
                     ),
-                    PopupMenuButton<String>(
-                      key: ValueKey('comment-actions-${comment.id}'),
-                      tooltip: 'Comment actions',
-                      onSelected: (value) {
-                        switch (value) {
-                          case 'edit':
-                            onEdit();
-                            break;
-                          case 'delete':
-                            onDelete();
-                            break;
-                          case 'report-comment':
-                            onReportComment();
-                            break;
-                          case 'report-user':
-                            onReportUser();
-                            break;
-                          case 'block':
-                            onBlock();
-                            break;
-                        }
-                      },
-                      itemBuilder: (_) => mine
-                          ? const [
-                              PopupMenuItem(value: 'edit', child: Text('Edit')),
-                              PopupMenuItem(
-                                value: 'delete',
-                                child: Text('Delete'),
-                              ),
-                            ]
-                          : const [
-                              PopupMenuItem(
-                                value: 'report-comment',
-                                child: Text('Report comment'),
-                              ),
-                              PopupMenuItem(
-                                value: 'report-user',
-                                child: Text('Report user'),
-                              ),
-                              PopupMenuItem(
-                                value: 'block',
-                                child: Text('Block user'),
-                              ),
-                            ],
-                    ),
+                    if (actionsEnabled)
+                      PopupMenuButton<String>(
+                        key: ValueKey('comment-actions-${comment.id}'),
+                        tooltip: 'Comment actions',
+                        onSelected: (value) {
+                          switch (value) {
+                            case 'edit':
+                              onEdit();
+                              break;
+                            case 'delete':
+                              onDelete();
+                              break;
+                            case 'report-comment':
+                              onReportComment();
+                              break;
+                            case 'report-user':
+                              onReportUser();
+                              break;
+                            case 'block':
+                              onBlock();
+                              break;
+                          }
+                        },
+                        itemBuilder: (_) => mine
+                            ? const [
+                                PopupMenuItem(
+                                  value: 'edit',
+                                  child: Text('Edit'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('Delete'),
+                                ),
+                              ]
+                            : const [
+                                PopupMenuItem(
+                                  value: 'report-comment',
+                                  child: Text('Report comment'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'report-user',
+                                  child: Text('Report user'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'block',
+                                  child: Text('Block user'),
+                                ),
+                              ],
+                      ),
                   ],
                 ),
                 if (comment.underReview)

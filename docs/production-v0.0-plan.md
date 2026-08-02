@@ -157,18 +157,23 @@ complete, and bound policy acceptance to the exact documents in each signed
 build. CI now parses every shell script independently rather than relying on
 Bash's multi-argument behavior, and the OpenAPI compatibility gate rejects
 directional schema, response, callback, webhook, and serialization regressions.
-The final canonical check passed Flutter analysis, all 544 locked tests, every
-Android debug flavor, every iOS simulator flavor, strict artifact inspection,
-the Rust workspace, 31 browser/site tests, Helm, SBOM, and release-contract
-validators. These are repository checks; they do not alter the external
-release-gate status below.
+The final current-tree canonical run passed Flutter analysis and all 601 locked
+tests, every Android debug flavor, every iOS simulator flavor, strict artifact
+inspection, the fresh-database Rust workspace, 31 browser/site tests, Helm,
+SBOM and release-contract validators, and the opt-in Collector export E2E. The
+locked suite includes account-rebind, deletion-latch, async-intent, and cache-
+purge isolation regressions. These are local repository checks; they do not
+alter the external release-gate status below.
+Fresh isolated reference-stack runs also passed the real Keycloak/PostgreSQL
+account-deletion worker/ledger/reconciliation path and the two-user plus
+operator comments/moderation/IdP-outage matrix, with redaction and cleanup.
 
 Phase 6 is not accepted as a public/store release from source evidence alone.
 The disposable reference-provider workflow does not replace protected staging
 deletion against the real secret manager, external ledger, backup inventory,
 and alert route; the bounded load harness does not replace a successful
-protected staging run. Final formatting, Flutter analysis, and the current-tree
-locked Flutter/widget suite passed. An
+protected staging run. The latest analyzer, locked-suite, debug/simulator
+artifact, site, Helm, and Collector results are current-tree local evidence. An
 actual isolated backup/PITR restore and deletion replay, migration/rollback
 exercise, deployed staging/production telemetry sink/retention and alert-
 adapter/receiver/canary checks, current networked advisory/container scans,

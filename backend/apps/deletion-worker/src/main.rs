@@ -9,7 +9,8 @@ use std::{
 
 use account_deletion::{
     AccountDeletionService, AccountDeletionWorker, AccountDeletionWorkerError,
-    ExternalDeletionLedger as _, FileExternalDeletionLedger, WorkerRunOutcome,
+    ExternalDeletionLedger as _, ExternalDeletionLedgerInventory, FileExternalDeletionLedger,
+    WorkerRunOutcome,
 };
 use anyhow::{Context as _, Result};
 use auth::KeycloakIdentityAdmin;
@@ -218,22 +219,21 @@ impl Runtime {
                     "retried": retried,
                 }))
             }
-            Command::VerifyLedger => {
-                let verified_records = self.verify_external_ledger().await?;
-                write_json(&LedgerVerification { verified_records })
-            }
+            Command::VerifyLedger => write_json(&self.verify_external_ledger().await?),
             Command::ReapplyLedger => {
                 let actor = std::env::var("PAKPERK_ADMIN_ACTOR")
                     .context("PAKPERK_ADMIN_ACTOR is required for reapply-ledger")?;
                 // Validate every bounded page before changing PostgreSQL. An
                 // unknown encryption key or corrupted record therefore fails
                 // the restore scan without partially reapplying earlier rows.
-                let verified_records = self.verify_external_ledger().await?;
+                let inventory = self.verify_external_ledger().await?;
                 let mut after = None;
                 let mut summary = LedgerReapplySummary {
-                    verified_records,
+                    verified_records: inventory.verified_records,
+                    ledger_inventory_sha256: inventory.ledger_inventory_sha256.clone(),
                     ..LedgerReapplySummary::default()
                 };
+                let mut applied_inventory = self.external_ledger.signer().inventory_builder();
                 loop {
                     let records = self
                         .external_ledger
@@ -244,6 +244,7 @@ impl Runtime {
                     }
                     after = records.last().map(|signed| signed.record.operation_id);
                     for signed in records {
+                        applied_inventory.include(&signed)?;
                         let restored = self.service.decode_external_record(&signed)?;
                         let outcome = self
                             .repository
@@ -268,6 +269,9 @@ impl Runtime {
                             }
                         }
                     }
+                }
+                if applied_inventory.finish()? != inventory {
+                    anyhow::bail!("external ledger changed between verification and reapply");
                 }
                 write_json(&summary)
             }
@@ -450,9 +454,9 @@ impl Runtime {
         }
     }
 
-    async fn verify_external_ledger(&self) -> Result<usize> {
+    async fn verify_external_ledger(&self) -> Result<ExternalDeletionLedgerInventory> {
         let mut after = None;
-        let mut verified_records = 0_usize;
+        let mut inventory = self.external_ledger.signer().inventory_builder();
         loop {
             let records = self
                 .external_ledger
@@ -461,26 +465,22 @@ impl Runtime {
             if records.is_empty() {
                 break;
             }
-            verified_records = verified_records
-                .checked_add(records.len())
-                .context("external ledger record count overflowed")?;
             for signed in &records {
                 self.service.decode_external_record(signed)?;
+                inventory.include(signed)?;
             }
             after = records.last().map(|signed| signed.record.operation_id);
         }
-        Ok(verified_records)
+        inventory
+            .finish()
+            .context("could not finalize external ledger inventory")
     }
-}
-
-#[derive(Debug, Serialize)]
-struct LedgerVerification {
-    verified_records: usize,
 }
 
 #[derive(Debug, Default, Serialize)]
 struct LedgerReapplySummary {
     verified_records: usize,
+    ledger_inventory_sha256: String,
     unchanged: usize,
     restored_and_queued: usize,
     requeued_resurrected_data: usize,
@@ -769,6 +769,41 @@ mod tests {
         ] {
             assert!(!command.requires_identity_admin());
         }
+    }
+
+    #[test]
+    fn ledger_outputs_bind_the_exact_inventory_digest() {
+        let digest = format!("sha256:{}", "a".repeat(64));
+        let verification = ExternalDeletionLedgerInventory {
+            verified_records: 2,
+            ledger_inventory_sha256: digest.clone(),
+        };
+        assert_eq!(
+            serde_json::to_value(verification).unwrap(),
+            serde_json::json!({
+                "verified_records": 2,
+                "ledger_inventory_sha256": digest.clone(),
+            })
+        );
+        let reapply = LedgerReapplySummary {
+            verified_records: 2,
+            ledger_inventory_sha256: digest.clone(),
+            unchanged: 1,
+            restored_and_queued: 1,
+            requeued_resurrected_data: 0,
+            requeued_provider_reconciliation: 0,
+        };
+        assert_eq!(
+            serde_json::to_value(reapply).unwrap(),
+            serde_json::json!({
+                "verified_records": 2,
+                "ledger_inventory_sha256": digest,
+                "unchanged": 1,
+                "restored_and_queued": 1,
+                "requeued_resurrected_data": 0,
+                "requeued_provider_reconciliation": 0,
+            })
+        );
     }
 
     #[test]

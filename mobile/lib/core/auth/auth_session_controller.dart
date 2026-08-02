@@ -24,11 +24,23 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
   final AccountOwnedDataClearer _clearAccountOwnedData;
   final TelemetrySink _telemetry;
   _AccountCleanupFlight? _accountCleanupFlight;
+  int _identityBindingGeneration = 0;
+  int? _activeIdentityBindingGeneration;
+  String? _activePreservedIdentityAccountId;
+  Future<void> _identityBindingTail = Future<void>.value();
+  bool _accountDeletionReserved = false;
   bool _disposed = false;
 
   /// Local-only startup check. This method never contacts the identity
   /// provider and is safe to use inside the first-frame startup budget.
   Future<AuthStoredSessionStatus> inspectStoredSession() async {
+    if (_accountDeletionReserved ||
+        state.phase == AuthSessionPhase.deletionPending) {
+      return AuthStoredSessionStatus.guest;
+    }
+    if (_activeIdentityBindingGeneration != null) {
+      return AuthStoredSessionStatus.guest;
+    }
     final operationEpoch = _repository.epoch;
     _setIfCurrent(
       operationEpoch,
@@ -36,7 +48,8 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
     );
     try {
       final inspection = await _repository.inspectStoredSession();
-      if (!_isCurrent(operationEpoch)) {
+      if (!_isCurrent(operationEpoch) ||
+          _activeIdentityBindingGeneration != null) {
         return AuthStoredSessionStatus.guest;
       }
       state = switch (inspection.status) {
@@ -51,6 +64,9 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
       };
       return inspection.status;
     } on AuthFailure catch (failure) {
+      if (_activeIdentityBindingGeneration != null && !failure.isInvalidGrant) {
+        return AuthStoredSessionStatus.guest;
+      }
       await _applyFailure(failure, operationEpoch);
       return AuthStoredSessionStatus.guest;
     }
@@ -58,6 +74,11 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
 
   /// Restores a durable session and refreshes it after the app is usable.
   Future<bool> restoreSession() async {
+    if (_accountDeletionReserved ||
+        state.phase == AuthSessionPhase.deletionPending) {
+      return false;
+    }
+    if (_activeIdentityBindingGeneration != null) return false;
     final status = await inspectStoredSession();
     if (status == AuthStoredSessionStatus.guest) return false;
     final operationEpoch = _repository.epoch;
@@ -70,13 +91,20 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
     );
     try {
       final token = await _repository.accessTokenForRequest();
-      if (!_isCurrent(operationEpoch) || token == null) return false;
+      if (!_isCurrent(operationEpoch) ||
+          _activeIdentityBindingGeneration != null ||
+          token == null) {
+        return false;
+      }
       state = AuthSessionState.authenticated(
         epoch: operationEpoch,
         accountId: _repository.accountId,
       );
       return true;
     } on AuthFailure catch (failure) {
+      if (_activeIdentityBindingGeneration != null && !failure.isInvalidGrant) {
+        return false;
+      }
       await _applyFailure(failure, operationEpoch);
       return false;
     }
@@ -85,6 +113,10 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
   /// Returns false for a user-cancelled browser flow without surfacing an
   /// error. All other failures are represented only by a safe failure code.
   Future<bool> signIn() async {
+    if (_accountDeletionReserved ||
+        state.phase == AuthSessionPhase.deletionPending) {
+      return false;
+    }
     emitTelemetry(_telemetry, PakPerkTelemetryEvent.authStarted, {
       'purpose': 'session',
     });
@@ -133,6 +165,9 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
       });
       return true;
     } on AuthFailure catch (failure) {
+      if (_activeIdentityBindingGeneration != null && !failure.isInvalidGrant) {
+        return false;
+      }
       if (failure.isCancellation && _isCurrent(operationEpoch)) {
         state = AuthSessionState.guest(epoch: operationEpoch);
         emitTelemetry(_telemetry, PakPerkTelemetryEvent.authCancelled, {
@@ -145,11 +180,64 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
     }
   }
 
-  Future<void> bindAccountId(String accountId) async {
+  Future<void> bindAccountId(String accountId) {
+    if (_accountDeletionReserved ||
+        state.phase == AuthSessionPhase.deletionPending) {
+      return Future<void>.error(
+        AuthFailure(
+          AuthFailureKind.superseded,
+          AuthFailureCode.operationSuperseded,
+          sessionEpoch: _repository.epoch,
+        ),
+      );
+    }
     final operationEpoch = _repository.epoch;
-    final previousAccountId = _repository.accountId ?? state.accountId;
+    final preservesExistingIdentity =
+        _activeIdentityBindingGeneration == null &&
+        _repository.accountId == accountId &&
+        state.accountId == accountId;
+    final bindingGeneration = ++_identityBindingGeneration;
+    _activeIdentityBindingGeneration = bindingGeneration;
+    _activePreservedIdentityAccountId = preservesExistingIdentity
+        ? accountId
+        : null;
+    _setIfCurrent(
+      operationEpoch,
+      AuthSessionState.refreshing(
+        epoch: operationEpoch,
+        accountId: preservesExistingIdentity ? accountId : null,
+      ),
+    );
+    final previous = _identityBindingTail;
+    final operation = _runIdentityBinding(
+      previous: previous,
+      accountId: accountId,
+      operationEpoch: operationEpoch,
+      bindingGeneration: bindingGeneration,
+    );
+    _identityBindingTail = _ignoreBindingFailure(operation);
+    return operation;
+  }
+
+  Future<void> _runIdentityBinding({
+    required Future<void> previous,
+    required String accountId,
+    required int operationEpoch,
+    required int bindingGeneration,
+  }) async {
+    await previous;
     try {
-      if (previousAccountId != null && previousAccountId != accountId) {
+      if (!_isCurrentBinding(operationEpoch, bindingGeneration)) {
+        throw AuthFailure(
+          AuthFailureKind.superseded,
+          AuthFailureCode.operationSuperseded,
+          sessionEpoch: operationEpoch,
+        );
+      }
+      final previousAccountId = _repository.accountId;
+      final changesIdentity =
+          previousAccountId != null && previousAccountId != accountId;
+      if (changesIdentity) {
         try {
           await _clearAccountOwnedData(previousAccountId, operationEpoch);
         } on Object {
@@ -159,7 +247,7 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
             sessionEpoch: operationEpoch,
           );
         }
-        if (!_isCurrent(operationEpoch)) {
+        if (!_isCurrentBinding(operationEpoch, bindingGeneration)) {
           throw AuthFailure(
             AuthFailureKind.superseded,
             AuthFailureCode.operationSuperseded,
@@ -168,19 +256,44 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
         }
       }
       await _repository.bindAccountId(accountId);
-      if (_isCurrent(operationEpoch)) {
-        state = AuthSessionState.authenticated(
-          epoch: operationEpoch,
-          accountId: accountId,
+      if (!_isCurrentBinding(operationEpoch, bindingGeneration)) {
+        throw AuthFailure(
+          AuthFailureKind.superseded,
+          AuthFailureCode.operationSuperseded,
+          sessionEpoch: operationEpoch,
         );
       }
+      state = AuthSessionState.authenticated(
+        epoch: operationEpoch,
+        accountId: accountId,
+      );
     } on AuthFailure catch (failure) {
-      await _applyFailure(failure, operationEpoch);
+      if (_isCurrentBinding(operationEpoch, bindingGeneration)) {
+        await _applyFailure(failure, operationEpoch);
+      }
       rethrow;
+    } finally {
+      if (_activeIdentityBindingGeneration == bindingGeneration) {
+        _activeIdentityBindingGeneration = null;
+        _activePreservedIdentityAccountId = null;
+      }
     }
   }
 
+  Future<void> _ignoreBindingFailure(Future<void> operation) async {
+    try {
+      await operation;
+    } on Object {
+      // The individual caller still observes the failure. This settled tail
+      // only ensures the newest queued binding can run afterward.
+    }
+  }
+
+  bool _isCurrentBinding(int epoch, int generation) =>
+      _isCurrent(epoch) && _activeIdentityBindingGeneration == generation;
+
   Future<void> signOut() async {
+    if (_accountDeletionReserved) return;
     final previousAccountId = _repository.accountId ?? state.accountId;
     final repositorySignOut = _repository.signOut();
     final signOutEpoch = _repository.epoch;
@@ -235,14 +348,14 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
   /// account-data cleanup completed. Callers retain their independent durable
   /// guard until this succeeds, so process death cannot restore the session.
   Future<bool> enterAccountDeletionPending({String? accountId}) async {
+    _accountDeletionReserved = true;
     final previousAccountId =
         accountId ?? _repository.accountId ?? state.accountId;
     final repositoryInvalidation = _repository.invalidateForAccountDeletion();
     final deletionEpoch = _repository.epoch;
-    _setIfCurrent(
-      deletionEpoch,
-      AuthSessionState.deletionPending(epoch: deletionEpoch),
-    );
+    if (_isRepositoryEpochCurrent(deletionEpoch)) {
+      state = AuthSessionState.deletionPending(epoch: deletionEpoch);
+    }
 
     Future<void>? accountDataClear;
     AuthFailure? failure;
@@ -276,7 +389,7 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
         sessionEpoch: deletionEpoch,
       );
     }
-    if (_isCurrent(deletionEpoch)) {
+    if (_isRepositoryEpochCurrent(deletionEpoch)) {
       state = AuthSessionState.deletionPending(
         epoch: deletionEpoch,
         failure: failure,
@@ -288,22 +401,79 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
   /// Changes only the post-cleanup presentation state. The caller must verify
   /// and clear the independent deletion guard before invoking this method.
   void continueAsGuestAfterDeletion() {
+    if (state.phase != AuthSessionPhase.deletionPending) return;
     final currentEpoch = _repository.epoch;
+    _accountDeletionReserved = false;
     _setIfCurrent(currentEpoch, AuthSessionState.guest(epoch: currentEpoch));
+  }
+
+  /// Reasserts the deletion gate after a cold start whose durable guard says
+  /// local cleanup already completed. This does not repeat cleanup or inspect
+  /// credentials; only an explicit guard dismissal may transition to guest.
+  void holdAccountDeletionPending() {
+    final currentEpoch = _repository.epoch;
+    _accountDeletionReserved = true;
+    if (_isRepositoryEpochCurrent(currentEpoch)) {
+      state = AuthSessionState.deletionPending(epoch: currentEpoch);
+    }
+  }
+
+  /// Atomically claims an exact account session for terminal deletion work.
+  /// Once reserved, token access and identity replacement fail closed until
+  /// the durable deletion guard is explicitly dismissed.
+  bool reserveAccountDeletion({
+    required int expectedAuthEpoch,
+    required String? expectedAccountId,
+  }) {
+    if (_disposed ||
+        _accountDeletionReserved ||
+        state.phase == AuthSessionPhase.deletionPending ||
+        !_repository.isCurrentEpoch(expectedAuthEpoch) ||
+        state.epoch != expectedAuthEpoch ||
+        state.accountId != expectedAccountId) {
+      return false;
+    }
+    if (_activeIdentityBindingGeneration != null) {
+      // A profile refresh can redundantly persist the already-bound account.
+      // An exact deletion response for that identity must win and cancel the
+      // write, while cross-account and unbound bindings remain unprovable and
+      // are rejected even when nullable presentation IDs happen to match.
+      if (expectedAccountId == null ||
+          _activePreservedIdentityAccountId != expectedAccountId) {
+        return false;
+      }
+      _activeIdentityBindingGeneration = null;
+      _activePreservedIdentityAccountId = null;
+    }
+    _accountDeletionReserved = true;
+    state = AuthSessionState.deletionPending(epoch: expectedAuthEpoch);
+    return true;
   }
 
   @override
   bool isCurrentEpoch(int expectedAuthEpoch) =>
-      !_disposed && _repository.isCurrentEpoch(expectedAuthEpoch);
+      !_disposed &&
+      !_accountDeletionReserved &&
+      state.phase != AuthSessionPhase.deletionPending &&
+      _activeIdentityBindingGeneration == null &&
+      _repository.isCurrentEpoch(expectedAuthEpoch);
 
   @override
   Future<String?> accessTokenForRequest({int? expectedAuthEpoch}) async {
+    if (_accountDeletionReserved ||
+        state.phase == AuthSessionPhase.deletionPending ||
+        _activeIdentityBindingGeneration != null) {
+      return null;
+    }
     final operationEpoch = expectedAuthEpoch ?? _repository.epoch;
     try {
       final token = await _repository.accessTokenForRequest(
         expectedAuthEpoch: operationEpoch,
       );
-      if (!_isCurrent(operationEpoch)) return null;
+      if (!_isCurrent(operationEpoch) ||
+          _activeIdentityBindingGeneration != null) {
+        return null;
+      }
       if (token != null) {
         state = AuthSessionState.authenticated(
           epoch: operationEpoch,
@@ -312,6 +482,9 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
       }
       return token;
     } on AuthFailure catch (failure) {
+      if (_activeIdentityBindingGeneration != null && !failure.isInvalidGrant) {
+        return null;
+      }
       await _applyFailure(failure, operationEpoch);
       rethrow;
     }
@@ -322,6 +495,11 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
     required String rejectedAccessToken,
     int? expectedAuthEpoch,
   }) async {
+    if (_accountDeletionReserved ||
+        state.phase == AuthSessionPhase.deletionPending ||
+        _activeIdentityBindingGeneration != null) {
+      return null;
+    }
     final operationEpoch = expectedAuthEpoch ?? _repository.epoch;
     _setIfCurrent(
       operationEpoch,
@@ -335,7 +513,10 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
         rejectedAccessToken: rejectedAccessToken,
         expectedAuthEpoch: operationEpoch,
       );
-      if (!_isCurrent(operationEpoch)) return null;
+      if (!_isCurrent(operationEpoch) ||
+          _activeIdentityBindingGeneration != null) {
+        return null;
+      }
       state = token == null
           ? AuthSessionState.guest(epoch: operationEpoch)
           : AuthSessionState.authenticated(
@@ -344,13 +525,16 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
             );
       return token;
     } on AuthFailure catch (failure) {
+      if (_activeIdentityBindingGeneration != null && !failure.isInvalidGrant) {
+        return null;
+      }
       await _applyFailure(failure, operationEpoch);
       rethrow;
     }
   }
 
   Future<void> _applyFailure(AuthFailure failure, int operationEpoch) async {
-    if (_disposed || failure.isSuperseded) return;
+    if (_disposed || _accountDeletionReserved || failure.isSuperseded) return;
     final failureEpoch = failure.sessionEpoch ?? operationEpoch;
     if (_repository.epoch != failureEpoch) return;
     if (failure.isInvalidGrant) {
@@ -409,7 +593,11 @@ final class AuthSessionController extends StateNotifier<AuthSessionState>
     return operation;
   }
 
-  bool _isCurrent(int epoch) => !_disposed && _repository.epoch == epoch;
+  bool _isRepositoryEpochCurrent(int epoch) =>
+      !_disposed && _repository.epoch == epoch;
+
+  bool _isCurrent(int epoch) =>
+      !_accountDeletionReserved && _isRepositoryEpochCurrent(epoch);
 
   void _setIfCurrent(int epoch, AuthSessionState value) {
     if (_isCurrent(epoch)) state = value;

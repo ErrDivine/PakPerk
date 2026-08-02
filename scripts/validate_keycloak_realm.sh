@@ -66,7 +66,13 @@ jq -e '
   ([.users[] | select(
     .serviceAccountClientId == "pakperk-deletion-worker-dev" and
     .clientRoles["realm-management"] == ["manage-users"]
-  )] | length == 1)
+  )] | length == 1) and
+  .clientScopeMappings == {
+    "realm-management": [{
+      "client": "pakperk-deletion-worker-dev",
+      "roles": ["manage-users"]
+    }]
+  }
 ' "$realm_file" >/dev/null
 
 printf '%s\n' "Keycloak realm client boundaries validated"

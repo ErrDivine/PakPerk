@@ -6,8 +6,11 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/app/account_providers.dart';
+import 'package:pakperk/app/comments_providers.dart';
 import 'package:pakperk/app/feature_flags.dart';
+import 'package:pakperk/app/library_providers.dart';
 import 'package:pakperk/app/startup_controller.dart';
+import 'package:pakperk/core/account/account.dart';
 import 'package:pakperk/core/account_deletion/account_deletion.dart';
 import 'package:pakperk/core/api/auth_interceptor.dart';
 import 'package:pakperk/core/api/http_telemetry_interceptor.dart';
@@ -282,6 +285,60 @@ void main() {
   );
 
   test(
+    'completed cold-start deletion guard still holds auth until dismissal',
+    () async {
+      final delegate = _StartupDelegate();
+      final oidc = FakeOidcClient();
+      final tokens = MemorySecureTokenStore();
+      final guard = MemoryAccountDeletionGuardStore()
+        ..record = AccountDeletionGuardRecord(
+          acceptance: LocalAccountDeletionAcceptance.serviceUnavailable,
+          acceptedAt: DateTime.utc(2026, 8, 1),
+          localCleanupComplete: true,
+        );
+      final store = MemoryLocalStore();
+      final container = ProviderContainer(
+        overrides: [
+          appBuildConfigProvider.overrideWithValue(_accountConfig()),
+          localStoreProvider.overrideWithValue(store),
+          initialAnonymousSessionIdProvider.overrideWithValue(
+            await store.getOrCreateSessionId(),
+          ),
+          oidcClientProvider.overrideWithValue(oidc),
+          secureTokenStoreProvider.overrideWithValue(tokens),
+          accountDeletionGuardStoreProvider.overrideWithValue(guard),
+          ...accountApplicationOverrides(delegate),
+        ],
+      );
+      addTearDown(container.dispose);
+      final startup = container.read(startupBootstrapperProvider);
+
+      expect(
+        await startup.checkAuthenticatedSession(),
+        StartupSessionStatus.anonymous,
+      );
+      final auth = container.read(authSessionProvider.notifier);
+      expect(
+        container.read(authSessionProvider).phase,
+        AuthSessionPhase.deletionPending,
+      );
+      expect(await auth.signIn(), isFalse);
+      expect(oidc.authorizeCalls, 0);
+
+      expect(
+        await container
+            .read(accountDeletionControllerProvider.notifier)
+            .continueAsGuest(),
+        isTrue,
+      );
+      auth.continueAsGuestAfterDeletion();
+      expect(guard.record, isNull);
+      expect(await auth.signIn(), isTrue);
+      expect(oidc.authorizeCalls, 1);
+    },
+  );
+
+  test(
     'profile survives same-epoch refresh and clears before new identity load',
     () async {
       const accountA = '018f47a6-4b56-7f4c-8c7a-e2656e820001';
@@ -344,6 +401,171 @@ void main() {
       expect((await account.load())?.id, accountB);
       expect(container.read(currentAccountProvider).profile?.id, accountB);
       expect(tokens.record?.accountId, accountB);
+    },
+  );
+
+  test(
+    'feature suspension response immediately revokes verified write scopes',
+    () async {
+      const accountId = '018f47a6-4b56-7f4c-8c7a-e2656e820001';
+      const nextAccountId = '018f47a6-4b56-7f4c-8c7a-e2656e820002';
+      final delegate = _StartupDelegate();
+      final tokens = MemorySecureTokenStore(storedRecord(accountId: accountId));
+      final store = MemoryLocalStore();
+      final container = ProviderContainer(
+        overrides: [
+          appBuildConfigProvider.overrideWithValue(_accountConfig()),
+          featureFlagsProvider.overrideWithValue(
+            const FeatureFlags(
+              accounts: true,
+              library: true,
+              comments: true,
+              openingMotion: false,
+            ),
+          ),
+          localStoreProvider.overrideWithValue(store),
+          initialAnonymousSessionIdProvider.overrideWithValue(
+            await store.getOrCreateSessionId(),
+          ),
+          oidcClientProvider.overrideWithValue(FakeOidcClient()),
+          secureTokenStoreProvider.overrideWithValue(tokens),
+          ...accountApplicationOverrides(delegate),
+        ],
+      );
+      addTearDown(container.dispose);
+      final adapter = _AccountAdapter(accountId: accountId);
+      final dio = container.read(pakPerkDioProvider)
+        ..httpClientAdapter = adapter;
+      final startup = container.read(startupBootstrapperProvider);
+      await startup.checkAuthenticatedSession();
+      await startup.runPostReadyWork();
+      final session = container.read(authSessionProvider);
+      expect(container.read(verifiedLibraryScopeProvider), isNotNull);
+      expect(container.read(libraryMutationScopeProvider), isNotNull);
+      expect(container.read(verifiedCommentScopeProvider), isNotNull);
+
+      adapter.errorCode = 'ACCOUNT_SUSPENDED';
+      await expectLater(
+        dio.get<Object?>(
+          '/v1/comments/feature-request',
+          options: pakPerkRequestOptions(
+            auth: RequestAuthPolicy.required,
+            expectedAuthEpoch: session.epoch,
+          ),
+        ),
+        throwsA(isA<DioException>()),
+      );
+
+      expect(
+        container.read(currentAccountProvider).knownReadOnlyStatus,
+        AccountStatus.suspended,
+      );
+      expect(container.read(verifiedLibraryScopeProvider), isNull);
+      expect(container.read(libraryMutationScopeProvider), isNull);
+      expect(
+        container.read(libraryReadOnlyAccountStatusProvider),
+        AccountStatus.suspended,
+      );
+      expect(container.read(verifiedCommentScopeProvider), isNull);
+      expect(
+        container.read(commentReadOnlyAccountStatusProvider),
+        AccountStatus.suspended,
+      );
+      expect(container.read(authSessionProvider).isAuthenticated, isTrue);
+      expect(tokens.record, isNotNull);
+
+      await container
+          .read(authSessionProvider.notifier)
+          .bindAccountId(nextAccountId);
+      expect(container.read(authSessionProvider).accountId, nextAccountId);
+      expect(
+        container.read(currentAccountProvider).phase,
+        CurrentAccountPhase.idle,
+      );
+      expect(
+        container.read(currentAccountProvider).knownReadOnlyStatus,
+        isNull,
+      );
+      expect(container.read(effectiveAccountReadOnlyStatusProvider), isNull);
+    },
+  );
+
+  test(
+    'late account A status responses cannot suspend or deletion-purge account B',
+    () async {
+      const accountA = '018f47a6-4b56-7f4c-8c7a-e2656e820001';
+      const accountB = '018f47a6-4b56-7f4c-8c7a-e2656e820002';
+      final delegate = _StartupDelegate();
+      final tokens = MemorySecureTokenStore(storedRecord(accountId: accountA));
+      final guard = MemoryAccountDeletionGuardStore();
+      final clearedScopes = <String?>[];
+      final store = MemoryLocalStore();
+      final container = ProviderContainer(
+        overrides: [
+          appBuildConfigProvider.overrideWithValue(_accountConfig()),
+          localStoreProvider.overrideWithValue(store),
+          initialAnonymousSessionIdProvider.overrideWithValue(
+            await store.getOrCreateSessionId(),
+          ),
+          oidcClientProvider.overrideWithValue(FakeOidcClient()),
+          secureTokenStoreProvider.overrideWithValue(tokens),
+          accountDeletionGuardStoreProvider.overrideWithValue(guard),
+          accountOwnedDataClearerProvider.overrideWithValue((scope, _) async {
+            clearedScopes.add(scope);
+          }),
+          ...accountApplicationOverrides(delegate),
+        ],
+      );
+      addTearDown(container.dispose);
+      final adapter = _AccountAdapter(accountId: accountA);
+      final dio = container.read(pakPerkDioProvider)
+        ..httpClientAdapter = adapter;
+      final startup = container.read(startupBootstrapperProvider);
+      await startup.checkAuthenticatedSession();
+      await startup.runPostReadyWork();
+      final auth = container.read(authSessionProvider.notifier);
+      final epoch = container.read(authSessionProvider).epoch;
+
+      final suspension = expectLater(
+        dio.get<Object?>(
+          '/v1/late-suspension',
+          options: pakPerkRequestOptions(
+            auth: RequestAuthPolicy.required,
+            expectedAuthEpoch: epoch,
+          ),
+        ),
+        throwsA(isA<DioException>()),
+      );
+      final deletion = expectLater(
+        dio.get<Object?>(
+          '/v1/late-deletion',
+          options: pakPerkRequestOptions(
+            auth: RequestAuthPolicy.required,
+            expectedAuthEpoch: epoch,
+          ),
+        ),
+        throwsA(isA<DioException>()),
+      );
+      while (!adapter.paths.contains('/v1/late-suspension') ||
+          !adapter.paths.contains('/v1/late-deletion')) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      await auth.bindAccountId(accountB);
+      expect(container.read(authSessionProvider).accountId, accountB);
+      adapter.lateStatusGate.complete();
+      await suspension;
+      await deletion;
+
+      expect(container.read(authSessionProvider).accountId, accountB);
+      expect(container.read(authSessionProvider).isAuthenticated, isTrue);
+      expect(tokens.record?.accountId, accountB);
+      expect(guard.record, isNull);
+      expect(clearedScopes, [accountA]);
+      expect(
+        container.read(currentAccountProvider).knownReadOnlyStatus,
+        isNull,
+      );
     },
   );
 }
@@ -456,6 +678,8 @@ final class _AccountAdapter implements HttpClientAdapter {
   _AccountAdapter({this.accountId = '018f47a6-4b56-7f4c-8c7a-e2656e820001'});
 
   String accountId;
+  String? errorCode;
+  final lateStatusGate = Completer<void>();
   final List<String> paths = [];
 
   @override
@@ -467,6 +691,43 @@ final class _AccountAdapter implements HttpClientAdapter {
     paths.add(options.path);
     if (options.path == '/health/ready') {
       return ResponseBody.fromString('', 204);
+    }
+    if (options.path == '/v1/late-suspension' ||
+        options.path == '/v1/late-deletion') {
+      await lateStatusGate.future;
+      final code = options.path == '/v1/late-suspension'
+          ? 'ACCOUNT_SUSPENDED'
+          : 'ACCOUNT_DELETION_PENDING';
+      return ResponseBody.fromString(
+        jsonEncode({
+          'error': {
+            'code': code,
+            'message': 'Late response from account A.',
+            'retryable': false,
+          },
+        }),
+        403,
+        headers: {
+          Headers.contentTypeHeader: ['application/json'],
+          'cache-control': ['private, no-store'],
+        },
+      );
+    }
+    if (errorCode case final code?) {
+      return ResponseBody.fromString(
+        jsonEncode({
+          'error': {
+            'code': code,
+            'message': 'The account is not active.',
+            'retryable': false,
+          },
+        }),
+        403,
+        headers: {
+          Headers.contentTypeHeader: ['application/json'],
+          'cache-control': ['private, no-store'],
+        },
+      );
     }
     return ResponseBody.fromString(
       jsonEncode({

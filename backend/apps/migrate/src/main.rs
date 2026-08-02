@@ -12,6 +12,7 @@ static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
 
 const MIGRATION_LOCK_SQL: &str = "SELECT pg_advisory_lock(1346458443, 1)";
 const MIGRATION_UNLOCK_SQL: &str = "SELECT pg_advisory_unlock(1346458443, 1)";
+const MIGRATION_SEARCH_PATH_SQL: &str = "SET search_path TO public, pg_catalog";
 
 #[derive(Debug)]
 struct Config {
@@ -112,6 +113,7 @@ async fn run(config: &Config) -> Result<()> {
     let mut connection = PgConnection::connect(&config.database_url)
         .await
         .context("could not connect with the migration database role")?;
+    bind_public_schema(&mut connection).await?;
     sqlx::query(MIGRATION_LOCK_SQL)
         .execute(&mut connection)
         .await
@@ -131,6 +133,28 @@ async fn run(config: &Config) -> Result<()> {
     Ok(())
 }
 
+async fn bind_public_schema(connection: &mut PgConnection) -> Result<()> {
+    sqlx::query(MIGRATION_SEARCH_PATH_SQL)
+        .execute(&mut *connection)
+        .await
+        .context("could not bind the migration session to the public schema")?;
+    let configured_search_path: String =
+        sqlx::query_scalar("SELECT pg_catalog.current_setting('search_path')")
+            .fetch_one(&mut *connection)
+            .await
+            .context("could not verify the migration session search path")?;
+    let current_schema: Option<String> =
+        sqlx::query_scalar("SELECT pg_catalog.current_schema()::text")
+            .fetch_one(&mut *connection)
+            .await
+            .context("could not verify the migration session current schema")?;
+    if configured_search_path != "public, pg_catalog" || current_schema.as_deref() != Some("public")
+    {
+        anyhow::bail!("migration session is not bound to public, pg_catalog");
+    }
+    Ok(())
+}
+
 async fn run_locked(connection: &mut PgConnection, config: &Config) -> Result<()> {
     MIGRATOR
         .run(&mut *connection)
@@ -138,7 +162,7 @@ async fn run_locked(connection: &mut PgConnection, config: &Config) -> Result<()
         .context("embedded database migration failed")?;
 
     let applied_version: Option<i64> =
-        sqlx::query_scalar("SELECT max(version) FROM _sqlx_migrations WHERE success = TRUE")
+        sqlx::query_scalar("SELECT max(version) FROM public._sqlx_migrations WHERE success = TRUE")
             .fetch_one(&mut *connection)
             .await
             .context("could not verify the applied migration version")?;
@@ -150,7 +174,7 @@ async fn run_locked(connection: &mut PgConnection, config: &Config) -> Result<()
         );
     }
     let failed_migrations: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM _sqlx_migrations WHERE success = FALSE")
+        sqlx::query_scalar("SELECT count(*) FROM public._sqlx_migrations WHERE success = FALSE")
             .fetch_one(&mut *connection)
             .await
             .context("could not verify migration success records")?;
@@ -158,19 +182,26 @@ async fn run_locked(connection: &mut PgConnection, config: &Config) -> Result<()
         anyhow::bail!("database contains failed migration records");
     }
     let required_extensions: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM pg_extension WHERE extname IN ('vector', 'pg_trgm', 'pgcrypto')",
+        r"
+        SELECT count(*)
+        FROM pg_catalog.pg_extension AS extensions
+        JOIN pg_catalog.pg_namespace AS namespaces
+          ON namespaces.oid = extensions.extnamespace
+        WHERE extensions.extname IN ('vector', 'pg_trgm', 'pgcrypto')
+          AND namespaces.nspname = 'public'
+        ",
     )
     .fetch_one(&mut *connection)
     .await
     .context("could not verify required PostgreSQL extensions")?;
     if required_extensions != 3 {
-        anyhow::bail!("required PostgreSQL extensions are missing after migration");
+        anyhow::bail!("required PostgreSQL extensions are missing from public after migration");
     }
     let required_tables: i64 = sqlx::query_scalar(
         r"
         SELECT count(*)
         FROM information_schema.tables
-        WHERE table_schema = current_schema()
+        WHERE table_schema = 'public'
           AND table_name IN (
             'papers',
             'users',
@@ -226,7 +257,7 @@ fn validate_backup_id(value: &str) -> Result<()> {
 }
 
 const fn usage() -> &'static str {
-    "pakperk-migrate\n\nRequires APP_ENV=staging|production, DATABASE_URL, PAKPERK_MIGRATION_BACKUP_ID, and PAKPERK_MIGRATION_EXPECTED_VERSION. Acquires a global advisory lock, applies embedded forward migrations, and verifies the resulting schema."
+    "pakperk-migrate\n\nRequires APP_ENV=staging|production, DATABASE_URL, PAKPERK_MIGRATION_BACKUP_ID, and PAKPERK_MIGRATION_EXPECTED_VERSION. Forces the public schema, acquires a global advisory lock, applies embedded forward migrations, and verifies the resulting schema."
 }
 
 #[cfg(test)]
@@ -252,39 +283,33 @@ mod tests {
         assert!(finish(Err(anyhow::anyhow!("migration failed")), &Ok(())).is_err());
     }
 
-    async fn create_test_schema(
+    async fn create_test_database(
         admin: &mut PgConnection,
         base_url: &str,
         scenario: &str,
     ) -> anyhow::Result<(String, Url)> {
+        anyhow::ensure!(
+            scenario
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        );
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("the system clock is before the Unix epoch")
             .as_nanos();
-        let schema = format!(
+        let database = format!(
             "pakperk_migrate_{scenario}_{}_{}",
             std::process::id(),
             suffix
         );
-        sqlx::query(&format!("CREATE SCHEMA {schema}"))
-            .execute(&mut *admin)
-            .await?;
         let mut scoped_url = Url::parse(base_url)?;
-        scoped_url
-            .query_pairs_mut()
-            .append_pair("options", &format!("-csearch_path={schema},public"));
-        Ok((schema, scoped_url))
-    }
-
-    async fn ensure_extensions(admin: &mut PgConnection) -> anyhow::Result<()> {
-        for extension in ["pgcrypto", "vector", "pg_trgm"] {
-            sqlx::query(&format!(
-                "CREATE EXTENSION IF NOT EXISTS {extension} WITH SCHEMA public"
-            ))
+        scoped_url.set_path(&format!("/{database}"));
+        scoped_url.set_query(None);
+        scoped_url.set_fragment(None);
+        sqlx::query(&format!("CREATE DATABASE {database} TEMPLATE template0"))
             .execute(&mut *admin)
             .await?;
-        }
-        Ok(())
+        Ok((database, scoped_url))
     }
 
     fn test_config(scoped_url: &Url, backup_id: &str) -> Config {
@@ -296,27 +321,82 @@ mod tests {
         }
     }
 
-    async fn drop_test_schema(admin: &mut PgConnection, schema: &str) -> anyhow::Result<()> {
-        sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
+    async fn drop_test_database(admin: &mut PgConnection, database: &str) -> anyhow::Result<()> {
+        sqlx::query(&format!("DROP DATABASE {database} WITH (FORCE)"))
             .execute(admin)
             .await?;
         Ok(())
     }
 
-    async fn exercise_empty_and_latest(
+    async fn exercise_empty_latest_and_hostile_path(
         admin: &mut PgConnection,
         base_url: &str,
     ) -> anyhow::Result<()> {
-        let (schema, scoped_url) = create_test_schema(admin, base_url, "empty").await?;
-        let config = test_config(&scoped_url, "integration-backup-empty-20260801");
+        let (database, scoped_url) = create_test_database(admin, base_url, "empty_hostile").await?;
         let outcome = async {
+            let hostile_schema = "hostile_migration_path";
+            let mut preparation = PgConnection::connect(scoped_url.as_str()).await?;
+            sqlx::query(&format!("CREATE SCHEMA {hostile_schema}"))
+                .execute(&mut preparation)
+                .await?;
+            drop(preparation);
+
+            let mut hostile_url = scoped_url.clone();
+            hostile_url
+                .query_pairs_mut()
+                .append_pair("options", &format!("-csearch_path={hostile_schema},public"));
+            let config = test_config(&hostile_url, "integration-backup-empty-20260801");
+            // Both initial bootstrap and latest-schema verification traverse
+            // the production bind, lock, migrator, and postcheck path.
             run(&config).await?;
-            // A second invocation is the real latest-schema case and must be
-            // an idempotent verification, not a second logical migration.
-            run(&config).await
+            run(&config).await?;
+
+            let mut verification = PgConnection::connect(scoped_url.as_str()).await?;
+            let applied_version: Option<i64> = sqlx::query_scalar(
+                "SELECT max(version) FROM public._sqlx_migrations WHERE success = TRUE",
+            )
+            .fetch_one(&mut verification)
+            .await?;
+            anyhow::ensure!(
+                applied_version == Some(super::MIGRATOR.iter().last().unwrap().version)
+            );
+            let hostile_objects: i64 = sqlx::query_scalar(
+                r"
+                SELECT count(*)
+                FROM information_schema.tables
+                WHERE table_schema = $1
+                  AND table_name IN (
+                    '_sqlx_migrations',
+                    'papers',
+                    'users',
+                    'account_deletion_jobs',
+                    'account_deletion_ledger'
+                  )
+                ",
+            )
+            .bind(hostile_schema)
+            .fetch_one(&mut verification)
+            .await?;
+            anyhow::ensure!(hostile_objects == 0);
+
+            // A current schema with correctly named extensions in the wrong
+            // namespace must fail its real standalone postcheck.
+            sqlx::query("CREATE SCHEMA wrong_extension_namespace")
+                .execute(&mut verification)
+                .await?;
+            sqlx::query("ALTER EXTENSION pgcrypto SET SCHEMA wrong_extension_namespace")
+                .execute(&mut verification)
+                .await?;
+            drop(verification);
+            let error = run(&config).await.expect_err("wrong extension namespace");
+            anyhow::ensure!(
+                format!("{error:#}")
+                    .contains("required PostgreSQL extensions are missing from public")
+            );
+            Ok::<_, anyhow::Error>(())
         }
         .await;
-        let cleanup = drop_test_schema(admin, &schema).await;
+        let cleanup = drop_test_database(admin, &database).await;
         outcome?;
         cleanup
     }
@@ -325,9 +405,12 @@ mod tests {
         admin: &mut PgConnection,
         base_url: &str,
     ) -> anyhow::Result<()> {
-        let (schema, scoped_url) = create_test_schema(admin, base_url, "v1").await?;
+        let (database, scoped_url) = create_test_database(admin, base_url, "v1").await?;
         let outcome = async {
             let mut version_one = PgConnection::connect(scoped_url.as_str()).await?;
+            sqlx::query(super::MIGRATION_SEARCH_PATH_SQL)
+                .execute(&mut version_one)
+                .await?;
             version_one.ensure_migrations_table().await?;
             version_one
                 .apply(super::MIGRATOR.iter().next().unwrap())
@@ -372,14 +455,15 @@ mod tests {
             .await?;
             anyhow::ensure!(applied_version == Some(1));
             drop(version_one);
-            let version_one_config = test_config(&scoped_url, "integration-backup-v1-20260801");
-            run(&version_one_config).await?;
+
+            let config = test_config(&scoped_url, "integration-backup-v1-20260801");
+            run(&config).await?;
             // The upgraded schema is also a supported input. Re-running must
             // be a no-op verification and must preserve version-one data.
-            run(&version_one_config).await?;
+            run(&config).await?;
             let mut upgraded = PgConnection::connect(scoped_url.as_str()).await?;
             let fixture_title: String = sqlx::query_scalar(
-                "SELECT title FROM papers WHERE arxiv_base_id = 'phase6-migration-fixture'",
+                "SELECT title FROM public.papers WHERE arxiv_base_id = 'phase6-migration-fixture'",
             )
             .fetch_one(&mut upgraded)
             .await?;
@@ -387,19 +471,18 @@ mod tests {
             Ok::<_, anyhow::Error>(())
         }
         .await;
-        let cleanup = drop_test_schema(admin, &schema).await;
+        let cleanup = drop_test_database(admin, &database).await;
         outcome?;
         cleanup
     }
 
     #[tokio::test]
-    async fn empty_v1_and_latest_postgres_schemas_converge() {
+    async fn standalone_run_bootstraps_upgrades_and_rejects_wrong_extension_namespace() {
         let Ok(base_url) = std::env::var("TEST_DATABASE_URL") else {
             return;
         };
         let mut admin = PgConnection::connect(&base_url).await.unwrap();
-        ensure_extensions(&mut admin).await.unwrap();
-        exercise_empty_and_latest(&mut admin, &base_url)
+        exercise_empty_latest_and_hostile_path(&mut admin, &base_url)
             .await
             .unwrap();
         exercise_version_one_upgrade(&mut admin, &base_url)

@@ -14,15 +14,18 @@ final class LibraryRepository {
     required LibraryRemoteDataSource remote,
     required LibrarySessionScopeReader sessionScope,
     required LibraryVerifiedScopeReader verifiedScope,
+    LibraryVerifiedScopeReader? localMutationScope,
   }) : _local = local,
        _remote = remote,
        _sessionScope = sessionScope,
-       _verifiedScope = verifiedScope;
+       _verifiedScope = verifiedScope,
+       _localMutationScope = localMutationScope;
 
   final LibraryDao _local;
   final LibraryRemoteDataSource _remote;
   final LibrarySessionScopeReader _sessionScope;
   final LibraryVerifiedScopeReader _verifiedScope;
+  final LibraryVerifiedScopeReader? _localMutationScope;
 
   Stream<LibrarySavedState> watchSavedState(String accountId, String paperId) =>
       _local.watchSavedState(accountId, paperId);
@@ -59,7 +62,12 @@ final class LibraryRepository {
     required int authEpoch,
   }) => () {
     final current = _sessionScope();
-    return current.accountId == accountId && current.authEpoch == authEpoch;
+    final allowed = _localMutationScope?.call();
+    return current.accountId == accountId &&
+        current.authEpoch == authEpoch &&
+        ((allowed == null && _localMutationScope == null) ||
+            (allowed?.accountId == accountId &&
+                allowed?.authEpoch == authEpoch));
   };
 
   LibraryScopeGuard remoteScopeGuard({

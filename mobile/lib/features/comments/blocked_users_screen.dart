@@ -23,13 +23,42 @@ class _BlockedUsersScreenState extends ConsumerState<BlockedUsersScreen> {
   Widget build(BuildContext context) {
     final scope = ref.watch(verifiedCommentScopeProvider);
     if (scope == null) {
+      final viewer = ref.watch(commentViewerScopeProvider);
+      final readOnlyStatus = ref.watch(commentReadOnlyAccountStatusProvider);
       return Scaffold(
         appBar: AppBar(title: const Text('Blocked users')),
         body: Center(
-          child: FilledButton.icon(
-            onPressed: () => context.push<void>(PakPerkRoutes.auth),
-            icon: const Icon(Icons.login),
-            label: const Text('Sign in to manage blocked users'),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: viewer.authenticated
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.lock_outline, size: 48),
+                      const SizedBox(height: 12),
+                      Text(
+                        readOnlyStatus == null
+                            ? 'Account is offline'
+                            : 'Blocked users are read-only',
+                        style: Theme.of(context).textTheme.titleLarge,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        readOnlyStatus == null
+                            ? 'Reconnect and verify this saved session to '
+                                  'manage blocked users.'
+                            : 'This account cannot report, block, or unblock '
+                                  'users. Public comments remain readable.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  )
+                : FilledButton.icon(
+                    onPressed: () => context.push<void>(PakPerkRoutes.auth),
+                    icon: const Icon(Icons.login),
+                    label: const Text('Sign in to manage blocked users'),
+                  ),
           ),
         ),
       );
@@ -39,7 +68,7 @@ class _BlockedUsersScreenState extends ConsumerState<BlockedUsersScreen> {
       _syncing = false;
       _error = null;
     }
-    final blocked = ref.watch(blockedUsersProvider);
+    final blocked = ref.watch(blockedUsersProvider(scope));
     return Scaffold(
       appBar: AppBar(
         title: const Text('Blocked users'),

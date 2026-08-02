@@ -8,10 +8,12 @@ import 'package:go_router/go_router.dart';
 import 'package:pakperk/app/account_providers.dart';
 import 'package:pakperk/app/comments_providers.dart';
 import 'package:pakperk/app/router.dart';
+import 'package:pakperk/core/account/account_profile.dart';
 import 'package:pakperk/core/account/account_data_write_barrier.dart';
 import 'package:pakperk/core/api/api_exception.dart';
 import 'package:pakperk/core/auth/auth.dart';
 import 'package:pakperk/core/cache/feed_prefetch_config.dart';
+import 'package:pakperk/core/comments/comment_cache_barrier.dart';
 import 'package:pakperk/core/comments/comment_controllers.dart';
 import 'package:pakperk/core/comments/comment_models.dart';
 import 'package:pakperk/core/comments/comment_repository.dart';
@@ -20,8 +22,11 @@ import 'package:pakperk/core/database/app_database.dart';
 import 'package:pakperk/core/database/comment_cache_dao.dart';
 import 'package:pakperk/core/database/comments_dao.dart';
 import 'package:pakperk/core/database/paper_cache_dao.dart';
+import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/providers.dart';
 import 'package:pakperk/features/comments/comments_screen.dart';
+import 'package:pakperk/features/comments/blocked_users_screen.dart';
+import 'package:pakperk/features/comments/my_comments_screen.dart';
 
 import '../support/fakes.dart';
 
@@ -470,6 +475,99 @@ void main() {
     },
   );
 
+  testWidgets('account switches invalidate report and block confirmations', (
+    tester,
+  ) async {
+    const accountC = '018f47a6-4b56-7f4c-8c7a-e2656e820003';
+    const targetAccount = '018f47a6-4b56-7f4c-8c7a-e2656e820022';
+    const scopeA = (accountId: accountA, authEpoch: 1);
+    const scopeB = (accountId: accountB, authEpoch: 1);
+    const scopeC = (accountId: accountC, authEpoch: 1);
+    final page = CommentPage(
+      items: [_comment(authorId: targetAccount, idSuffix: '11')],
+      nextCursor: null,
+    );
+    final fixtureA = await _fixture(viewerAccountId: accountA, page: page);
+    final fixtureB = await _fixture(viewerAccountId: accountB, page: page);
+    final fixtureC = await _fixture(viewerAccountId: accountC, page: page);
+    addTearDown(fixtureA.database.close);
+    addTearDown(fixtureB.database.close);
+    addTearDown(fixtureC.database.close);
+    final activeScope = StateProvider<VerifiedCommentScope>((ref) => scopeA);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          verifiedCommentScopeProvider.overrideWith(
+            (ref) => ref.watch(activeScope),
+          ),
+          commentViewerScopeProvider.overrideWith((ref) {
+            final scope = ref.watch(activeScope);
+            return CommentViewerScope.authenticated(
+              accountId: scope.accountId,
+              authEpoch: scope.authEpoch,
+            );
+          }),
+          commentComposerEligibleProvider.overrideWithValue(true),
+          commentReadOnlyAccountStatusProvider.overrideWithValue(null),
+          commentThreadProvider.overrideWith((ref, paperId) {
+            final scope = ref.watch(activeScope);
+            return switch (scope.accountId) {
+              accountA => fixtureA.controller,
+              accountB => fixtureB.controller,
+              _ => fixtureC.controller,
+            };
+          }),
+          networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
+        ],
+        child: MaterialApp(
+          home: CommentsScreen(
+            paperId: samplePaper.paperId,
+            paperTitle: samplePaper.title,
+            onClose: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(CommentsScreen)),
+    );
+    final actions = find.byKey(
+      const ValueKey('comment-actions-018f47a6-4b56-7f4c-8c7a-e2656e820011'),
+    );
+
+    await tester.tap(actions);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Report comment'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(AlertDialog, 'Report comment'), findsOneWidget);
+
+    container.read(activeScope.notifier).state = scopeB;
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Send report'));
+    await tester.pumpAndSettle();
+
+    expect(fixtureA.remote.reportCalls, isEmpty);
+    expect(fixtureB.remote.reportCalls, isEmpty);
+    expect(fixtureC.remote.reportCalls, isEmpty);
+
+    await tester.tap(actions);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Block user'));
+    await tester.pumpAndSettle();
+    expect(find.text('Block @reader_two?'), findsOneWidget);
+
+    container.read(activeScope.notifier).state = scopeC;
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Block user'));
+    await tester.pumpAndSettle();
+
+    expect(fixtureA.remote.blockCalls, isEmpty);
+    expect(fixtureB.remote.blockCalls, isEmpty);
+    expect(fixtureC.remote.blockCalls, isEmpty);
+  });
+
   testWidgets(
     'authenticated comments stay accessible with keyboard large text and create kill',
     (tester) async {
@@ -604,6 +702,478 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'retained offline session shows cached comments and editable local draft',
+    (tester) async {
+      final page = CommentPage(
+        items: [_comment(authorId: accountB, idSuffix: '11')],
+        nextCursor: null,
+      );
+      final fixture = await _fixture(
+        viewerAccountId: accountA,
+        verified: false,
+        page: page,
+        load: false,
+      );
+      addTearDown(fixture.database.close);
+      const viewer = CommentViewerScope.retained(
+        accountId: accountA,
+        authEpoch: 1,
+      );
+      await fixture.repository.cacheVisibleFirstPage(
+        paperId: samplePaper.paperId,
+        viewer: viewer,
+        page: page,
+      );
+      await fixture.repository.saveDraft(
+        accountId: accountA,
+        authEpoch: 1,
+        paperId: samplePaper.paperId,
+        body: 'Draft from before process death.',
+      );
+      fixture.remote.listError = const ApiException(
+        code: 'OFFLINE',
+        message: 'You appear to be offline.',
+      );
+      await fixture.controller.load();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            commentViewerScopeProvider.overrideWithValue(viewer),
+            commentComposerEligibleProvider.overrideWithValue(false),
+            verifiedCommentScopeProvider.overrideWithValue(null),
+            commentReadOnlyAccountStatusProvider.overrideWithValue(null),
+            commentThreadProvider.overrideWith(
+              (ref, paperId) => fixture.controller,
+            ),
+            networkOfflineProvider.overrideWith((ref) => Stream.value(true)),
+          ],
+          child: MaterialApp(
+            home: CommentsScreen(
+              paperId: samplePaper.paperId,
+              paperTitle: samplePaper.title,
+              onClose: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('A published observation.'), findsOneWidget);
+      expect(
+        find.text('Offline · your draft stays on this device.'),
+        findsOneWidget,
+      );
+      final composer = find.byKey(const ValueKey('comment-composer'));
+      expect(composer, findsOneWidget);
+      expect(
+        tester.widget<TextField>(composer).controller?.text,
+        'Draft from before process death.',
+      );
+      expect(
+        tester
+            .widget<IconButton>(find.byKey(const ValueKey('comment-send')))
+            .onPressed,
+        isNull,
+      );
+      expect(find.byKey(const ValueKey('comments-sign-in-cta')), findsNothing);
+      expect(
+        find.byKey(
+          const ValueKey(
+            'comment-actions-018f47a6-4b56-7f4c-8c7a-e2656e820011',
+          ),
+        ),
+        findsNothing,
+      );
+      expect(
+        fixture.remote.listCalls,
+        0,
+        reason: 'retained account cache must not refresh through guest scope',
+      );
+
+      await tester.enterText(composer, 'Draft updated while offline.');
+      await tester.pump();
+      expect(
+        (await CommentsDao(
+          fixture.database,
+        ).loadDraft(accountA, samplePaper.paperId))?.body,
+        'Draft updated while offline.',
+      );
+    },
+  );
+
+  testWidgets('OIDC offline state disables verified send and safety actions', (
+    tester,
+  ) async {
+    final fixture = await _fixture(
+      viewerAccountId: accountA,
+      page: CommentPage(
+        items: [_comment(authorId: accountB, idSuffix: '11')],
+        nextCursor: null,
+      ),
+    );
+    addTearDown(fixture.database.close);
+    const viewer = CommentViewerScope.authenticated(
+      accountId: accountA,
+      authEpoch: 1,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          commentViewerScopeProvider.overrideWithValue(viewer),
+          commentComposerEligibleProvider.overrideWithValue(true),
+          verifiedCommentScopeProvider.overrideWithValue(const (
+            accountId: accountA,
+            authEpoch: 1,
+          )),
+          commentReadOnlyAccountStatusProvider.overrideWithValue(null),
+          commentThreadProvider.overrideWith(
+            (ref, paperId) => fixture.controller,
+          ),
+          authSessionOfflineUnknownProvider.overrideWithValue(true),
+          networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
+        ],
+        child: MaterialApp(
+          home: CommentsScreen(
+            paperId: samplePaper.paperId,
+            paperTitle: samplePaper.title,
+            onClose: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Offline · your draft stays on this device.'),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<IconButton>(find.byKey(const ValueKey('comment-send')))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      find.byKey(ValueKey('comment-actions-${_commentId('11')}')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('switching account or paper scope replaces the composer draft', (
+    tester,
+  ) async {
+    const secondPaperId = '17060376-2000-4000-8000-000000000002';
+    const viewerA = CommentViewerScope.retained(
+      accountId: accountA,
+      authEpoch: 1,
+    );
+    const viewerB = CommentViewerScope.retained(
+      accountId: accountB,
+      authEpoch: 1,
+    );
+    final database = PakPerkDatabase(NativeDatabase.memory());
+    await PaperCacheDao(database).save(
+      PaperSummary.fromJson({
+        ...samplePaper.toJson(),
+        'paper_id': secondPaperId,
+        'arxiv_id': '1706.03763v1',
+        'title': 'A second paper',
+      }),
+    );
+    final fixtureA = await _fixture(
+      viewerAccountId: accountA,
+      verified: false,
+      page: const CommentPage(items: [], nextCursor: null),
+      load: false,
+      database: database,
+    );
+    final fixtureB = await _fixture(
+      viewerAccountId: accountB,
+      verified: false,
+      page: const CommentPage(items: [], nextCursor: null),
+      load: false,
+      database: database,
+    );
+    addTearDown(database.close);
+    await fixtureA.repository.saveDraft(
+      accountId: accountA,
+      authEpoch: 1,
+      paperId: samplePaper.paperId,
+      body: 'Private draft for account A.',
+    );
+    await fixtureB.repository.saveDraft(
+      accountId: accountB,
+      authEpoch: 1,
+      paperId: samplePaper.paperId,
+      body: 'Private draft for account B.',
+    );
+    await fixtureB.repository.saveDraft(
+      accountId: accountB,
+      authEpoch: 1,
+      paperId: secondPaperId,
+      body: 'Private draft for account B on paper two.',
+    );
+    await fixtureA.controller.load();
+    await fixtureB.controller.load();
+    final secondPaperController = CommentThreadController(
+      repository: fixtureB.repository,
+      paperId: secondPaperId,
+      viewer: viewerB,
+    );
+    await secondPaperController.load();
+    final activeViewerProvider = StateProvider<CommentViewerScope>(
+      (ref) => viewerA,
+    );
+    final activePaperProvider = StateProvider<String>(
+      (ref) => samplePaper.paperId,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          commentViewerScopeProvider.overrideWith(
+            (ref) => ref.watch(activeViewerProvider),
+          ),
+          commentComposerEligibleProvider.overrideWithValue(false),
+          verifiedCommentScopeProvider.overrideWithValue(null),
+          commentReadOnlyAccountStatusProvider.overrideWithValue(null),
+          commentThreadProvider.overrideWith((ref, paperId) {
+            final viewer = ref.watch(activeViewerProvider);
+            if (paperId == secondPaperId) return secondPaperController;
+            return viewer.accountId == accountA
+                ? fixtureA.controller
+                : fixtureB.controller;
+          }),
+          networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
+        ],
+        child: Consumer(
+          builder: (context, ref, child) => MaterialApp(
+            home: CommentsScreen(
+              paperId: ref.watch(activePaperProvider),
+              paperTitle: samplePaper.title,
+              onClose: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final composer = find.byKey(const ValueKey('comment-composer'));
+    expect(
+      tester.widget<TextField>(composer).controller?.text,
+      'Private draft for account A.',
+    );
+    expect(find.text('No saved comments are available.'), findsOneWidget);
+    expect(find.text('Start a thoughtful paper discussion.'), findsNothing);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(CommentsScreen)),
+    );
+    container.read(activeViewerProvider.notifier).state = viewerB;
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextField>(composer).controller?.text,
+      'Private draft for account B.',
+    );
+    expect(find.text('Private draft for account A.'), findsNothing);
+
+    container.read(activePaperProvider.notifier).state = secondPaperId;
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextField>(composer).controller?.text,
+      'Private draft for account B on paper two.',
+    );
+    expect(find.text('Private draft for account B.'), findsNothing);
+  });
+
+  testWidgets(
+    'suspended account reads comments without guest or safety actions',
+    (tester) async {
+      final page = CommentPage(
+        items: [_comment(authorId: accountB, idSuffix: '11')],
+        nextCursor: null,
+      );
+      final fixture = await _fixture(
+        viewerAccountId: accountA,
+        verified: false,
+        readOnly: true,
+        page: page,
+      );
+      addTearDown(fixture.database.close);
+      const viewer = CommentViewerScope.readOnly(
+        accountId: accountA,
+        authEpoch: 1,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            commentViewerScopeProvider.overrideWithValue(viewer),
+            commentComposerEligibleProvider.overrideWithValue(false),
+            verifiedCommentScopeProvider.overrideWithValue(null),
+            commentReadOnlyAccountStatusProvider.overrideWithValue(
+              AccountStatus.suspended,
+            ),
+            commentThreadProvider.overrideWith(
+              (ref, paperId) => fixture.controller,
+            ),
+            networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
+          ],
+          child: MaterialApp(
+            home: CommentsScreen(
+              paperId: samplePaper.paperId,
+              paperTitle: samplePaper.title,
+              onClose: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('A published observation.'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('comments-account-read-only')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Account suspended'), findsOneWidget);
+      expect(find.byKey(const ValueKey('comments-sign-in-cta')), findsNothing);
+      expect(find.byKey(const ValueKey('comment-composer')), findsNothing);
+      expect(
+        find.byKey(
+          const ValueKey(
+            'comment-actions-018f47a6-4b56-7f4c-8c7a-e2656e820011',
+          ),
+        ),
+        findsNothing,
+      );
+      expect(fixture.remote.reportCalls, isEmpty);
+      expect(fixture.remote.userReportCalls, isEmpty);
+      expect(fixture.remote.blockCalls, isEmpty);
+      expect(fixture.remote.listCalls, 1);
+      expect(fixture.remote.listAuthEpochs, [null]);
+    },
+  );
+
+  testWidgets(
+    'suspended account routes never ask the signed-in user to sign in',
+    (tester) async {
+      const viewer = CommentViewerScope.readOnly(
+        accountId: accountA,
+        authEpoch: 1,
+      );
+      final overrides = [
+        commentViewerScopeProvider.overrideWithValue(viewer),
+        verifiedCommentScopeProvider.overrideWithValue(null),
+        commentReadOnlyAccountStatusProvider.overrideWithValue(
+          AccountStatus.suspended,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: overrides,
+          child: const MaterialApp(home: MyCommentsScreen()),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Account comments are read-only'), findsOneWidget);
+      expect(find.textContaining('Sign in'), findsNothing);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: overrides,
+          child: const MaterialApp(home: BlockedUsersScreen()),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Blocked users are read-only'), findsOneWidget);
+      expect(find.textContaining('Sign in'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'blocked-user projection never retains account A data for account B',
+    (tester) async {
+      const scopeA = (accountId: accountA, authEpoch: 1);
+      const scopeB = (accountId: accountB, authEpoch: 1);
+      final activeScope = StateProvider<VerifiedCommentScope?>((ref) => scopeA);
+      final accountAStream =
+          StreamController<List<BlockedUserValue>>.broadcast();
+      final accountBStream =
+          StreamController<List<BlockedUserValue>>.broadcast();
+      addTearDown(accountAStream.close);
+      addTearDown(accountBStream.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            verifiedCommentScopeProvider.overrideWith(
+              (ref) => ref.watch(activeScope),
+            ),
+            commentViewerScopeProvider.overrideWith((ref) {
+              final scope = ref.watch(activeScope);
+              return scope == null
+                  ? const CommentViewerScope.guest()
+                  : CommentViewerScope.authenticated(
+                      accountId: scope.accountId,
+                      authEpoch: scope.authEpoch,
+                    );
+            }),
+            commentReadOnlyAccountStatusProvider.overrideWithValue(null),
+            blockedUsersProvider.overrideWith(
+              (ref, scope) => scope.accountId == accountA
+                  ? accountAStream.stream
+                  : accountBStream.stream,
+            ),
+          ],
+          child: const MaterialApp(home: BlockedUsersScreen()),
+        ),
+      );
+      await tester.pump();
+      accountAStream.add([
+        BlockedUserValue(
+          userId: '018f47a6-4b56-7f4c-8c7a-e2656e820011',
+          handle: 'account_a_only',
+          displayName: 'Account A only',
+          createdAt: DateTime.utc(2026, 8, 1),
+          serverConfirmed: true,
+        ),
+      ]);
+      await tester.pump();
+      expect(find.text('Account A only'), findsOneWidget);
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(BlockedUsersScreen)),
+      );
+      container.read(activeScope.notifier).state = null;
+      await tester.pump();
+      expect(find.text('Account A only'), findsNothing);
+
+      container.read(activeScope.notifier).state = scopeB;
+      await tester.pump();
+      expect(find.text('Account A only'), findsNothing);
+      accountBStream.add([
+        BlockedUserValue(
+          userId: '018f47a6-4b56-7f4c-8c7a-e2656e820022',
+          handle: 'account_b_only',
+          displayName: 'Account B only',
+          createdAt: DateTime.utc(2026, 8, 2),
+          serverConfirmed: true,
+        ),
+      ]);
+      await tester.pump();
+
+      expect(find.text('Account B only'), findsOneWidget);
+      expect(find.text('Account A only'), findsNothing);
+    },
+  );
 }
 
 Future<
@@ -619,30 +1189,39 @@ _fixture({
   required CommentPage page,
   bool creationDisabled = false,
   bool load = true,
+  bool verified = true,
+  bool readOnly = false,
+  PakPerkDatabase? database,
 }) async {
-  final database = PakPerkDatabase(NativeDatabase.memory());
-  await PaperCacheDao(database).save(samplePaper);
+  final effectiveDatabase =
+      database ?? PakPerkDatabase(NativeDatabase.memory());
+  await PaperCacheDao(effectiveDatabase).save(samplePaper);
   final remote = _Remote(page: page, creationDisabled: creationDisabled);
   final repository = CommentRepository(
-    cache: CommentCacheDao(database),
-    local: CommentsDao(database),
+    cache: CommentCacheDao(effectiveDatabase),
+    local: CommentsDao(effectiveDatabase),
     remote: remote,
     accountWrites: AccountDataWriteBarrier(),
+    commentCache: CommentCacheBarrier(),
     cachePolicy: const FeedPrefetchConfig(),
     sessionScope: () => (
       accountId: viewerAccountId,
       authEpoch: viewerAccountId == null ? 0 : 1,
     ),
-    verifiedScope: () => viewerAccountId == null
+    verifiedScope: () => viewerAccountId == null || !verified
         ? null
         : (accountId: viewerAccountId, authEpoch: 1),
   );
   final viewer = viewerAccountId == null
       ? const CommentViewerScope.guest()
-      : CommentViewerScope.authenticated(
+      : verified
+      ? CommentViewerScope.authenticated(
           accountId: viewerAccountId,
           authEpoch: 1,
-        );
+        )
+      : readOnly
+      ? CommentViewerScope.readOnly(accountId: viewerAccountId, authEpoch: 1)
+      : CommentViewerScope.retained(accountId: viewerAccountId, authEpoch: 1);
   final controller = CommentThreadController(
     repository: repository,
     paperId: samplePaper.paperId,
@@ -650,7 +1229,7 @@ _fixture({
   );
   if (load) await controller.load();
   return (
-    database: database,
+    database: effectiveDatabase,
     controller: controller,
     repository: repository,
     remote: remote,
@@ -665,6 +1244,7 @@ final class _Remote implements CommentsRemoteDataSource {
   ApiException? listError;
   Completer<void>? listGate;
   int listCalls = 0;
+  final List<int?> listAuthEpochs = [];
   final List<
     ({
       String commentId,
@@ -693,6 +1273,7 @@ final class _Remote implements CommentsRemoteDataSource {
     int limit = 50,
   }) async {
     listCalls += 1;
+    listAuthEpochs.add(expectedAuthEpoch);
     await listGate?.future;
     if (listError case final error?) throw error;
     return page;
