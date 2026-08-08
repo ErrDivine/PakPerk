@@ -19,6 +19,12 @@ data:
         compaction:
           directory: /var/lib/otelcol/file-storage
           on_start: true
+      file_storage/exporter_queue:
+        directory: /var/lib/otelcol/exporter-queue
+        create_directory: true
+        compaction:
+          directory: /var/lib/otelcol/exporter-queue
+          on_start: true
     receivers:
       otlp:
         protocols:
@@ -58,7 +64,7 @@ data:
             parse_from: body
             parse_to: attributes.pakperk
             on_error: drop
-          - id: require-static-message
+          - id: require-message
             type: filter
             expr: 'attributes.pakperk.message == nil'
           - type: move
@@ -71,8 +77,9 @@ data:
             from: attributes.pakperk.target
             to: attributes["code.namespace"]
           # Drop all event fields, spans, raw JSON, CRI metadata, paths, and
-          # any accidental content. Only static message, level, and Rust target
-          # leave the node.
+          # accidental attributes. The message exists only until the downstream
+          # transform replaces it with a constant marker or admits the one exact
+          # content-free ledger alert message.
           - type: retain
             fields:
               - body
@@ -234,10 +241,38 @@ data:
           - { key: code.file.path, action: delete }
           - { key: file.path, action: delete }
           - { key: log.file.path, action: delete }
+      transform/redact-otlp-log-body:
+        # An OTLP record body is an independent content channel; attribute
+        # denylisting cannot sanitize it. Preserve only the exact event names
+        # already admitted by the closed mobile gateway schema. Everything
+        # else, including maps/arrays/bytes, becomes one static marker. The
+        # backend stdout receiver has its own fail-closed body transform below.
+        error_mode: propagate
+        log_statements:
+          - set(log.body, "otlp_log_body_redacted") where not IsString(log.body)
+          - >-
+            set(log.body, "otlp_log_body_redacted") where
+            resource.attributes["service.name"] != "pakperk-mobile" or
+            resource.attributes["deployment.environment.name"] != {{ .Values.environment | quote }} or
+            scope.name != "app.pakperk.mobile" or
+            not IsMatch(log.body, "^(app_cold_start|startup_ready|startup_failure|shell_destination_selected|paper_page_committed|paper_stage_committed|feed_prefetch_requested|feed_prefetch_succeeded|feed_prefetch_failed|feed_prefetch_deduplicated|next_paper_cache_hit|next_paper_cache_miss|feed_blank_card|feed_cache_rows|feed_cache_bytes|feed_time_to_readable_ms|save_requested|save_synced|save_failed|library_outbox_backlog|auth_started|auth_completed|auth_cancelled|comment_sheet_opened|comment_created|comment_pending|comment_rejected|comment_reported|user_reported|account_deletion_requested|account_deletion_accepted|account_deletion_unavailable|account_deletion_local_cleanup_failed|http_request_completed|mobile_error)$")
+      transform/redact-backend-log-body:
+        # Filelog messages are not trusted merely because they came from a
+        # selected Pakperk container. Preserve only the exact content-free
+        # terminal ledger signal used by the reviewed alert contract, with its
+        # exact severity and Rust target. Every other body becomes one marker.
+        error_mode: propagate
+        log_statements:
+          - set(log.body, "pakperk_backend_log") where not IsString(log.body)
+          - >-
+            set(log.body, "pakperk_backend_log") where
+            log.body != "external deletion ledger failed verification" or
+            log.attributes["log.severity_text"] != "ERROR" or
+            log.attributes["code.namespace"] != "account_deletion::worker"
       resource/backend-defaults:
         attributes:
-          - { key: service.name, value: pakperk-backend-stdout, action: insert }
-          - { key: deployment.environment.name, value: {{ .Values.environment | quote }}, action: insert }
+          - { key: service.name, value: pakperk-backend-stdout, action: upsert }
+          - { key: deployment.environment.name, value: {{ .Values.environment | quote }}, action: upsert }
       batch:
         send_batch_size: 512
         send_batch_max_size: 1024
@@ -251,18 +286,21 @@ data:
         sending_queue:
           enabled: true
           queue_size: 2048
+          storage: file_storage/exporter_queue
         retry_on_failure:
           enabled: true
           initial_interval: 5s
           max_interval: 30s
-          max_elapsed_time: 300s
+          # Retain queued records until delivery or bounded queue saturation;
+          # a transient outage must not expire the one-shot ledger alert.
+          max_elapsed_time: 0s
     service:
       telemetry:
         logs:
           level: warn
         metrics:
           level: none
-      extensions: [health_check, file_storage/filelog]
+      extensions: [health_check, file_storage/filelog, file_storage/exporter_queue]
       pipelines:
         traces:
           receivers: [otlp]
@@ -272,9 +310,13 @@ data:
           receivers: [otlp]
           processors: [memory_limiter, resource/redact, attributes/redact, batch]
           exporters: [otlp]
-        logs:
-          receivers: [otlp, filelog/pakperk_backend]
-          processors: [memory_limiter, resource/redact, attributes/redact, resource/backend-defaults, batch]
+        logs/otlp:
+          receivers: [otlp]
+          processors: [memory_limiter, resource/redact, attributes/redact, transform/redact-otlp-log-body, batch]
+          exporters: [otlp]
+        logs/backend-stdout:
+          receivers: [filelog/pakperk_backend]
+          processors: [memory_limiter, resource/redact, attributes/redact, resource/backend-defaults, transform/redact-backend-log-body, batch]
           exporters: [otlp]
 ---
 apiVersion: apps/v1
@@ -339,6 +381,7 @@ spec:
             - { name: config, mountPath: /conf, readOnly: true }
             - { name: tmp, mountPath: /tmp }
             - { name: filelog-state, mountPath: /var/lib/otelcol/file-storage }
+            - { name: exporter-queue-state, mountPath: /var/lib/otelcol/exporter-queue }
             - { name: pod-logs, mountPath: /var/log/pods, readOnly: true }
       volumes:
         - name: config
@@ -346,6 +389,8 @@ spec:
         - name: tmp
           emptyDir: { sizeLimit: 64Mi }
         - name: filelog-state
+          emptyDir: { sizeLimit: 128Mi }
+        - name: exporter-queue-state
           emptyDir: { sizeLimit: 128Mi }
         - name: pod-logs
           hostPath: { path: /var/log/pods, type: Directory }

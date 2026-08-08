@@ -25,6 +25,12 @@ class MobileAcceptanceWorkflowTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.validate_source(SOURCE.replace(original, replacement, 1))
 
+    def assert_execution_boundary_rejected(
+        self, source: str, message: str
+    ) -> None:
+        with self.assertRaisesRegex(RuntimeError, message):
+            validator._validate_candidate_execution_boundary(source)
+
     def test_checked_in_workflow_passes(self) -> None:
         validator.validate()
 
@@ -132,6 +138,18 @@ class MobileAcceptanceWorkflowTests(unittest.TestCase):
             "      PATH: /usr/local/bin:/usr/bin:/bin\n",
         )
 
+    def test_validator_digest_must_come_from_protected_environment(self) -> None:
+        self.assert_tamper_rejected(
+            "      VALIDATOR_SHA256: ${{ vars.PAKPERK_MOBILE_ACCEPTANCE_VALIDATOR_SHA256 }}\n",
+            "      VALIDATOR_SHA256: ${{ inputs.source_revision }}\n",
+        )
+
+    def test_bash_startup_file_cannot_point_into_candidate_checkout(self) -> None:
+        self.assert_tamper_rejected(
+            "      BASH_ENV: /dev/null\n",
+            "      BASH_ENV: ${{ github.workspace }}/pretrust.sh\n",
+        )
+
     def test_staging_coordinates_cannot_return_to_mutable_variables(self) -> None:
         self.assert_tamper_rejected(
             "      DRIVER_SHA256: ${{ vars.PAKPERK_MOBILE_ACCEPTANCE_DRIVER_SHA256 }}\n",
@@ -148,8 +166,8 @@ class MobileAcceptanceWorkflowTests(unittest.TestCase):
 
     def test_staging_config_source_cannot_be_replaced(self) -> None:
         self.assert_tamper_rejected(
-            'python3 -I - mobile/config/staging.json "$GITHUB_ENV"',
-            'python3 -I - /tmp/staging.json "$GITHUB_ENV"',
+            "            mobile/config/staging.json \\\n",
+            "            /tmp/staging.json \\\n",
         )
 
     def test_staging_config_no_follow_read_cannot_be_weakened(self) -> None:
@@ -157,6 +175,61 @@ class MobileAcceptanceWorkflowTests(unittest.TestCase):
             '          if hasattr(os, "O_NOFOLLOW"):\n'
             "              flags |= os.O_NOFOLLOW\n",
             "",
+        )
+
+    def test_staging_control_character_guard_cannot_be_removed(self) -> None:
+        self.assert_tamper_rejected(
+            "                  or any(ord(character) < 0x20 or ord(character) == 0x7f for character in value)\n",
+            "",
+        )
+
+    def test_github_environment_file_poisoning_is_rejected(self) -> None:
+        marker = (
+            "          PY\n\n"
+            "      - name: Verify protected macOS runner, pinned tools, and signed candidate manifest\n"
+        )
+        self.assertIn(marker, SOURCE)
+        tampered = SOURCE.replace(
+            marker,
+            "          PY\n"
+            '          echo "BASH_ENV=$GITHUB_WORKSPACE/pretrust.sh" >>"$GITHUB_ENV"\n\n'
+            "      - name: Verify protected macOS runner, pinned tools, and signed candidate manifest\n",
+            1,
+        )
+        self.assert_execution_boundary_rejected(tampered, "data-only")
+
+    def test_background_process_persistence_is_rejected(self) -> None:
+        marker = (
+            "          PY\n\n"
+            "      - name: Verify protected macOS runner, pinned tools, and signed candidate manifest\n"
+        )
+        self.assertIn(marker, SOURCE)
+        tampered = SOURCE.replace(
+            marker,
+            "          PY\n"
+            "          /usr/bin/python3 mobile/pretrust.py &\n\n"
+            "      - name: Verify protected macOS runner, pinned tools, and signed candidate manifest\n",
+            1,
+        )
+        self.assert_execution_boundary_rejected(tampered, "background process")
+
+    def test_candidate_authored_python_execution_is_rejected(self) -> None:
+        marker = '          if [[ "$(/usr/bin/uname -s)" != "Darwin" ]]; then\n'
+        self.assertIn(marker, SOURCE)
+        tampered = SOURCE.replace(
+            marker,
+            "          /usr/bin/python3 mobile/pretrust.py\n" + marker,
+            1,
+        )
+        self.assert_execution_boundary_rejected(tampered, "candidate-authored code")
+
+    def test_protected_secrets_cannot_be_bound_before_driver_step(self) -> None:
+        self.assert_tamper_rejected(
+            "          PAKPERK_BUILD_NUMBER: ${{ steps.source.outputs.build_number }}\n"
+            "        run: |\n",
+            "          PAKPERK_BUILD_NUMBER: ${{ steps.source.outputs.build_number }}\n"
+            "          PRETRUST_SECRET: ${{ secrets.PAKPERK_PRIMARY_TEST_PASSWORD }}\n"
+            "        run: |\n",
         )
 
     def test_source_gate_early_success_exit_is_rejected(self) -> None:
@@ -167,9 +240,9 @@ class MobileAcceptanceWorkflowTests(unittest.TestCase):
 
     def test_driver_gate_early_success_exit_is_rejected(self) -> None:
         self.assert_tamper_rejected(
-            "        run: |\n          driver=/opt/pakperk/bin/pakperk-mobile-acceptance-driver\n",
+            '        run: |\n          if [[ "$(/usr/bin/uname -s)" != "Darwin" ]]; then\n',
             "        run: |\n          exit 0\n"
-            "          driver=/opt/pakperk/bin/pakperk-mobile-acceptance-driver\n",
+            '          if [[ "$(/usr/bin/uname -s)" != "Darwin" ]]; then\n',
         )
 
     def test_package_early_success_exit_is_rejected(self) -> None:
@@ -209,8 +282,14 @@ class MobileAcceptanceWorkflowTests(unittest.TestCase):
 
     def test_candidate_manifest_validation_cannot_be_removed(self) -> None:
         self.assert_tamper_rejected(
-            "validate_mobile_acceptance_evidence.py validate-candidate",
-            "validate_mobile_acceptance_evidence.py --help",
+            '/usr/bin/python3 -I "$validator" validate-candidate',
+            '/usr/bin/python3 -I "$validator" --help',
+        )
+
+    def test_candidate_validator_cannot_be_replaced_by_checkout_script(self) -> None:
+        self.assert_tamper_rejected(
+            '/usr/bin/python3 -I "$validator" validate-candidate',
+            "/usr/bin/python3 -I scripts/validate_mobile_acceptance_evidence.py validate-candidate",
         )
 
     def test_candidate_manifest_root_cannot_be_changed(self) -> None:
@@ -311,8 +390,12 @@ class MobileAcceptanceWorkflowTests(unittest.TestCase):
 
     def test_isolated_python_cannot_be_weakened(self) -> None:
         self.assert_tamper_rejected(
-            "python3 -I scripts/validate_mobile_acceptance_evidence.py validate-and-package",
-            "python3 scripts/validate_mobile_acceptance_evidence.py validate-and-package",
+            "/usr/bin/python3 -I \\\n"
+            "            /opt/pakperk/bin/pakperk-mobile-acceptance-validator.py \\\n"
+            "            validate-and-package",
+            "/usr/bin/python3 \\\n"
+            "            /opt/pakperk/bin/pakperk-mobile-acceptance-validator.py \\\n"
+            "            validate-and-package",
         )
 
     def test_full_workspace_cleanliness_cannot_be_weakened(self) -> None:
@@ -323,8 +406,10 @@ class MobileAcceptanceWorkflowTests(unittest.TestCase):
 
     def test_validator_failure_cannot_be_ignored(self) -> None:
         self.assert_tamper_rejected(
-            "validate_mobile_acceptance_evidence.py validate-and-package \\\n",
-            "validate_mobile_acceptance_evidence.py validate-and-package || true \\\n",
+            "            validate-and-package \\\n"
+            '            "$evidence" "$archive" \\\n',
+            "            validate-and-package \\\n"
+            '            "$evidence" "$archive" || true \\\n',
         )
 
     def test_archive_digest_output_cannot_be_removed(self) -> None:
@@ -333,10 +418,24 @@ class MobileAcceptanceWorkflowTests(unittest.TestCase):
             "",
         )
 
+    def test_packaged_tooling_manifest_must_bind_validator_digest(self) -> None:
+        self.assert_tamper_rejected(
+            '            --validator-sha256 "$VALIDATOR_SHA256" \\\n',
+            "",
+        )
+
+    def test_archive_verifier_must_compare_validator_digest(self) -> None:
+        self.assert_tamper_rejected(
+            '            --expected-validator-sha256 "$VALIDATOR_SHA256" \\\n',
+            "",
+        )
+
     def test_pre_upload_archive_verifier_cannot_be_removed(self) -> None:
         self.assert_tamper_rejected(
-            "python3 -I scripts/validate_mobile_acceptance_evidence.py verify-archive",
-            "python3 -I scripts/validate_mobile_acceptance_evidence.py --help",
+            "            verify-archive \\\n"
+            '            "$archive" \\\n',
+            "            --help \\\n"
+            '            "$archive" \\\n',
         )
 
     def test_upload_cannot_run_without_archive_verification(self) -> None:

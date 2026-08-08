@@ -2,7 +2,7 @@
 
 **Status:** authoritative implementation plan and repository status entrypoint
 **Milestone:** Production v0.0
-**Last synchronized:** 2026-08-02
+**Last synchronized:** 2026-08-08
 
 This document is the documentation entrypoint for the Production v0.0 plan.
 The complete normative plan is maintained at the repository root in
@@ -157,7 +157,7 @@ complete, and bound policy acceptance to the exact documents in each signed
 build. CI now parses every shell script independently rather than relying on
 Bash's multi-argument behavior, and the OpenAPI compatibility gate rejects
 directional schema, response, callback, webhook, and serialization regressions.
-The final current-tree canonical run passed Flutter analysis and all 601 locked
+The final current-tree canonical run passed Flutter analysis and all 610 locked
 tests, every Android debug flavor, every iOS simulator flavor, strict artifact
 inspection, the fresh-database Rust workspace, 31 browser/site tests, Helm,
 SBOM and release-contract validators, and the opt-in Collector export E2E. The

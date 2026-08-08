@@ -603,6 +603,8 @@ class PakPerkRouter extends ConsumerWidget {
 class PakPerkAppShell extends ConsumerWidget {
   const PakPerkAppShell({required this.navigationShell, super.key});
 
+  static const navigationRailBreakpoint = 600.0;
+
   final StatefulNavigationShell navigationShell;
 
   @override
@@ -628,17 +630,60 @@ class PakPerkAppShell extends ConsumerWidget {
             }
           });
         }
+        void selectDestination(int index) => _selectDestination(
+          context,
+          ref,
+          index,
+          visibleBranchIndex: visibleBranchIndex,
+        );
+        final usesNavigationRail =
+            MediaQuery.sizeOf(context).width >= navigationRailBreakpoint;
+        if (usesNavigationRail) {
+          final textDirection = Directionality.of(context);
+          return Scaffold(
+            body: Row(
+              // Paint the nested Navigator before the rail so an active
+              // route's BlockSemantics never hides primary navigation. The
+              // reversed flex direction keeps the rail on the leading edge.
+              textDirection: textDirection == TextDirection.ltr
+                  ? TextDirection.rtl
+                  : TextDirection.ltr,
+              children: [
+                Expanded(child: navigationShell),
+                const VerticalDivider(width: 1, thickness: 1),
+                SafeArea(
+                  left: textDirection == TextDirection.ltr,
+                  right: textDirection == TextDirection.rtl,
+                  child: NavigationRail(
+                    key: const ValueKey<String>('primary-navigation'),
+                    selectedIndex: visibleBranchIndex,
+                    labelType: NavigationRailLabelType.all,
+                    groupAlignment: -1,
+                    onDestinationSelected: selectDestination,
+                    destinations: const [
+                      NavigationRailDestination(
+                        icon: Icon(Icons.auto_stories_outlined),
+                        selectedIcon: Icon(Icons.auto_stories),
+                        label: Text('Read'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.person_outline),
+                        selectedIcon: Icon(Icons.person),
+                        label: Text('You'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
         return Scaffold(
           body: navigationShell,
           bottomNavigationBar: NavigationBar(
             key: const ValueKey<String>('primary-navigation'),
             selectedIndex: visibleBranchIndex,
-            onDestinationSelected: (index) => _selectDestination(
-              context,
-              ref,
-              index,
-              visibleBranchIndex: visibleBranchIndex,
-            ),
+            onDestinationSelected: selectDestination,
             destinations: const [
               NavigationDestination(
                 icon: Icon(Icons.auto_stories_outlined),

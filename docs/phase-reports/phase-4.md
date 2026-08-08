@@ -93,8 +93,12 @@ pager, so Abstract, Introduction, and Connections share the same state. A guest
 save retains one pending action through PKCE; incomplete profile onboarding is
 not required for save. Failure retains an explicit retry path, while system
 back clears the pending intent. The You branch provides an offline-first To
-Read list, newest-saved ordering, Read navigation, refresh, remove/undo, empty,
-offline, pending, and error states.
+Read list, Read navigation, refresh, remove/undo, empty, offline, pending, and
+error states. The Section 2.4 broad-launch enhancement added on 2026-08-03
+keeps newest-saved as the default while adding local newest/oldest/title
+sorting, title/author/arXiv/category search, and an exact category filter. The
+controls operate only on the already-loaded account projection, so cached and
+offline lists neither issue a new request nor lose pending state.
 
 ## Checks and acceptance evidence
 
@@ -151,6 +155,10 @@ delayed 401 replay, and the cold-restore A→B identity race.
   route-registration tests.
 - **Library performs no preparation:** accepted structurally, by service/API
   tests, and by the unchanged live job/stage count.
+- **Saved-paper sort/filter:** focused widget tests cover deterministic
+  newest/oldest/title ordering, author search, category filtering, no-result
+  recovery, live result semantics, 48-pixel controls, 200% text reflow, and
+  `ActiveLibraryScope` isolation of query, category, sort, and scroll state.
 
 ## Known risks and later-phase boundaries
 

@@ -358,7 +358,19 @@ final class _IntegerRangePolicy extends _AttributePolicy {
 
 /// Content-free error handed to an exporter instead of the original object.
 final class TelemetryErrorCategory implements Exception {
-  const TelemetryErrorCategory(this.category);
+  factory TelemetryErrorCategory(String category) => TelemetryErrorCategory._(
+    _allowed.contains(category) ? category : 'unexpected',
+  );
+
+  const TelemetryErrorCategory._(this.category);
+
+  static const _allowed = {
+    'timeout',
+    'format',
+    'state',
+    'argument',
+    'unexpected',
+  };
 
   final String category;
 

@@ -17,6 +17,7 @@ import validate_mobile_acceptance_evidence as validator
 
 
 SOURCE_REVISION = "a" * 40
+VALIDATOR_SHA256 = "9" * 64
 DRIVER_SHA256 = "b" * 64
 APP_VERSION = "0.2.0"
 BUILD_NUMBER = "2"
@@ -38,6 +39,19 @@ NOT_BEFORE = "2026-08-02T01:00:00Z"
 VALIDATED_AT = dt.datetime(2026, 8, 2, 2, 0, 30, tzinfo=dt.timezone.utc)
 RUNNER_SESSION_IDENTITY = "7" * 64
 RUNNER_HOST_IDENTITY = "8" * 64
+
+
+def valid_source_binding_payload() -> dict[str, object]:
+    return {
+        "schema": 1,
+        "source_revision": SOURCE_REVISION,
+        "environment": "staging",
+        "app_version": APP_VERSION,
+        "build_number": BUILD_NUMBER,
+        "api_origin": API_ORIGIN,
+        "oidc_issuer": OIDC_ISSUER,
+        "oidc_client_id": OIDC_CLIENT_ID,
+    }
 
 
 def valid_provenance_payload() -> dict[str, object]:
@@ -399,6 +413,90 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
     def test_complete_evidence_passes(self) -> None:
         self.validate(valid_payload())
 
+    def test_owner_only_canonical_source_binding_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "source-binding.json"
+            path.write_bytes(
+                validator.canonical_json_bytes(valid_source_binding_payload())
+            )
+            path.chmod(0o600)
+            self.assertEqual(
+                validator.load_source_binding(
+                    path,
+                    source_revision=SOURCE_REVISION,
+                    app_version=APP_VERSION,
+                    build_number=BUILD_NUMBER,
+                ),
+                {
+                    "api_origin": API_ORIGIN,
+                    "oidc_issuer": OIDC_ISSUER,
+                    "oidc_client_id": OIDC_CLIENT_ID,
+                },
+            )
+
+    def test_source_binding_rejects_environment_file_control_injection(self) -> None:
+        for control in ("\r", "\n", "\t"):
+            with self.subTest(control=repr(control)):
+                payload = valid_source_binding_payload()
+                payload["oidc_issuer"] = (
+                    f"{OIDC_ISSUER}{control}BASH_ENV=/tmp/candidate-hook"
+                )
+                with tempfile.TemporaryDirectory() as directory:
+                    path = pathlib.Path(directory) / "source-binding.json"
+                    path.write_bytes(validator.canonical_json_bytes(payload))
+                    path.chmod(0o600)
+                    with self.assertRaisesRegex(
+                        validator.EvidenceError, "bounded string"
+                    ):
+                        validator.load_source_binding(
+                            path,
+                            source_revision=SOURCE_REVISION,
+                            app_version=APP_VERSION,
+                            build_number=BUILD_NUMBER,
+                        )
+
+    def test_source_binding_rejects_noncanonical_or_non_private_file(self) -> None:
+        raw_bytes = validator.canonical_json_bytes(valid_source_binding_payload())
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            path = root / "source-binding.json"
+            path.write_bytes(raw_bytes)
+            path.chmod(0o644)
+            with self.assertRaisesRegex(validator.EvidenceError, "owner-only"):
+                validator.load_source_binding(
+                    path,
+                    source_revision=SOURCE_REVISION,
+                    app_version=APP_VERSION,
+                    build_number=BUILD_NUMBER,
+                )
+            path.chmod(0o600)
+            path.write_bytes(raw_bytes.replace(b'":', b'": ', 1))
+            with self.assertRaisesRegex(validator.EvidenceError, "canonical"):
+                validator.load_source_binding(
+                    path,
+                    source_revision=SOURCE_REVISION,
+                    app_version=APP_VERSION,
+                    build_number=BUILD_NUMBER,
+                )
+
+    def test_source_binding_rejects_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            target = root / "target.json"
+            target.write_bytes(
+                validator.canonical_json_bytes(valid_source_binding_payload())
+            )
+            target.chmod(0o600)
+            link = root / "source-binding.json"
+            link.symlink_to(target)
+            with self.assertRaisesRegex(validator.EvidenceError, "owner-only"):
+                validator.load_source_binding(
+                    link,
+                    source_revision=SOURCE_REVISION,
+                    app_version=APP_VERSION,
+                    build_number=BUILD_NUMBER,
+                )
+
     def test_candidate_manifest_source_mismatch_fails(self) -> None:
         payload = valid_candidate_payload()
         payload["source_revision"] = "9" * 40
@@ -694,6 +792,7 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
                 candidate_id=CANDIDATE_ID,
                 provenance_id=PROVENANCE_ID,
                 runner_session_id=RUNNER_SESSION_ATTESTATION_ID,
+                validator_sha256=VALIDATOR_SHA256,
                 driver_sha256=DRIVER_SHA256,
                 app_version=APP_VERSION,
                 build_number=BUILD_NUMBER,
@@ -710,23 +809,44 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
                 validated_at=VALIDATED_AT,
                 require_protected_candidate_path=False,
             )
-            validator.verify_archive(archive_path, archive_digest)
+            validator.verify_archive(
+                archive_path,
+                archive_digest,
+                expected_validator_sha256=VALIDATOR_SHA256,
+                expected_driver_sha256=DRIVER_SHA256,
+            )
             evidence_path.write_bytes(b"changed after validated bytes were captured\n")
             self.assertEqual(stat.S_IMODE(archive_path.stat().st_mode), 0o400)
             with tarfile.open(archive_path, "r") as archive:
                 self.assertEqual(
                     archive.getnames(),
-                    [validator.EVIDENCE_ARCHIVE_NAME, validator.CHECKSUM_ARCHIVE_NAME],
+                    [
+                        validator.EVIDENCE_ARCHIVE_NAME,
+                        validator.TOOLING_ARCHIVE_NAME,
+                        validator.CHECKSUM_ARCHIVE_NAME,
+                    ],
                 )
                 packaged = archive.extractfile(validator.EVIDENCE_ARCHIVE_NAME)
+                tooling = archive.extractfile(validator.TOOLING_ARCHIVE_NAME)
                 checksum = archive.extractfile(validator.CHECKSUM_ARCHIVE_NAME)
-                assert packaged is not None and checksum is not None
+                assert (
+                    packaged is not None
+                    and tooling is not None
+                    and checksum is not None
+                )
+                tooling_bytes = validator.tooling_manifest_bytes(
+                    validator_sha256=VALIDATOR_SHA256,
+                    driver_sha256=DRIVER_SHA256,
+                )
                 self.assertEqual(packaged.read(), evidence_bytes)
+                self.assertEqual(tooling.read(), tooling_bytes)
                 self.assertEqual(
                     checksum.read(),
                     (
                         f"{hashlib.sha256(evidence_bytes).hexdigest()}  "
                         f"{validator.EVIDENCE_ARCHIVE_NAME}\n"
+                        f"{hashlib.sha256(tooling_bytes).hexdigest()}  "
+                        f"{validator.TOOLING_ARCHIVE_NAME}\n"
                     ).encode("ascii"),
                 )
 
@@ -755,6 +875,7 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
                     candidate_id=CANDIDATE_ID,
                     provenance_id=PROVENANCE_ID,
                     runner_session_id=RUNNER_SESSION_ATTESTATION_ID,
+                    validator_sha256=VALIDATOR_SHA256,
                     driver_sha256=DRIVER_SHA256,
                     app_version=APP_VERSION,
                     build_number=BUILD_NUMBER,
@@ -777,14 +898,44 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
         evidence_bytes = validator.canonical_json_bytes(valid_payload())
         with tempfile.TemporaryDirectory() as directory:
             archive_path = pathlib.Path(directory) / "evidence.tar"
-            archive_digest = validator._publish_archive(archive_path, evidence_bytes)
+            tooling_bytes = validator.tooling_manifest_bytes(
+                validator_sha256=VALIDATOR_SHA256,
+                driver_sha256=DRIVER_SHA256,
+            )
+            archive_digest = validator._publish_archive(
+                archive_path, evidence_bytes, tooling_bytes
+            )
             archive_path.chmod(0o600)
             tampered = bytearray(archive_path.read_bytes())
             tampered[0] ^= 1
             archive_path.write_bytes(tampered)
             archive_path.chmod(0o400)
             with self.assertRaisesRegex(validator.EvidenceError, "digest"):
-                validator.verify_archive(archive_path, archive_digest)
+                validator.verify_archive(
+                    archive_path,
+                    archive_digest,
+                    expected_validator_sha256=VALIDATOR_SHA256,
+                    expected_driver_sha256=DRIVER_SHA256,
+                )
+
+    def test_archive_verifier_rejects_wrong_tool_identity(self) -> None:
+        evidence_bytes = validator.canonical_json_bytes(valid_payload())
+        with tempfile.TemporaryDirectory() as directory:
+            archive_path = pathlib.Path(directory) / "evidence.tar"
+            tooling_bytes = validator.tooling_manifest_bytes(
+                validator_sha256="8" * 64,
+                driver_sha256=DRIVER_SHA256,
+            )
+            archive_digest = validator._publish_archive(
+                archive_path, evidence_bytes, tooling_bytes
+            )
+            with self.assertRaisesRegex(validator.EvidenceError, "tooling SHA-256"):
+                validator.verify_archive(
+                    archive_path,
+                    archive_digest,
+                    expected_validator_sha256=VALIDATOR_SHA256,
+                    expected_driver_sha256=DRIVER_SHA256,
+                )
 
 
 if __name__ == "__main__":

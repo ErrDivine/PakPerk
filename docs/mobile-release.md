@@ -150,11 +150,20 @@ because the simulator filesystem does not expose iOS data-protection classes.
 
 Never commit signing material or substitute a debug/personal identity.
 
-The manual `signed-mobile-release` workflow binds its single job to the chosen
-protected GitHub environment. Dispatch it from `main` with the reviewed full
-commit SHA; the job rejects any checkout that is not that exact lowercase SHA
-or is not reachable from `origin/main` before it reads protected inputs.
-Configure these environment secrets:
+The manual `signed-mobile-release` workflow uses separate fresh-runner trust
+domains. A credential-free preparation job accepts only the reviewed full
+lowercase `main` commit, emits and immutably uploads the configuration/evidence
+binding before any candidate executable runs, and never binds a protected
+environment. Independent Android and iOS signer jobs each re-download and
+rederive that exact binding before exposing only their own signing-secret
+family. A fresh credential-free job validates and assembles the two results
+into the canonical signed candidate and provenance. Store-client preparation
+is separately uncredentialed; fresh no-checkout Android and iOS upload jobs
+receive only their own store credential, and an always-run credential-free
+finalizer retains the closed per-platform result before failing any missing or
+unsuccessful requested upload. Dispatch from `main` with the reviewed full
+commit SHA; every source boundary rejects an exact-checkout or `origin/main`
+ancestry mismatch. Configure these environment secrets:
 
 - Android build signing: `PAKPERK_ANDROID_KEYSTORE_BASE64`,
   `PAKPERK_ANDROID_STORE_PASSWORD`, `PAKPERK_ANDROID_KEY_ALIAS`, and
@@ -173,9 +182,12 @@ Configure these environment secrets:
   `PAKPERK_APP_STORE_CONNECT_PRIVATE_KEY_BASE64`.
 
 Environment reviewers must independently read the highest uploaded build in
-each store and enter it in the workflow inputs. The job requires checked-in
-build `2` to be greater than both values; it cannot infer private store history
-when upload credentials are intentionally withheld.
+each store and enter it in the workflow inputs. The credential-free preparation
+gate requires checked-in build `2` to be greater than both values; it cannot
+infer private store history when upload credentials are intentionally withheld.
+The workflow always signs both platforms. `upload_to_stores=true` requests both
+the Play-internal and TestFlight uploads; there is no single-platform shortcut
+that can silently omit one requested outcome.
 
 Android release builds require all of:
 
@@ -214,6 +226,199 @@ flutter build ipa --release --flavor prod --dart-define-from-file=config/prod.js
 Before either upload, compare `0.2.0+2` with the highest uploaded store version
 and build number. Increment the checked-in package version if it is not
 strictly newer; store history is external and cannot be inferred from Git.
+
+## Protected staged store rollout
+
+The signed-candidate workflow stops at Google Play's `internal` track and
+TestFlight. Public production mutation is a separate manual workflow,
+`protected-mobile-store-rollout`, bound to the fixed `production-store` GitHub
+environment. Configure that environment with required reviewers, restrict it to
+`main`, and provide the four store credentials listed above with only the store
+permissions needed to promote the exact Play release and manage the exact App
+Store version. A YAML environment name is not evidence that those protections
+were configured.
+
+Before exposing store credentials, the protected gate must keep two identities
+separate. An uncredentialed bootstrap checks out trusted tooling at the reviewed
+`github.workflow_sha`; the immutable candidate source is a data-only input and
+must never supply credentialed executable code. The bootstrap produces an
+immutable store-client/control closure. Every executable in that closure has a
+workflow-literal SHA-256 that the fresh Android and iOS mutation jobs verify
+before use; those jobs perform no checkout, receive no candidate-provided
+executable, clear shell/language/loader/proxy injection surfaces, and expose
+only the credential for their own platform. Before any candidate artifact is
+accepted or store credential is materialized, the bootstrap queries GitHub's
+Actions API for the supplied run ID. It requires the exact repository,
+`signed-mobile-release` workflow path, `workflow_dispatch` event, `main` branch,
+source SHA, successful completed status and run attempt, plus the exact
+all-success eight-job surface: credential-free preparation, isolated Android
+and iOS signers, `production signed candidate`, uncredentialed store-client
+bootstrap, isolated Android and iOS uploads, and the credential-free signed-
+release finalizer. It then requires one non-expired, attempt-bound candidate,
+handoff, and signed-release-outcome artifact with distinct server-issued IDs
+and SHA-256 digests, and downloads those artifacts by immutable ID (with digest
+mismatch as an error). The exact artifact names are
+`pakperk-production-<version>-<build>-<sha>-<run-id>-<attempt>` and
+`pakperk-production-store-handoff-<version>-<build>-<sha>-<run-id>-<attempt>`,
+plus
+`pakperk-production-store-outcome-<version>-<build>-<sha>-<run-id>-<attempt>`.
+The handoff
+is created only after Play independently reports the exact version code as a
+completed singleton on `internal` and returns the server-side bundle SHA-256
+matching the candidate AAB; App Store Connect must report the exact iOS
+app/build/pre-release-version relationship in `VALID` processing state and a
+single completed `buildUpload` whose direct `build` relationship is that Build
+ID. Its direct `assetFile` must be a completed `ASSET` with UTI
+`com.apple.ipa`, the candidate IPA's exact byte size, and a
+`sourceFileChecksums.file` SHA-256 equal to the candidate IPA digest. The
+gate validates the authenticated canonical Actions record, the
+canonical candidate, provenance, and handoff bytes, the candidate and
+provenance `sha256:` content IDs, production/strict flavor,
+source/version/build/application identities, artifact signer bindings,
+repository/workflow/job/stage, signed-release run ID and run attempt, local AAB
+and IPA hashes, and both authoritative upload readbacks. The handoff uses a
+distinct `store-handoff-v1:sha256:` content ID. The signed-release
+source must equal its recorded workflow revision. A typed content ID without
+the corresponding downloaded bytes, a control closure that differs from its
+literal workflow hashes, a trusted bootstrap checkout that differs from
+`github.workflow_sha`, or candidate-authored code receiving store credentials
+blocks the gate.
+
+First classify each selected platform as an update or its first public
+production version from the independent store history. Do not infer that state
+from Git. The protected staged workflow is update-only. For a normal update:
+
+1. Dispatch `signed-mobile-release` for `production` with
+   `upload_to_stores=true`. Wait for the exact AAB to reach Play `internal` and
+   the exact IPA/build to finish TestFlight processing. Retain its run ID,
+   candidate ID, provenance ID, verified store-handoff ID, and
+   protected-environment approval. A successful upload process without the
+   verified handoff is not rollout-eligible.
+   Immediately before each binary send, the workflow fsyncs an owner-only
+   attempt journal bound to the candidate/provenance IDs, exact AAB or IPA
+   digest and byte size, destination, run attempt, source, version, and build.
+   The iOS verification must match both values from that pre-send journal and
+   retain the App Store BuildUpload and BuildUploadFile resource IDs. It retains an
+   always-run `mobile-store-upload-attempt-<run-id>-<attempt>` artifact. A
+   journal without authoritative store readback is
+   `unknown_reconcile_required`, even when the upload client lost only its
+   success response.
+2. Reconcile the two portal records with the signed manifest. Confirm the
+   privacy, age-rating, reviewer-flow, physical-device, performance, crash,
+   legal, and safety gates for this exact build. For Play, identify an eligible
+   prior completed production release that can remain the fallback throughout
+   the update; no prior fallback means this is a first publication and the
+   staged workflow is prohibited. For iOS `start`, identify the exact prior
+   public version; the trusted App Store Connect client must resolve exactly
+   one matching iOS record in current
+   [`appVersionState`](https://developer.apple.com/documentation/appstoreconnectapi/appversionstate)
+   `READY_FOR_DISTRIBUTION`, and the exact target version must be
+   `PREPARE_FOR_SUBMISSION` or `READY_FOR_REVIEW`. No matching prior public
+   version means this is a first publication and the staged workflow refuses
+   it.
+3. Dispatch `protected-mobile-store-rollout` from `main` with operation
+   `start`, the exact signed-release identities (including the store-handoff
+   ID), platform scope, a sanitized
+   change ID, and confirmation `MUTATE_PRODUCTION_MOBILE_STORES`. Android
+   `start` also requires `android_previous_production_version_code`, expected
+   fraction `none`, and target fraction `0.01`; iOS `start` requires
+   `ios_previous_public_version`. Android promotes only that version code from
+   `internal` to a one-percent `production` rollout. After the exact App Store
+   update preflight, iOS submits only that TestFlight build for review with
+   automatic phased release enabled, then requires the exact target phased
+   resource to be `INACTIVE` before it records submission success.
+4. Keep Android at one percent for the approved observation window. Before
+   every `advance`, require no release-blocking alert, the exact-candidate
+   performance checks, at least 99.5% crash-free sessions, and release-owner
+   approval. The reviewed Android fractions are `0.02`, `0.05`, `0.10`,
+   `0.20`, and `0.50`; `complete` is the only operation that accepts `1.00`.
+   Apple's seven-day percentage progression is automatic, so an iOS
+   `advance` observes and retains the current phased-release state rather than
+   forcing a percentage; an `advance` succeeds only from exact `ACTIVE`, while
+   pause/complete are re-observed after the API mutation. Apple documents the
+   phased update schedule and pause
+   behavior in [App Store Connect Help](https://developer.apple.com/help/app-store-connect/update-your-app/release-a-version-update-in-phases/).
+5. Immediately before each live commit/PATCH/submission, write and `fsync` an
+   owner-only attempt journal containing the exact reviewed store pre-state and
+   `unknown_reconcile_required`. Only an authoritative postflight may replace
+   that classification in the receipt with `succeeded_verified`; any error
+   after the send begins remains `unknown_reconcile_required` until an operator
+   reconciles the portal. Other closed classifications are `not_attempted`,
+   `rejected_pre_mutation`, and `proven_not_committed`. In a combined rollout,
+   the receipt requires the canonical journal and postflight to cross-match
+   their pre-state/resource identities. A result without that journal, or with
+   duplicate/non-finite/non-canonical JSON, remains
+   `unknown_reconcile_required`. Apple is not attempted unless Android has this
+   fully journal-bound `succeeded_verified` state, not merely a successful step
+   exit. Upload the receipt before the workflow reports a final
+   failure, and reconcile every unknown state before any retry.
+6. Reconcile every platform outcome with the stores' independent audit/history
+   record. Each content-addressed record binds trusted-tooling revision,
+   candidate source, signed candidate/provenance/handoff, authenticated
+   signed-release run/job/artifact IDs and digests, workflow revision,
+   version/build, requested transition, sanitized change ID,
+   pre/post state, and result. A workflow receipt is not store approval,
+   propagation, crash evidence, or proof that an environment reviewer actually
+   inspected the portal.
+
+The rollout workflow enforces that sequence with exactly four trust domains:
+an uncredentialed bootstrap, an Android-only-secret mutation job, an
+iOS-only-secret mutation job, and a credential-free `always()` finalizer. For a
+`both` transition, the iOS job downloads by immutable artifact ID and validates
+the Android outcome and journal as `succeeded_verified` before any Apple
+mutation. Each selected platform cleans up its secret and uploads an immutable
+outcome even when the mutation fails; the finalizer then emits the canonical
+schema-v4 aggregate and fails on a missing or unsuccessful selected outcome.
+That aggregate binds the authenticated signed run, candidate, provenance,
+handoff, source, version/build, and requested transition, including exact
+unselected and dependency-skip semantics. GitHub's raw 64-hex upload-artifact
+digest is retained in evidence only after canonical conversion to
+`sha256:<hex>` and cross-checking against the server result.
+
+Google and Apple allow staged/phased distribution only for updates. Google
+states that a first production release is published to 100% of selected
+countries and offers no rollout-percentage control; use a separately approved
+first-Play-publication procedure, not `protected-mobile-store-rollout`. Retain
+the exact no-prior-production pre-state, candidate/provenance and signed-release
+bindings, countries, review/managed-publication state, 100% publication action
+and UTC time, observed post-state/availability, independent portal audit, and
+store-owner approval. See [Play's first-release and update procedure](https://support.google.com/googleplay/android-developer/answer/9859348).
+
+Apple phased release likewise does not apply to the first public version. For a
+first iOS publication, exclude iOS from the staged workflow and use a separately
+approved manual-release procedure. Retain the exact no-prior-public-version
+pre-state; candidate/provenance and signed-release bindings; app/version/build
+and submission identity; submission time and review outcome; the selected
+`Manually release this version` setting; the `Pending Developer Release` state
+before release; owner approval; the exact `Release This Version` action/time and
+observed post-release availability, or the deliberately withheld state and
+decision.
+That record must not claim an Apple phased state. See [App Store version release
+options](https://developer.apple.com/help/app-store-connect/manage-your-apps-availability/select-an-app-store-version-release-option/).
+When one platform is an update and the other is a first public version, scope
+the protected staged workflow only to the update and retain the separate
+first-publication evidence in the same release ledger. Fastlane's reviewed store
+operations are documented for [Google Play](https://docs.fastlane.tools/actions/upload_to_play_store/)
+and the [App Store](https://docs.fastlane.tools/actions/upload_to_app_store/).
+
+A pre-completion `halt` is terminal for that candidate in Pakperk automation.
+It halts the exact Play staged update and pauses the exact Apple phased update.
+Users who already received the Android update keep it. Apple explicitly permits
+any user to download a phased update manually even while automatic distribution
+is paused, so a pause is not an exposure cutoff. Disable affected backend
+creation/writes with the independent feature switches when that reduces harm,
+preserve safe guest reads, record the manual-download residual exposure, and fix
+forward with a higher build through every signed-candidate and protected gate.
+
+After an Android update reaches 100%, a separate protected Play full-release
+halt can make the exact eligible prior completed version available again to new
+and eligible users, but it does not downgrade devices that installed the bad
+version. Record the exact prior fallback plus Play pre/post state and owner
+decision. Google does not permit this for a track's first release. There is no
+equivalent iOS rollback; use feature switches and a higher fix-forward build.
+See [Play's full-release halt constraints](https://support.google.com/googleplay/android-developer/answer/16285429).
+Server rollback uses compatible images/feature switches and never an automatic
+SQL downgrade.
 
 ## Association and signed-artifact gate
 
@@ -304,8 +509,13 @@ required reviewers and deployment-branch restrictions on the fixed
 YAML name alone does not make an environment protected. Store the exact Flutter
 device identifier only as that environment's `PAKPERK_MOBILE_DEVICE_ID` secret;
 never pass it as a workflow-dispatch input because run metadata retains inputs
-outside log masks. Dispatch also requires an explicit full lowercase
-`source_revision` equal to the selected `main` revision and fetched
+outside log masks. This is a privacy/non-retention control, not a credential
+isolation boundary: the selected Flutter command and reviewed candidate test
+necessarily use that identifier and already have authorized access to the
+attached physical device. Do not place account credentials or a privileged
+device-management token in this fixture lane, and do not claim the raw selector
+was hidden from the candidate process. Dispatch also requires an explicit full
+lowercase `source_revision` equal to the selected `main` revision and fetched
 `origin/main` tip, plus the exact confirmation phrase. This prevents a green
 fixture probe from being attached to a different source revision.
 
@@ -313,13 +523,34 @@ The separate manually dispatched `protected mobile acceptance` workflow is the
 automated entrypoint for the live staging/device lane. It accepts only an exact
 main-tip source revision plus exact `sha256:` candidate and signed-release
 provenance content IDs, runs exclusively in the protected
-`mobile-device-verification` environment, and invokes the fixed
-`/opt/pakperk/bin/pakperk-mobile-acceptance-driver` only after all of `/`,
-`/opt`, `/opt/pakperk`, and `/opt/pakperk/bin` are root-owned and non-writable
-outside root and an open-descriptor identity/digest check matches
-`PAKPERK_MOBILE_ACCEPTANCE_DRIVER_SHA256`. The workflow fixes its command path
-to `/usr/bin:/bin`; the pinned driver must use absolute, reviewed paths for any
-Android SDK or other runner tools outside those system directories.
+`mobile-device-verification` environment. Its exact-source checkout is a
+**data-only** boundary: workflow-owned, isolated Python reads only the bounded
+staging configuration and release version, and no script, binary, shell startup
+file, package hook, or other executable from the candidate checkout may run in
+the protected session. The workflow never writes candidate-derived data to
+`GITHUB_ENV`; it pins both `BASH_ENV` and `ENV` to `/dev/null` for the job and
+again for the credentialed driver step, fixes `PATH` to `/usr/bin:/bin`, and
+uses absolute system-tool paths.
+
+All acceptance validation and packaging instead use the fixed root-owned
+`/opt/pakperk/bin/pakperk-mobile-acceptance-validator.py`; live device control
+uses the fixed root-owned
+`/opt/pakperk/bin/pakperk-mobile-acceptance-driver`. Before either is invoked,
+the workflow requires `/`, `/opt`, `/opt/pakperk`, and `/opt/pakperk/bin` to be
+root-owned and non-writable outside root, then verifies each tool through one
+no-follow open descriptor, stable inode metadata, one link, root ownership,
+non-writable mode, and its protected SHA-256. The driver must also be
+executable. Configure these exact protected-environment variables:
+
+- `PAKPERK_MOBILE_RUNNER_SESSION_ID`;
+- `PAKPERK_MOBILE_ACCEPTANCE_VALIDATOR_SHA256`;
+- `PAKPERK_MOBILE_ACCEPTANCE_DRIVER_SHA256`;
+- `PAKPERK_ANDROID_SIGNER_SHA256`;
+- `PAKPERK_IOS_TEAM_ID`;
+- `PAKPERK_IOS_SIGNER_SHA256`.
+
+The pinned validator and driver must use absolute, reviewed paths for any
+Android SDK or other runner tools outside `/usr/bin:/bin`.
 
 The candidate content ID must resolve to a canonical, root-owned manifest at
 `/opt/pakperk/mobile-candidates/<digest>.json`. That manifest binds the source,
@@ -331,12 +562,24 @@ content ID. The provenance must independently resolve beneath
 APK, and IPA SHA-256 values to repository `ErrDivine/PakPerk`, workflow
 `.github/workflows/mobile-release.yml`, job `signed-candidate`, the reviewed
 workflow/source SHA, GitHub run ID/attempt, and stage `artifacts_verified`.
-Coordinates are read from the reviewed `mobile/config/staging.json`; mutable
-coordinate and package/bundle-ID variables are not accepted.
+Coordinates are read as data from the reviewed `mobile/config/staging.json`;
+mutable coordinate and package/bundle-ID variables are not accepted. The source
+step rejects duplicate/non-finite JSON, control characters, non-round-tripping
+or unsafe HTTPS coordinates, symlink/race changes, and an invalid strict flavor
+or release version. It writes one exclusive, owner-only canonical schema-1
+source binding under `RUNNER_TEMP`, containing only the exact source revision,
+environment, app version/build, API origin, OIDC issuer, and OIDC client ID.
+Only the bounded ASCII version/build and binding path become step outputs; none
+becomes a shell startup setting. The credentialed request builder reopens that
+binding and uses its coordinates for the driver request. The root-owned
+validator independently reloads it, requires it to match the candidate/
+provenance source and version/build, and uses the same coordinates for final
+evidence validation.
 
-The signed-release job emits canonical candidate and provenance files and their
-content IDs, but it cannot install them into a self-hosted runner's protected
-filesystem. After authenticated artifact retrieval, a runner administrator must
+The credential-free `signed-candidate` assembler job emits canonical candidate
+and provenance files and their content IDs, but it cannot install them into a
+self-hosted runner's protected filesystem. After authenticated artifact
+retrieval, a runner administrator must
 verify the canonical-file digests and import them with root ownership, one link,
 and no group/world write permission into the fixed content-addressed roots. The
 non-root runner still needs read access; mode `0444` is the simple reviewed
@@ -355,9 +598,14 @@ flags, a closed `physical_identities` map with one distinct root-keyed commitmen
 for each required role, and a creation/expiry interval no longer than eight
 hours. The same protected-parent, root-owner, one-link, non-writable, canonical-
 digest rules apply. The validator rejects an expired attestation. Creating and
-root-installing this attestation, isolating the host for the session, and
-destroying its disposable state afterward remain runner-administrator
-responsibilities.
+root-installing this attestation and the pinned validator/driver, provisioning a
+dedicated runner, proving that no earlier or untrusted job/process shares the
+credentialed session, isolating the host and attached devices, and destroying
+its disposable state afterward remain external protected runner-administrator
+controls. Repository validation, `BASH_ENV`/`ENV` pinning, labels, and a claimed
+`ephemeral: true` attestation do not by themselves prove runner-group access,
+single-job/JIT registration, process isolation, or host cleanup; retain the
+platform/provisioning evidence and administrator approval for the release.
 
 The protected runner exposes four distinct installed-device secrets to the
 root-owned, digest-pinned driver: an Android gesture-navigation phone, an
@@ -392,20 +640,20 @@ and emit the closed `mobile-acceptance-evidence.json` contract:
 14. Use the strict signed flavor and verify metadata/save/comments/original
     arXiv links remain while every cached derived fallback stays masked.
 
-The validator requires exact source, app version/build, candidate and driver
-digests; the signed-release provenance and ephemeral runner-session bindings;
-the staging API/OIDC/client coordinates read from `mobile/config/staging.json`;
-the four ordered physical-device roles; distinct installation and physical-
-identity hashes; sanitized hardware model and OS versions; and all 16 ordered
-scenarios. Those are the 14 paths above plus root-navigation safe-area/system-
-back coverage across the required navigation modes and physical-keyboard Tab/
-Shift-Tab/Enter/Escape coverage. A scenario passes only with its exact device-
-role assignment, exact ordered assertion-ID list (70 markers in total), and
-closed integer threshold/equality metrics (37 rules in total); a generic
-positive count is not accepted. Every Android role must identify an
-installation of the provenance-bound APK; every iOS role must identify the
-provenance-bound IPA. Each device must also echo the exact staging application,
-signer, and Apple team binding for its platform.
+The root-owned validator requires exact source, app version/build, candidate,
+validator, and driver digests; the signed-release provenance, canonical source
+binding, and ephemeral runner-session bindings; the staging API/OIDC/client
+coordinates; the four ordered physical-device roles; distinct installation and
+physical-identity hashes; sanitized hardware model and OS versions; and all 16
+ordered scenarios. Those are the 14 paths above plus root-navigation safe-area/
+system-back coverage across the required navigation modes and physical-keyboard
+Tab/Shift-Tab/Enter/Escape coverage. A scenario passes only with its exact
+device-role assignment, exact ordered assertion-ID list (70 markers in total),
+and closed integer threshold/equality metrics (37 rules in total); a generic
+positive count is not accepted. Every Android role must identify an installation
+of the provenance-bound APK; every iOS role must identify the provenance-bound
+IPA. Each device must also echo the exact staging application, signer, and Apple
+team binding for its platform.
 
 For each role, the driver derives a run-specific `device_identity_hash` without
 retaining a serial or other raw identifier. It first computes a stable secret as
@@ -428,20 +676,27 @@ ID and attempt, and whole-second UTC not-before time. Validation limits the run
 to six hours, rejects stale/replayed completion, duplicate or noncanonical JSON,
 non-finite numbers, extra fields, credential-shaped strings, symlinks,
 oversized evidence, partial scenarios, and failed paths. The validator packages
-the exact already-read canonical bytes and checksum by directly creating the
-final archive with exclusive-open semantics. It checks the final inode, owner,
-mode `0400`, link count, size, and SHA-256, then repeats the structural and
-digest checks immediately before upload. The local tar digest is bound into the
-artifact name; the final step also requires the upload action's separate
-artifact-container digest. The owner-only driver log is trapped and discarded,
-while device serials, credentials, handles, and comment/query text are excluded.
+the exact already-read canonical evidence plus canonical
+`mobile-acceptance-tooling.json` and `SHA256SUMS`, in that order, by directly
+creating the final archive with exclusive-open semantics. The tooling manifest
+has exact schema `1`, classification `protected mobile acceptance tooling`, and
+closed validator/driver objects containing the fixed filenames and the
+protected SHA-256 values. `SHA256SUMS` covers both the evidence and tooling
+members. The validator checks the final inode, owner, mode `0400`, link count,
+size, and SHA-256; immediately before upload it reopens the archive, requires the
+closed member order and metadata, verifies both checksums, and compares both
+archived tool digests with the protected expected variables. The local tar
+digest is bound into the artifact name; the final step also requires the upload
+action's separate artifact-container digest. The owner-only driver log is
+trapped and discarded, while device serials, credentials, handles, and
+comment/query text are excluded.
 
 A release owner must dispatch this workflow for the exact installed signed
 candidate and attach its immutable artifact plus the protected-environment
 approval. The checked-in orchestration and validators do not prove that the
-runner-managed driver, staging tenant, accounts, or devices were available, and
-an undispatched workflow, repository test, simulator, or operator statement
-does not complete this lane.
+root-installed tools, isolated runner session, staging tenant, accounts, or
+devices were available, and an undispatched workflow, repository test,
+simulator, or operator statement does not complete this lane.
 
 ## Telemetry and release-candidate gates
 
@@ -454,15 +709,19 @@ two exports are in flight, and saturation/failure drops data without queueing
 or retrying.
 
 Global error capture sends that exporter only a bounded error category. It
-delegates framework presentation with redacted details, preserves any prior
-platform handler's handled/unhandled result, returns `false` when no handler
-exists, and rethrows uncaught zone failures. Do not change those fatal paths to
-`true` or swallow them: doing so suppresses OS crash diagnostics, can leave the
-process in a corrupted state, and makes crash-free evidence misleading. The
-tradeoff is intentional: Apple/Google OS diagnostics may retain a native crash
-record or runtime stack under platform policy, while Pakperk's OTLP exporter
-never receives the raw error. Review the exact signed artifact's platform
-diagnostics and store disclosures before release.
+delegates framework presentation with redacted details and never passes the raw
+exception or stack to a prior platform handler. A prior handler that accepts the
+bounded category keeps ownership of the failure. Otherwise the original engine
+callback is marked handled only long enough to prevent its raw arguments from
+being printed; the app raises the bounded category with `StackTrace.empty` on
+the same error zone, and that replacement remains genuinely uncaught. Zone and
+pre-capture bootstrap failures use the same replacement. Do not swallow the
+replacement: doing so can leave the process in a corrupted state and makes
+crash-free evidence misleading. Apple/Google diagnostics may retain a native
+crash record under platform policy, but must not receive an application
+exception message, token, content value, or Dart stack from this boundary.
+Review the exact signed artifact's platform diagnostics and store disclosures
+before release.
 
 Do not declare a release candidate passed until the evidence bundle contains:
 
@@ -495,7 +754,14 @@ evidence for each before enabling production flags:
   offline, callback, and deep-link QA;
 - reviewer account and store review notes without real-user data;
 - TestFlight and closed Play-track upload, current App Privacy/Data Safety and
-  age-rating forms, monotonic store versions, and review status. Apple's
+  age-rating forms, monotonic store versions, review status, and either the
+  protected update-transition evidence or the separately approved
+  first-publication evidence defined above. Update evidence includes separation
+  of trusted tooling from candidate source, eligible Play fallback, exact
+  per-platform pre/post states and unconditional outcomes, partial-success
+  reconciliation, Apple manual-download exposure, and any Android-only
+  full-release halt; first-publication evidence includes the exact Play 100%
+  state and Apple manual-release state/action. Apple's
   [updated age-rating questionnaire](https://developer.apple.com/news/upcoming-requirements/?id=07242025a)
   has required answers since January 31, 2026;
 - verified Android developer identity and package/signing-key registration.

@@ -277,6 +277,13 @@ grep -Fq 'kind: DaemonSet' "$rendered"
 grep -Fq 'path: /var/log/pods' "$rendered"
 grep -Fq 'filelog/pakperk_backend' "$rendered"
 grep -Fq 'start_at: beginning' "$rendered"
+grep -Fq 'file_storage/exporter_queue:' "$rendered"
+grep -Fq 'storage: file_storage/exporter_queue' "$rendered"
+grep -Fq 'max_elapsed_time: 0s' "$rendered"
+grep -Fq 'extensions: [health_check, file_storage/filelog, file_storage/exporter_queue]' "$rendered"
+grep -Fq 'name: exporter-queue-state, mountPath: /var/lib/otelcol/exporter-queue' "$rendered"
+grep -Fq 'name: exporter-queue-state' "$rendered"
+grep -Fq 'emptyDir: { sizeLimit: 128Mi }' "$rendered"
 grep -Fq -- '-migration-*_*/migrate/*.log' "$rendered"
 grep -Fq 'nginx.ingress.kubernetes.io/limit-rps: "5"' "$rendered"
 grep -Fq 'nginx.ingress.kubernetes.io/enable-access-log: "false"' "$rendered"
@@ -311,10 +318,10 @@ grep -Fq 'documentVersion: "2026-08-01"' "$production_rendered"
 grep -Fq 'name: CURRENT_TERMS_VERSION, value: "2026-08-01"' "$production_rendered"
 grep -Fq 'name: CURRENT_COMMUNITY_GUIDELINES_VERSION, value: "2026-08-01"' "$production_rendered"
 grep -Fq 'app.kubernetes.io/component: alert-policy' "$production_rendered"
-grep -Fq 'pakperk.app/alert-policy-sha256: "sha256:17d4e5087723d78da7a61486af6170eff238a69d2254c201eaa7860393172702"' "$production_rendered"
+grep -Fq 'pakperk.app/alert-policy-sha256: "sha256:1b708d5d63988f0bbb26a6649633d1f1f5b096b0bd52338508142c9afb97140b"' "$production_rendered"
 grep -Fq 'app.kubernetes.io/component: release-evidence' "$production_rendered"
 grep -Fq 'legalReviewId: "sha256:f89d44fee80d431539b2b3c4df101f00d5ad0aa0af150e9963d2d9f20b0565c2"' "$production_rendered"
-grep -Fq 'alertPolicySha256: "sha256:17d4e5087723d78da7a61486af6170eff238a69d2254c201eaa7860393172702"' "$production_rendered"
+grep -Fq 'alertPolicySha256: "sha256:1b708d5d63988f0bbb26a6649633d1f1f5b096b0bd52338508142c9afb97140b"' "$production_rendered"
 grep -Fq 'pakperk.app/release-binding-schema: "1"' "$production_rendered"
 grep -Fq 'imageIdentities.json:' "$production_rendered"
 grep -Fq 'chartIdentity.json:' "$production_rendered"
@@ -1322,12 +1329,12 @@ expect_template_rejection \
   "the packaged alert policy is production-only and cannot be enabled for staging" \
   --values "$fixture" \
   --set alerting.enabled=true \
-  --set-string alerting.policySha256=sha256:17d4e5087723d78da7a61486af6170eff238a69d2254c201eaa7860393172702
+  --set-string alerting.policySha256=sha256:1b708d5d63988f0bbb26a6649633d1f1f5b096b0bd52338508142c9afb97140b
 expect_template_rejection \
   "a disabled alert policy with a stale digest" \
   "alerting.policySha256 must be empty when alerting.enabled=false" \
   --values "$fixture" \
-  --set-string alerting.policySha256=sha256:17d4e5087723d78da7a61486af6170eff238a69d2254c201eaa7860393172702
+  --set-string alerting.policySha256=sha256:1b708d5d63988f0bbb26a6649633d1f1f5b096b0bd52338508142c9afb97140b
 expect_template_rejection \
   "an alert-policy digest that does not match the packaged contract" \
   "alerting.policySha256 must pin the exact packaged provider-neutral alert policy" \

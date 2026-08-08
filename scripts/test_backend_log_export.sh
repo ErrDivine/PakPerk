@@ -4,6 +4,7 @@ set -euo pipefail
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 chart="$project_dir/deploy/helm/pakperk"
 fixture="$chart/ci/staging-values.yaml"
+gateway_source="$project_dir/backend/apps/telemetry-gateway/src/main.rs"
 helm_bin="${HELM_BIN:-helm}"
 
 for command in "$helm_bin" curl docker python3; do
@@ -15,9 +16,21 @@ done
 
 temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/pakperk-log-export.XXXXXX")"
 container_id=""
+queue_source_id=""
+queue_sink_id=""
+network_name=""
 cleanup() {
   if [[ -n "$container_id" ]]; then
     docker rm --force "$container_id" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$queue_source_id" ]]; then
+    docker rm --force "$queue_source_id" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$queue_sink_id" ]]; then
+    docker rm --force "$queue_sink_id" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$network_name" ]]; then
+    docker network rm "$network_name" >/dev/null 2>&1 || true
   fi
   rm -rf "$temporary_dir"
 }
@@ -28,8 +41,11 @@ config="$temporary_dir/collector-test.yaml"
 direct_logs="$temporary_dir/direct-logs.json"
 direct_traces="$temporary_dir/direct-traces.json"
 direct_metrics="$temporary_dir/direct-metrics.json"
+queue_config="$temporary_dir/collector-queue-test.yaml"
+sink_config="$temporary_dir/collector-sink-test.yaml"
+sink_name="pakperk-log-sink-$$-$RANDOM"
 "$helm_bin" template pakperk "$chart" --values "$fixture" >"$rendered"
-python3 - "$rendered" "$config" "$direct_logs" "$direct_traces" "$direct_metrics" <<'PY'
+python3 - "$rendered" "$config" "$direct_logs" "$direct_traces" "$direct_metrics" "$gateway_source" <<'PY'
 import json
 import pathlib
 import re
@@ -59,6 +75,51 @@ if count != 1:
 config = config.replace("exporters: [otlp]", "exporters: [debug]")
 config = config.replace("level: warn", "level: info", 1)
 pathlib.Path(sys.argv[2]).write_text(config, encoding="utf-8")
+
+otlp_pipeline = (
+    "    logs/otlp:\n"
+    "      receivers: [otlp]\n"
+    "      processors: [memory_limiter, resource/redact, attributes/redact, "
+    "transform/redact-otlp-log-body, batch]\n"
+)
+stdout_pipeline = (
+    "    logs/backend-stdout:\n"
+    "      receivers: [filelog/pakperk_backend]\n"
+    "      processors: [memory_limiter, resource/redact, attributes/redact, "
+    "resource/backend-defaults, transform/redact-backend-log-body, batch]\n"
+)
+if otlp_pipeline not in config or stdout_pipeline not in config:
+    raise SystemExit("OTLP and backend stdout logs must use distinct redaction pipelines")
+
+backend_identity = (
+    "  resource/backend-defaults:\n"
+    "    attributes:\n"
+    "      - { key: service.name, value: pakperk-backend-stdout, action: upsert }\n"
+    "      - { key: deployment.environment.name, value: \"staging\", action: upsert }\n"
+)
+if backend_identity not in config:
+    raise SystemExit("backend stdout resource identity must be fixed with upsert")
+
+gateway = pathlib.Path(sys.argv[6]).read_text(encoding="utf-8")
+valid_event_block = re.search(
+    r"(?ms)^fn valid_event\(event: &str\) -> bool \{.*?^\}", gateway
+)
+if valid_event_block is None:
+    raise SystemExit("mobile gateway event allowlist changed shape")
+gateway_events = re.findall(r'"([a-z][a-z0-9_]*)"', valid_event_block.group(0))
+body_allowlist = re.search(
+    r'IsMatch\(log\.body, "\^\(([^"()]+)\)\$"\)', config
+)
+if body_allowlist is None:
+    raise SystemExit("OTLP log-body allowlist was not rendered")
+collector_events = body_allowlist.group(1).split("|")
+if (
+    not gateway_events
+    or len(gateway_events) != len(set(gateway_events))
+    or len(collector_events) != len(set(collector_events))
+    or set(gateway_events) != set(collector_events)
+):
+    raise SystemExit("Collector and mobile gateway event allowlists must match exactly")
 
 
 def redaction_keys(processor_name: str, action_field: str) -> list[str]:
@@ -144,13 +205,72 @@ logs = {
                             "timeUnixNano": timestamp,
                             "severityNumber": 9,
                             "severityText": "INFO",
-                            "body": {"stringValue": "direct OTLP log sentinel"},
+                            "body": {
+                                "stringValue": "direct-otlp-body-secret-sentinel"
+                            },
                             "attributes": [safe_attribute, *attributes("log-signal")],
+                        },
+                        {
+                            "timeUnixNano": timestamp,
+                            "severityNumber": 9,
+                            "severityText": "INFO",
+                            "body": {
+                                "kvlistValue": {
+                                    "values": [
+                                        {
+                                            "key": "nested",
+                                            "value": {
+                                                "stringValue": (
+                                                    "structured-body-secret-sentinel"
+                                                )
+                                            },
+                                        }
+                                    ]
+                                }
+                            },
+                            "attributes": [],
                         }
                     ],
                 }
             ],
-        }
+        },
+        {
+            "resource": {
+                "attributes": [
+                    {
+                        "key": "service.name",
+                        "value": {"stringValue": "pakperk-mobile"},
+                    },
+                    {
+                        "key": "deployment.environment.name",
+                        "value": {"stringValue": "staging"},
+                    },
+                ]
+            },
+            "scopeLogs": [
+                {
+                    "scope": {"name": "app.pakperk.mobile"},
+                    "logRecords": [
+                        {
+                            "timeUnixNano": timestamp,
+                            "severityNumber": 9,
+                            "severityText": "INFO",
+                            "body": {"stringValue": "startup_ready"},
+                            "attributes": [],
+                        },
+                        {
+                            "timeUnixNano": timestamp,
+                            "severityNumber": 9,
+                            "severityText": "INFO",
+                            "body": {
+                                "stringValue": "spoofed-mobile-body-secret-sentinel"
+                            },
+                            "attributes": [],
+                        }
+                    ],
+                }
+            ],
+        },
     ]
 }
 traces = {
@@ -207,13 +327,83 @@ metrics = {
     ]
 }
 
-for path, payload in zip(sys.argv[3:], (logs, traces, metrics), strict=True):
+for path, payload in zip(sys.argv[3:6], (logs, traces, metrics), strict=True):
     pathlib.Path(path).write_text(
         json.dumps(payload, separators=(",", ":")),
         encoding="utf-8",
     )
 PY
 chmod 0644 "$config"
+
+python3 - "$rendered" "$queue_config" "$sink_config" "$sink_name" <<'PY'
+import pathlib
+import re
+import sys
+
+rendered = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+marker = "  collector.yaml: |\n"
+start = rendered.find(marker)
+if start < 0:
+    raise SystemExit("collector ConfigMap was not rendered for queue recovery")
+lines = []
+for line in rendered[start + len(marker):].splitlines():
+    if line == "---":
+        break
+    if not line.startswith("    "):
+        raise SystemExit("collector ConfigMap indentation changed")
+    lines.append(line[4:])
+config = "\n".join(lines) + "\n"
+required = (
+    "  file_storage/filelog:\n",
+    "  file_storage/exporter_queue:\n",
+    "      storage: file_storage/exporter_queue\n",
+    "  extensions: [health_check, file_storage/filelog, file_storage/exporter_queue]\n",
+)
+if any(fragment not in config for fragment in required):
+    raise SystemExit("collector exporter queue is not bound to persistent storage")
+
+sink_name = sys.argv[4]
+if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", sink_name) is None:
+    raise SystemExit("queue test sink name is invalid")
+production_destination = (
+    "    endpoint: ${env:PAKPERK_TELEMETRY_EXPORTER_ENDPOINT}\n"
+    "    headers: ${env:PAKPERK_TELEMETRY_EXPORTER_HEADERS}\n"
+    "    tls:\n"
+    "      insecure: false\n"
+)
+test_destination = (
+    f"    endpoint: {sink_name}:4317\n"
+    "    tls:\n"
+    "      insecure: true\n"
+)
+if config.count(production_destination) != 1:
+    raise SystemExit("collector production exporter destination changed")
+config = config.replace(production_destination, test_destination, 1)
+config = config.replace("level: warn", "level: info", 1)
+pathlib.Path(sys.argv[2]).write_text(config, encoding="utf-8")
+
+sink = """receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+exporters:
+  debug:
+    verbosity: detailed
+service:
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: none
+  pipelines:
+    logs:
+      receivers: [otlp]
+      exporters: [debug]
+"""
+pathlib.Path(sys.argv[3]).write_text(sink, encoding="utf-8")
+PY
+chmod 0644 "$queue_config" "$sink_config"
 
 collector_image="$(awk '
   /^        - name: collector$/ { found=1; next }
@@ -227,10 +417,11 @@ fi
 fixture_uid="01234567-89ab-cdef-0123-456789abcdef"
 log_dir="$temporary_dir/pods/default_pakperk-pakperk-api-fixture_${fixture_uid}/api"
 state_dir="$temporary_dir/state"
-mkdir -p "$log_dir" "$state_dir"
+exporter_state_dir="$temporary_dir/exporter-state"
+mkdir -p "$log_dir" "$state_dir" "$exporter_state_dir"
 chmod 0755 "$temporary_dir/pods" \
   "$temporary_dir/pods/default_pakperk-pakperk-api-fixture_${fixture_uid}" "$log_dir"
-chmod 0777 "$state_dir"
+chmod 0777 "$state_dir" "$exporter_state_dir"
 log_file="$log_dir/0.log"
 : >"$log_file"
 chmod 0644 "$log_file"
@@ -240,6 +431,7 @@ container_id="$(docker run --detach --user 10001:10001 \
   --volume "$config:/conf/collector.yaml:ro" \
   --volume "$temporary_dir/pods:/var/log/pods:ro" \
   --volume "$state_dir:/var/lib/otelcol/file-storage" \
+  --volume "$exporter_state_dir:/var/lib/otelcol/exporter-queue" \
   "$collector_image" --config=/conf/collector.yaml)"
 
 otlp_http_address="$(docker port "$container_id" 4318/tcp | sed -n '1p')"
@@ -275,14 +467,22 @@ post_otlp_fixture v1/metrics "$direct_metrics"
 
 timestamp="2026-07-31T00:00:00.000000000Z"
 printf '%s stdout F %s\n' "$timestamp" \
-  '{"timestamp":"2026-07-31T00:00:00.000000Z","level":"INFO","message":"backend operational sentinel","target":"pakperk_api","comment.body":"protected-content-sentinel","authorization":"Bearer protected-token-sentinel"}' \
+  '{"timestamp":"2026-07-31T00:00:00.000000Z","level":"INFO","message":"hostile-interpolated-message-secret-sentinel","target":"pakperk_api","comment.body":"protected-content-sentinel","authorization":"Bearer protected-token-sentinel","service.name":"spoofed-service-secret-sentinel","deployment.environment.name":"spoofed-environment-secret-sentinel"}' \
   >"$log_file"
+printf '%s stdout F %s\n' "$timestamp" \
+  '{"timestamp":"2026-07-31T00:00:00.000000Z","level":"WARN","message":{"secret":"structured-stdout-message-secret-sentinel"},"target":"pakperk_structured_fixture"}' \
+  >>"$log_file"
+printf '%s stdout F %s\n' "$timestamp" \
+  '{"timestamp":"2026-07-31T00:00:00.000000Z","level":"ERROR","message":"external deletion ledger failed verification","target":"account_deletion::worker"}' \
+  >>"$log_file"
 
 exported=0
 for _ in $(seq 1 30); do
   docker logs "$container_id" >"$temporary_dir/collector.log" 2>&1
-  if grep -Fq 'backend operational sentinel' "$temporary_dir/collector.log" \
-    && grep -Fq 'direct OTLP log sentinel' "$temporary_dir/collector.log" \
+  if grep -Fq 'Body: Str(pakperk_backend_log)' "$temporary_dir/collector.log" \
+    && grep -Fq 'Body: Str(external deletion ledger failed verification)' "$temporary_dir/collector.log" \
+    && grep -Fq 'Body: Str(otlp_log_body_redacted)' "$temporary_dir/collector.log" \
+    && grep -Fq 'Body: Str(startup_ready)' "$temporary_dir/collector.log" \
     && grep -Fq 'direct OTLP trace sentinel' "$temporary_dir/collector.log" \
     && grep -Fq 'direct_otlp_metric_sentinel' "$temporary_dir/collector.log" \
     && grep -Fq 'direct-otlp-log-redaction-test' "$temporary_dir/collector.log" \
@@ -300,11 +500,93 @@ if [[ "$exported" != 1 ]]; then
   exit 1
 fi
 grep -Fq 'pakperk-backend-stdout' "$temporary_dir/collector.log"
-forbidden_pattern='protected-content-sentinel|protected-token-sentinel|sensitive-(log|trace|metric)-(signal|resource)-[0-9]+-sentinel|comment\.body|authorization|log\.file\.path'
+grep -Fq 'deployment.environment.name: Str(staging)' "$temporary_dir/collector.log"
+grep -Fq 'code.namespace: Str(pakperk_structured_fixture)' "$temporary_dir/collector.log"
+grep -Fq 'code.namespace: Str(account_deletion::worker)' "$temporary_dir/collector.log"
+forbidden_pattern='protected-content-sentinel|protected-token-sentinel|hostile-interpolated-message-secret-sentinel|structured-stdout-message-secret-sentinel|spoofed-service-secret-sentinel|spoofed-environment-secret-sentinel|direct-otlp-body-secret-sentinel|structured-body-secret-sentinel|spoofed-mobile-body-secret-sentinel|sensitive-(log|trace|metric)-(signal|resource)-[0-9]+-sentinel|comment\.body|authorization|log\.file\.path'
 if grep -Eq "$forbidden_pattern" "$temporary_dir/collector.log"; then
   echo "Collector exported a protected stdout or direct-OTLP field." >&2
   grep -En "$forbidden_pattern" "$temporary_dir/collector.log" >&2
   exit 1
 fi
 
-echo "Backend stdout and direct OTLP logs/traces/metrics reached export with signal and resource attributes redacted."
+docker rm --force "$container_id" >/dev/null
+container_id=""
+
+queue_fixture_uid="11234567-89ab-cdef-0123-456789abcdef"
+queue_pods="$temporary_dir/queue-pods"
+queue_log_dir="$queue_pods/default_pakperk-pakperk-api-queue_${queue_fixture_uid}/api"
+queue_offset_state="$temporary_dir/queue-offset-state"
+queue_export_state="$temporary_dir/queue-export-state"
+mkdir -p "$queue_log_dir" "$queue_offset_state" "$queue_export_state"
+chmod 0755 "$queue_pods" \
+  "$queue_pods/default_pakperk-pakperk-api-queue_${queue_fixture_uid}" \
+  "$queue_log_dir"
+chmod 0777 "$queue_offset_state" "$queue_export_state"
+queue_log_file="$queue_log_dir/0.log"
+: >"$queue_log_file"
+chmod 0644 "$queue_log_file"
+
+network_name="pakperk-log-export-$$-$RANDOM"
+docker network create "$network_name" >/dev/null
+queue_source_id="$(docker run --detach --user 10001:10001 \
+  --network "$network_name" \
+  --volume "$queue_config:/conf/collector.yaml:ro" \
+  --volume "$queue_pods:/var/log/pods:ro" \
+  --volume "$queue_offset_state:/var/lib/otelcol/file-storage" \
+  --volume "$queue_export_state:/var/lib/otelcol/exporter-queue" \
+  "$collector_image" --config=/conf/collector.yaml)"
+
+printf '%s stdout F %s\n' "$timestamp" \
+  '{"timestamp":"2026-07-31T00:00:00.000000Z","level":"ERROR","message":"external deletion ledger failed verification","target":"account_deletion::worker"}' \
+  >"$queue_log_file"
+
+queued=0
+for _ in $(seq 1 30); do
+  docker logs "$queue_source_id" >"$temporary_dir/queue-source-before-restart.log" 2>&1
+  if grep -Eiq 'export.*(fail|retry)|retry.*export' \
+      "$temporary_dir/queue-source-before-restart.log" \
+    && find "$queue_offset_state" -type f -size +0c -print -quit | grep -q . \
+    && find "$queue_export_state" -type f -size +0c -print -quit | grep -q .; then
+    queued=1
+    break
+  fi
+  sleep 1
+done
+if [[ "$queued" != 1 ]]; then
+  echo "Collector did not checkpoint and queue the ledger alert while the sink was unavailable." >&2
+  sed -n '1,180p' "$temporary_dir/queue-source-before-restart.log" >&2
+  exit 1
+fi
+
+docker stop "$queue_source_id" >/dev/null
+# Remove the source record while the Collector is stopped. Recovery can now
+# succeed only from the persisted exporter queue, never from a filelog replay.
+: >"$queue_log_file"
+queue_sink_id="$(docker run --detach --user 10001:10001 \
+  --name "$sink_name" \
+  --network "$network_name" \
+  --volume "$sink_config:/conf/collector.yaml:ro" \
+  "$collector_image" --config=/conf/collector.yaml)"
+docker start "$queue_source_id" >/dev/null
+
+recovered=0
+for _ in $(seq 1 40); do
+  docker logs "$queue_sink_id" >"$temporary_dir/queue-sink.log" 2>&1
+  if grep -Fq 'Body: Str(external deletion ledger failed verification)' \
+      "$temporary_dir/queue-sink.log" \
+    && grep -Fq 'code.namespace: Str(account_deletion::worker)' \
+      "$temporary_dir/queue-sink.log"; then
+    recovered=1
+    break
+  fi
+  sleep 1
+done
+if [[ "$recovered" != 1 ]]; then
+  echo "Collector did not recover the checkpointed ledger alert from its persistent exporter queue." >&2
+  docker logs "$queue_source_id" >&2 || true
+  sed -n '1,180p' "$temporary_dir/queue-sink.log" >&2
+  exit 1
+fi
+
+echo "Backend stdout and direct OTLP signals were redacted, and the checkpointed ledger alert survived a sink outage plus same-Pod Collector restart."

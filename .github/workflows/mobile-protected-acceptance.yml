@@ -38,12 +38,15 @@ jobs:
       PROVENANCE_ID: ${{ inputs.provenance_id }}
       DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
       RUNNER_SESSION_ID: ${{ vars.PAKPERK_MOBILE_RUNNER_SESSION_ID }}
+      VALIDATOR_SHA256: ${{ vars.PAKPERK_MOBILE_ACCEPTANCE_VALIDATOR_SHA256 }}
       DRIVER_SHA256: ${{ vars.PAKPERK_MOBILE_ACCEPTANCE_DRIVER_SHA256 }}
       ANDROID_SIGNER_SHA256: ${{ vars.PAKPERK_ANDROID_SIGNER_SHA256 }}
       IOS_TEAM_ID: ${{ vars.PAKPERK_IOS_TEAM_ID }}
       IOS_SIGNER_SHA256: ${{ vars.PAKPERK_IOS_SIGNER_SHA256 }}
       PATH: /usr/bin:/bin
       PYTHONDONTWRITEBYTECODE: "1"
+      BASH_ENV: /dev/null
+      ENV: /dev/null
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -52,6 +55,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify exact reviewed main source and protected coordinates
+        id: source
         shell: bash
         env:
           DISPATCH_REF: ${{ github.ref }}
@@ -81,6 +85,10 @@ jobs:
             echo "The protected runner-session attestation ID is unavailable or invalid." >&2
             exit 2
           fi
+          if ! [[ "$VALIDATOR_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "The protected mobile acceptance validator digest is unavailable or invalid." >&2
+            exit 2
+          fi
           if ! [[ "$DRIVER_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
             echo "The protected mobile acceptance driver digest is unavailable or invalid." >&2
             exit 2
@@ -89,15 +97,19 @@ jobs:
             echo "source_revision must exactly match the selected main revision." >&2
             exit 2
           fi
-          if [[ "$(git rev-parse HEAD)" != "$REQUESTED_REVISION" ]]; then
+          if [[ "$(/usr/bin/git rev-parse HEAD)" != "$REQUESTED_REVISION" ]]; then
             echo "Checkout did not resolve the exact requested revision." >&2
             exit 2
           fi
-          if [[ "$(git rev-parse refs/remotes/origin/main)" != "$REQUESTED_REVISION" ]]; then
+          if [[ "$(/usr/bin/git rev-parse refs/remotes/origin/main)" != "$REQUESTED_REVISION" ]]; then
             echo "The requested revision is not the fetched origin/main tip." >&2
             exit 2
           fi
-          python3 -I - mobile/config/staging.json "$GITHUB_ENV" <<'PY'
+          /usr/bin/python3 -I - \
+            mobile/config/staging.json \
+            mobile/pubspec.yaml \
+            "$RUNNER_TEMP/pakperk-mobile-source-binding.json" \
+            "$GITHUB_OUTPUT" <<'PY'
           import json
           import os
           import pathlib
@@ -117,8 +129,11 @@ jobs:
           def reject_nonfinite_constant(_value):
               raise SystemExit("mobile/config/staging.json contains a non-finite number")
 
-          source, destination = map(pathlib.Path, sys.argv[1:])
-          metadata = os.lstat(source)
+          config_path = pathlib.Path(sys.argv[1])
+          pubspec_path = pathlib.Path(sys.argv[2])
+          binding_path = pathlib.Path(sys.argv[3])
+          github_output = pathlib.Path(sys.argv[4])
+          metadata = os.lstat(config_path)
           if (
               not stat.S_ISREG(metadata.st_mode)
               or metadata.st_nlink != 1
@@ -129,7 +144,7 @@ jobs:
           flags = os.O_RDONLY
           if hasattr(os, "O_NOFOLLOW"):
               flags |= os.O_NOFOLLOW
-          descriptor = os.open(source, flags)
+          descriptor = os.open(config_path, flags)
           try:
               before = os.fstat(descriptor)
               chunks = []
@@ -144,7 +159,7 @@ jobs:
               after = os.fstat(descriptor)
           finally:
               os.close(descriptor)
-          current = os.lstat(source)
+          current = os.lstat(config_path)
           identity = lambda value: (
               value.st_dev,
               value.st_ino,
@@ -177,6 +192,11 @@ jobs:
           ):
               if not isinstance(value, str):
                   raise SystemExit(f"{label} is unavailable")
+              if (
+                  len(value.encode("utf-8")) > 512
+                  or any(ord(character) < 0x20 or ord(character) == 0x7f for character in value)
+              ):
+                  raise SystemExit(f"{label} contains unsupported characters")
               parsed = urllib.parse.urlsplit(value)
               try:
                   port = parsed.port
@@ -185,6 +205,7 @@ jobs:
               if (
                   parsed.scheme != "https"
                   or not parsed.hostname
+                  or parsed.geturl() != value
                   or parsed.username is not None
                   or parsed.password is not None
                   or parsed.query
@@ -195,39 +216,101 @@ jobs:
                   raise SystemExit(f"{label} is not an exact safe HTTPS coordinate")
           if not isinstance(client_id, str) or re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", client_id) is None:
               raise SystemExit("staging OIDC client ID is unavailable or invalid")
-          with destination.open("a", encoding="utf-8") as output:
-              output.write(f"STAGING_API_ORIGIN={api_origin}\n")
-              output.write(f"STAGING_OIDC_ISSUER={issuer}\n")
-              output.write(f"STAGING_OIDC_CLIENT_ID={client_id}\n")
-          PY
-          python3 -I - mobile/pubspec.yaml "$GITHUB_ENV" <<'PY'
-          import pathlib
-          import re
-          import sys
 
-          source, destination = map(pathlib.Path, sys.argv[1:])
           matches = [
               re.fullmatch(
                   r"version: ((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]{1,32})?)\+([1-9][0-9]{0,9})",
                   line,
               )
-              for line in source.read_text(encoding="utf-8").splitlines()
+              for line in pubspec_path.read_text(encoding="utf-8").splitlines()
               if line.startswith("version:")
           ]
           if len(matches) != 1 or matches[0] is None:
               raise SystemExit("mobile/pubspec.yaml must contain one bounded release version")
           match = matches[0]
           assert match is not None
-          with destination.open("a", encoding="utf-8") as output:
-              output.write(f"PAKPERK_APP_VERSION={match.group(1)}\n")
-              output.write(f"PAKPERK_BUILD_NUMBER={match.group(2)}\n")
+          binding = {
+              "api_origin": api_origin,
+              "app_version": match.group(1),
+              "build_number": match.group(2),
+              "environment": "staging",
+              "oidc_client_id": client_id,
+              "oidc_issuer": issuer,
+              "schema": 1,
+              "source_revision": os.environ["REQUESTED_REVISION"],
+          }
+          serialized = (
+              json.dumps(
+                  binding,
+                  allow_nan=False,
+                  ensure_ascii=True,
+                  separators=(",", ":"),
+                  sort_keys=True,
+              )
+              + "\n"
+          ).encode("ascii")
+          destination_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+          if hasattr(os, "O_CLOEXEC"):
+              destination_flags |= os.O_CLOEXEC
+          if hasattr(os, "O_NOFOLLOW"):
+              destination_flags |= os.O_NOFOLLOW
+          descriptor = os.open(binding_path, destination_flags, 0o600)
+          try:
+              view = memoryview(serialized)
+              while view:
+                  written = os.write(descriptor, view)
+                  if written <= 0:
+                      raise SystemExit("source binding write did not make progress")
+                  view = view[written:]
+              os.fsync(descriptor)
+              written_metadata = os.fstat(descriptor)
+          finally:
+              os.close(descriptor)
+          current = os.lstat(binding_path)
+          if (
+              not stat.S_ISREG(written_metadata.st_mode)
+              or written_metadata.st_uid != os.getuid()
+              or stat.S_IMODE(written_metadata.st_mode) != 0o600
+              or written_metadata.st_nlink != 1
+              or written_metadata.st_size != len(serialized)
+              or identity(written_metadata) != identity(current)
+          ):
+              raise SystemExit("source binding is not one owner-only regular file")
+
+          output_flags = os.O_WRONLY | os.O_APPEND
+          if hasattr(os, "O_CLOEXEC"):
+              output_flags |= os.O_CLOEXEC
+          if hasattr(os, "O_NOFOLLOW"):
+              output_flags |= os.O_NOFOLLOW
+          output_descriptor = os.open(github_output, output_flags)
+          try:
+              output_metadata = os.fstat(output_descriptor)
+              if not stat.S_ISREG(output_metadata.st_mode) or output_metadata.st_uid != os.getuid():
+                  raise SystemExit("GitHub output file is not runner-owned and regular")
+              output_bytes = (
+                  f"app_version={match.group(1)}\n"
+                  f"build_number={match.group(2)}\n"
+                  f"source_binding={binding_path}\n"
+              ).encode("ascii")
+              view = memoryview(output_bytes)
+              while view:
+                  written = os.write(output_descriptor, view)
+                  if written <= 0:
+                      raise SystemExit("GitHub output write did not make progress")
+                  view = view[written:]
+              os.fsync(output_descriptor)
+          finally:
+              os.close(output_descriptor)
           PY
 
-      - name: Verify protected macOS runner and signed candidate manifest
+      - name: Verify protected macOS runner, pinned tools, and signed candidate manifest
         id: candidate
         shell: bash
+        env:
+          PAKPERK_APP_VERSION: ${{ steps.source.outputs.app_version }}
+          PAKPERK_BUILD_NUMBER: ${{ steps.source.outputs.build_number }}
         run: |
-          if [[ "$(uname -s)" != "Darwin" ]]; then
+          if [[ "$(/usr/bin/uname -s)" != "Darwin" ]]; then
             echo "Protected mobile acceptance requires a macOS runner." >&2
             exit 2
           fi
@@ -237,11 +320,82 @@ jobs:
               exit 2
             fi
           done
-          python3 -I - <<'PY'
+          /usr/bin/python3 -I - <<'PY'
           import sys
 
           if sys.version_info < (3, 9):
               raise SystemExit("protected mobile acceptance requires Python 3.9 or newer")
+          PY
+          validator=/opt/pakperk/bin/pakperk-mobile-acceptance-validator.py
+          driver=/opt/pakperk/bin/pakperk-mobile-acceptance-driver
+          /usr/bin/python3 -I - \
+            "$validator" "$VALIDATOR_SHA256" \
+            "$driver" "$DRIVER_SHA256" <<'PY'
+          import hashlib
+          import os
+          import pathlib
+          import stat
+          import sys
+
+          validator_path = pathlib.Path(sys.argv[1])
+          validator_digest = sys.argv[2]
+          driver_path = pathlib.Path(sys.argv[3])
+          driver_digest = sys.argv[4]
+          for directory in (
+              pathlib.Path("/"),
+              pathlib.Path("/opt"),
+              pathlib.Path("/opt/pakperk"),
+              pathlib.Path("/opt/pakperk/bin"),
+          ):
+              metadata = os.lstat(directory)
+              if (
+                  not stat.S_ISDIR(metadata.st_mode)
+                  or metadata.st_uid != 0
+                  or metadata.st_mode & 0o022
+              ):
+                  raise SystemExit("a protected tooling parent is not immutable and root-owned")
+
+          def verify(path, expected, label, require_executable):
+              flags = os.O_RDONLY
+              if hasattr(os, "O_CLOEXEC"):
+                  flags |= os.O_CLOEXEC
+              if hasattr(os, "O_NOFOLLOW"):
+                  flags |= os.O_NOFOLLOW
+              descriptor = os.open(path, flags)
+              try:
+                  before = os.fstat(descriptor)
+                  if (
+                      not stat.S_ISREG(before.st_mode)
+                      or before.st_uid != 0
+                      or before.st_mode & 0o022
+                      or before.st_nlink != 1
+                      or (require_executable and before.st_mode & 0o111 == 0)
+                  ):
+                      raise SystemExit(f"protected {label} is not one immutable root-owned file")
+                  digest_state = hashlib.sha256()
+                  while True:
+                      chunk = os.read(descriptor, 64 * 1024)
+                      if not chunk:
+                          break
+                      digest_state.update(chunk)
+                  after = os.fstat(descriptor)
+              finally:
+                  os.close(descriptor)
+              current = os.lstat(path)
+              identity = lambda value: (
+                  value.st_dev,
+                  value.st_ino,
+                  value.st_size,
+                  value.st_mtime_ns,
+                  value.st_ctime_ns,
+              )
+              if identity(before) != identity(after) or identity(after) != identity(current):
+                  raise SystemExit(f"protected {label} changed while being verified")
+              if digest_state.hexdigest() != expected:
+                  raise SystemExit(f"protected {label} digest mismatch")
+
+          verify(validator_path, validator_digest, "acceptance validator", False)
+          verify(driver_path, driver_digest, "acceptance driver", True)
           PY
           candidate_digest="${CANDIDATE_ID#sha256:}"
           provenance_digest="${PROVENANCE_ID#sha256:}"
@@ -254,7 +408,7 @@ jobs:
           runner_session_binding="$binding_dir/runner-session-binding.json"
           umask 077
           mkdir "$binding_dir"
-          python3 -I scripts/validate_mobile_acceptance_evidence.py validate-candidate \
+          /usr/bin/python3 -I "$validator" validate-candidate \
             --candidate-manifest "$candidate_manifest" \
             --provenance-manifest "$provenance_manifest" \
             --runner-session-manifest "$runner_session_manifest" \
@@ -269,7 +423,7 @@ jobs:
             --ios-signer-sha256 "$IOS_SIGNER_SHA256" \
             --binding-output "$candidate_binding" \
             --session-binding-output "$runner_session_binding"
-          python3 -I - \
+          /usr/bin/python3 -I - \
             "$GITHUB_OUTPUT" \
             "$candidate_manifest" \
             "$provenance_manifest" \
@@ -298,96 +452,6 @@ jobs:
               output.write(f"not_before={not_before}\n")
           PY
 
-      - name: Verify the pinned protected driver and device set
-        shell: bash
-        env:
-          ANDROID_GESTURE_DEVICE: ${{ secrets.PAKPERK_ANDROID_GESTURE_DEVICE_ID }}
-          ANDROID_THREE_BUTTON_DEVICE: ${{ secrets.PAKPERK_ANDROID_THREE_BUTTON_DEVICE_ID }}
-          IOS_HOME_INDICATOR_DEVICE: ${{ secrets.PAKPERK_IOS_HOME_INDICATOR_DEVICE_ID }}
-          IPAD_KEYBOARD_SECONDARY_SYNC_DEVICE: ${{ secrets.PAKPERK_IPAD_KEYBOARD_SECONDARY_SYNC_DEVICE_ID }}
-        run: |
-          driver=/opt/pakperk/bin/pakperk-mobile-acceptance-driver
-          python3 -I - "$driver" "$DRIVER_SHA256" <<'PY'
-          import hashlib
-          import os
-          import pathlib
-          import stat
-          import sys
-
-          path = pathlib.Path(sys.argv[1])
-          expected = sys.argv[2]
-          for directory in (
-              pathlib.Path("/"),
-              pathlib.Path("/opt"),
-              pathlib.Path("/opt/pakperk"),
-              pathlib.Path("/opt/pakperk/bin"),
-          ):
-              metadata = os.lstat(directory)
-              if (
-                  not stat.S_ISDIR(metadata.st_mode)
-                  or metadata.st_uid != 0
-                  or metadata.st_mode & 0o022
-              ):
-                  raise SystemExit("a protected driver path parent is not immutable and root-owned")
-          flags = os.O_RDONLY
-          if hasattr(os, "O_CLOEXEC"):
-              flags |= os.O_CLOEXEC
-          if hasattr(os, "O_NOFOLLOW"):
-              flags |= os.O_NOFOLLOW
-          descriptor = os.open(path, flags)
-          try:
-              before = os.fstat(descriptor)
-              if (
-                  not stat.S_ISREG(before.st_mode)
-                  or before.st_uid != 0
-                  or before.st_mode & 0o022
-                  or before.st_nlink != 1
-                  or before.st_mode & 0o111 == 0
-              ):
-                  raise SystemExit("protected mobile acceptance driver is not an immutable root-owned executable")
-              digest_state = hashlib.sha256()
-              while True:
-                  chunk = os.read(descriptor, 64 * 1024)
-                  if not chunk:
-                      break
-                  digest_state.update(chunk)
-              after = os.fstat(descriptor)
-          finally:
-              os.close(descriptor)
-          current = os.lstat(path)
-          identity = lambda value: (
-              value.st_dev,
-              value.st_ino,
-              value.st_size,
-              value.st_mtime_ns,
-              value.st_ctime_ns,
-          )
-          if identity(before) != identity(after) or identity(after) != identity(current):
-              raise SystemExit("protected mobile acceptance driver changed while being verified")
-          digest = digest_state.hexdigest()
-          if digest != expected:
-              raise SystemExit("protected mobile acceptance driver digest mismatch")
-          PY
-          python3 -I - <<'PY'
-          import os
-          import re
-
-          names = (
-              "ANDROID_GESTURE_DEVICE",
-              "ANDROID_THREE_BUTTON_DEVICE",
-              "IOS_HOME_INDICATOR_DEVICE",
-              "IPAD_KEYBOARD_SECONDARY_SYNC_DEVICE",
-          )
-          values = []
-          for name in names:
-              value = os.environ.get(name, "")
-              if re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", value) is None:
-                  raise SystemExit("a protected physical-device ID is unavailable or invalid")
-              values.append(value)
-          if len(set(values)) != len(values):
-              raise SystemExit("protected physical-device IDs must be distinct")
-          PY
-
       - name: Run complete protected physical-device acceptance
         id: acceptance
         continue-on-error: true
@@ -402,6 +466,11 @@ jobs:
           RUN_NOT_BEFORE: ${{ steps.candidate.outputs.not_before }}
           RUN_ID_BINDING: ${{ github.run_id }}
           RUN_ATTEMPT_BINDING: ${{ github.run_attempt }}
+          SOURCE_BINDING: ${{ steps.source.outputs.source_binding }}
+          PAKPERK_APP_VERSION: ${{ steps.source.outputs.app_version }}
+          PAKPERK_BUILD_NUMBER: ${{ steps.source.outputs.build_number }}
+          BASH_ENV: /dev/null
+          ENV: /dev/null
           PAKPERK_ANDROID_GESTURE_DEVICE_ID: ${{ secrets.PAKPERK_ANDROID_GESTURE_DEVICE_ID }}
           PAKPERK_ANDROID_THREE_BUTTON_DEVICE_ID: ${{ secrets.PAKPERK_ANDROID_THREE_BUTTON_DEVICE_ID }}
           PAKPERK_IOS_HOME_INDICATOR_DEVICE_ID: ${{ secrets.PAKPERK_IOS_HOME_INDICATOR_DEVICE_ID }}
@@ -424,26 +493,129 @@ jobs:
           fi
           mkdir "$evidence_dir"
           mkdir "$private_dir"
-          python3 -I - "$request" "$CANDIDATE_BINDING" "$RUNNER_SESSION_BINDING" <<'PY'
+          /usr/bin/python3 -I - \
+            "$request" \
+            "$CANDIDATE_BINDING" \
+            "$RUNNER_SESSION_BINDING" \
+            "$SOURCE_BINDING" <<'PY'
           import json
           import os
           import pathlib
+          import stat
           import sys
 
-          candidate_binding = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
-          runner_session_binding = json.loads(pathlib.Path(sys.argv[3]).read_text(encoding="utf-8"))
+          def reject_duplicate_pairs(pairs):
+              value = {}
+              for key, child in pairs:
+                  if key in value:
+                      raise SystemExit("a protected request binding contains a duplicate key")
+                  value[key] = child
+              return value
+
+          def reject_nonfinite_constant(_value):
+              raise SystemExit("a protected request binding contains a non-finite number")
+
+          def load(path, maximum, label):
+              path = pathlib.Path(path)
+              metadata = os.lstat(path)
+              flags = os.O_RDONLY
+              if hasattr(os, "O_CLOEXEC"):
+                  flags |= os.O_CLOEXEC
+              if hasattr(os, "O_NOFOLLOW"):
+                  flags |= os.O_NOFOLLOW
+              descriptor = os.open(path, flags)
+              try:
+                  before = os.fstat(descriptor)
+                  if (
+                      not stat.S_ISREG(before.st_mode)
+                      or before.st_uid != os.getuid()
+                      or before.st_mode & 0o077
+                      or before.st_nlink != 1
+                      or before.st_size <= 0
+                      or before.st_size > maximum
+                  ):
+                      raise SystemExit(f"{label} is not one bounded owner-only file")
+                  chunks = []
+                  remaining = maximum + 1
+                  while remaining > 0:
+                      chunk = os.read(descriptor, min(64 * 1024, remaining))
+                      if not chunk:
+                          break
+                      chunks.append(chunk)
+                      remaining -= len(chunk)
+                  data = b"".join(chunks)
+                  after = os.fstat(descriptor)
+              finally:
+                  os.close(descriptor)
+              current = os.lstat(path)
+              identity = lambda value: (
+                  value.st_dev,
+                  value.st_ino,
+                  value.st_size,
+                  value.st_mtime_ns,
+                  value.st_ctime_ns,
+              )
+              if (
+                  identity(metadata) != identity(before)
+                  or identity(before) != identity(after)
+                  or identity(after) != identity(current)
+                  or len(data) != before.st_size
+              ):
+                  raise SystemExit(f"{label} changed while it was read")
+              value = json.loads(
+                  data.decode("utf-8"),
+                  object_pairs_hook=reject_duplicate_pairs,
+                  parse_constant=reject_nonfinite_constant,
+              )
+              canonical = (
+                  json.dumps(
+                      value,
+                      allow_nan=False,
+                      ensure_ascii=True,
+                      separators=(",", ":"),
+                      sort_keys=True,
+                  )
+                  + "\n"
+              ).encode("ascii")
+              if data != canonical:
+                  raise SystemExit(f"{label} is not exact canonical JSON")
+              return value
+
+          candidate_binding = load(sys.argv[2], 64 * 1024, "candidate binding")
+          runner_session_binding = load(sys.argv[3], 32 * 1024, "runner-session binding")
+          source_binding = load(sys.argv[4], 32 * 1024, "source binding")
+          if set(source_binding) != {
+              "api_origin",
+              "app_version",
+              "build_number",
+              "environment",
+              "oidc_client_id",
+              "oidc_issuer",
+              "schema",
+              "source_revision",
+          }:
+              raise SystemExit("source binding does not match its closed key contract")
+          if (
+              source_binding["schema"] != 1
+              or isinstance(source_binding["schema"], bool)
+              or source_binding["source_revision"] != os.environ["REQUESTED_REVISION"]
+              or source_binding["environment"] != "staging"
+              or source_binding["app_version"] != os.environ["PAKPERK_APP_VERSION"]
+              or source_binding["build_number"] != os.environ["PAKPERK_BUILD_NUMBER"]
+          ):
+              raise SystemExit("source binding identity does not match the protected run")
           request = {
               "schema": 2,
               "source_revision": os.environ["REQUESTED_REVISION"],
               "candidate_id": os.environ["CANDIDATE_ID"],
               "candidate": candidate_binding,
               "runner_session": runner_session_binding,
-              "app_version": os.environ["PAKPERK_APP_VERSION"],
-              "build_number": os.environ["PAKPERK_BUILD_NUMBER"],
+              "app_version": source_binding["app_version"],
+              "build_number": source_binding["build_number"],
               "environment": "staging",
-              "api_origin": os.environ["STAGING_API_ORIGIN"],
-              "oidc_issuer": os.environ["STAGING_OIDC_ISSUER"],
-              "oidc_client_id": os.environ["STAGING_OIDC_CLIENT_ID"],
+              "api_origin": source_binding["api_origin"],
+              "oidc_issuer": source_binding["oidc_issuer"],
+              "oidc_client_id": source_binding["oidc_client_id"],
               "run": {
                   "github_run_id": os.environ["RUN_ID_BINDING"],
                   "github_run_attempt": os.environ["RUN_ATTEMPT_BINDING"],
@@ -483,14 +655,51 @@ jobs:
                   "hardware_keyboard_navigation",
               ],
           }
-          serialized = json.dumps(
-              request,
-              allow_nan=False,
-              ensure_ascii=True,
-              separators=(",", ":"),
-              sort_keys=True,
+          serialized = (
+              json.dumps(
+                  request,
+                  allow_nan=False,
+                  ensure_ascii=True,
+                  separators=(",", ":"),
+                  sort_keys=True,
+              )
+              + "\n"
+          ).encode("ascii")
+          request_path = pathlib.Path(sys.argv[1])
+          flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+          if hasattr(os, "O_CLOEXEC"):
+              flags |= os.O_CLOEXEC
+          if hasattr(os, "O_NOFOLLOW"):
+              flags |= os.O_NOFOLLOW
+          descriptor = os.open(request_path, flags, 0o600)
+          try:
+              view = memoryview(serialized)
+              while view:
+                  written = os.write(descriptor, view)
+                  if written <= 0:
+                      raise SystemExit("request write did not make progress")
+                  view = view[written:]
+              os.fsync(descriptor)
+              written_metadata = os.fstat(descriptor)
+          finally:
+              os.close(descriptor)
+          current = os.lstat(request_path)
+          identity = lambda value: (
+              value.st_dev,
+              value.st_ino,
+              value.st_size,
+              value.st_mtime_ns,
+              value.st_ctime_ns,
           )
-          pathlib.Path(sys.argv[1]).write_text(serialized + "\n", encoding="ascii")
+          if (
+              not stat.S_ISREG(written_metadata.st_mode)
+              or written_metadata.st_uid != os.getuid()
+              or stat.S_IMODE(written_metadata.st_mode) != 0o600
+              or written_metadata.st_nlink != 1
+              or written_metadata.st_size != len(serialized)
+              or identity(written_metadata) != identity(current)
+          ):
+              raise SystemExit("request is not one owner-only regular file")
           PY
           : >"$driver_log"
           chmod 0600 "$driver_log"
@@ -531,6 +740,9 @@ jobs:
           RUN_NOT_BEFORE: ${{ steps.candidate.outputs.not_before }}
           RUN_ID_BINDING: ${{ github.run_id }}
           RUN_ATTEMPT_BINDING: ${{ github.run_attempt }}
+          SOURCE_BINDING: ${{ steps.source.outputs.source_binding }}
+          PAKPERK_APP_VERSION: ${{ steps.source.outputs.app_version }}
+          PAKPERK_BUILD_NUMBER: ${{ steps.source.outputs.build_number }}
         run: |
           evidence_dir="$RUNNER_TEMP/pakperk-mobile-acceptance-evidence"
           evidence="$evidence_dir/mobile-acceptance-evidence.json"
@@ -540,15 +752,15 @@ jobs:
             echo "The protected mobile acceptance driver did not complete successfully." >&2
             exit 1
           fi
-          if [[ "$(git rev-parse HEAD)" != "$REQUESTED_REVISION" || "$(git rev-parse refs/remotes/origin/main)" != "$REQUESTED_REVISION" ]]; then
+          if [[ "$(/usr/bin/git rev-parse HEAD)" != "$REQUESTED_REVISION" || "$(/usr/bin/git rev-parse refs/remotes/origin/main)" != "$REQUESTED_REVISION" ]]; then
             echo "The reviewed source identity changed before evidence validation." >&2
             exit 1
           fi
-          if ! git diff --quiet || ! git diff --cached --quiet; then
+          if ! /usr/bin/git diff --quiet || ! /usr/bin/git diff --cached --quiet; then
             echo "Tracked source changed before evidence validation." >&2
             exit 1
           fi
-          workspace_state="$(git status --porcelain=v1 --untracked-files=all --ignored=matching)"
+          workspace_state="$(/usr/bin/git status --porcelain=v1 --untracked-files=all --ignored=matching)"
           if [[ -n "$workspace_state" ]]; then
             echo "The protected checkout contains untracked or ignored files." >&2
             exit 1
@@ -557,7 +769,7 @@ jobs:
             echo "Mobile acceptance evidence archive path is not fresh." >&2
             exit 1
           fi
-          python3 -I - "$evidence_dir" "$evidence" <<'PY'
+          /usr/bin/python3 -I - "$evidence_dir" "$evidence" <<'PY'
           import os
           import pathlib
           import stat
@@ -584,7 +796,9 @@ jobs:
           ):
               raise SystemExit("the evidence artifact is not one owner-only regular file")
           PY
-          python3 -I scripts/validate_mobile_acceptance_evidence.py validate-and-package \
+          /usr/bin/python3 -I \
+            /opt/pakperk/bin/pakperk-mobile-acceptance-validator.py \
+            validate-and-package \
             "$evidence" "$archive" \
             --candidate-manifest "$CANDIDATE_MANIFEST" \
             --provenance-manifest "$PROVENANCE_MANIFEST" \
@@ -593,12 +807,11 @@ jobs:
             --candidate-id "$CANDIDATE_ID" \
             --provenance-id "$PROVENANCE_ID" \
             --runner-session-id "$RUNNER_SESSION_ID" \
+            --validator-sha256 "$VALIDATOR_SHA256" \
             --driver-sha256 "$DRIVER_SHA256" \
             --app-version "$PAKPERK_APP_VERSION" \
             --build-number "$PAKPERK_BUILD_NUMBER" \
-            --api-origin "$STAGING_API_ORIGIN" \
-            --oidc-issuer "$STAGING_OIDC_ISSUER" \
-            --oidc-client-id "$STAGING_OIDC_CLIENT_ID" \
+            --source-binding "$SOURCE_BINDING" \
             --android-signer-sha256 "$ANDROID_SIGNER_SHA256" \
             --ios-team-id "$IOS_TEAM_ID" \
             --ios-signer-sha256 "$IOS_SIGNER_SHA256" \
@@ -626,9 +839,13 @@ jobs:
             echo "The packaged acceptance archive digest is unavailable or invalid." >&2
             exit 1
           fi
-          python3 -I scripts/validate_mobile_acceptance_evidence.py verify-archive \
+          /usr/bin/python3 -I \
+            /opt/pakperk/bin/pakperk-mobile-acceptance-validator.py \
+            verify-archive \
             "$archive" \
-            --expected-sha256 "$ARCHIVE_SHA256"
+            --expected-sha256 "$ARCHIVE_SHA256" \
+            --expected-validator-sha256 "$VALIDATOR_SHA256" \
+            --expected-driver-sha256 "$DRIVER_SHA256"
 
       - name: Upload exact-source protected mobile acceptance evidence
         id: evidence-upload

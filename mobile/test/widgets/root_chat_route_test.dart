@@ -14,12 +14,12 @@ void main() {
   testWidgets(
     'paper chat is a root route with one keyboard inset and restores reader',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(400, 800));
       tester.view.devicePixelRatio = 1;
-      addTearDown(() async {
+      tester.view.physicalSize = const Size(400, 800);
+      addTearDown(() {
         tester.view.resetViewInsets();
+        tester.view.resetPhysicalSize();
         tester.view.resetDevicePixelRatio();
-        await tester.binding.setSurfaceSize(null);
       });
       final repository =
           FakePaperDataSource(

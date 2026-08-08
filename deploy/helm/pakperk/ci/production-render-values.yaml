@@ -47,7 +47,7 @@ releaseEvidence:
 
 alerting:
   enabled: true
-  policySha256: sha256:17d4e5087723d78da7a61486af6170eff238a69d2254c201eaa7860393172702
+  policySha256: sha256:1b708d5d63988f0bbb26a6649633d1f1f5b096b0bd52338508142c9afb97140b
 
 policy:
   termsVersion: "2026-08-01"

@@ -60,9 +60,12 @@ void main() {
         capture.recordZoneErrorAndRethrow(error, stack);
       }
       // Bootstrap failed before the redacting capture could be installed.
-      // Preserve the parent zone/OS fatal path instead of presenting/logging a
-      // potentially sensitive raw exception and then swallowing it.
-      Error.throwWithStackTrace(error, stack);
+      // Preserve the parent zone/OS fatal path without presenting or logging
+      // a potentially sensitive raw exception or stack.
+      Error.throwWithStackTrace(
+        RedactingTelemetrySink.classifyError(error),
+        StackTrace.empty,
+      );
     },
   );
 }

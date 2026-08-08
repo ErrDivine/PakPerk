@@ -18,11 +18,15 @@ paper navigation trail, each stage/scroll position, and chat-sheet state.
 The app uses a stateful Read/You shell. Read keeps feed, linked-paper, stage,
 and scroll restoration across tab switches. You remains a guest explanation
 when accounts are disabled and owns sign-in/profile/onboarding state in an
-account-enabled build. Startup opens local preferences and the first cached or
-bundled feed before the production widget tree mounts, releases the native
-splash, and starts exactly one feed revalidation after the first usable frame.
-Network and identity-provider availability are therefore not launch
-prerequisites.
+account-enabled build. Phones use a bottom navigation bar; viewports at least
+600 logical pixels wide use a labeled, safe-area-aware navigation rail without
+changing branch or restoration behavior. An enabled To Read list can locally
+sort by newest, oldest, or title and search/filter its already-loaded cached
+papers by title, author, arXiv ID, or category. Startup opens local preferences
+and the first cached or bundled feed before the production widget tree mounts,
+releases the native splash, and starts exactly one feed revalidation after the
+first usable frame. Network and identity-provider availability are therefore
+not launch prerequisites.
 
 For the optional Phase 3 development account flow, start the repository's
 Compose `accounts` profile and run with the exact public-client values:

@@ -44,7 +44,7 @@
       {
         "id": "kubernetes-redacted-logs",
         "kind": "static_message_logs",
-        "contract": "Platform observation of the chart-scoped static message and severity fields only; no attributes or raw JSON",
+        "contract": "Platform observation of the chart-scoped constant/allowlisted body, severity, and Rust namespace only; no raw JSON or event attributes",
         "liveAdapterEvidenceRequired": true
       }
     ],
@@ -451,9 +451,10 @@
           "aggregation": "sum_increase",
           "filters": {
             "body": "external deletion ledger failed verification",
+            "code.namespace": "account_deletion::worker",
             "deployment.environment.name": "production",
             "log.severity_text": "ERROR",
-            "service.name": "pakperk-deletion-worker-production"
+            "service.name": "pakperk-backend-stdout"
           }
         },
         "condition": {

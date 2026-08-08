@@ -36,11 +36,12 @@ and [Google Play Data Safety guidance](https://support.google.com/googleplay/and
   abstract, introduction, prompt, answer, token, or authorization header.
 - Fatal framework/platform/zone failures are not swallowed to manufacture a
   favorable crash-free rate. Delegated application reporting receives only a
-  sanitized error category, while an actually uncaught failure retains normal
-  Apple/Google OS crash semantics. Platform diagnostics may therefore contain
-  a native crash record or runtime stack under platform policy even though the
-  custom exporter never receives it; signed-artifact processor and store-form
-  review remains required.
+  sanitized error category and empty stack, and an actually uncaught sanitized
+  replacement retains normal Apple/Google OS crash semantics. Platform
+  diagnostics may therefore contain a native process crash record under
+  platform policy, but this boundary does not pass the application exception
+  message or Dart stack; signed-artifact processor and store-form review
+  remains required.
 - Comment operations and public paper preparation/chat resolve a request-origin
   address from a forwarded chain only when the direct peer belongs to a
   configured ingress-proxy CIDR.
@@ -70,7 +71,7 @@ Use conservative disclosure for the union of enabled production features:
 | Other Data Types | Yes | App Functionality | keyed trusted request-origin scope retained for shared comment and expensive public-action abuse limits, plus reviewed production-edge network/security processing |
 | Other User Content | Yes | App Functionality | comments and report/support free text |
 | Product Interaction | Yes | App Functionality; Analytics | account-linked To Read/actions plus identifier-free interaction telemetry; linkage is marked Yes because the category also has a linked use |
-| Crash Data | No | Analytics | custom exporter receives only sanitized `timeout`, `format`, `state`, `argument`, or `unexpected`; uncaught faults retain separate OS-managed crash diagnostics under platform policy |
+| Crash Data | No | Analytics | custom exporter receives only sanitized `timeout`, `format`, `state`, `argument`, or `unexpected`; an uncaught sanitized replacement can retain separate OS-managed native crash diagnostics under platform policy |
 | Performance Data | No | Analytics | bounded startup duration and cache/interaction performance signals |
 
 Apple defines Device ID as an advertising identifier or another device-level
@@ -110,7 +111,7 @@ The proposed production mapping is:
 | Device or other IDs | keyed request-origin network identifier collected for abuse prevention, security, and shared rate limiting; production edges may also process source IP access data | automatic when requests reach those protected service/edge boundaries; never used for advertising or tracking |
 | App activity — Other user-generated content | collected for app functionality/safety (comments and report text) | optional |
 | App activity — App interactions / Other actions | collected for account functionality (To Read, block/report actions) and analytics (closed-vocabulary events) | functionality is optional; production analytics is automatic when enabled |
-| App info and performance — Crash logs | custom exporter collects a sanitized error category; uncaught faults may separately produce OS-managed crash diagnostics | automatic when production telemetry is enabled or the platform diagnostics policy applies; verify the signed deployment and console settings |
+| App info and performance — Crash logs | custom exporter collects a sanitized error category; an uncaught category-and-empty-stack replacement may separately produce OS-managed native crash diagnostics | automatic when production telemetry is enabled or the platform diagnostics policy applies; verify the signed deployment and console settings |
 | App info and performance — Diagnostics | bounded startup/cache timing and outcome data collected for analytics | automatic when production telemetry is enabled |
 
 Answer **Yes** to encryption in transit and to providing an account-deletion

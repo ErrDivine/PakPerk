@@ -150,7 +150,14 @@ impl AccountDeletionWorker {
                     warn!(code = %failure.code, "account deletion retry scheduled");
                     OperationOutcome::RetryableFailure
                 } else {
-                    error!(code = %failure.code, "account deletion reached terminal failure");
+                    if failure.code == "external_ledger_invalid" {
+                        error!(
+                            code = %failure.code,
+                            "external deletion ledger failed verification"
+                        );
+                    } else {
+                        error!(code = %failure.code, "account deletion reached terminal failure");
+                    }
                     OperationOutcome::TerminalFailure
                 };
                 record_operation(OperationClass::AccountDeletion, outcome, started.elapsed());
@@ -325,7 +332,7 @@ fn process_failure(
         ProcessError::Externalization(_) => (
             "external_ledger",
             "external_ledger_invalid",
-            "external deletion ledger failed verification",
+            "external deletion ledger is invalid",
             false,
         ),
         ProcessError::IdentityAdmin(IdentityAdminError::ProviderUnavailable) => (

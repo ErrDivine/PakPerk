@@ -2,6 +2,7 @@
 
 **Code version:** `0.2.0+2`
 **Evidence date:** 2026-08-02
+**Last revalidated:** 2026-08-08
 **Scope:** Flutter client and native Android/iOS hosts
 
 ## Implemented
@@ -81,7 +82,7 @@ support links, build-bound Terms/Community Guidelines acceptance, post-`401`
 response provenance, and bounded safety-intent recovery after authenticated
 thread rehydration. Legal-document futures are cached by loader, kind, and
 policy version instead of being recreated during rebuilds. On the final source
-tree, Flutter analysis and all 601 locked tests passed, including cold restored-
+tree, Flutter analysis and all 610 locked tests passed, including cold restored-
 identity rebinding, same-epoch account isolation, terminal deletion latching,
 and generation-guarded comment-cache purging. No physical-device or protected
 signed-artifact run was executed at this checkpoint.
@@ -147,19 +148,23 @@ Negative gates were also exercised: Android release fails immediately without
 all `PAKPERK_ANDROID_*` values; iOS production IPA resolution is manual Apple
 Distribution signing and produces no IPA without a protected team/profile.
 On the final current-tree canonical run, the check passed Dart formatting,
-Flutter analysis, all 601 locked tests, all three Android debug flavors, all
+Flutter analysis, all 610 locked tests, all three Android debug flavors, all
 three iOS simulator flavors, and strict inspection of staging/production
 Android archives and the production iOS simulator app. None of these results is
 physical-device or distribution-signing evidence.
 
-The signed-release workflow now derives content-addressed candidate and
-provenance manifests from the retained AAB/APK/IPA and observed signers, binds
-the iOS leaf certificate to the provisioning profile, and revalidates retained
-evidence after mandatory upload. Its 52 tamper regressions passed. The protected
-acceptance contract's 37 evidence tests and 53 workflow-tamper tests also
-passed; they bind exact staging coordinates, an ephemeral root-owned runner
-session, four challenge-keyed physical identities, 16 ordered scenarios, 70
-assertions, and 37 integer metrics without claiming that a live run occurred.
+The exact eight-job signed-mobile contract separates credential-free
+preparation, Android/iOS signing, credential-free assembly, uncredentialed
+store-client bootstrap, Android/iOS upload, and credential-free finalization.
+It binds the iOS leaf certificate to the provisioning profile and retains three
+distinct immutable candidate, store-handoff, and signed-release-outcome
+artifacts. Its workflow validator's 36 regressions, assembler's 8 tests,
+finalizer's 15 tests, authenticated-run verifier's 13 tests, and candidate
+validator's 43 tests passed. The protected acceptance contract's 42 evidence
+tests and 63 workflow-tamper tests also passed; they bind exact staging
+coordinates, an ephemeral root-owned runner session, four challenge-keyed
+physical identities, 16 ordered scenarios, 70 assertions, and 37 integer
+metrics without claiming that a live run occurred.
 
 ## Current-tree external verification still required
 

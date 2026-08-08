@@ -9,7 +9,15 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
-from validate_alert_policy import DEFAULT_POLICY, PolicyError, validate_policy
+from validate_alert_policy import (
+    DEFAULT_POLICY,
+    PROJECT_ROOT,
+    PolicyError,
+    _tracked_backend_rust_sources,
+    _validate_ledger_alert_sources,
+    _validate_ledger_worker_emission,
+    validate_policy,
+)
 
 
 def _write(path: Path, policy: dict[str, Any]) -> None:
@@ -98,6 +106,51 @@ def main() -> int:
             assert "duplicate JSON key" in str(error), error
         else:
             raise AssertionError("validator accepted a duplicate JSON key")
+
+        worker_source = (
+            PROJECT_ROOT / "backend/crates/account_deletion/src/worker.rs"
+        ).read_text(encoding="utf-8")
+        moved_branch = worker_source.replace(
+            'if failure.code == "external_ledger_invalid" {',
+            'if failure.code == "storage_failure" {',
+            1,
+        )
+        try:
+            _validate_ledger_worker_emission(moved_branch)
+        except PolicyError as error:
+            assert "external_ledger_invalid terminal branch" in str(error), error
+        else:
+            raise AssertionError(
+                "validator accepted the ledger alert message outside its failure branch"
+            )
+
+        spoofed_emission = worker_source + (
+            '\nfn spoofed_ledger_alert() {\n'
+            '    tracing::error!("external deletion ledger failed verification");\n'
+            '}\n'
+        )
+        try:
+            _validate_ledger_worker_emission(spoofed_emission)
+        except PolicyError as error:
+            assert "literal must occur exactly once" in str(error), error
+        else:
+            raise AssertionError("validator accepted a second exact ledger alert emission")
+
+        backend_sources = _tracked_backend_rust_sources()
+        backend_sources["backend/apps/spoofed-ledger/src/main.rs"] = (
+            'fn main() {\n'
+            '    tracing::error!(target: "account_deletion::worker", '
+            '"external deletion ledger failed verification");\n'
+            '}\n'
+        )
+        try:
+            _validate_ledger_alert_sources(backend_sources)
+        except PolicyError as error:
+            assert "across tracked backend Rust sources" in str(error), error
+        else:
+            raise AssertionError(
+                "validator accepted a second-file spoof of the ledger alert"
+            )
 
     print("Alert-policy validator regression tests passed.")
     return 0

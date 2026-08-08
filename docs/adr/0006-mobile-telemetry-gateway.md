@@ -23,9 +23,19 @@ authorization header, or identifier. Failure drops telemetry without changing
 product behavior.
 
 Ingress supplies coarse per-client connection/rate limits. The gateway's
-closed schema is the privacy boundary; downstream Collector redaction is a
-second layer. Crash-free release evidence uses an externally reviewed aggregate
-distribution/store denominator rather than inventing a stable identifier.
+closed schema is the privacy boundary. As a second layer, the downstream
+Collector preserves a log body only when its service, environment, scope, and
+event name exactly match this schema; every other direct-OTLP log body is
+replaced by a static marker. Crash-free release evidence uses an externally
+reviewed aggregate distribution/store denominator rather than inventing a
+stable identifier.
+
+Before an application failure crosses a framework, platform, zone, or
+bootstrap diagnostic boundary, the client replaces the original exception and
+Dart stack with one bounded error category and `StackTrace.empty`. If no prior
+handler accepts it, that replacement remains uncaught so crash behavior is not
+hidden; the raw callback arguments are never returned to the engine fallback
+logger.
 
 ## Consequences
 

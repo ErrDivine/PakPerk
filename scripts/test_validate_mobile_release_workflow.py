@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
-"""Regression tests for the signed-mobile workflow contract validator."""
+"""Adversarial tests for the split signed-mobile workflow contract."""
 
 from __future__ import annotations
 
-import hashlib
-import json
-import os
 import pathlib
 import tempfile
-import textwrap
 import unittest
-from unittest import mock
 
 import validate_mobile_release_workflow as validator
 
@@ -18,527 +13,375 @@ import validate_mobile_release_workflow as validator
 MOBILE_SOURCE = validator.WORKFLOW.read_text(encoding="utf-8")
 SECURITY_SOURCE = validator.SECURITY_WORKFLOW.read_text(encoding="utf-8")
 IOS_VERIFIER_SOURCE = validator.IOS_VERIFIER.read_text(encoding="utf-8")
-
-
-def _embedded_manifest_python() -> str:
-    step = validator._step_block(
-        MOBILE_SOURCE,
-        "Generate SBOM, notices, and immutable evidence hashes",
-        "test workflow",
-    )
-    marker = "          python3 - <<'PY'\n"
-    start = step.index(marker) + len(marker)
-    end = step.index("\n          PY", start)
-    return textwrap.dedent(step[start:end]) + "\n"
-
-
-def _move_step_after(source: str, moving_name: str, anchor_name: str) -> str:
-    moving_marker = f"      - name: {moving_name}\n"
-    moving_start = source.index(moving_marker)
-    moving_end = source.find("\n      - ", moving_start + len(moving_marker))
-    if moving_end < 0:
-        raise AssertionError(f"moving step has no following step: {moving_name}")
-    moving_block = source[moving_start:moving_end]
-    without_moving = source[:moving_start] + source[moving_end + 1 :]
-
-    anchor_marker = f"      - name: {anchor_name}\n"
-    anchor_start = without_moving.index(anchor_marker)
-    anchor_end = without_moving.find("\n      - ", anchor_start + len(anchor_marker))
-    if anchor_end < 0:
-        raise AssertionError(f"anchor step has no following step: {anchor_name}")
-    return (
-        without_moving[:anchor_end] + "\n" + moving_block + without_moving[anchor_end:]
-    )
+MATERIALIZER_SOURCE = validator.SECRET_MATERIALIZER.read_text(encoding="utf-8")
 
 
 class MobileReleaseWorkflowValidationTests(unittest.TestCase):
     def _validate(
         self,
+        *,
         mobile: str = MOBILE_SOURCE,
         security: str = SECURITY_SOURCE,
         ios_verifier: str = IOS_VERIFIER_SOURCE,
+        materializer: str = MATERIALIZER_SOURCE,
     ) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = pathlib.Path(temporary)
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
             mobile_path = root / "mobile-release.yml"
             security_path = root / "security.yml"
-            ios_verifier_path = root / "verify_ios_release_artifact.sh"
+            ios_path = root / "verify-ios.sh"
+            materializer_path = root / "materializer.py"
             mobile_path.write_text(mobile, encoding="utf-8")
             security_path.write_text(security, encoding="utf-8")
-            ios_verifier_path.write_text(ios_verifier, encoding="utf-8")
-            validator.validate(mobile_path, security_path, ios_verifier_path)
+            ios_path.write_text(ios_verifier, encoding="utf-8")
+            materializer_path.write_text(materializer, encoding="utf-8")
+            validator.validate(mobile_path, security_path, ios_path, materializer_path)
 
-    def _assert_mobile_tamper_rejected(self, original: str, replacement: str) -> None:
-        self.assertIn(original, MOBILE_SOURCE)
+    def _replace_rejected(self, original: str, replacement: str, *, count: int = 1) -> None:
+        self.assertGreaterEqual(MOBILE_SOURCE.count(original), count)
+        tampered = MOBILE_SOURCE.replace(original, replacement, count)
         with self.assertRaises(RuntimeError):
-            self._validate(mobile=MOBILE_SOURCE.replace(original, replacement, 1))
+            self._validate(mobile=tampered)
 
-    def _assert_security_tamper_rejected(self, original: str, replacement: str) -> None:
-        self.assertIn(original, SECURITY_SOURCE)
+    def _job_replace_rejected(self, job_id: str, original: str, replacement: str) -> None:
+        block = validator._job_block(MOBILE_SOURCE, job_id)
+        self.assertIn(original, block)
+        tampered_block = block.replace(original, replacement, 1)
         with self.assertRaises(RuntimeError):
-            self._validate(security=SECURITY_SOURCE.replace(original, replacement, 1))
-
-    def _assert_ios_verifier_tamper_rejected(
-        self, original: str, replacement: str
-    ) -> None:
-        self.assertIn(original, IOS_VERIFIER_SOURCE)
-        with self.assertRaises(RuntimeError):
-            self._validate(
-                ios_verifier=IOS_VERIFIER_SOURCE.replace(original, replacement, 1)
-            )
+            self._validate(mobile=MOBILE_SOURCE.replace(block, tampered_block, 1))
 
     def test_checked_in_contract_passes(self) -> None:
         self._validate()
 
-    def test_embedded_generator_emits_content_addressed_actual_artifacts(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = pathlib.Path(temporary)
-            artifacts = root / "artifacts"
-            evidence = root / "evidence"
-            artifacts.mkdir()
-            evidence.mkdir()
-            root.joinpath("symbols").mkdir()
-            root.joinpath("native-symbols").mkdir()
-            artifact_bytes = {
-                "candidate.aab": b"signed aab fixture",
-                "candidate.apk": b"signed apk fixture",
-                "candidate.ipa": b"signed ipa fixture",
-            }
-            for name, data in artifact_bytes.items():
-                artifacts.joinpath(name).write_bytes(data)
-            evidence.joinpath("android-upload-identity.txt").write_text(
-                "android_package=app.pakperk.pakperk.staging\n"
-                "android_version_name=0.2.0-staging\n"
-                "android_version_code=2\n"
-                f"android_upload_sha256={':'.join(['AA'] * 32)}\n",
-                encoding="utf-8",
-            )
-            evidence.joinpath("android-retained-digests.txt").write_text(
-                "android_aab_artifact_sha256="
-                + hashlib.sha256(artifact_bytes["candidate.aab"]).hexdigest()
-                + "\nandroid_apk_artifact_sha256="
-                + hashlib.sha256(artifact_bytes["candidate.apk"]).hexdigest()
-                + "\n",
-                encoding="utf-8",
-            )
-            evidence.joinpath("apple-installed-identity.txt").write_text(
-                "apple_bundle_id=app.pakperk.pakperk.staging\n"
-                "apple_version=0.2.0\n"
-                "apple_build=2\n"
-                "apple_team_id=PAKPERK001\n"
-                f"apple_signer_sha256={'b' * 64}\n"
-                "apple_ipa_sha256="
-                + hashlib.sha256(artifact_bytes["candidate.ipa"]).hexdigest()
-                + "\n",
-                encoding="utf-8",
-            )
-            config = root / "mobile-release-config.json"
-            config.write_text(
-                json.dumps(
-                    {
-                        "PAKPERK_ENV": "staging",
-                        "PAKPERK_FULLTEXT_POLICY": "strict",
-                    }
-                ),
-                encoding="utf-8",
-            )
-            output = root / "github-output.txt"
-            summary = root / "github-summary.md"
-            environment = {
-                "RUNNER_TEMP": str(root),
-                "PAKPERK_MOBILE_RELEASE_CONFIG": str(config),
-                "RELEASE_SOURCE_REVISION": "a" * 40,
-                "RELEASE_ENVIRONMENT": "staging",
-                "RELEASE_APP_VERSION": "0.2.0",
-                "RELEASE_ANDROID_VERSION_NAME": "0.2.0-staging",
-                "RELEASE_BUILD_NUMBER": "2",
-                "RELEASE_APPLICATION_ID": "app.pakperk.pakperk.staging",
-                "RELEASE_WORKFLOW_SHA": "a" * 40,
-                "RELEASE_REPOSITORY": "ErrDivine/PakPerk",
-                "RELEASE_JOB": "signed-candidate",
-                "RELEASE_RUN_ID": "123456789",
-                "RELEASE_RUN_ATTEMPT": "2",
-                "GITHUB_OUTPUT": str(output),
-                "GITHUB_STEP_SUMMARY": str(summary),
-            }
-            with mock.patch.dict(os.environ, environment, clear=False):
-                exec(
-                    compile(
-                        _embedded_manifest_python(),
-                        "mobile-release-manifest-generator",
-                        "exec",
-                    ),
-                    {"__name__": "__main__"},
-                )
+    def test_exact_eight_job_surface_is_immutable(self) -> None:
+        self._replace_rejected("  signed-release-finalizer:\n", "  mutable-finalizer:\n")
 
-            provenance_bytes = evidence.joinpath(
-                "mobile-release-provenance.json"
-            ).read_bytes()
-            candidate_bytes = evidence.joinpath("mobile-candidate.json").read_bytes()
-            provenance = json.loads(provenance_bytes)
-            candidate = json.loads(candidate_bytes)
-            self.assertEqual(
-                provenance_bytes,
-                (
-                    json.dumps(provenance, sort_keys=True, separators=(",", ":")) + "\n"
-                ).encode("ascii"),
-            )
-            self.assertEqual(
-                candidate_bytes,
-                (
-                    json.dumps(candidate, sort_keys=True, separators=(",", ":")) + "\n"
-                ).encode("ascii"),
-            )
-            self.assertEqual(
-                provenance["android"]["aab_sha256"],
-                hashlib.sha256(artifact_bytes["candidate.aab"]).hexdigest(),
-            )
-            self.assertEqual(
-                provenance["android"]["apk_sha256"],
-                hashlib.sha256(artifact_bytes["candidate.apk"]).hexdigest(),
-            )
-            self.assertEqual(
-                provenance["ios"]["ipa_sha256"],
-                hashlib.sha256(artifact_bytes["candidate.ipa"]).hexdigest(),
-            )
-            self.assertEqual(provenance["android"]["signer_sha256"], "a" * 64)
-            self.assertEqual(provenance["ios"]["signer_sha256"], "b" * 64)
-            self.assertEqual(provenance["workflow"]["stage"], "artifacts_verified")
-            self.assertEqual(candidate["android"], provenance["android"])
-            self.assertEqual(candidate["ios"], provenance["ios"])
-            provenance_id = "sha256:" + hashlib.sha256(provenance_bytes).hexdigest()
-            candidate_id = "sha256:" + hashlib.sha256(candidate_bytes).hexdigest()
-            self.assertEqual(candidate["provenance_id"], provenance_id)
-            output_lines = output.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(
-                output_lines,
-                [f"provenance_id={provenance_id}", f"candidate_id={candidate_id}"],
-            )
-            checksums = root.joinpath("release-sha256.txt").read_text(encoding="utf-8")
-            for path in (
-                "artifacts/candidate.aab",
-                "artifacts/candidate.apk",
-                "artifacts/candidate.ipa",
-                "evidence/mobile-release-provenance.json",
-                "evidence/mobile-candidate.json",
-            ):
-                self.assertIn(f"  {path}\n", checksums)
-
-            artifacts.joinpath("candidate.ipa").write_bytes(
-                b"post-verification replacement"
-            )
-            with mock.patch.dict(os.environ, environment, clear=False):
-                with self.assertRaisesRegex(
-                    SystemExit, "retained signed artifact changed after verification"
-                ):
-                    exec(
-                        compile(
-                            _embedded_manifest_python(),
-                            "mobile-release-manifest-generator",
-                            "exec",
-                        ),
-                        {"__name__": "__main__"},
-                    )
-
-    def test_automatic_trigger_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "  workflow_dispatch:\n", "  workflow_dispatch:\n  push:\n"
+    def test_exact_production_job_display_names_are_bound(self) -> None:
+        self._job_replace_rejected(
+            "android-store-upload",
+            "    name: ${{ inputs.environment }} isolated Android store upload\n",
+            "    name: production store upload\n",
         )
 
-    def test_quoted_automatic_trigger_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "  workflow_dispatch:\n",
-            '  workflow_dispatch:\n  "push": {}\n',
+    def test_candidate_preparation_is_outside_protected_environment(self) -> None:
+        self._job_replace_rejected(
+            "candidate-preparation",
+            "    runs-on: macos-26\n",
+            "    environment: ${{ inputs.environment }}\n    runs-on: macos-26\n",
         )
 
-    def test_dispatch_environment_cannot_be_widened(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "        type: choice\n"
-            "        options: [development, staging, production]",
-            "        type: string",
+    def test_candidate_preparation_cannot_receive_a_secret(self) -> None:
+        self._job_replace_rejected(
+            "candidate-preparation",
+            "    runs-on: macos-26\n",
+            "    env:\n      LEAK: ${{ secrets.PAKPERK_ANDROID_KEYSTORE_BASE64 }}\n    runs-on: macos-26\n",
         )
 
-    def test_inherited_bash_environment_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "  FLUTTER_VERSION: 3.44.8\n",
-            "  BASH_ENV: ${{ github.workspace }}/pretrust.sh\n"
-            "  FLUTTER_VERSION: 3.44.8\n",
+    def test_prepared_config_is_retained_before_tooling_and_tests(self) -> None:
+        self._job_replace_rejected(
+            "candidate-preparation",
+            "      - name: Retain immutable credential-free prepared mobile config\n",
+            "      - name: Retain mutable config\n",
         )
 
-    def test_inflight_candidate_cannot_be_cancelled(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "cancel-in-progress: false", "cancel-in-progress: true"
+    def test_store_request_is_production_only(self) -> None:
+        self._replace_rejected(
+            'if [[ "${{ inputs.upload_to_stores }}" == true && "$RELEASE_ENVIRONMENT" != production ]]; then',
+            'if [[ "${{ inputs.upload_to_stores }}" == false ]]; then',
         )
 
-    def test_quoted_checkout_key_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "        with:\n",
-            '        "uses": attacker/execute@deadbeef\n        with:\n',
+    def test_both_signers_require_the_protected_environment(self) -> None:
+        self._job_replace_rejected(
+            "ios-signed-candidate",
+            "    environment: ${{ inputs.environment }}\n",
+            "",
         )
 
-    def test_permission_expansion_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "permissions:\n  contents: read",
-            "permissions:\n  contents: read\n  actions: write",
+    def test_android_signer_cannot_receive_ios_or_store_credentials(self) -> None:
+        self._job_replace_rejected(
+            "android-signed-candidate",
+            "          ANDROID_KEY_ALIAS: ${{ secrets.PAKPERK_ANDROID_KEY_ALIAS }}\n",
+            "          ANDROID_KEY_ALIAS: ${{ secrets.PAKPERK_APP_STORE_CONNECT_KEY_ID }}\n",
         )
 
-    def test_job_level_main_guard_is_rejected_as_fail_open(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "  signed-candidate:\n    name:",
-            "  signed-candidate:\n"
-            "    if: github.ref == 'refs/heads/main'\n"
-            "    name:",
+    def test_ios_signer_cannot_receive_android_or_store_credentials(self) -> None:
+        self._job_replace_rejected(
+            "ios-signed-candidate",
+            "          IOS_TEAM_ID: ${{ secrets.PAKPERK_DEVELOPMENT_TEAM }}\n",
+            "          IOS_TEAM_ID: ${{ secrets.PAKPERK_ANDROID_KEY_ALIAS }}\n",
         )
 
-    def test_job_level_continue_on_error_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "  signed-candidate:\n    name:",
-            "  signed-candidate:\n    continue-on-error: true\n    name:",
+    def test_signing_secret_cannot_escape_its_materialization_step(self) -> None:
+        self._job_replace_rejected(
+            "android-signed-candidate",
+            "      - name: Retain isolated signed Android candidate\n",
+            "      - name: Leak duplicate signing secret\n"
+            "        env:\n"
+            "          LEAK: ${{ secrets.PAKPERK_ANDROID_KEY_ALIAS }}\n"
+            "        run: /usr/bin/true\n"
+            "      - name: Retain isolated signed Android candidate\n",
         )
 
-    def test_trailing_job_level_if_is_rejected(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "job-level key"):
-            self._validate(mobile=MOBILE_SOURCE + "    if: false\n")
-
-    def test_quoted_sibling_job_is_rejected(self) -> None:
-        source = MOBILE_SOURCE + (
-            '  "bypass":\n'
-            "    runs-on: macos-26\n"
-            "    steps:\n"
-            '      - run: "true"\n'
-        )
-        with self.assertRaisesRegex(RuntimeError, "exactly one bounded job"):
-            self._validate(mobile=source)
-
-    def test_executable_step_before_source_trust_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "          persist-credentials: false\n"
-            "      - name: Resolve reviewed source revision",
-            "          persist-credentials: false\n"
-            "      - run: echo bypass\n"
-            "      - name: Resolve reviewed source revision",
+    def test_signers_re_attest_prepared_transfer_before_credentials(self) -> None:
+        self._job_replace_rejected(
+            "android-signed-candidate",
+            "EXPECTED_ARTIFACT_DIGEST: ${{ needs.candidate-preparation.outputs.prepared_artifact_digest }}",
+            "EXPECTED_ARTIFACT_DIGEST: deadbeef",
         )
 
-    def test_bare_sequence_step_before_source_trust_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
+    def test_prepared_transfer_uses_artifact_id_and_digest_fail_closed(self) -> None:
+        self._job_replace_rejected(
+            "ios-signed-candidate",
+            "          artifact-ids: ${{ needs.candidate-preparation.outputs.prepared_artifact_id }}\n",
+            "          name: latest-prepared-config\n",
+        )
+        self._job_replace_rejected(
+            "ios-signed-candidate", "          digest-mismatch: error\n", ""
+        )
+
+    def test_aggregator_is_credential_free_and_has_exact_dependencies(self) -> None:
+        self._job_replace_rejected(
+            "signed-candidate",
+            "    needs: [candidate-preparation, android-signed-candidate, ios-signed-candidate]\n",
+            "    needs: [android-signed-candidate, ios-signed-candidate]\n",
+        )
+        self._job_replace_rejected(
+            "signed-candidate",
+            "    runs-on: macos-26\n",
+            "    environment: ${{ inputs.environment }}\n    runs-on: macos-26\n",
+        )
+
+    def test_aggregator_requires_three_distinct_raw_transfer_identities(self) -> None:
+        self._job_replace_rejected(
+            "signed-candidate",
+            '[[ "$PREPARED_ARTIFACT_ID" != "$ANDROID_ARTIFACT_ID" && \\\n',
+            '[[ "$PREPARED_ARTIFACT_ID" == "$ANDROID_ARTIFACT_ID" && \\\n',
+        )
+        self._job_replace_rejected(
+            "signed-candidate",
+            'for value in "$PREPARED_ARTIFACT_DIGEST" "$ANDROID_ARTIFACT_DIGEST" "$IOS_ARTIFACT_DIGEST"; do',
+            'for value in "$PREPARED_ARTIFACT_DIGEST"; do',
+        )
+
+    def test_aggregator_downloads_all_inputs_by_immutable_artifact_id(self) -> None:
+        self._job_replace_rejected(
+            "signed-candidate",
+            "          artifact-ids: ${{ needs.android-signed-candidate.outputs.artifact_id }}\n",
+            "          name: android-latest\n",
+        )
+        block = validator._job_block(MOBILE_SOURCE, "signed-candidate")
+        self.assertEqual(3, block.count("          digest-mismatch: error\n"))
+
+    def test_assembler_and_post_retention_revalidation_are_hash_bound(self) -> None:
+        digest = validator.EXPECTED_HELPER_SHA256["assemble_mobile_signed_candidate.py"]
+        self._job_replace_rejected("signed-candidate", digest, "0" * 64)
+        self._job_replace_rejected(
+            "signed-candidate",
+            'assemble_mobile_signed_candidate.py" verify',
+            'assemble_mobile_signed_candidate.py" assemble',
+        )
+
+    def test_bootstrap_is_credential_free_and_upload_only(self) -> None:
+        self._job_replace_rejected(
+            "store-client-bootstrap", "    if: inputs.upload_to_stores\n", "    if: always()\n"
+        )
+        self._job_replace_rejected(
+            "store-client-bootstrap",
+            "    runs-on: macos-26\n",
+            "    environment: ${{ inputs.environment }}\n    runs-on: macos-26\n",
+        )
+
+    def test_bootstrap_transfers_complete_hash_bound_control_closure(self) -> None:
+        self._job_replace_rejected(
+            "store-client-bootstrap",
+            "scripts/finalize_mobile_signed_release.py",
+            "scripts/unreviewed_finalizer.py",
+        )
+        self._job_replace_rejected(
+            "store-client-bootstrap", "mobile/Gemfile.lock", "mobile/Gemfile.unlocked"
+        )
+
+    def test_each_store_upload_is_protected_and_upload_only(self) -> None:
+        for job_id in ("android-store-upload", "ios-store-upload"):
+            with self.subTest(job_id=job_id):
+                block = validator._job_block(MOBILE_SOURCE, job_id)
+                self.assertIn("    if: inputs.upload_to_stores\n", block)
+                self.assertIn("    environment: ${{ inputs.environment }}\n", block)
+
+    def test_store_upload_jobs_cannot_checkout_or_execute_workspace_code(self) -> None:
+        self._job_replace_rejected(
+            "android-store-upload",
             "    steps:\n",
-            "    steps:\n      -\n        run: echo bypass\n",
+            "    steps:\n      - uses: actions/checkout@evil\n",
+        )
+        self._job_replace_rejected(
+            "ios-store-upload",
+            "    steps:\n",
+            "    steps:\n      - run: $GITHUB_WORKSPACE/scripts/unreviewed.py\n",
         )
 
-    def test_dispatch_ref_must_be_bound_to_github_context(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "          DISPATCH_REF: ${{ github.ref }}\n",
-            "          DISPATCH_REF: refs/heads/main\n",
+    def test_android_upload_receives_only_google_credential(self) -> None:
+        self._job_replace_rejected(
+            "android-store-upload",
+            "          GOOGLE_PLAY_JSON_BASE64: ${{ secrets.PAKPERK_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}\n",
+            "          APP_STORE_KEY_ID: ${{ secrets.PAKPERK_APP_STORE_CONNECT_KEY_ID }}\n",
         )
 
-    def test_release_environment_must_be_bound_to_dispatch_input(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "          RELEASE_ENVIRONMENT: ${{ inputs.environment }}\n",
-            "          RELEASE_ENVIRONMENT: staging\n",
+    def test_ios_upload_receives_only_app_store_credentials(self) -> None:
+        self._job_replace_rejected(
+            "ios-store-upload",
+            "          APP_STORE_KEY_ID: ${{ secrets.PAKPERK_APP_STORE_CONNECT_KEY_ID }}\n",
+            "          GOOGLE: ${{ secrets.PAKPERK_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}\n",
         )
 
-    def test_runtime_environment_allowlist_cannot_be_weakened(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            'if [[ "$RELEASE_ENVIRONMENT" != "development" && "$RELEASE_ENVIRONMENT" != "staging" && "$RELEASE_ENVIRONMENT" != "production" ]]; then',
-            'if [[ -z "$RELEASE_ENVIRONMENT" ]]; then',
+    def test_store_credential_cannot_escape_upload_step(self) -> None:
+        self._job_replace_rejected(
+            "ios-store-upload",
+            "      - name: Retain isolated iOS upload evidence\n",
+            "      - name: Leak duplicate store secret\n"
+            "        env:\n"
+            "          LEAK: ${{ secrets.PAKPERK_APP_STORE_CONNECT_KEY_ID }}\n"
+            "        run: /usr/bin/true\n"
+            "      - name: Retain isolated iOS upload evidence\n",
         )
 
-    def test_non_main_guard_cannot_be_short_circuited(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            '          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then',
-            '          true || if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then',
+    def test_uploads_re_attest_both_artifact_ids_and_raw_digests_before_secrets(self) -> None:
+        self._job_replace_rejected(
+            "android-store-upload",
+            "EXPECTED_STORE_CLIENT_ARTIFACT_DIGEST: ${{ needs.store-client-bootstrap.outputs.archive_artifact_digest }}",
+            "EXPECTED_STORE_CLIENT_ARTIFACT_DIGEST: deadbeef",
+        )
+        self._job_replace_rejected(
+            "ios-store-upload",
+            '[[ "$EXPECTED_CANDIDATE_ARTIFACT_ID" != "$EXPECTED_STORE_CLIENT_ARTIFACT_ID" ]] || exit 1',
+            "/usr/bin/true",
         )
 
-    def test_non_main_guard_cannot_be_commented_out(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            '          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then',
-            '          # if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then',
+    def test_platform_store_clients_cannot_cross(self) -> None:
+        self._job_replace_rejected(
+            "android-store-upload",
+            "manage_google_play_rollout.rb",
+            "manage_app_store_phased_release.rb",
+        )
+        self._job_replace_rejected(
+            "ios-store-upload",
+            "manage_app_store_phased_release.rb",
+            "manage_google_play_rollout.rb",
         )
 
-    def test_mobile_flutter_version_tamper_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "  FLUTTER_VERSION: 3.44.8", "  FLUTTER_VERSION: 3.44.9"
+    def test_platform_outcomes_bind_succeeded_verified_and_raw_transfers(self) -> None:
+        self._job_replace_rejected(
+            "android-store-upload",
+            '"status": "succeeded_verified"',
+            '"status": "succeeded"',
+        )
+        self._job_replace_rejected(
+            "ios-store-upload",
+            "STORE_CLIENT_ARTIFACT_DIGEST: ${{ needs.store-client-bootstrap.outputs.archive_artifact_digest }}",
+            "STORE_CLIENT_ARTIFACT_DIGEST: deadbeef",
         )
 
-    def test_policy_version_evidence_cannot_be_removed(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            '                      "termsDocumentVersion": config["PAKPERK_TERMS_DOCUMENT_VERSION"],\n',
-            "",
+    def test_platform_evidence_is_retained_before_failure(self) -> None:
+        self._job_replace_rejected(
+            "android-store-upload",
+            "      - name: Fail isolated Android upload after evidence retention\n",
+            "      - name: Fail Android before evidence retention\n",
+        )
+        self._job_replace_rejected(
+            "ios-store-upload",
+            "      - name: Retain isolated iOS upload evidence\n        id: ios_evidence_upload\n        if: always()\n",
+            "      - name: Retain isolated iOS upload evidence\n        id: ios_evidence_upload\n        if: success()\n",
         )
 
-    def test_protected_public_policy_binding_cannot_be_removed(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "          RELEASE_DOCUMENT_VERSION: ${{ vars.PAKPERK_PUBLIC_DOCUMENT_VERSION }}\n",
-            "",
+    def test_finalizer_is_always_run_credential_free_and_depends_on_both_platforms(self) -> None:
+        self._job_replace_rejected(
+            "signed-release-finalizer", "    if: always()\n", "    if: success()\n"
+        )
+        self._job_replace_rejected(
+            "signed-release-finalizer",
+            "    runs-on: macos-26\n",
+            "    environment: ${{ inputs.environment }}\n    runs-on: macos-26\n",
+        )
+        self._job_replace_rejected(
+            "signed-release-finalizer",
+            "    needs: [signed-candidate, store-client-bootstrap, android-store-upload, ios-store-upload]\n",
+            "    needs: [signed-candidate, android-store-upload]\n",
         )
 
-    def test_mobile_flutter_action_tamper_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "flutter-version: ${{ env.FLUTTER_VERSION }}",
-            "flutter-version: stable",
+    def test_finalizer_downloads_all_evidence_by_immutable_id(self) -> None:
+        self._job_replace_rejected(
+            "signed-release-finalizer",
+            "          artifact-ids: ${{ needs.ios-store-upload.outputs.evidence_artifact_id }}\n",
+            "          name: ios-latest\n",
+        )
+        block = validator._job_block(MOBILE_SOURCE, "signed-release-finalizer")
+        self.assertEqual(4, block.count("          digest-mismatch: error\n"))
+
+    def test_handoff_requires_both_successful_verified_platform_jobs(self) -> None:
+        self._job_replace_rejected(
+            "signed-release-finalizer",
+            "needs.ios-store-upload.result == 'success'",
+            "needs.ios-store-upload.result != 'cancelled'",
         )
 
-    def test_mobile_flutter_identity_gate_tamper_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "python3 scripts/validate_flutter_toolchain.py",
-            "python3 scripts/record_flutter_toolchain.py",
+    def test_final_outcome_receives_both_job_results_and_raw_evidence_digests(self) -> None:
+        self._job_replace_rejected(
+            "signed-release-finalizer",
+            '--environment "${{ inputs.environment }}"',
+            '--environment "production"',
+        )
+        self._job_replace_rejected(
+            "signed-release-finalizer",
+            '--android-application-id "${{ needs.signed-candidate.outputs.bundle_id }}"',
+            '--android-application-id "app.pakperk.pakperk"',
+        )
+        self._job_replace_rejected(
+            "signed-release-finalizer",
+            '--ios-application-id "${{ needs.signed-candidate.outputs.bundle_id }}"',
+            '--ios-application-id "app.pakperk.pakperk"',
+        )
+        self._job_replace_rejected(
+            "signed-release-finalizer",
+            '--ios-job-result "${{ needs.ios-store-upload.result }}"',
+            '--ios-job-result "success"',
+        )
+        self._job_replace_rejected(
+            "signed-release-finalizer",
+            '--android-evidence-artifact-digest "${{ needs.android-store-upload.outputs.evidence_artifact_digest }}"',
+            '--android-evidence-artifact-digest "deadbeef"',
         )
 
-    def test_security_flutter_version_tamper_is_rejected(self) -> None:
-        self._assert_security_tamper_rejected(
-            "  FLUTTER_VERSION: 3.44.8", "  FLUTTER_VERSION: 3.44.9"
+    def test_final_outcome_is_retained_before_the_final_failure_gate(self) -> None:
+        self._job_replace_rejected(
+            "signed-release-finalizer",
+            "      - name: Retain unconditional aggregate signed-release evidence\n        id: final_outcome_upload\n        if: always()\n",
+            "      - name: Retain unconditional aggregate signed-release evidence\n        id: final_outcome_upload\n        if: success()\n",
+        )
+        self._job_replace_rejected(
+            "signed-release-finalizer",
+            "RETENTION_STEP: ${{ steps.final_outcome_upload.outcome }}",
+            "RETENTION_STEP: success",
         )
 
-    def test_security_flutter_identity_gate_tamper_is_rejected(self) -> None:
-        self._assert_security_tamper_rejected(
-            "python3 scripts/validate_flutter_toolchain.py",
-            "python3 scripts/record_flutter_toolchain.py",
-        )
+    def test_action_pins_and_loader_sanitization_are_immutable(self) -> None:
+        self._replace_rejected(validator.DOWNLOAD_ACTION, "actions/download-artifact@main")
+        self._replace_rejected('          NODE_OPTIONS: ""\n', "", count=1)
 
-    def test_ruby_engine_probe_tamper_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "ruby -e 'print RUBY_ENGINE'", "ruby -e 'print RUBY_PLATFORM'"
-        )
-
-    def test_ruby_version_tamper_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "  PAKPERK_RUBY_VERSION: 3.4.10",
-            "  PAKPERK_RUBY_VERSION: 3.4.11",
-        )
-
-    def test_rubygems_version_tamper_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "  PAKPERK_RUBYGEMS_VERSION: 4.0.17",
-            "  PAKPERK_RUBYGEMS_VERSION: 4.0.16",
-        )
-
-    def test_ruby_gate_after_dependency_resolution_is_rejected(self) -> None:
-        tampered = _move_step_after(
-            MOBILE_SOURCE,
-            "Select, verify, and record the reviewed Ruby runtime",
-            "Resolve locked Flutter dependencies",
-        )
+    def test_helper_materializer_and_ios_verifier_bytes_are_pinned(self) -> None:
+        digest = validator.EXPECTED_HELPER_SHA256["finalize_mobile_signed_release.py"]
+        self._replace_rejected(digest, "0" * 64)
         with self.assertRaises(RuntimeError):
-            self._validate(mobile=tampered)
+            self._validate(materializer=MATERIALIZER_SOURCE + "\n# tamper\n")
+        with self.assertRaises(RuntimeError):
+            self._validate(ios_verifier=IOS_VERIFIER_SOURCE + "\n# tamper\n")
 
-    def test_jdk_version_tamper_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "  PAKPERK_JDK_RUNTIME_VERSION: 17.0.19+10",
-            "  PAKPERK_JDK_RUNTIME_VERSION: 17.0.20+8",
-        )
-
-    def test_mobile_x64_jdk_contract_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected("JAVA_HOME_17_arm64", "JAVA_HOME_17_X64")
-
-    def test_security_arm64_jdk_contract_is_rejected(self) -> None:
-        self._assert_security_tamper_rejected("JAVA_HOME_17_X64", "JAVA_HOME_17_arm64")
-
-    def test_xcode_version_tamper_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            '  XCODE_VERSION: "26.6"', '  XCODE_VERSION: "26.7"'
-        )
-
-    def test_source_ancestry_gate_tamper_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "git merge-base --is-ancestor", "git merge-base --is-descendant"
-        )
-
-    def test_mobile_missing_evidence_is_not_a_warning(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "if-no-files-found: error", "if-no-files-found: warn"
-        )
-
-    def test_mobile_evidence_upload_cannot_continue_on_error(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "      - name: Retain signed candidates, symbols, SBOM, and release evidence\n"
-            "        uses:",
-            "      - name: Retain signed candidates, symbols, SBOM, and release evidence\n"
-            "        continue-on-error: true\n"
-            "        uses:",
-        )
-
-    def test_mobile_evidence_hash_removal_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            'checksum_path = root / "release-sha256.txt"',
-            'checksum_path = root / "release-files.txt"',
-        )
-
-    def test_candidate_artifact_hash_tamper_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            '"aab_sha256": aab_sha256',
-            '"aab_sha256": "0" * 64',
-        )
-
-    def test_android_identity_must_be_observed_from_retained_artifacts(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            '            "$retained_aab" "$retained_apk" "${{ steps.release.outputs.bundle_id }}"',
-            '            "$aab" "$apk" "${{ steps.release.outputs.bundle_id }}"',
-        )
-
-    def test_ios_identity_must_be_observed_from_retained_artifact(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            '            "$retained_ipa" "${{ steps.release.outputs.bundle_id }}"',
-            '            "$ipa" "${{ steps.release.outputs.bundle_id }}"',
-        )
-
-    def test_retained_evidence_must_be_revalidated_after_upload(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "        run: /usr/bin/shasum -a 256 --check release-sha256.txt",
-            "        run: /usr/bin/true",
-        )
-
-    def test_candidate_workflow_run_binding_tamper_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            "          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}\n",
-            "          RELEASE_RUN_ATTEMPT: 1\n",
-        )
-
-    def test_candidate_canonical_json_contract_tamper_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected("                      sort_keys=True,", "")
-
-    def test_candidate_provenance_binding_tamper_is_rejected(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            '              "provenance_id": provenance_id,',
-            '              "provenance_id": "sha256:" + "0" * 64,',
-        )
-
-    def test_candidate_stage_cannot_claim_whole_job_success(self) -> None:
-        self._assert_mobile_tamper_rejected(
-            '                  "stage": "artifacts_verified",',
-            '                  "conclusion": "success",',
-        )
-
-    def test_ios_leaf_certificate_extraction_tamper_is_rejected(self) -> None:
-        self._assert_ios_verifier_tamper_rejected(
-            'codesign -d --extract-certificates "$certificate_prefix" "$app"',
-            "true # signer certificate not observed",
-        )
-
-    def test_ios_signer_fingerprint_evidence_tamper_is_rejected(self) -> None:
-        self._assert_ios_verifier_tamper_rejected(
-            "printf 'apple_signer_sha256=%s\\n' \"$apple_signer_sha256\"",
-            "printf 'apple_signer_sha256=%s\\n' \"$IOS_SIGNER_SHA256\"",
-        )
-
-    def test_ios_profile_certificate_authorization_tamper_is_rejected(self) -> None:
-        self._assert_ios_verifier_tamper_rejected(
-            'developer_certificates = profile.get("DeveloperCertificates")',
-            'developer_certificates = [b"unbound"]',
-        )
-
-    def test_mobile_evidence_cannot_be_hashed_before_ios_verification(self) -> None:
-        tampered = _move_step_after(
-            MOBILE_SOURCE,
-            "Generate SBOM, notices, and immutable evidence hashes",
-            "Build and inspect signed Android artifacts",
-        )
-        with self.assertRaisesRegex(RuntimeError, "step surface changed"):
-            self._validate(mobile=tampered)
-
-    def test_security_missing_evidence_is_not_a_warning(self) -> None:
-        self._assert_security_tamper_rejected(
-            "if-no-files-found: error", "if-no-files-found: warn"
-        )
+    def test_security_toolchain_contract_is_required(self) -> None:
+        with self.assertRaises(RuntimeError):
+            self._validate(
+                security=SECURITY_SOURCE.replace(
+                    "  FLUTTER_VERSION: 3.44.8\n", "  FLUTTER_VERSION: stable\n", 1
+                )
+            )
 
 
 if __name__ == "__main__":

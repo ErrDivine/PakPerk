@@ -254,9 +254,11 @@ injected accidentally.
 
 The Collector DaemonSet reads `/var/log/pods` through a read-only hostPath. The
 cluster owner must approve its node coverage, taints/tolerations, restricted Pod
-Security exception if needed, rotation bounds, and upstream egress. Offsets are
-in-memory, so restart may replay bounded retained files; verify sink behavior
-and do not use log events as unique session counts. See
+Security exception if needed, rotation bounds, and upstream egress. Filelog
+offsets and the OTLP exporter retry queue use separate bounded Pod-scoped
+`emptyDir` stores, so a container restart within the Pod keeps both, while Pod
+replacement, rescheduling, or node loss may replay bounded retained files;
+verify sink behavior and do not use log events as unique session counts. See
 [the observability runbook](../../../docs/runbooks/observability.md) for redaction, replay, alert, and 30-day sink
 retention checks.
 

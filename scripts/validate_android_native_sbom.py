@@ -13,7 +13,7 @@ import urllib.parse
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-DEFAULT_INVENTORY = ROOT / "scripts/requirements/android-prod-runtime-purls.txt"
+DEFAULT_INVENTORY = ROOT / "scripts/android-prod-runtime-purls.txt"
 BUILD_CONTRACT_FILES = (
     pathlib.Path("mobile/pubspec.yaml"),
     pathlib.Path("mobile/pubspec.lock"),

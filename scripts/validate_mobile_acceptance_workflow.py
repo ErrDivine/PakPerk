@@ -37,18 +37,20 @@ EXPECTED_JOB_ENV = {
     "PROVENANCE_ID": "${{ inputs.provenance_id }}",
     "DISPATCH_CONFIRMATION": "${{ inputs.confirmation }}",
     "RUNNER_SESSION_ID": "${{ vars.PAKPERK_MOBILE_RUNNER_SESSION_ID }}",
+    "VALIDATOR_SHA256": "${{ vars.PAKPERK_MOBILE_ACCEPTANCE_VALIDATOR_SHA256 }}",
     "DRIVER_SHA256": "${{ vars.PAKPERK_MOBILE_ACCEPTANCE_DRIVER_SHA256 }}",
     "ANDROID_SIGNER_SHA256": "${{ vars.PAKPERK_ANDROID_SIGNER_SHA256 }}",
     "IOS_TEAM_ID": "${{ vars.PAKPERK_IOS_TEAM_ID }}",
     "IOS_SIGNER_SHA256": "${{ vars.PAKPERK_IOS_SIGNER_SHA256 }}",
     "PATH": "/usr/bin:/bin",
     "PYTHONDONTWRITEBYTECODE": '"1"',
+    "BASH_ENV": "/dev/null",
+    "ENV": "/dev/null",
 }
 
 EXPECTED_STEP_NAMES = (
     "Verify exact reviewed main source and protected coordinates",
-    "Verify protected macOS runner and signed candidate manifest",
-    "Verify the pinned protected driver and device set",
+    "Verify protected macOS runner, pinned tools, and signed candidate manifest",
     "Run complete protected physical-device acceptance",
     "Validate and atomically package sanitized acceptance evidence",
     "Verify packaged archive immediately before upload",
@@ -60,22 +62,19 @@ EXPECTED_STEP_NAMES = (
 # either digest requires reviewing the corresponding workflow block and tamper tests.
 EXPECTED_RUN_SHA256 = {
     "Verify exact reviewed main source and protected coordinates": (
-        "2895c90f0cd9bdf77c7ac8ac02091ad9666e0553d8d7f36a527bf914a789c4f6"
+        "7335f399c6af2abb512ab24f506049098e44a290b95a09ee8fc44f04203904fb"
     ),
-    "Verify protected macOS runner and signed candidate manifest": (
-        "6d4ce1fd6d59e17a39bffd9f27bf7b61981d03eaaef42478290e6269dbdcff49"
-    ),
-    "Verify the pinned protected driver and device set": (
-        "1b4b90b4ae6e28862d670649aa0f80c0f5d32ac7756aa68edf513aeeec463d48"
+    "Verify protected macOS runner, pinned tools, and signed candidate manifest": (
+        "68882b133588798cf62ff1a05ff8bb5198b9e8f191493f49a2e9af060f786ee0"
     ),
     "Run complete protected physical-device acceptance": (
-        "47d877c8357a5b288f60319b210e904285fcad6a23576ae71742080e1665dd27"
+        "a2eaf5c826006e5941bd6c565b4e14ec0110bae7f0f889b6c2f7f874d59906c4"
     ),
     "Validate and atomically package sanitized acceptance evidence": (
-        "f36f94110916fa576203c779b285f20dd9aaf314132a555e0143603a252dc096"
+        "89f990f5eee2e0f796bde6b3e0f9d43b428899464c6e1ee0eb4820cdb1d7976d"
     ),
     "Verify packaged archive immediately before upload": (
-        "3281a8d9ec2dd7faed91d4fa07f2682a8350c3a3d77142d74d39085cdfa50535"
+        "42d1946a5cef19170a294856ccaf4bf8c7a5898af87603b52a1d161ad2f46aca"
     ),
     "Enforce protected mobile acceptance result": (
         "04f13582f94ef4b6aa25b617f673fd1b1c1004b94000ae7200dc603f88ca205d"
@@ -84,22 +83,19 @@ EXPECTED_RUN_SHA256 = {
 EXPECTED_STEP_SHA256 = {
     "checkout": "6bc05ec1a7fbb3a14b447485291230172fdfe398392d701d6fc4ec2a09b4ca50",
     "Verify exact reviewed main source and protected coordinates": (
-        "9aa66ab7b8e8183893476411ee3a1a2d057817a2d05ea47cfcff636bb4b093c5"
+        "ba8bc9bd057d813a1c0c2e8823629ddc9ed8aeb41cae9a3098864e5891e4bf10"
     ),
-    "Verify protected macOS runner and signed candidate manifest": (
-        "4acfb95e6ff896a9eb78286a9b1f84216b9c3d7628b7a2d2c5c2223ee7ab2b7f"
-    ),
-    "Verify the pinned protected driver and device set": (
-        "4e47a5a2ccbdb20f6404f17729e8d663b2cab4a613eb986af0e00dd041491353"
+    "Verify protected macOS runner, pinned tools, and signed candidate manifest": (
+        "9a12a6bdff51bf16c4e5658f91dac84f23d72320c71f93f1bee4b34b1b058465"
     ),
     "Run complete protected physical-device acceptance": (
-        "3736d77a90f7a35d95439751705f78612a449184cebdcec4b66eebadecda0c23"
+        "1c1fac1bf6bd08a6cdf4417e1a0303d26b44c769d13f643f570080ce16823870"
     ),
     "Validate and atomically package sanitized acceptance evidence": (
-        "29cd5d959ffeeb25ca5052fecefa612f0edd5270e958f24bfb8e1052f367277f"
+        "bd51391cbdcec15dfc633d4068bacd6033ebd71be631021fe12277976c3818f7"
     ),
     "Verify packaged archive immediately before upload": (
-        "c10d15992f3c0b924c788b84397504c6211dfbb51f2712a4a7816cb184740cf4"
+        "893be12c8e2a483c54775371a2229838b789197da10ef509d60f566e9ffcbb1a"
     ),
     "Upload exact-source protected mobile acceptance evidence": (
         "7fe157e59c1395c65f0a24f308291e5bfa19426e6c4d70ad48422283ecc47595"
@@ -255,9 +251,9 @@ def _validate_steps(source: str) -> None:
     actions = re.findall(r"(?m)^\s+(?:- )?uses: ([^ #]+)", source)
     if actions != [CHECKOUT_ACTION, UPLOAD_ACTION]:
         raise RuntimeError("workflow must use only the two reviewed pinned actions")
-    if re.findall(r"(?m)^        shell: (.+)$", source) != ["bash"] * 7:
+    if re.findall(r"(?m)^        shell: (.+)$", source) != ["bash"] * 6:
         raise RuntimeError("all executable workflow steps must use exact Bash shells")
-    if source.count("        run: |\n") != 7:
+    if source.count("        run: |\n") != 6:
         raise RuntimeError("workflow executable command surface changed")
     if re.findall(r"(?m)^        if: (.+)$", source) != [
         "always()",
@@ -275,6 +271,7 @@ def _validate_steps(source: str) -> None:
     ]:
         raise RuntimeError("workflow recoverable-step surface changed")
     if re.findall(r"(?m)^        id: (.+)$", source) != [
+        "source",
         "candidate",
         "acceptance",
         "evidence-package",
@@ -292,10 +289,17 @@ def _validate_steps(source: str) -> None:
     _require_step_digest(checkout, "checkout")
 
     expected_keys = {
-        EXPECTED_STEP_NAMES[0]: ["shell", "env", "run"],
-        EXPECTED_STEP_NAMES[1]: ["id", "shell", "run"],
-        EXPECTED_STEP_NAMES[2]: ["shell", "env", "run"],
-        EXPECTED_STEP_NAMES[3]: ["id", "continue-on-error", "shell", "env", "run"],
+        EXPECTED_STEP_NAMES[0]: ["id", "shell", "env", "run"],
+        EXPECTED_STEP_NAMES[1]: ["id", "shell", "env", "run"],
+        EXPECTED_STEP_NAMES[2]: ["id", "continue-on-error", "shell", "env", "run"],
+        EXPECTED_STEP_NAMES[3]: [
+            "id",
+            "if",
+            "continue-on-error",
+            "shell",
+            "env",
+            "run",
+        ],
         EXPECTED_STEP_NAMES[4]: [
             "id",
             "if",
@@ -304,15 +308,7 @@ def _validate_steps(source: str) -> None:
             "env",
             "run",
         ],
-        EXPECTED_STEP_NAMES[5]: [
-            "id",
-            "if",
-            "continue-on-error",
-            "shell",
-            "env",
-            "run",
-        ],
-        EXPECTED_STEP_NAMES[7]: ["if", "shell", "env", "run"],
+        EXPECTED_STEP_NAMES[6]: ["if", "shell", "env", "run"],
     }
     for name, keys in expected_keys.items():
         block = _named_step(source, name)
@@ -320,19 +316,19 @@ def _validate_steps(source: str) -> None:
         _require_run_digest(block, name)
         _require_step_digest(block, name)
 
-    upload = _named_step(source, EXPECTED_STEP_NAMES[6])
+    upload = _named_step(source, EXPECTED_STEP_NAMES[5])
     _require_step_keys(
         upload, ["id", "if", "continue-on-error", "uses", "with"], "upload"
     )
-    _require_step_digest(upload, EXPECTED_STEP_NAMES[6])
+    _require_step_digest(upload, EXPECTED_STEP_NAMES[5])
 
 
 def _validate_secret_surface(source: str) -> None:
     expected_counts = {
-        "PAKPERK_ANDROID_GESTURE_DEVICE_ID": 2,
-        "PAKPERK_ANDROID_THREE_BUTTON_DEVICE_ID": 2,
-        "PAKPERK_IOS_HOME_INDICATOR_DEVICE_ID": 2,
-        "PAKPERK_IPAD_KEYBOARD_SECONDARY_SYNC_DEVICE_ID": 2,
+        "PAKPERK_ANDROID_GESTURE_DEVICE_ID": 1,
+        "PAKPERK_ANDROID_THREE_BUTTON_DEVICE_ID": 1,
+        "PAKPERK_IOS_HOME_INDICATOR_DEVICE_ID": 1,
+        "PAKPERK_IPAD_KEYBOARD_SECONDARY_SYNC_DEVICE_ID": 1,
         "PAKPERK_PRIMARY_TEST_ACCOUNT": 1,
         "PAKPERK_PRIMARY_TEST_PASSWORD": 1,
         "PAKPERK_SECONDARY_TEST_ACCOUNT": 1,
@@ -345,6 +341,19 @@ def _validate_secret_surface(source: str) -> None:
             raise RuntimeError(f"protected secret binding count changed for {name}")
     if set(observed) != set(expected_counts):
         raise RuntimeError("workflow consumes an unreviewed protected secret")
+    acceptance = _named_step(
+        source, "Run complete protected physical-device acceptance"
+    )
+    outside_acceptance = source.replace(acceptance, "", 1)
+    if re.search(r"\$\{\{\s*secrets\.", outside_acceptance):
+        raise RuntimeError(
+            "protected secrets must be bound only to the pinned-driver step"
+        )
+    if (
+        "          BASH_ENV: /dev/null\n" not in acceptance
+        or "          ENV: /dev/null\n" not in acceptance
+    ):
+        raise RuntimeError("credentialed shell startup files are not pinned closed")
     for forbidden in (
         "set -x",
         "set -o xtrace",
@@ -356,6 +365,57 @@ def _validate_secret_surface(source: str) -> None:
             raise RuntimeError(
                 f"workflow contains a disclosure boundary bypass: {forbidden}"
             )
+
+
+def _validate_candidate_execution_boundary(source: str) -> None:
+    """Keep the candidate checkout data-only for the whole protected runner job."""
+
+    for forbidden in (
+        "scripts/",
+        "${{ github.workspace }}",
+        "$GITHUB_WORKSPACE",
+        "/bin/bash",
+        "/bin/sh",
+        "nohup ",
+        "disown",
+        "setsid ",
+        "subprocess",
+        "os.system",
+        "os.spawn",
+        "Popen",
+        "eval ",
+    ):
+        if forbidden in source:
+            raise RuntimeError(
+                f"candidate checkout must remain data-only; found {forbidden!r}"
+            )
+    if re.search(r"(?m)^ {10}[^#\n]*[^&]&[ \t]*$", source):
+        raise RuntimeError("protected workflow must not launch a background process")
+    if source.count(
+        "validator=/opt/pakperk/bin/pakperk-mobile-acceptance-validator.py"
+    ) != 1:
+        raise RuntimeError("root-owned validator path must be assigned exactly once")
+    if source.count("exec /opt/pakperk/bin/pakperk-mobile-acceptance-driver run") != 1:
+        raise RuntimeError("root-owned driver must be the only acceptance executable")
+    if source.count("GITHUB_ENV") != 1 or source.count("GITHUB_PATH") != 1:
+        raise RuntimeError("protected workflow command-file surface changed")
+    if (
+        "unset GITHUB_ENV GITHUB_OUTPUT GITHUB_PATH GITHUB_STEP_SUMMARY RUNNER_TEMP"
+        not in source
+    ):
+        raise RuntimeError("driver must not inherit GitHub command-file paths")
+    if source.count("BASH_ENV") != 2:
+        raise RuntimeError("shell startup-file boundary changed")
+    for match in re.finditer(r"(?m)^ {10}/usr/bin/python3(?P<tail>[^\n]*)$", source):
+        tail = match.group("tail").strip()
+        if not (
+            tail.startswith("-I -")
+            or tail == '-I "$validator" validate-candidate \\'
+            or tail == "-I \\"
+        ):
+            raise RuntimeError("protected Python may not execute candidate-authored code")
+    if re.search(r"(?m)^ {10}(?:source|\.)[ \t]+", source):
+        raise RuntimeError("protected workflow may not source candidate-authored files")
 
 
 def _validate_semantic_contract(source: str) -> None:
@@ -375,7 +435,10 @@ def _validate_semantic_contract(source: str) -> None:
     for fragment in (
         '[[ "$PROVENANCE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]',
         '[[ "$RUNNER_SESSION_ID" =~ ^sha256:[0-9a-f]{64}$ ]]',
-        'python3 -I - mobile/config/staging.json "$GITHUB_ENV"',
+        '[[ "$VALIDATOR_SHA256" =~ ^[0-9a-f]{64}$ ]]',
+        "/usr/bin/python3 -I - \\",
+        '"$RUNNER_TEMP/pakperk-mobile-source-binding.json"',
+        '"$GITHUB_OUTPUT" <<\'PY\'',
         'hasattr(os, "O_NOFOLLOW")',
         "identity(metadata) != identity(before)",
         "value.st_ctime_ns",
@@ -385,21 +448,42 @@ def _validate_semantic_contract(source: str) -> None:
         'config.get("PAKPERK_OIDC_ISSUER_URL")',
         'config.get("PAKPERK_OIDC_CLIENT_ID")',
         'config.get("PAKPERK_FULLTEXT_POLICY") != "strict"',
-        'output.write(f"STAGING_API_ORIGIN={api_origin}\\n")',
-        'output.write(f"STAGING_OIDC_ISSUER={issuer}\\n")',
-        'output.write(f"STAGING_OIDC_CLIENT_ID={client_id}\\n")',
+        "any(ord(character) < 0x20 or ord(character) == 0x7f",
+        "parsed.geturl() != value",
+        "os.O_WRONLY | os.O_CREAT | os.O_EXCL",
+        'f"app_version={match.group(1)}\\n"',
+        'f"build_number={match.group(2)}\\n"',
+        'f"source_binding={binding_path}\\n"',
     ):
         _require(source_gate, fragment, "exact staging source contract")
+    if "$GITHUB_ENV" in source_gate:
+        raise RuntimeError("candidate data must not write the cross-step environment")
 
     candidate = _named_step(source, EXPECTED_STEP_NAMES[1])
     for fragment in (
-        '[[ "$(uname -s)" != "Darwin" ]]',
+        '[[ "$(/usr/bin/uname -s)" != "Darwin" ]]',
         '[[ "$(command -v "$tool")" != "/usr/bin/$tool" ]]',
         "sys.version_info < (3, 9)",
+        "validator=/opt/pakperk/bin/pakperk-mobile-acceptance-validator.py",
+        "driver=/opt/pakperk/bin/pakperk-mobile-acceptance-driver",
+        '"$validator" "$VALIDATOR_SHA256"',
+        '"$driver" "$DRIVER_SHA256"',
+        'pathlib.Path("/")',
+        'pathlib.Path("/opt")',
+        'pathlib.Path("/opt/pakperk")',
+        'pathlib.Path("/opt/pakperk/bin")',
+        "metadata.st_uid != 0",
+        "metadata.st_mode & 0o022",
+        "before = os.fstat(descriptor)",
+        "after = os.fstat(descriptor)",
+        "current = os.lstat(path)",
+        "identity(before) != identity(after)",
+        "verify(validator_path, validator_digest, \"acceptance validator\", False)",
+        "verify(driver_path, driver_digest, \"acceptance driver\", True)",
         'candidate_manifest="/opt/pakperk/mobile-candidates/$candidate_digest.json"',
         'provenance_manifest="/opt/pakperk/mobile-release-provenance/$provenance_digest.json"',
         'runner_session_manifest="/opt/pakperk/mobile-runner-sessions/$runner_session_digest.json"',
-        "python3 -I scripts/validate_mobile_acceptance_evidence.py validate-candidate",
+        '/usr/bin/python3 -I "$validator" validate-candidate',
         '--provenance-manifest "$provenance_manifest"',
         '--runner-session-manifest "$runner_session_manifest"',
         '--provenance-id "$PROVENANCE_ID"',
@@ -412,26 +496,7 @@ def _validate_semantic_contract(source: str) -> None:
     ):
         _require(candidate, fragment, "protected candidate and run binding")
 
-    driver = _named_step(source, EXPECTED_STEP_NAMES[2])
-    for fragment in (
-        'pathlib.Path("/")',
-        'pathlib.Path("/opt")',
-        'pathlib.Path("/opt/pakperk")',
-        'pathlib.Path("/opt/pakperk/bin")',
-        "metadata.st_uid != 0",
-        "metadata.st_mode & 0o022",
-        'hasattr(os, "O_NOFOLLOW")',
-        "before = os.fstat(descriptor)",
-        "after = os.fstat(descriptor)",
-        "current = os.lstat(path)",
-        "identity(before) != identity(after)",
-        "value.st_ctime_ns",
-        "digest_state.hexdigest()",
-        "if len(set(values)) != len(values):",
-    ):
-        _require(driver, fragment, "protected driver and device gate")
-
-    acceptance = _named_step(source, EXPECTED_STEP_NAMES[3])
+    acceptance = _named_step(source, EXPECTED_STEP_NAMES[2])
     scenario_match = re.search(
         r'(?ms)^              "scenarios": \[\n(?P<body>.*?)^              \],$',
         acceptance,
@@ -477,6 +542,11 @@ def _validate_semantic_contract(source: str) -> None:
         "RUN_NOT_BEFORE: ${{ steps.candidate.outputs.not_before }}",
         "RUN_ID_BINDING: ${{ github.run_id }}",
         "RUN_ATTEMPT_BINDING: ${{ github.run_attempt }}",
+        "SOURCE_BINDING: ${{ steps.source.outputs.source_binding }}",
+        "PAKPERK_APP_VERSION: ${{ steps.source.outputs.app_version }}",
+        "PAKPERK_BUILD_NUMBER: ${{ steps.source.outputs.build_number }}",
+        "BASH_ENV: /dev/null",
+        "ENV: /dev/null",
         '"runner_session": runner_session_binding',
         '"device_identity_hash_contract": {',
         '"algorithm": "HMAC-SHA256"',
@@ -484,6 +554,9 @@ def _validate_semantic_contract(source: str) -> None:
         '"root_attestation_field": "physical_identities"',
         '"distinct_across_roles": True',
         '"retain_raw_device_identifiers": False',
+        "source_binding = load(sys.argv[4], 32 * 1024, \"source binding\")",
+        '"api_origin": source_binding["api_origin"]',
+        "os.O_WRONLY | os.O_CREAT | os.O_EXCL",
         '--candidate-manifest "$CANDIDATE_MANIFEST"',
         '--provenance-manifest "$PROVENANCE_MANIFEST"',
         '--runner-session-manifest "$RUNNER_SESSION_MANIFEST"',
@@ -493,15 +566,19 @@ def _validate_semantic_contract(source: str) -> None:
     ):
         _require(acceptance, fragment, "private protected driver invocation")
 
-    package = _named_step(source, EXPECTED_STEP_NAMES[4])
+    package = _named_step(source, EXPECTED_STEP_NAMES[3])
     for fragment in (
-        "git status --porcelain=v1 --untracked-files=all --ignored=matching",
-        "python3 -I scripts/validate_mobile_acceptance_evidence.py validate-and-package",
+        "/usr/bin/git status --porcelain=v1 --untracked-files=all --ignored=matching",
+        "/opt/pakperk/bin/pakperk-mobile-acceptance-validator.py",
+        "validate-and-package",
         '--candidate-manifest "$CANDIDATE_MANIFEST"',
         '--provenance-manifest "$PROVENANCE_MANIFEST"',
         '--runner-session-manifest "$RUNNER_SESSION_MANIFEST"',
         '--provenance-id "$PROVENANCE_ID"',
         '--runner-session-id "$RUNNER_SESSION_ID"',
+        '--validator-sha256 "$VALIDATOR_SHA256"',
+        '--driver-sha256 "$DRIVER_SHA256"',
+        '--source-binding "$SOURCE_BINDING"',
         '--run-id "$RUN_ID_BINDING"',
         '--run-attempt "$RUN_ATTEMPT_BINDING"',
         '--run-challenge "$RUN_CHALLENGE"',
@@ -510,17 +587,20 @@ def _validate_semantic_contract(source: str) -> None:
     ):
         _require(package, fragment, "isolated evidence validation and packaging")
 
-    archive_verify = _named_step(source, EXPECTED_STEP_NAMES[5])
+    archive_verify = _named_step(source, EXPECTED_STEP_NAMES[4])
     for fragment in (
         "PACKAGE_OUTCOME: ${{ steps.evidence-package.outcome }}",
         "ARCHIVE_SHA256: ${{ steps.evidence-package.outputs.archive_sha256 }}",
         '[[ "$ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]',
-        "validate_mobile_acceptance_evidence.py verify-archive",
+        "/opt/pakperk/bin/pakperk-mobile-acceptance-validator.py",
+        "verify-archive",
         '--expected-sha256 "$ARCHIVE_SHA256"',
+        '--expected-validator-sha256 "$VALIDATOR_SHA256"',
+        '--expected-driver-sha256 "$DRIVER_SHA256"',
     ):
         _require(archive_verify, fragment, "pre-upload archive verification")
 
-    upload = _named_step(source, EXPECTED_STEP_NAMES[6])
+    upload = _named_step(source, EXPECTED_STEP_NAMES[5])
     for fragment in (
         "if: steps.evidence-package.outcome == 'success' && "
         "steps.archive-verify.outcome == 'success'",
@@ -529,7 +609,7 @@ def _validate_semantic_contract(source: str) -> None:
     ):
         _require(upload, fragment, "digest-bound archive upload")
 
-    final = _named_step(source, EXPECTED_STEP_NAMES[7])
+    final = _named_step(source, EXPECTED_STEP_NAMES[6])
     for fragment in (
         "ARCHIVE_VERIFY_OUTCOME: ${{ steps.archive-verify.outcome }}",
         "ARCHIVE_SHA256: ${{ steps.evidence-package.outputs.archive_sha256 }}",
@@ -592,6 +672,7 @@ def validate(workflow: pathlib.Path = WORKFLOW) -> None:
         raise RuntimeError("workflow must have one reviewed job timeout")
 
     _validate_job_environment(source)
+    _validate_candidate_execution_boundary(source)
     _validate_steps(source)
     _validate_secret_surface(source)
     _validate_semantic_contract(source)

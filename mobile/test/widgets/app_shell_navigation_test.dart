@@ -130,15 +130,66 @@ void main() {
     );
 
     expect(find.byType(GuestYouScreen), findsOneWidget);
-    expect(
-      tester
-          .widget<NavigationBar>(
-            find.byKey(const ValueKey<String>('primary-navigation')),
-          )
-          .selectedIndex,
-      AppBranch.you.index,
-    );
+    expect(_selectedPrimaryDestination(tester), AppBranch.you.index);
   });
+
+  testWidgets(
+    'phone bottom navigation adapts to a safe-area tablet rail without '
+    'losing branch state',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      addTearDown(() {
+        tester.view.resetPadding();
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      await _pumpApp(
+        tester,
+        repository: _repositoryFor([samplePaper]),
+        restoration: const AppRestorationState(),
+      );
+
+      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(NavigationRail), findsNothing);
+      final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(bar.destinations, hasLength(2));
+      expect(_selectedPrimaryDestination(tester), AppBranch.read.index);
+
+      await _tapDestination(tester, 'You');
+      expect(find.byType(GuestYouScreen), findsOneWidget);
+      expect(_selectedPrimaryDestination(tester), AppBranch.you.index);
+
+      tester.view.physicalSize = const Size(1024, 768);
+      tester.view.padding = const FakeViewPadding(
+        left: 12,
+        top: 24,
+        bottom: 20,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(NavigationBar), findsNothing);
+      expect(find.byType(NavigationRail), findsOneWidget);
+      final rail = tester.widget<NavigationRail>(find.byType(NavigationRail));
+      expect(rail.destinations, hasLength(2));
+      expect(
+        rail.destinations.map(
+          (destination) => (destination.label as Text).data,
+        ),
+        ['Read', 'You'],
+      );
+      expect(rail.labelType, NavigationRailLabelType.all);
+      expect(_selectedPrimaryDestination(tester), AppBranch.you.index);
+      expect(tester.getRect(find.byType(NavigationRail)).left, 12);
+      expect(tester.getRect(find.byType(NavigationRail)).top, 24);
+      expect(tester.getRect(find.byType(NavigationRail)).bottom, 768 - 20);
+
+      await _tapDestination(tester, 'Read');
+      expect(find.text(samplePaper.title), findsOneWidget);
+      expect(_selectedPrimaryDestination(tester), AppBranch.read.index);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('primary destinations expose selected tab semantics', (
     tester,
@@ -188,14 +239,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(PublicSettingsScreen), findsOneWidget);
-    expect(
-      tester
-          .widget<NavigationBar>(
-            find.byKey(const ValueKey<String>('primary-navigation')),
-          )
-          .selectedIndex,
-      AppBranch.you.index,
-    );
+    expect(_selectedPrimaryDestination(tester), AppBranch.you.index);
   });
 
   testWidgets(
@@ -264,14 +308,7 @@ void main() {
     await tester.pumpAndSettle();
 
     _expectAbstractSelected();
-    expect(
-      tester
-          .widget<NavigationBar>(
-            find.byKey(const ValueKey<String>('primary-navigation')),
-          )
-          .selectedIndex,
-      AppBranch.read.index,
-    );
+    expect(_selectedPrimaryDestination(tester), AppBranch.read.index);
   });
 
   testWidgets('encoded legacy arXiv link resolves in the Read branch', (
@@ -315,14 +352,7 @@ void main() {
     expect(repository.paperByArxivCalls, 0);
     expect(find.text('Legacy arXiv paper'), findsWidgets);
     _expectAbstractSelected();
-    expect(
-      tester
-          .widget<NavigationBar>(
-            find.byKey(const ValueKey<String>('primary-navigation')),
-          )
-          .selectedIndex,
-      AppBranch.read.index,
-    );
+    expect(_selectedPrimaryDestination(tester), AppBranch.read.index);
   });
 
   testWidgets('UUID direct route pushes a connection above its source', (
@@ -616,6 +646,17 @@ Future<void> _tapDestination(WidgetTester tester, String label) async {
   final navigation = find.byKey(const ValueKey<String>('primary-navigation'));
   await tester.tap(find.descendant(of: navigation, matching: find.text(label)));
   await tester.pumpAndSettle();
+}
+
+int _selectedPrimaryDestination(WidgetTester tester) {
+  final navigation = tester.widget(
+    find.byKey(const ValueKey<String>('primary-navigation')),
+  );
+  return switch (navigation) {
+    NavigationBar value => value.selectedIndex,
+    NavigationRail value => value.selectedIndex ?? -1,
+    _ => throw StateError('Unexpected primary navigation widget.'),
+  };
 }
 
 void _expectAbstractSelected() {

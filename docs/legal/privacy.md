@@ -35,11 +35,12 @@ model prompts, chat messages, handles, email, and identity-provider subjects
 are excluded from operational telemetry.
 
 Pakperk sends its telemetry provider only a sanitized error category, never a
-raw exception or stack. An uncaught fatal error is not swallowed and may create
-an OS-managed Apple or Google crash diagnostic containing a native crash record
-or runtime stack under the platform's settings and policy. This platform path
-is separate from Pakperk's custom telemetry and is reviewed with the signed
-release and configured processors.
+raw exception or stack. An uncaught fatal error is not swallowed: before the
+failure reaches delegated or OS-managed diagnostics, Pakperk replaces the
+application exception and Dart stack with a bounded category and empty stack.
+Apple or Google may still create a native process crash record under platform
+settings and policy. This platform path is separate from Pakperk's custom
+telemetry and is reviewed with the signed release and configured processors.
 
 For shared abuse limits on comments and expensive public paper actions such as
 preparation and chat, the application resolves a request-origin address from a

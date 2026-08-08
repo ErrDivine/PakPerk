@@ -17,6 +17,15 @@ enum StartupPhase {
 
 enum StartupLaunchMode { cold, warm, deepLink }
 
+enum StartupFailureKind {
+  timeout('startup_timeout'),
+  local('startup_local_failure');
+
+  const StartupFailureKind(this.telemetryCode);
+
+  final String telemetryCode;
+}
+
 /// The local result of inspecting credentials during startup.
 ///
 /// Token refresh is deliberately not part of the startup gate. An expired
@@ -34,17 +43,12 @@ class StartupTimeoutException implements Exception {
 }
 
 class StartupFailure {
-  const StartupFailure({
-    required this.error,
-    required this.stackTrace,
-    required this.timedOut,
-    this.localStateUsable = false,
-  });
+  const StartupFailure({required this.kind, this.localStateUsable = false});
 
-  final Object error;
-  final StackTrace stackTrace;
-  final bool timedOut;
+  final StartupFailureKind kind;
   final bool localStateUsable;
+
+  bool get timedOut => kind == StartupFailureKind.timeout;
 }
 
 class StartupState {
@@ -342,6 +346,9 @@ class StartupController extends StateNotifier<StartupState> {
     } on Object catch (error, stackTrace) {
       if (!_isCurrent(runToken)) return;
       final localStateUsable = state.hasUsableLocalState;
+      final failureKind = error is StartupTimeoutException
+          ? StartupFailureKind.timeout
+          : StartupFailureKind.local;
       _runToken += 1;
       state = StartupState(
         phase: StartupPhase.recoverableFailure,
@@ -349,19 +356,15 @@ class StartupController extends StateNotifier<StartupState> {
         attempt: state.attempt,
         openingCompleted: state.openingCompleted,
         failure: StartupFailure(
-          error: error,
-          stackTrace: stackTrace,
-          timedOut: error is StartupTimeoutException,
+          kind: failureKind,
           localStateUsable: localStateUsable,
         ),
       );
       emitTelemetry(_telemetry, PakPerkTelemetryEvent.startupFailure, {
         'environment': _environment,
         'launch_mode': state.launchMode.name,
-        'failure_code': error is StartupTimeoutException
-            ? 'startup_timeout'
-            : 'startup_local_failure',
-        'timed_out': error is StartupTimeoutException,
+        'failure_code': failureKind.telemetryCode,
+        'timed_out': failureKind == StartupFailureKind.timeout,
       });
       unawaited(
         _telemetry

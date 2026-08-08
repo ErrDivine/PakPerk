@@ -30,6 +30,8 @@ for raw_path in sys.argv[1:]:
 PY
 python3 "$project_dir/scripts/validate_workflow_pins.py"
 python3 "$project_dir/scripts/test_validate_workflow_pins.py"
+python3 "$project_dir/scripts/test_validate_dependency_automation.py"
+python3 "$project_dir/scripts/validate_dependency_automation.py"
 python3 "$project_dir/scripts/test_validate_release_image_workflow.py"
 python3 "$project_dir/scripts/validate_release_image_workflow.py"
 python3 "$project_dir/scripts/validate_external_image_scan_pins.py"
@@ -54,6 +56,7 @@ jq empty \
   "$project_dir/mobile/assets/prepared_connections.json" \
   "$project_dir/deploy/keycloak/pakperk-realm.json" \
   "$project_dir/deploy/helm/pakperk/values.schema.json"
+python3 "$project_dir/scripts/test_validate_keycloak_realm.py"
 "$project_dir/scripts/validate_keycloak_realm.sh"
 "$project_dir/scripts/test_live_account_deletion.sh" --self-test
 python3 "$project_dir/scripts/test_backend_load.py"
@@ -76,9 +79,45 @@ python3 "$project_dir/scripts/test_validate_gradle_verification.py"
 python3 "$project_dir/scripts/validate_gradle_verification.py"
 python3 "$project_dir/scripts/test_validate_fastlane_lock.py"
 python3 "$project_dir/scripts/validate_fastlane_lock.py"
+if command -v ruby >/dev/null 2>&1; then
+  ruby -c "$project_dir/scripts/manage_app_store_phased_release.rb"
+  ruby "$project_dir/scripts/test_manage_app_store_phased_release.rb"
+  ruby -c "$project_dir/scripts/manage_google_play_rollout.rb"
+  ruby "$project_dir/scripts/test_manage_google_play_rollout.rb"
+else
+  echo "Store rollout API-client Ruby tests skipped: ruby is unavailable." >&2
+fi
 python3 "$project_dir/scripts/test_validate_flutter_toolchain.py"
 python3 "$project_dir/scripts/test_validate_mobile_release_workflow.py"
 python3 "$project_dir/scripts/validate_mobile_release_workflow.py"
+python3 "$project_dir/scripts/test_materialize_mobile_release_secret.py"
+python3 "$project_dir/scripts/materialize_mobile_release_secret.py" --help >/dev/null
+python3 "$project_dir/scripts/test_validate_mobile_store_client.py"
+python3 "$project_dir/scripts/validate_mobile_store_client.py" --help >/dev/null
+python3 "$project_dir/scripts/test_capture_mobile_credentialed_runtime.py"
+python3 "$project_dir/scripts/capture_mobile_credentialed_runtime.py" --help >/dev/null
+python3 "$project_dir/scripts/test_extract_mobile_store_client.py"
+python3 "$project_dir/scripts/extract_mobile_store_client.py" --help >/dev/null
+python3 "$project_dir/scripts/test_prepare_mobile_credentialed_upload.py"
+python3 -I "$project_dir/scripts/prepare_mobile_credentialed_upload.py" --help >/dev/null
+bash -n "$project_dir/scripts/prepare_mobile_store_client.sh"
+python3 "$project_dir/scripts/test_assemble_mobile_signed_candidate.py"
+python3 -I "$project_dir/scripts/assemble_mobile_signed_candidate.py" --help >/dev/null
+python3 "$project_dir/scripts/test_validate_mobile_signed_release_run.py"
+python3 "$project_dir/scripts/validate_mobile_signed_release_run.py" --help >/dev/null
+python3 "$project_dir/scripts/test_validate_mobile_store_candidate.py"
+python3 "$project_dir/scripts/validate_mobile_store_candidate.py" --help >/dev/null
+python3 "$project_dir/scripts/test_generate_mobile_store_upload_attempt.py"
+python3 "$project_dir/scripts/generate_mobile_store_upload_attempt.py" --help >/dev/null
+python3 "$project_dir/scripts/test_generate_mobile_store_upload_outcome.py"
+python3 "$project_dir/scripts/generate_mobile_store_upload_outcome.py" --help >/dev/null
+python3 "$project_dir/scripts/test_generate_mobile_store_upload_handoff.py"
+python3 "$project_dir/scripts/generate_mobile_store_upload_handoff.py" --help >/dev/null
+python3 "$project_dir/scripts/test_finalize_mobile_signed_release.py"
+python3 -I "$project_dir/scripts/finalize_mobile_signed_release.py" --help >/dev/null
+python3 "$project_dir/scripts/test_generate_mobile_store_rollout_receipt.py"
+python3 "$project_dir/scripts/test_validate_mobile_store_rollout_workflow.py"
+python3 "$project_dir/scripts/validate_mobile_store_rollout_workflow.py"
 python3 "$project_dir/scripts/test_validate_mobile_device_workflow.py"
 python3 "$project_dir/scripts/validate_mobile_device_workflow.py"
 python3 "$project_dir/scripts/test_validate_mobile_acceptance_evidence.py"
@@ -102,10 +141,10 @@ if command -v flutter >/dev/null 2>&1; then
   echo "== Flutter =="
   (
     cd "$project_dir/mobile"
-    flutter --version --machine >"$temporary_dir/flutter-toolchain.json"
+    flutter --no-version-check --version --machine >"$temporary_dir/flutter-toolchain.json"
     python3 "$project_dir/scripts/validate_flutter_toolchain.py" \
       "$temporary_dir/flutter-toolchain.json"
-    flutter pub get --enforce-lockfile
+    flutter --no-version-check pub get --enforce-lockfile
 
     echo "== Release metadata =="
     source_revision="$(git -C "$project_dir" rev-parse HEAD)"
@@ -124,12 +163,12 @@ if command -v flutter >/dev/null 2>&1; then
       "$temporary_dir/metadata-b/dependencies.cdx.json"
 
     dart format --output=none --set-exit-if-changed .
-    flutter analyze
-    flutter test
+    flutter --no-version-check analyze
+    flutter --no-version-check test
 
     if [[ "${PAKPERK_BUILD_MOBILE_ARTIFACTS:-1}" == "1" ]]; then
       for flavor in dev staging prod; do
-        flutter build apk --debug --flavor "$flavor" \
+        flutter --no-version-check build apk --debug --flavor "$flavor" \
           --dart-define-from-file="config/$flavor.json"
       done
       dart run tool/verify_strict_artifact_assets.dart \
@@ -139,7 +178,7 @@ if command -v flutter >/dev/null 2>&1; then
 
       if [[ "$(uname -s)" == "Darwin" ]] && command -v xcodebuild >/dev/null 2>&1; then
         for flavor in dev staging prod; do
-          flutter build ios --simulator --debug --flavor "$flavor" \
+          flutter --no-version-check build ios --simulator --debug --flavor "$flavor" \
             --dart-define-from-file="config/$flavor.json"
         done
         dart run tool/verify_strict_artifact_assets.dart \
@@ -156,7 +195,7 @@ if command -v flutter >/dev/null 2>&1; then
         echo "PAKPERK_MOBILE_DEVICE_ID contains unsupported characters." >&2
         exit 2
       fi
-      flutter test integration_test/production_verification_test.dart \
+      flutter --no-version-check test integration_test/production_verification_test.dart \
         --profile -d "$PAKPERK_MOBILE_DEVICE_ID"
     else
       echo "Physical-device verification NOT RUN. The deterministic production harness ran headlessly in flutter test; set PAKPERK_MOBILE_DEVICE_ID or dispatch mobile-device-integration for the device probe." >&2

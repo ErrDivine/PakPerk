@@ -98,6 +98,7 @@ void main() {
     await controller.start();
     expect(controller.state.phase, StartupPhase.recoverableFailure);
     expect(controller.state.failure?.timedOut, isTrue);
+    expect(controller.state.failure?.kind, StartupFailureKind.timeout);
     expect(splash.releaseCalls, 1);
 
     hang = false;
@@ -126,6 +127,7 @@ void main() {
       await controller.start();
       expect(controller.state.phase, StartupPhase.recoverableFailure);
       expect(controller.state.failure?.localStateUsable, isTrue);
+      expect(controller.state.failure?.kind, StartupFailureKind.local);
 
       await controller.repairAndRetry();
       expect(bootstrapper.repairCalls, 0);
@@ -156,6 +158,7 @@ void main() {
       await controller.start();
       expect(controller.state.phase, StartupPhase.recoverableFailure);
       expect(controller.state.failure?.timedOut, isFalse);
+      expect(controller.state.failure?.kind, StartupFailureKind.local);
 
       await controller.repairAndRetry();
       expect(bootstrapper.repairCalls, 1);

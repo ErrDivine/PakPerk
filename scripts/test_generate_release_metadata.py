@@ -56,7 +56,9 @@ class FlutterSdkMetadataTests(unittest.TestCase):
 
     def test_full_check_resolves_locked_flutter_packages_before_metadata(self) -> None:
         check_script = (metadata.ROOT / "scripts/check.sh").read_text(encoding="utf-8")
-        dependency_offset = check_script.index("flutter pub get --enforce-lockfile")
+        dependency_offset = check_script.index(
+            "flutter --no-version-check pub get --enforce-lockfile"
+        )
         generation_offset = check_script.index(
             '"$project_dir/scripts/generate_release_metadata.py" \\\n'
             "      --flutter-sdk-version 3.44.8 \\\n"
@@ -69,7 +71,9 @@ class FlutterSdkMetadataTests(unittest.TestCase):
         identity_offset = check_script.index(
             'python3 "$project_dir/scripts/validate_flutter_toolchain.py"'
         )
-        dependency_offset = check_script.index("flutter pub get --enforce-lockfile")
+        dependency_offset = check_script.index(
+            "flutter --no-version-check pub get --enforce-lockfile"
+        )
         self.assertLess(identity_offset, dependency_offset)
 
 

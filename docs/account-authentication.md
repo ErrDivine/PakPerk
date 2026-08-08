@@ -47,7 +47,8 @@ The public native and operator clients have no client secret and require PKCE
 S256. The operator client emits only the dedicated `pakperk-admin-dev` audience;
 an API-audience token is deliberately not an admin credential. The realm enables
 self-registration, email verification, password recovery, brute-force
-protection, short access-token lifetime, and refresh-token rotation. See the
+protection, an access-token lifetime of at most five minutes, and single-use
+refresh-token rotation. See the
 [realm runbook](../deploy/keycloak/README.md) for the development boundary.
 The realm export and Compose bootstrap defaults must not be reused as
 production secrets or production identity policy.

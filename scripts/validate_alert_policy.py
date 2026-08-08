@@ -7,6 +7,7 @@ import argparse
 import json
 import math
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,8 @@ DEFAULT_POLICY = (
     PROJECT_ROOT
     / "deploy/helm/pakperk/files/alerts/pakperk-production-alert-policy.json"
 )
+LEDGER_WORKER_SOURCE = "backend/crates/account_deletion/src/worker.rs"
+LEDGER_ALERT_LITERAL = '"external deletion ledger failed verification"'
 
 # Every alert required by docs/runbooks/observability.md is represented
 # explicitly. The tuple fixes the operationally meaningful fields so a policy
@@ -139,8 +142,8 @@ EXPECTED_INPUTS = {
     ),
     "kubernetes-redacted-logs": (
         "static_message_logs",
-        "Platform observation of the chart-scoped static message and severity fields only; "
-        "no attributes or raw JSON",
+        "Platform observation of the chart-scoped constant/allowlisted body, severity, and "
+        "Rust namespace only; no raw JSON or event attributes",
     ),
 }
 
@@ -192,8 +195,9 @@ EXPECTED_FILTERS: dict[str, dict[str, Any]] = {
     },
     "deletion-ledger-verification-failure": {
         "body": "external deletion ledger failed verification",
+        "code.namespace": "account_deletion::worker",
         "deployment.environment.name": "production", "log.severity_text": "ERROR",
-        "service.name": "pakperk-deletion-worker-production",
+        "service.name": "pakperk-backend-stdout",
     },
     "deletion-ledger-capacity-high": {"deployment.environment.name": "production"},
 }
@@ -222,6 +226,89 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             raise PolicyError(f"duplicate JSON key: {key}")
         result[key] = value
     return result
+
+
+def _validate_ledger_worker_emission(source: str) -> None:
+    """Bind the alert body to the terminal external-ledger failure branch."""
+
+    if source.count(LEDGER_ALERT_LITERAL) != 1:
+        raise PolicyError(
+            "ledger verification alert literal must occur exactly once in the worker"
+        )
+
+    terminal_branch = re.compile(
+        r"""
+        let\s+outcome\s*=\s*if\s+state\s*==\s*
+        AccountDeletionState::FailedRetryable\s*\{
+        .*?
+        \}\s*else\s*\{
+        \s*if\s+failure\.code\s*==\s*"external_ledger_invalid"\s*\{
+        \s*error!\(\s*
+        code\s*=\s*%failure\.code\s*,\s*
+        "external\ deletion\ ledger\ failed\ verification"\s*
+        \);\s*
+        \}\s*else\s*\{
+        .*?
+        \}\s*
+        OperationOutcome::TerminalFailure\s*
+        \}\s*;
+        """,
+        re.DOTALL | re.VERBOSE,
+    )
+    if len(terminal_branch.findall(source)) != 1:
+        raise PolicyError(
+            "ledger verification alert message must be emitted only by the "
+            "external_ledger_invalid terminal branch"
+        )
+
+
+def _tracked_backend_rust_sources(
+    root: Path = PROJECT_ROOT,
+) -> dict[str, str]:
+    completed = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "--cached", "-z", "--", "backend"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if completed.returncode == 0:
+        try:
+            candidates = completed.stdout.decode("utf-8").split("\0")
+        except UnicodeDecodeError as error:
+            raise PolicyError("tracked backend source paths must be UTF-8") from error
+        relative_paths = sorted(
+            path for path in candidates if path and path.endswith(".rs")
+        )
+    else:
+        backend = root / "backend"
+        relative_paths = sorted(
+            path.relative_to(root).as_posix()
+            for path in backend.rglob("*.rs")
+            if "target" not in path.relative_to(backend).parts
+        )
+
+    sources: dict[str, str] = {}
+    for relative in relative_paths:
+        path = root / relative
+        try:
+            sources[relative] = path.read_text(encoding="utf-8")
+        except OSError as error:
+            raise PolicyError(
+                f"could not read tracked backend source {relative}: {error}"
+            ) from error
+    if LEDGER_WORKER_SOURCE not in sources:
+        raise PolicyError("tracked backend sources omit the account-deletion worker")
+    return sources
+
+
+def _validate_ledger_alert_sources(sources: dict[str, str]) -> None:
+    occurrences = sum(source.count(LEDGER_ALERT_LITERAL) for source in sources.values())
+    if occurrences != 1:
+        raise PolicyError(
+            "ledger verification alert literal must occur exactly once across "
+            "tracked backend Rust sources"
+        )
+    _validate_ledger_worker_emission(sources[LEDGER_WORKER_SOURCE])
 
 
 def _expect_keys(value: dict[str, Any], expected: set[str], where: str) -> None:
@@ -459,11 +546,7 @@ def validate_policy(path: Path = DEFAULT_POLICY) -> None:
         if f'"{metric}"' not in observability_source:
             raise PolicyError(f"application metric is not emitted by observability crate: {metric}")
 
-    deletion_source = (
-        PROJECT_ROOT / "backend/crates/account_deletion/src/worker.rs"
-    ).read_text(encoding="utf-8")
-    if '"external deletion ledger failed verification"' not in deletion_source:
-        raise PolicyError("ledger verification alert no longer matches the static worker message")
+    _validate_ledger_alert_sources(_tracked_backend_rust_sources())
 
 
 def main() -> int:

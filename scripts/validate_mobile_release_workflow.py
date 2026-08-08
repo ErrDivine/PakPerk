@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the fail-closed signed-mobile release workflow contract."""
+"""Validate the split, fail-closed signed-mobile release workflow."""
 
 from __future__ import annotations
 
@@ -15,606 +15,728 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/mobile-release.yml"
 SECURITY_WORKFLOW = ROOT / ".github/workflows/security.yml"
 IOS_VERIFIER = ROOT / "scripts/verify_ios_release_artifact.sh"
+SECRET_MATERIALIZER = ROOT / "scripts/materialize_mobile_release_secret.py"
+
 CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-EXPECTED_TRIGGER_SHA256 = (
-    "0fb2be1cd95989cfab15d87f6eebb2ad2edf0a53928a190e7ca8ebeb1675970f"
+DOWNLOAD_ACTION = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+UPLOAD_ACTION = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+FLUTTER_ACTION = "subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2"
+EXPECTED_WORKFLOW_SHA256 = "a10f5ae786e8fe84ca1890b4db67de6684832125050b26bd04a4fc0aee246a69"
+EXPECTED_IOS_VERIFIER_SHA256 = "e5e0193a51b71f1455eeadae610d82155abaf5257ddf7fad1d927c1fcadeaee5"
+EXPECTED_GEMFILE_LOCK_SHA256 = "df7c9313182c54ae68a3312f720334dc9f524d17973f6a3b1339e8892d778175"
+EXPECTED_HELPER_SHA256 = {
+    "assemble_mobile_signed_candidate.py": "863011bef3cc83b1b15c0d9dd74dfac57d100a4926bd24d881736bd699b034bb",
+    "capture_mobile_credentialed_runtime.py": "2d51f03bd21f2afa2af0396e801e0e950172210814a229ca50df67c5a8d135cd",
+    "extract_mobile_store_client.py": "f1f2b989dd433223114c85451147404ad4e65992d1f5a86ed3f3c6937ea1fd3a",
+    "finalize_mobile_signed_release.py": "a30ae0bc85b5977cb546af8d9fa8bb311543392dbb9d5b86125de2964afa56e9",
+    "generate_mobile_store_upload_attempt.py": "61b72373391b5fd8d9ae92e69f5ebd7b03c52d1675eb7be870425e4d1ceef183",
+    "generate_mobile_store_upload_handoff.py": "aaf319c661faf1b7eb775b50e7f842c42a7c4d23cbc32a6d8fb2e4c8ff2c2f40",
+    "manage_app_store_phased_release.rb": "ee7e55a902bfe4f1f9fe2f933871e44d51c1f8906eff93aad8c8aa6c3f05b68c",
+    "manage_google_play_rollout.rb": "2fb30a5ed3341e22254d2e6548d22b9b10e235176317b7b403d48d49d445c3ac",
+    "materialize_mobile_release_secret.py": "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4",
+    "prepare_mobile_credentialed_upload.py": "b6c4597b55db335fc46af14e0ba9c6969e99ca8ec29d43c817d699045fe12498",
+    "prepare_mobile_store_client.sh": "2346df0d861df39b5b0b6f580b6afb49648e9d7f6468c22dd47948f84a0ec076",
+    "validate_mobile_signed_release_run.py": "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93",
+    "validate_mobile_store_candidate.py": "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107",
+    "validate_mobile_store_client.py": "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf",
+}
+
+JOB_IDS = (
+    "candidate-preparation",
+    "android-signed-candidate",
+    "ios-signed-candidate",
+    "signed-candidate",
+    "store-client-bootstrap",
+    "android-store-upload",
+    "ios-store-upload",
+    "signed-release-finalizer",
 )
-EXPECTED_STEP_ITEMS_SHA256 = (
-    "b3122f9f51fdb3113f9f2c77dfe35bbe222348fb6d2d5f02e14fcc20eab21048"
-)
-EXPECTED_CHECKOUT_STEP_SHA256 = (
-    "b4a8b878bb5923badf0b69619820ec21476ed7fa3ff811b2e9e0f61b79542f86"
-)
-EXPECTED_ROOT_ENV_SHA256 = (
-    "fb7644d3a6eb8cd652774bf4a222de6ef20641842d5d6d67667a880a41c6b2bb"
-)
-EXPECTED_SOURCE_STEP_SHA256 = (
-    "62bdf540dd03b642475def0f869332db633cceabcae3f9fff40b1ade39f82351"
-)
-EXPECTED_MANIFEST_STEP_SHA256 = (
-    "ccb8d20246d5e2d676a075d6a7381022a5d23fe3b3bbf43b9d8d46ee13d04fd8"
-)
-EXPECTED_ANDROID_BUILD_STEP_SHA256 = (
-    "8db56d32003950e3ce768438bbdea04c651adf47b4cfb7b9fcc6bf23e9b4f026"
-)
-EXPECTED_IOS_BUILD_STEP_SHA256 = (
-    "5a428a670360b679c85e2e45debfbc2b47e007af974306e08f7fbac651114d9a"
-)
-EXPECTED_POST_UPLOAD_REVALIDATION_STEP_SHA256 = (
-    "481eb832b411b879e43f1a70667064191740be85a145ee8dec18ad80b88fc71a"
-)
-EXPECTED_EVIDENCE_UPLOAD_STEP_SHA256 = (
-    "f2563c86345137320d55fb88d78b2b897b8e2ee9f9e3d4b2dceff540fd5ba6de"
-)
-EXPECTED_IOS_VERIFIER_SHA256 = (
-    "e5e0193a51b71f1455eeadae610d82155abaf5257ddf7fad1d927c1fcadeaee5"
-)
+JOB_NAMES = {
+    "candidate-preparation": "${{ inputs.environment }} credential-free candidate preparation",
+    "android-signed-candidate": "${{ inputs.environment }} isolated Android signed candidate",
+    "ios-signed-candidate": "${{ inputs.environment }} isolated iOS signed candidate",
+    "signed-candidate": "${{ inputs.environment }} signed candidate",
+    "store-client-bootstrap": "isolated store-client bootstrap",
+    "android-store-upload": "${{ inputs.environment }} isolated Android store upload",
+    "ios-store-upload": "${{ inputs.environment }} isolated iOS store upload",
+    "signed-release-finalizer": "${{ inputs.environment }} signed release finalizer",
+}
+ANDROID_SIGNING_SECRETS = {
+    "PAKPERK_ANDROID_APP_SIGNING_SHA256",
+    "PAKPERK_ANDROID_KEY_ALIAS",
+    "PAKPERK_ANDROID_KEY_PASSWORD",
+    "PAKPERK_ANDROID_KEYSTORE_BASE64",
+    "PAKPERK_ANDROID_STORE_PASSWORD",
+}
+IOS_SIGNING_SECRETS = {
+    "PAKPERK_DEVELOPMENT_TEAM",
+    "PAKPERK_IOS_DISTRIBUTION_CERTIFICATE_BASE64",
+    "PAKPERK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD",
+    "PAKPERK_IOS_PROVISIONING_PROFILE_BASE64",
+    "PAKPERK_IOS_PROVISIONING_PROFILE_SPECIFIER",
+}
+ANDROID_STORE_SECRETS = {"PAKPERK_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64"}
+IOS_STORE_SECRETS = {
+    "PAKPERK_APP_STORE_CONNECT_ISSUER_ID",
+    "PAKPERK_APP_STORE_CONNECT_KEY_ID",
+    "PAKPERK_APP_STORE_CONNECT_PRIVATE_KEY_BASE64",
+}
+SANITIZED_SHELL = "        shell: /bin/bash --noprofile --norc -e -o pipefail {0}\n"
 
 
-def _require_fragments(source: str, fragments: tuple[str, ...], label: str) -> None:
+def _require(source: str, fragments: tuple[str, ...], label: str) -> None:
     for fragment in fragments:
         if fragment not in source:
             raise RuntimeError(f"{label} is missing: {fragment}")
 
 
-def _require_exact_scalar(source: str, key: str, expected: str, label: str) -> None:
-    matches = re.findall(
-        rf"(?m)^[ \t]+{re.escape(key)}:[ \t]*([^\r\n]*?)[ \t]*$",
-        source,
+def _mapping_keys(source: str, indent: int) -> list[str]:
+    prefix = " " * indent
+    nested = prefix + " "
+    keys: list[str] = []
+    for line in source.splitlines():
+        if not line.startswith(prefix) or line.startswith(nested):
+            continue
+        content = line[indent:]
+        if content and not content.startswith("#") and ":" in content:
+            keys.append(content.partition(":")[0].strip())
+    return keys
+
+
+def _job_block(source: str, name: str) -> str:
+    marker = f"  {name}:\n"
+    if source.count(marker) != 1:
+        raise RuntimeError(f"workflow must contain exactly one {name!r} job")
+    start = source.index(marker)
+    match = re.search(r"(?m)^  [a-z][a-z0-9-]*:\n", source[start + len(marker) :])
+    return source[start:] if match is None else source[start : start + len(marker) + match.start()]
+
+
+def _step_block(job: str, name: str) -> str:
+    marker = f"      - name: {name}\n"
+    if job.count(marker) != 1:
+        raise RuntimeError(f"job must contain exactly one step named {name!r}")
+    start = job.index(marker)
+    end = job.find("\n      - ", start + len(marker))
+    return job[start:] if end < 0 else job[start:end]
+
+
+def _ordered(job: str, names: tuple[str, ...], label: str) -> None:
+    positions: list[int] = []
+    for name in names:
+        marker = f"      - name: {name}\n"
+        if job.count(marker) != 1:
+            raise RuntimeError(f"{label} must contain exactly one {name!r} step")
+        positions.append(job.index(marker))
+    if positions != sorted(positions):
+        raise RuntimeError(f"{label} step ordering changed")
+
+
+def _secrets(source: str) -> set[str]:
+    return set(re.findall(r"\$\{\{\s*secrets\.([A-Z0-9_]+)\s*}}", source))
+
+
+def _require_sanitized(block: str, label: str) -> None:
+    _require(
+        block,
+        (
+            SANITIZED_SHELL.rstrip("\n"),
+            "          BASH_ENV: /dev/null",
+            "          ENV: /dev/null",
+            '          DYLD_INSERT_LIBRARIES: ""',
+            '          DYLD_LIBRARY_PATH: ""',
+            '          LD_LIBRARY_PATH: ""',
+            '          LD_PRELOAD: ""',
+        ),
+        label,
     )
-    if matches != [expected]:
-        raise RuntimeError(
-            f"{label} must define exactly one {key}: {expected}; found {matches!r}"
+
+
+def _validate_download(step: str, artifact_id: str, label: str) -> None:
+    _require(
+        step,
+        (
+            f"uses: {DOWNLOAD_ACTION} # v8.0.1",
+            f"artifact-ids: {artifact_id}",
+            "merge-multiple: true",
+            "digest-mismatch: error",
+            'NODE_OPTIONS: ""',
+        ),
+        label,
+    )
+
+
+def _validate_secret_step(job: str, step_name: str, expected: set[str], label: str) -> None:
+    step = _step_block(job, step_name)
+    if _secrets(job) != expected or _secrets(step) != expected:
+        raise RuntimeError(f"{label} credential family or scope changed")
+    if any(
+        job.count(f"secrets.{name}") != 1 or step.count(f"secrets.{name}") != 1
+        for name in expected
+    ):
+        raise RuntimeError(f"{label} credential reference cardinality changed")
+    _require_sanitized(step, label)
+
+
+def _validate_helpers(workflow_source: str) -> None:
+    for name, expected in EXPECTED_HELPER_SHA256.items():
+        path = ROOT / "scripts" / name
+        if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            raise RuntimeError(f"reviewed helper changed: {name}")
+        if name not in workflow_source or expected not in workflow_source:
+            raise RuntimeError(f"workflow does not bind reviewed helper bytes: {name}")
+    lock = ROOT / "mobile/Gemfile.lock"
+    if hashlib.sha256(lock.read_bytes()).hexdigest() != EXPECTED_GEMFILE_LOCK_SHA256:
+        raise RuntimeError("reviewed mobile/Gemfile.lock changed")
+    _require(
+        workflow_source,
+        ("mobile/Gemfile.lock", EXPECTED_GEMFILE_LOCK_SHA256),
+        "store-client lockfile transfer",
+    )
+
+
+def _validate_preparation(job: str) -> None:
+    head = job[: job.index("    steps:\n")]
+    if "    environment:" in head or _secrets(job):
+        raise RuntimeError("candidate preparation must be credential-free")
+    _require(
+        job,
+        (
+            f"uses: {CHECKOUT_ACTION} # v7.0.1",
+            "ref: ${{ inputs.source_revision }}",
+            "persist-credentials: false",
+            'if [[ "${{ inputs.upload_to_stores }}" == true && "$RELEASE_ENVIRONMENT" != production ]]; then',
+            "      - name: Materialize protected mobile feature flags\n",
+            "      - name: Retain immutable credential-free prepared mobile config\n",
+            "          name: mobile-prepared-config-${{ github.run_id }}-${{ github.run_attempt }}",
+            "          if-no-files-found: error",
+            f"uses: {FLUTTER_ACTION} # v2.23.0",
+            "      - name: Gate candidate on the complete Flutter test suite\n",
+        ),
+        "credential-free candidate preparation",
+    )
+    _ordered(
+        job,
+        (
+            "Materialize protected mobile feature flags",
+            "Retain immutable credential-free prepared mobile config",
+            "Gate candidate on the complete Flutter test suite",
+        ),
+        "candidate preparation",
+    )
+    materialize = _step_block(job, "Materialize protected mobile feature flags")
+    _require_sanitized(materialize, "prepared config materialization")
+    _require(
+        materialize,
+        ('          PATH: /usr/bin:/bin:/usr/sbin:/sbin', "/usr/bin/python3 -I -"),
+        "prepared config isolation",
+    )
+
+
+def _validate_signer(job: str, *, platform: str) -> None:
+    android = platform == "Android"
+    download_name = (
+        "Download immutable credential-free prepared config"
+        if android
+        else "Download immutable credential-free prepared config for iOS"
+    )
+    reattest_name = f"Re-attest {platform} prepared config before credentials"
+    secret_step_name = (
+        "Materialize Android-only signing credentials before repository code"
+        if android
+        else "Import Apple-only signing credentials before repository code"
+    )
+    expected_secrets = ANDROID_SIGNING_SECRETS if android else IOS_SIGNING_SECRETS
+    _require(
+        job,
+        (
+            "    needs: candidate-preparation\n",
+            "    environment: ${{ inputs.environment }}\n",
+            f"uses: {CHECKOUT_ACTION} # v7.0.1",
+            "ref: ${{ inputs.source_revision }}",
+            "persist-credentials: false",
+            "EXPECTED_ARTIFACT_ID: ${{ needs.candidate-preparation.outputs.prepared_artifact_id }}",
+            "EXPECTED_ARTIFACT_DIGEST: ${{ needs.candidate-preparation.outputs.prepared_artifact_digest }}",
+            "EXPECTED_CONFIG_SHA256: ${{ needs.candidate-preparation.outputs.prepared_config_sha256 }}",
+            "EXPECTED_FEATURE_EVIDENCE_SHA256: ${{ needs.candidate-preparation.outputs.prepared_feature_evidence_sha256 }}",
+            "if-no-files-found: error",
+        ),
+        f"{platform} signer boundary",
+    )
+    _ordered(job, (download_name, reattest_name, secret_step_name), f"{platform} signer")
+    _validate_download(
+        _step_block(job, download_name),
+        "${{ needs.candidate-preparation.outputs.prepared_artifact_id }}",
+        f"{platform} prepared-config transfer",
+    )
+    _require_sanitized(_step_block(job, reattest_name), f"{platform} prepared-config re-attestation")
+    _validate_secret_step(job, secret_step_name, expected_secrets, f"{platform} signer")
+    first_secret = min(job.index(name) for name in expected_secrets)
+    if first_secret < job.index(f"      - name: {reattest_name}\n"):
+        raise RuntimeError(f"{platform} signing credentials appear before prepared-config re-attestation")
+    if android:
+        _require(
+            job,
+            (
+                "      - name: Build and inspect signed Android artifacts\n",
+                "      - name: Remove Android-only signing material\n",
+                "      - name: Retain isolated signed Android candidate\n",
+            ),
+            "Android signer product",
+        )
+    else:
+        _require(
+            job,
+            (
+                "      - name: Build and inspect signed iOS artifact\n",
+                "      - name: Remove Apple-only signing material\n",
+                "      - name: Retain isolated signed iOS candidate\n",
+                EXPECTED_IOS_VERIFIER_SHA256,
+            ),
+            "iOS signer product",
         )
 
 
-def _step_block(source: str, name: str, label: str) -> str:
-    marker = f"      - name: {name}\n"
-    if source.count(marker) != 1:
-        raise RuntimeError(f"{label} must contain exactly one step named {name!r}")
-    start = source.index(marker)
-    end = source.find("\n      - ", start + len(marker))
-    return source[start:] if end < 0 else source[start:end]
+def _validate_aggregator(job: str) -> None:
+    head = job[: job.index("    steps:\n")]
+    _require(
+        head,
+        (
+            "    needs: [candidate-preparation, android-signed-candidate, ios-signed-candidate]\n",
+            "      artifact_digest: ${{ steps.signed_candidate_upload.outputs.artifact-digest }}\n",
+            "      artifact_id: ${{ steps.signed_candidate_upload.outputs.artifact-id }}\n",
+            "      candidate_id: ${{ steps.manifests.outputs.candidate_id }}\n",
+            "      provenance_id: ${{ steps.manifests.outputs.provenance_id }}\n",
+        ),
+        "credential-free candidate aggregator",
+    )
+    if "    environment:" in head or _secrets(job):
+        raise RuntimeError("candidate aggregator must be credential-free")
+    _ordered(
+        job,
+        (
+            "Verify credential-free aggregation identity",
+            "Download immutable prepared config for aggregation",
+            "Download immutable Android signer result for aggregation",
+            "Download immutable iOS signer result for aggregation",
+            "Assemble canonical credential-free signed candidate",
+            "Retain canonical signed candidate",
+            "Revalidate canonical candidate after retention",
+        ),
+        "candidate aggregator",
+    )
+    for step_name, artifact_id in (
+        (
+            "Download immutable prepared config for aggregation",
+            "${{ needs.candidate-preparation.outputs.prepared_artifact_id }}",
+        ),
+        (
+            "Download immutable Android signer result for aggregation",
+            "${{ needs.android-signed-candidate.outputs.artifact_id }}",
+        ),
+        (
+            "Download immutable iOS signer result for aggregation",
+            "${{ needs.ios-signed-candidate.outputs.artifact_id }}",
+        ),
+    ):
+        _validate_download(_step_block(job, step_name), artifact_id, step_name)
+    identity = _step_block(job, "Verify credential-free aggregation identity")
+    _require(
+        identity,
+        (
+            '[[ "$PREPARED_ARTIFACT_ID" != "$ANDROID_ARTIFACT_ID" && \\\n',
+            'for value in "$PREPARED_ARTIFACT_DIGEST" "$ANDROID_ARTIFACT_DIGEST" "$IOS_ARTIFACT_DIGEST"; do',
+            '[[ "$checked_out" != "$REQUESTED_REVISION" || \\\n',
+        ),
+        "aggregator immutable identity",
+    )
+    assemble = _step_block(job, "Assemble canonical credential-free signed candidate")
+    revalidate = _step_block(job, "Revalidate canonical candidate after retention")
+    for block, verb in ((assemble, "assemble"), (revalidate, "verify")):
+        _require_sanitized(block, f"candidate {verb}")
+        _require(
+            block,
+            (
+                EXPECTED_HELPER_SHA256["assemble_mobile_signed_candidate.py"],
+                "/usr/bin/python3 -I",
+                f'assemble_mobile_signed_candidate.py" {verb}',
+            ),
+            f"candidate {verb}",
+        )
+    _require(
+        _step_block(job, "Retain canonical signed candidate"),
+        (
+            f"uses: {UPLOAD_ACTION} # v7.0.1",
+            "name: pakperk-${{ inputs.environment }}-${{ needs.candidate-preparation.outputs.version_name }}-",
+            "if-no-files-found: error",
+            "retention-days: 90",
+        ),
+        "canonical candidate retention",
+    )
 
 
-def _step_block_at_marker(source: str, marker: str, label: str) -> str:
-    if source.count(marker) != 1:
-        raise RuntimeError(f"{label} must contain exactly one reviewed checkout step")
-    start = source.index(marker)
-    end = source.find("\n      - ", start + len(marker))
-    return source[start:] if end < 0 else source[start:end]
+def _validate_bootstrap(job: str) -> None:
+    head = job[: job.index("    steps:\n")]
+    _require(
+        head,
+        (
+            "    needs: signed-candidate\n",
+            "    if: inputs.upload_to_stores\n",
+            "      archive_artifact_digest: ${{ steps.store_client_archive_upload.outputs.artifact-digest }}\n",
+            "      archive_artifact_id: ${{ steps.store_client_archive_upload.outputs.artifact-id }}\n",
+        ),
+        "store-client bootstrap",
+    )
+    if "    environment:" in head or _secrets(job):
+        raise RuntimeError("store-client bootstrap must be credential-free")
+    _ordered(
+        job,
+        (
+            "Verify isolated store-client bootstrap source",
+            "Prepare bootstrap store client",
+            "Package attested store client for isolated transfer",
+            "Retain attested store-client transfer",
+        ),
+        "store-client bootstrap",
+    )
+    package = _step_block(job, "Package attested store client for isolated transfer")
+    _require_sanitized(package, "store-client package")
+    _require(
+        package,
+        (
+            '"$GITHUB_WORKSPACE/scripts/validate_mobile_store_client.py" verify',
+            '/usr/bin/tar -C "$STORE_CLIENT_ROOT" -czf "$archive"',
+            "scripts/prepare_mobile_credentialed_upload.py",
+            "scripts/generate_mobile_store_upload_handoff.py",
+            "scripts/finalize_mobile_signed_release.py",
+            "mobile/Gemfile.lock",
+        ),
+        "store-client control package",
+    )
 
 
-def _mapping_keys(source: str, indent: int) -> list[str]:
-    prefix = " " * indent
-    nested_prefix = prefix + " "
-    keys: list[str] = []
-    for raw_line in source.splitlines():
-        if not raw_line.startswith(prefix) or raw_line.startswith(nested_prefix):
-            continue
-        content = raw_line[indent:]
-        if not content or content.startswith("#") or ":" not in content:
-            continue
-        keys.append(content.partition(":")[0].strip())
-    return keys
+def _validate_upload(job: str, *, platform: str) -> None:
+    android = platform == "Android"
+    head = job[: job.index("    steps:\n")]
+    _require(
+        head,
+        (
+            "    needs: [signed-candidate, store-client-bootstrap]\n",
+            "    if: inputs.upload_to_stores\n",
+            "    environment: ${{ inputs.environment }}\n",
+            f"      evidence_artifact_digest: ${{{{ steps.{platform.lower()}_evidence_upload.outputs.artifact-digest }}}}\n",
+            f"      evidence_artifact_id: ${{{{ steps.{platform.lower()}_evidence_upload.outputs.artifact-id }}}}\n",
+        ),
+        f"{platform} store-upload boundary",
+    )
+    if CHECKOUT_ACTION in job or "actions/checkout@" in job or "$GITHUB_WORKSPACE" in job:
+        raise RuntimeError(f"{platform} store upload must execute only transferred controls")
+    candidate_step = f"Download immutable {platform} signed candidate"
+    controls_step = f"Download attested {platform} store controls and client"
+    reattest_step = f"Re-attest {platform} candidate controls and client before credentials"
+    if android:
+        upload_step = "Upload Android candidate with Android-only credential"
+        cleanup_step = "Remove isolated Android credential and client"
+        outcome_step = "Record isolated Android upload outcome"
+        retention_step = "Retain isolated Android upload evidence"
+        fail_step = "Fail isolated Android upload after evidence retention"
+        expected_secrets = ANDROID_STORE_SECRETS
+        required_manager = "manage_google_play_rollout.rb"
+        forbidden_manager = "manage_app_store_phased_release.rb"
+    else:
+        upload_step = "Upload and verify iOS candidate with iOS-only credentials"
+        cleanup_step = "Remove isolated iOS credentials and client"
+        outcome_step = "Record isolated iOS upload outcome"
+        retention_step = "Retain isolated iOS upload evidence"
+        fail_step = "Fail isolated iOS upload after evidence retention"
+        expected_secrets = IOS_STORE_SECRETS
+        required_manager = "manage_app_store_phased_release.rb"
+        forbidden_manager = "manage_google_play_rollout.rb"
+    _ordered(
+        job,
+        (
+            candidate_step,
+            controls_step,
+            reattest_step,
+            upload_step,
+            cleanup_step,
+            outcome_step,
+            retention_step,
+            fail_step,
+        ),
+        f"{platform} store upload",
+    )
+    _validate_download(
+        _step_block(job, candidate_step),
+        "${{ needs.signed-candidate.outputs.artifact_id }}",
+        f"{platform} candidate transfer",
+    )
+    _validate_download(
+        _step_block(job, controls_step),
+        "${{ needs.store-client-bootstrap.outputs.archive_artifact_id }}",
+        f"{platform} store-client transfer",
+    )
+    reattest = _step_block(job, reattest_step)
+    _require_sanitized(reattest, f"{platform} pre-credential re-attestation")
+    _require(
+        reattest,
+        (
+            "EXPECTED_CANDIDATE_ARTIFACT_ID: ${{ needs.signed-candidate.outputs.artifact_id }}",
+            "EXPECTED_CANDIDATE_ARTIFACT_DIGEST: ${{ needs.signed-candidate.outputs.artifact_digest }}",
+            "EXPECTED_STORE_CLIENT_ARTIFACT_ID: ${{ needs.store-client-bootstrap.outputs.archive_artifact_id }}",
+            "EXPECTED_STORE_CLIENT_ARTIFACT_DIGEST: ${{ needs.store-client-bootstrap.outputs.archive_artifact_digest }}",
+            '[[ "$EXPECTED_CANDIDATE_ARTIFACT_ID" != "$EXPECTED_STORE_CLIENT_ARTIFACT_ID" ]] || exit 1',
+            EXPECTED_HELPER_SHA256["prepare_mobile_credentialed_upload.py"],
+            EXPECTED_HELPER_SHA256["validate_mobile_signed_release_run.py"],
+            "/usr/bin/python3 -I - \"$CONTROL_ROOT\"",
+        ),
+        f"{platform} upload pre-attestation",
+    )
+    _validate_secret_step(job, upload_step, expected_secrets, f"{platform} store upload")
+    if job.index(next(iter(expected_secrets))) < job.index(f"      - name: {reattest_step}\n"):
+        raise RuntimeError(f"{platform} store credential appears before re-attestation")
+    upload = _step_block(job, upload_step)
+    if required_manager not in job or forbidden_manager in job:
+        raise RuntimeError(f"{platform} store upload client family changed")
+    _require(
+        upload,
+        (
+            "CONTROL_ROOT: ${{ runner.temp }}/store-client-transfer/controls",
+            "/usr/bin/env -i PATH=\"$PATH\" HOME=\"$HOME\"",
+            '"$CONTROL_ROOT/materialize_mobile_release_secret.py" decode',
+            "generate_mobile_store_upload_attempt.py",
+            "validate_mobile_store_candidate.py",
+            "validate_mobile_signed_release_run.py",
+            "validate_mobile_store_client.py",
+        ),
+        f"{platform} isolated upload execution",
+    )
+    for step_name in (cleanup_step, outcome_step, retention_step, fail_step):
+        block = _step_block(job, step_name)
+        if "        if: always()\n" not in block:
+            raise RuntimeError(f"{platform} evidence/cleanup step is not unconditional: {step_name}")
+    outcome = _step_block(job, outcome_step)
+    _require(
+        outcome,
+        (
+            '"classification": "isolated mobile store upload platform outcome"',
+            f'"platform": "{platform.lower()}"',
+            '"requested": True',
+            '"status": "succeeded_verified"',
+            "CANDIDATE_ARTIFACT_DIGEST: ${{ needs.signed-candidate.outputs.artifact_digest }}",
+            "STORE_CLIENT_ARTIFACT_DIGEST: ${{ needs.store-client-bootstrap.outputs.archive_artifact_digest }}",
+        ),
+        f"{platform} canonical platform outcome",
+    )
+    _require(
+        _step_block(job, retention_step),
+        (f"uses: {UPLOAD_ACTION} # v7.0.1", "if-no-files-found: error", "retention-days: 90"),
+        f"{platform} evidence retention",
+    )
+
+
+def _validate_finalizer(job: str) -> None:
+    head = job[: job.index("    steps:\n")]
+    _require(
+        head,
+        (
+            "    needs: [signed-candidate, store-client-bootstrap, android-store-upload, ios-store-upload]\n",
+            "    if: always()\n",
+            "      handoff_artifact_digest: ${{ steps.handoff_upload.outputs.artifact-digest }}\n",
+            "      handoff_artifact_id: ${{ steps.handoff_upload.outputs.artifact-id }}\n",
+            "      outcome_artifact_digest: ${{ steps.final_outcome_upload.outputs.artifact-digest }}\n",
+            "      outcome_artifact_id: ${{ steps.final_outcome_upload.outputs.artifact-id }}\n",
+        ),
+        "signed-release finalizer",
+    )
+    if "    environment:" in head or _secrets(job):
+        raise RuntimeError("signed-release finalizer must be credential-free")
+    _ordered(
+        job,
+        (
+            "Download final canonical signed candidate by artifact ID",
+            "Download final attested store controls by artifact ID",
+            "Download immutable Android upload outcome by artifact ID",
+            "Download immutable iOS upload outcome by artifact ID",
+            "Create verified cross-platform store handoff",
+            "Retain immutable verified store handoff",
+            "Create unconditional canonical signed-release outcome",
+            "Retain unconditional aggregate signed-release evidence",
+            "Enforce canonical final signed-release result after retention",
+        ),
+        "signed-release finalizer",
+    )
+    for step_name, artifact_id in (
+        (
+            "Download final canonical signed candidate by artifact ID",
+            "${{ needs.signed-candidate.outputs.artifact_id }}",
+        ),
+        (
+            "Download final attested store controls by artifact ID",
+            "${{ needs.store-client-bootstrap.outputs.archive_artifact_id }}",
+        ),
+        (
+            "Download immutable Android upload outcome by artifact ID",
+            "${{ needs.android-store-upload.outputs.evidence_artifact_id }}",
+        ),
+        (
+            "Download immutable iOS upload outcome by artifact ID",
+            "${{ needs.ios-store-upload.outputs.evidence_artifact_id }}",
+        ),
+    ):
+        _validate_download(_step_block(job, step_name), artifact_id, step_name)
+    handoff = _step_block(job, "Create verified cross-platform store handoff")
+    _require_sanitized(handoff, "cross-platform handoff")
+    _require(
+        handoff,
+        (
+            "if: inputs.upload_to_stores && needs.signed-candidate.result == 'success'",
+            "needs.android-store-upload.result == 'success'",
+            "needs.ios-store-upload.result == 'success'",
+            EXPECTED_HELPER_SHA256["generate_mobile_store_upload_handoff.py"],
+            EXPECTED_HELPER_SHA256["validate_mobile_signed_release_run.py"],
+            '--tooling-root "$CONTROL_ROOT"',
+            "/usr/bin/python3 -I - \"$CONTROL_ROOT\"",
+        ),
+        "cross-platform handoff",
+    )
+    outcome = _step_block(job, "Create unconditional canonical signed-release outcome")
+    _require_sanitized(outcome, "canonical signed-release outcome")
+    _require(
+        outcome,
+        (
+            "        if: always()",
+            EXPECTED_HELPER_SHA256["finalize_mobile_signed_release.py"],
+            'finalize_mobile_signed_release.py"',
+            '--requested-uploads "${{ inputs.upload_to_stores }}"',
+            '--environment "${{ inputs.environment }}"',
+            '--android-application-id "${{ needs.signed-candidate.outputs.bundle_id }}"',
+            '--ios-application-id "${{ needs.signed-candidate.outputs.bundle_id }}"',
+            '--candidate-job-result "${{ needs.signed-candidate.result }}"',
+            '--bootstrap-job-result "${{ needs.store-client-bootstrap.result }}"',
+            '--android-job-result "${{ needs.android-store-upload.result }}"',
+            '--ios-job-result "${{ needs.ios-store-upload.result }}"',
+            '--android-evidence-artifact-digest "${{ needs.android-store-upload.outputs.evidence_artifact_digest }}"',
+            '--ios-evidence-artifact-digest "${{ needs.ios-store-upload.outputs.evidence_artifact_digest }}"',
+            '--handoff-step-outcome "${{ steps.handoff.outcome }}"',
+            '--handoff-upload-outcome "${{ steps.handoff_upload.outcome }}"',
+        ),
+        "canonical signed-release finalization",
+    )
+    retain = _step_block(job, "Retain unconditional aggregate signed-release evidence")
+    _require(
+        retain,
+        (
+            "        if: always()",
+            f"uses: {UPLOAD_ACTION} # v7.0.1",
+            "name: pakperk-${{ inputs.environment }}-store-outcome-",
+            "if-no-files-found: error",
+            "retention-days: 90",
+        ),
+        "aggregate signed-release evidence retention",
+    )
+    enforce = _step_block(job, "Enforce canonical final signed-release result after retention")
+    _require(
+        enforce,
+        (
+            "        if: always()",
+            "FINAL_OUTCOME: ${{ steps.final_outcome.outputs.overall_result }}",
+            "RETENTION_STEP: ${{ steps.final_outcome_upload.outcome }}",
+            '[[ "$FINALIZATION_STEP" == success && "$RETENTION_STEP" == success && \\\n',
+            '"$FINAL_OUTCOME" == succeeded ]]',
+        ),
+        "post-retention final failure gate",
+    )
 
 
 def validate(
     workflow: pathlib.Path = WORKFLOW,
     security_workflow: pathlib.Path = SECURITY_WORKFLOW,
     ios_verifier: pathlib.Path = IOS_VERIFIER,
+    secret_materializer: pathlib.Path = SECRET_MATERIALIZER,
 ) -> None:
-    flutter_contract = (
+    if (
         flutter_toolchain.EXPECTED_FLUTTER_VERSION,
         flutter_toolchain.EXPECTED_FRAMEWORK_REVISION,
         flutter_toolchain.EXPECTED_DART_SDK_VERSION,
-    )
-    if flutter_contract != (
-        "3.44.8",
-        "058e0af2c2b57e369d905a03ac9748b0ebf543c6",
-        "3.12.2",
-    ):
-        raise RuntimeError("reviewed Flutter release identity changed without review")
+    ) != ("3.44.8", "058e0af2c2b57e369d905a03ac9748b0ebf543c6", "3.12.2"):
+        raise RuntimeError("reviewed Flutter release identity changed")
+
     source = workflow.read_text(encoding="utf-8")
-    if _mapping_keys(source, 0) != [
-        "name",
-        "on",
-        "permissions",
-        "concurrency",
-        "env",
-        "jobs",
-    ]:
-        raise RuntimeError("signed mobile workflow root mapping changed")
-    if re.search(r"(?m)^\s*<<\s*:", source):
-        raise RuntimeError("signed mobile workflow must not use YAML merge keys")
-    trigger_end = source.index("\npermissions:")
-    trigger = source[source.index("\non:\n") + 1 : trigger_end]
-    if _mapping_keys(trigger, 2) != ["workflow_dispatch"]:
-        raise RuntimeError("signed mobile release must be manual-dispatch only")
-    if hashlib.sha256(trigger.encode("utf-8")).hexdigest() != EXPECTED_TRIGGER_SHA256:
-        raise RuntimeError(
-            "signed mobile dispatch schema or environment choices changed"
-        )
-    permissions_end = source.index("\nconcurrency:", trigger_end)
-    if source[trigger_end + 1 : permissions_end].strip() != (
-        "permissions:\n  contents: read"
-    ):
-        raise RuntimeError("signed mobile workflow permissions are not least privilege")
-    concurrency_end = source.index("\nenv:\n", permissions_end)
-    if source[permissions_end + 1 : concurrency_end].strip() != (
-        "concurrency:\n"
-        "  group: signed-mobile-${{ inputs.environment }}\n"
-        "  cancel-in-progress: false"
-    ):
-        raise RuntimeError(
-            "signed mobile concurrency must be scoped and non-cancelling"
-        )
-    env_start = concurrency_end + 1
-    env_end = source.index("\njobs:\n", env_start)
-    root_env = source[env_start:env_end]
-    if hashlib.sha256(root_env.encode("utf-8")).hexdigest() != EXPECTED_ROOT_ENV_SHA256:
-        raise RuntimeError("signed mobile inherited environment changed")
-
-    if source.count("\njobs:\n") != 1:
-        raise RuntimeError("signed mobile workflow job boundary is malformed")
-    jobs = source[source.index("\njobs:\n") + len("\njobs:\n") :]
-    if _mapping_keys(jobs, 2) != ["signed-candidate"]:
-        raise RuntimeError(
-            "signed mobile workflow must contain exactly one bounded job"
-        )
-    job_start = source.index("  signed-candidate:\n", env_end)
-    steps_start = source.index("    steps:\n", job_start)
-    expected_job_prefix = (
-        "  signed-candidate:\n"
-        "    name: ${{ inputs.environment }} signed candidate\n"
-        "    runs-on: macos-26\n"
-        "    timeout-minutes: 150\n"
-        "    environment: ${{ inputs.environment }}\n"
-    )
-    if source[job_start:steps_start] != expected_job_prefix:
-        raise RuntimeError(
-            "signed mobile job execution boundary changed; job-level conditions are fail-open"
-        )
-    if _mapping_keys(source[job_start:], 4) != [
-        "name",
-        "runs-on",
-        "timeout-minutes",
-        "environment",
-        "steps",
-    ]:
-        raise RuntimeError(
-            "signed mobile job contains an unexpected or reordered job-level key"
-        )
-    step_items = re.findall(r"(?m)^      -[^\n]*$", source[steps_start:])
-    if any(
-        re.fullmatch(r"      - (?:name: .+|uses: [^ #]+(?: # .+)?)", item) is None
-        for item in step_items
-    ):
-        raise RuntimeError("signed mobile workflow contains a non-canonical step item")
-    step_item_contract = "\n".join(step_items) + "\n"
-    if (
-        hashlib.sha256(step_item_contract.encode("utf-8")).hexdigest()
-        != EXPECTED_STEP_ITEMS_SHA256
-    ):
-        raise RuntimeError("signed mobile workflow step surface changed")
-    if step_items[:2] != [
-        f"      - uses: {CHECKOUT_ACTION} # v7.0.1",
-        "      - name: Resolve reviewed source revision",
-    ]:
-        raise RuntimeError(
-            "signed mobile workflow must establish source trust before executable work"
-        )
-
-    checkout = _step_block_at_marker(
-        source,
-        f"      - uses: {CHECKOUT_ACTION}",
-        "signed mobile workflow",
-    )
-    if (
-        hashlib.sha256(checkout.encode("utf-8")).hexdigest()
-        != EXPECTED_CHECKOUT_STEP_SHA256
-    ):
-        raise RuntimeError("signed mobile checkout step changed")
-    if re.findall(r"(?m)^        ([a-z][a-z0-9-]*):", checkout) != ["with"]:
-        raise RuntimeError("signed mobile checkout has an unexpected step key")
-    expected_checkout = (
-        "        with:\n"
-        "          ref: ${{ inputs.source_revision }}\n"
-        "          fetch-depth: 0\n"
-        "          persist-credentials: false"
-    )
-    if checkout[checkout.index("        with:\n") :] != expected_checkout:
-        raise RuntimeError("signed mobile exact-source checkout inputs changed")
-
-    _require_exact_scalar(source, "FLUTTER_VERSION", "3.44.8", "signed mobile workflow")
-    _require_exact_scalar(
-        source,
-        "flutter-version",
-        "${{ env.FLUTTER_VERSION }}",
-        "signed mobile workflow",
-    )
-    _require_exact_scalar(
-        source, "PAKPERK_RUBY_ENGINE", "ruby", "signed mobile workflow"
-    )
-    _require_exact_scalar(
-        source, "PAKPERK_RUBY_VERSION", "3.4.10", "signed mobile workflow"
-    )
-    _require_exact_scalar(
-        source,
-        "PAKPERK_RUBYGEMS_VERSION",
-        "4.0.17",
-        "signed mobile workflow",
-    )
-    _require_fragments(
+    if "\t" in source or "\r" in source or re.search(r"(?m)^\s*<<\s*:", source):
+        raise RuntimeError("workflow contains non-canonical YAML structure")
+    if _mapping_keys(source, 0) != ["name", "on", "permissions", "concurrency", "env", "jobs"]:
+        raise RuntimeError("signed-mobile root mapping changed")
+    _require(
         source,
         (
-            "source_revision:",
-            "ref: ${{ inputs.source_revision }}",
-            'SOURCE_REVISION="${{ steps.source.outputs.source_revision }}"',
-            "runs-on: macos-26",
-            "PAKPERK_JDK_RUNTIME_VERSION: 17.0.19+10",
-            "PAKPERK_JDK_VENDOR: Eclipse Adoptium",
-            'reviewed_java_home="${JAVA_HOME_17_arm64:-}"',
-            'XCODE_VERSION: "26.6"',
-            'XCODE_BUILD: "17F113"',
-            'xcode-select --switch "$xcode_developer_dir"',
-            "Verify and record the exact reviewed Flutter SDK",
-            'flutter --version --machine >"$RUNNER_TEMP/evidence/flutter-toolchain.json"',
-            "python3 scripts/validate_flutter_toolchain.py",
-            "BUNDLER_SHA256: a25675ffbd055ae1186766cc1e120b4cf62588e88abb59b99c57e22b1c55c9eb",
-            '"https://rubygems.org/downloads/bundler-$BUNDLER_VERSION.gem"',
-            "shasum -a 256 --check",
-            'gem install --user-install --local "$bundler_gem"',
-            "BUNDLE_FROZEN=true",
-            "BUNDLE_LOCKFILE_CHECKSUMS=true",
-            '"_${BUNDLER_VERSION}_" install',
-            '"_${BUNDLER_VERSION}_" exec fastlane supply',
-            "validate_fastlane_lock.py",
-            "validate_gradle_verification.py",
-            "android-native.cdx.json",
-            "Generate SBOM, notices, and immutable evidence hashes",
-            'checksum_path = root / "release-sha256.txt"',
-            "Retain signed candidates, symbols, SBOM, and release evidence",
-            "pakperk-${{ inputs.environment }}-${{ steps.release.outputs.version_name }}-${{ steps.release.outputs.build_number }}-${{ steps.source.outputs.source_revision }}",
-            "if-no-files-found: error",
-            "retention-days: 90",
+            "name: signed-mobile-release\n",
+            "on:\n  workflow_dispatch:\n",
+            "permissions:\n  contents: read\n",
+            "concurrency:\n  group: signed-mobile-${{ inputs.environment }}\n  cancel-in-progress: false\n",
+            "  FLUTTER_VERSION: 3.44.8\n",
+            "  PAKPERK_RUBY_VERSION: 3.4.10\n",
+            "  PAKPERK_RUBYGEMS_VERSION: 4.0.17\n",
+            "  BUNDLER_VERSION: 2.6.9\n",
         ),
-        "signed mobile workflow",
+        "signed-mobile root contract",
     )
+    jobs_source = source[source.index("jobs:\n") :]
+    if tuple(_mapping_keys(jobs_source, 2)) != JOB_IDS:
+        raise RuntimeError("signed-mobile eight-job isolation surface changed")
+    jobs = {name: _job_block(source, name) for name in JOB_IDS}
+    for job_id, display_name in JOB_NAMES.items():
+        if f"    name: {display_name}\n" not in jobs[job_id]:
+            raise RuntimeError(f"signed-mobile display name changed: {job_id}")
+    if source.count("    environment: ${{ inputs.environment }}\n") != 4:
+        raise RuntimeError("protected environment surface must contain exactly four jobs")
 
-    source_step = _step_block(
-        source,
-        "Resolve reviewed source revision",
-        "signed mobile workflow",
-    )
-    if (
-        hashlib.sha256(source_step.encode("utf-8")).hexdigest()
-        != EXPECTED_SOURCE_STEP_SHA256
-    ):
-        raise RuntimeError("signed mobile source trust step changed")
-    _require_fragments(
-        source_step,
-        (
-            "DISPATCH_REF: ${{ github.ref }}",
-            "RELEASE_ENVIRONMENT: ${{ inputs.environment }}",
-            "REQUESTED_REVISION: ${{ inputs.source_revision }}",
-            'if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then',
-            'if [[ "$RELEASE_ENVIRONMENT" != "development" && "$RELEASE_ENVIRONMENT" != "staging" && "$RELEASE_ENVIRONMENT" != "production" ]]; then',
-            'if ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]]; then',
-            'if [[ "$source_revision" != "$REQUESTED_REVISION" ]]; then',
-            'if ! git merge-base --is-ancestor "$source_revision" origin/main; then',
-        ),
-        "signed mobile source trust step",
-    )
-    if "continue-on-error:" in source_step:
-        raise RuntimeError("signed mobile source trust step must not be recoverable")
-    for forbidden in (
-        "runs-on: macos-latest",
-        "gem install --user-install fastlane",
-        "gem install --user-install bundler --version",
-        'SOURCE_REVISION="$GITHUB_SHA"',
-        "${{ github.sha }}",
-        "actions/setup-java",
-        "flutter-version: stable",
-        "JAVA_HOME_17_X64",
-        "if-no-files-found: warn",
-    ):
-        if forbidden in source:
-            raise RuntimeError(
-                f"signed mobile workflow contains a floating tool: {forbidden}"
-            )
+    allowed_actions = {CHECKOUT_ACTION, DOWNLOAD_ACTION, UPLOAD_ACTION, FLUTTER_ACTION}
+    actions = re.findall(r"(?m)^\s+uses: ([^\s#]+)", source)
+    if not actions or any(action not in allowed_actions for action in actions):
+        raise RuntimeError("workflow action pin surface changed")
+    if source.count(CHECKOUT_ACTION) != 6 or source.count(DOWNLOAD_ACTION) != 13 or source.count(UPLOAD_ACTION) != 9:
+        raise RuntimeError("workflow action boundary count changed")
 
-    ruby_step = _step_block(
-        source,
-        "Select, verify, and record the reviewed Ruby runtime",
-        "signed mobile workflow",
-    )
-    _require_fragments(
-        ruby_step,
-        (
-            "ruby_engine=\"$(ruby -e 'print RUBY_ENGINE')\"",
-            "ruby_version=\"$(ruby -e 'print RUBY_VERSION')\"",
-            'if [[ "$ruby_engine" != "$PAKPERK_RUBY_ENGINE" || \\',
-            '"$ruby_version" != "$PAKPERK_RUBY_VERSION" ]]',
-            'rubygems_version="$(gem --version)"',
-            'if [[ "$rubygems_version" != "$PAKPERK_RUBYGEMS_VERSION" ]]',
-            "ruby_executable=%s\\n",
-            '"$RUNNER_TEMP/evidence/ruby-toolchain.txt"',
-        ),
-        "reviewed Ruby runtime step",
-    )
-    ruby_runtime_guard = ruby_step.index(
-        'if [[ "$ruby_engine" != "$PAKPERK_RUBY_ENGINE"'
-    )
-    rubygems_query = ruby_step.index('rubygems_version="$(gem --version)"')
-    rubygems_guard = ruby_step.index(
-        'if [[ "$rubygems_version" != "$PAKPERK_RUBYGEMS_VERSION" ]]'
-    )
-    if not ruby_runtime_guard < rubygems_query < rubygems_guard:
-        raise RuntimeError("MRI Ruby must be verified before RubyGems is invoked")
+    _validate_preparation(jobs["candidate-preparation"])
+    _validate_signer(jobs["android-signed-candidate"], platform="Android")
+    _validate_signer(jobs["ios-signed-candidate"], platform="iOS")
+    _validate_aggregator(jobs["signed-candidate"])
+    _validate_bootstrap(jobs["store-client-bootstrap"])
+    _validate_upload(jobs["android-store-upload"], platform="Android")
+    _validate_upload(jobs["ios-store-upload"], platform="iOS")
+    _validate_finalizer(jobs["signed-release-finalizer"])
 
-    source_gate = source.index("Resolve reviewed source revision")
-    flutter_gate = source.index("Verify and record the exact reviewed Flutter SDK")
-    ruby_gate = source.index("Select, verify, and record the reviewed Ruby runtime")
-    protected_inputs = source.index("Materialize protected mobile feature flags")
-    protected_inputs_step = _step_block(
-        source,
-        "Materialize protected mobile feature flags",
-        "signed mobile workflow",
+    expected_all_secrets = (
+        ANDROID_SIGNING_SECRETS
+        | IOS_SIGNING_SECRETS
+        | ANDROID_STORE_SECRETS
+        | IOS_STORE_SECRETS
     )
-    _require_fragments(
-        protected_inputs_step,
-        (
-            '"schema": 2',
-            "RELEASE_DOCUMENT_VERSION: ${{ vars.PAKPERK_PUBLIC_DOCUMENT_VERSION }}",
-            'expected_document_version = os.environ.get("RELEASE_DOCUMENT_VERSION", "")',
-            "config[key] != expected_document_version",
-            '"termsDocumentVersion": config["PAKPERK_TERMS_DOCUMENT_VERSION"]',
-            '"communityGuidelinesDocumentVersion": config["PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION"]',
-            ' / "evidence" / "mobile-feature-flags.json"',
-        ),
-        "signed mobile policy-version evidence",
-    )
-    flutter_dependencies = source.index("Resolve locked Flutter dependencies")
-    bundler_install = source.index("Install and record the pinned store upload client")
-    if source_gate >= protected_inputs:
-        raise RuntimeError(
-            "mobile source trust must be established before protected inputs"
-        )
-    if (
-        not source_gate
-        < flutter_gate
-        < ruby_gate
-        < flutter_dependencies
-        < bundler_install
-    ):
-        raise RuntimeError(
-            "reviewed Flutter and Ruby must be gated after source trust and before dependencies or Bundler"
-        )
-
-    evidence_hashes = source.index(
-        "- name: Generate SBOM, notices, and immutable evidence hashes"
-    )
-    evidence_upload = source.index(
-        "- name: Retain signed candidates, symbols, SBOM, and release evidence"
-    )
-    for required_predecessor in (
-        "Build and inspect signed Android artifacts",
-        "Generate and validate the exact native Android runtime SBOM",
-        "Build and inspect signed iOS artifact",
-    ):
-        if source.index(required_predecessor) >= evidence_hashes:
-            raise RuntimeError(
-                "signed artifacts and native SBOM must be verified before evidence hashing"
-            )
-    if evidence_hashes >= evidence_upload:
-        raise RuntimeError("signed evidence must be hashed before mandatory upload")
-
-    for step_name, expected_digest in (
-        (
-            "Build and inspect signed Android artifacts",
-            EXPECTED_ANDROID_BUILD_STEP_SHA256,
-        ),
-        ("Build and inspect signed iOS artifact", EXPECTED_IOS_BUILD_STEP_SHA256),
-    ):
-        build_step = _step_block(source, step_name, "signed mobile workflow")
-        if hashlib.sha256(build_step.encode("utf-8")).hexdigest() != expected_digest:
-            raise RuntimeError(f"{step_name} contract changed")
-
-    manifest_step = _step_block(
-        source,
-        "Generate SBOM, notices, and immutable evidence hashes",
-        "signed mobile workflow",
-    )
-    if (
-        hashlib.sha256(manifest_step.encode("utf-8")).hexdigest()
-        != EXPECTED_MANIFEST_STEP_SHA256
-    ):
-        raise RuntimeError("signed candidate manifest generation step changed")
-    if re.findall(r"(?m)^        ([a-z][a-z0-9-]*):", manifest_step) != [
-        "id",
-        "shell",
-        "env",
-        "run",
-    ]:
-        raise RuntimeError(
-            "signed candidate manifest step has unexpected or reordered keys"
-        )
-    expected_manifest_environment = (
-        "        env:\n"
-        "          RELEASE_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}\n"
-        "          RELEASE_ENVIRONMENT: ${{ inputs.environment }}\n"
-        "          RELEASE_APP_VERSION: ${{ steps.release.outputs.version_name }}\n"
-        "          RELEASE_ANDROID_VERSION_NAME: ${{ steps.release.outputs.android_version_name }}\n"
-        "          RELEASE_BUILD_NUMBER: ${{ steps.release.outputs.build_number }}\n"
-        "          RELEASE_APPLICATION_ID: ${{ steps.release.outputs.bundle_id }}\n"
-        "          RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}\n"
-        "          RELEASE_REPOSITORY: ${{ github.repository }}\n"
-        "          RELEASE_JOB: ${{ github.job }}\n"
-        "          RELEASE_RUN_ID: ${{ github.run_id }}\n"
-        "          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}\n"
-    )
-    environment_start = manifest_step.index("        env:\n")
-    run_start = manifest_step.index("        run: |\n")
-    if manifest_step[environment_start:run_start] != expected_manifest_environment:
-        raise RuntimeError("signed candidate manifest environment bindings changed")
-    _require_fragments(
-        manifest_step,
-        (
-            'artifact(".aab")',
-            'artifact(".apk")',
-            'artifact(".ipa")',
-            'identity_file("android-upload-identity.txt")',
-            'identity_file("android-retained-digests.txt")',
-            'identity_file("apple-installed-identity.txt")',
-            'android_identity.get("android_upload_sha256", "")',
-            'ios_identity.get("apple_signer_sha256", "")',
-            '"stage": "artifacts_verified"',
-            '"workflow_sha": workflow_sha',
-            '"repository": repository',
-            'android_artifact_digests["android_aab_artifact_sha256"] != aab_sha256',
-            'ios_identity.get("apple_ipa_sha256") != ipa_sha256',
-            '"aab_sha256": aab_sha256',
-            '"apk_sha256": apk_sha256',
-            '"ipa_sha256": ipa_sha256',
-            'provenance_id = "sha256:" + hashlib.sha256(provenance_bytes).hexdigest()',
-            '"provenance_id": provenance_id',
-            'candidate_id = "sha256:" + hashlib.sha256(candidate_bytes).hexdigest()',
-            '("mobile-release-provenance.json", provenance_bytes)',
-            '("mobile-candidate.json", candidate_bytes)',
-            "allow_nan=False",
-            'separators=(",", ":")',
-            "sort_keys=True",
-            "for name, release_root in release_roots.items():",
-            "if not stat.S_ISDIR(metadata.st_mode):",
-            "if observed_release_digests != set(expected_release_digests):",
-        ),
-        "canonical signed-candidate provenance",
-    )
-    provenance_write = manifest_step.index(
-        '("mobile-release-provenance.json", provenance_bytes)'
-    )
-    candidate_write = manifest_step.index('("mobile-candidate.json", candidate_bytes)')
-    recursive_hashes = manifest_step.index(
-        "for name, release_root in release_roots.items():"
-    )
-    if not provenance_write < candidate_write < recursive_hashes:
-        raise RuntimeError(
-            "canonical candidate manifests must be emitted before release evidence hashing"
-        )
-
-    upload_step = _step_block(
-        source,
-        "Retain signed candidates, symbols, SBOM, and release evidence",
-        "signed mobile workflow",
-    )
-    if (
-        hashlib.sha256(upload_step.encode("utf-8")).hexdigest()
-        != EXPECTED_EVIDENCE_UPLOAD_STEP_SHA256
-    ):
-        raise RuntimeError("signed mobile evidence upload step changed")
-    _require_fragments(
-        upload_step,
-        (
-            "${{ runner.temp }}/artifacts",
-            "${{ runner.temp }}/symbols",
-            "${{ runner.temp }}/native-symbols",
-            "${{ runner.temp }}/evidence",
-            "${{ runner.temp }}/release-sha256.txt",
-            "if-no-files-found: error",
-            "retention-days: 90",
-        ),
-        "signed mobile evidence upload",
-    )
-    post_upload_revalidation = _step_block(
-        source,
-        "Revalidate retained release evidence after upload",
-        "signed mobile workflow",
-    )
-    if (
-        hashlib.sha256(post_upload_revalidation.encode("utf-8")).hexdigest()
-        != EXPECTED_POST_UPLOAD_REVALIDATION_STEP_SHA256
-    ):
-        raise RuntimeError("post-upload release evidence revalidation changed")
-    if (
-        not evidence_upload
-        < source.index("- name: Revalidate retained release evidence after upload")
-        < source.index("- name: Upload Android candidate to Google Play internal track")
-    ):
-        raise RuntimeError(
-            "retained evidence must be revalidated after upload and before store delivery"
-        )
-
-    ios_verifier_source = ios_verifier.read_text(encoding="utf-8")
-    if (
-        hashlib.sha256(ios_verifier_source.encode("utf-8")).hexdigest()
-        != EXPECTED_IOS_VERIFIER_SHA256
-    ):
+    if _secrets(source) != expected_all_secrets:
+        raise RuntimeError("signed-mobile secret surface changed")
+    _validate_helpers(source)
+    if hashlib.sha256(secret_materializer.read_bytes()).hexdigest() != EXPECTED_HELPER_SHA256["materialize_mobile_release_secret.py"]:
+        raise RuntimeError("secret materializer bytes changed")
+    if hashlib.sha256(ios_verifier.read_bytes()).hexdigest() != EXPECTED_IOS_VERIFIER_SHA256:
         raise RuntimeError("signed iOS artifact verifier changed")
-    _require_fragments(
-        ios_verifier_source,
-        (
-            'codesign -d --extract-certificates "$certificate_prefix" "$app"',
-            'leaf_certificate="${certificate_prefix}0"',
-            'verified_ipa="$temporary_dir/candidate.ipa"',
-            'unzip -q "$verified_ipa"',
-            'flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)',
-            'developer_certificates = profile.get("DeveloperCertificates")',
-            "if sys.argv[8] not in authorized_signer_digests:",
-            '[[ "$apple_signer_sha256" =~ ^[a-f0-9]{64}$ ]]',
-            "printf 'apple_signer_sha256=%s\\n' \"$apple_signer_sha256\"",
-            "printf 'apple_ipa_sha256=%s\\n' \"$apple_ipa_sha256\"",
-        ),
-        "observed signed IPA certificate identity",
-    )
 
     security = security_workflow.read_text(encoding="utf-8")
-    _require_exact_scalar(security, "FLUTTER_VERSION", "3.44.8", "security workflow")
-    _require_exact_scalar(
-        security,
-        "flutter-version",
-        "${{ env.FLUTTER_VERSION }}",
-        "security workflow",
-    )
-    _require_fragments(
+    _require(
         security,
         (
-            "dependency-policy-and-artifacts:\n    runs-on: ubuntu-24.04",
+            "  FLUTTER_VERSION: 3.44.8\n",
+            "flutter-version: ${{ env.FLUTTER_VERSION }}",
             "PAKPERK_JDK_RUNTIME_VERSION: 17.0.19+10",
-            "PAKPERK_JDK_VENDOR: Eclipse Adoptium",
-            'reviewed_java_home="${JAVA_HOME_17_X64:-}"',
-            "Verify and record the exact reviewed Flutter SDK",
-            "flutter --version --machine >release/metadata/flutter-toolchain.json",
-            "python3 scripts/validate_flutter_toolchain.py",
-            "release/metadata/android-native-toolchain.txt",
             "release-security-evidence-${{ github.sha }}",
-            "path: release/metadata",
             "if-no-files-found: error",
-            "retention-days: 90",
         ),
-        "security workflow",
+        "security workflow toolchain/evidence contract",
     )
-    if "actions/setup-java" in security:
-        raise RuntimeError("security workflow contains a floating setup-java path")
-    if "JAVA_HOME_17_arm64" in security:
-        raise RuntimeError("security workflow must use the Ubuntu x64 JDK contract")
-    if "if-no-files-found: warn" in security:
-        raise RuntimeError(
-            "security evidence upload must fail when artifacts are absent"
-        )
-    security_flutter_gate = security.index(
-        "Verify and record the exact reviewed Flutter SDK"
-    )
-    security_jdk_gate = security.index(
-        "Select, verify, and record the reviewed Android JDK"
-    )
-    security_gradle = security.index(
-        "Generate and validate the Android production runtime SBOM"
-    )
-    if not security_flutter_gate < security_jdk_gate < security_gradle:
-        raise RuntimeError(
-            "security workflow selects a reviewed toolchain after Gradle"
-        )
+    if "actions/setup-java" in security or "if-no-files-found: warn" in security:
+        raise RuntimeError("security workflow contains a floating or fail-open path")
+    if hashlib.sha256(source.encode("utf-8")).hexdigest() != EXPECTED_WORKFLOW_SHA256:
+        raise RuntimeError("signed-mobile workflow bytes changed without validator review")
 
 
 def main() -> int:

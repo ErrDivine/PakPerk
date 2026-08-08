@@ -752,6 +752,309 @@ void main() {
     expect(removed?.paper.title, 'Older paper');
   });
 
+  testWidgets(
+    'To Read sort, search, and category filters stay local and accessible',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(500, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final oldest = _item(
+        'Zeta Systems',
+        1,
+        category: 'stat.ML',
+        authors: const ['Ada Lovelace'],
+      );
+      final middle = _item(
+        'Beta Logic',
+        2,
+        category: 'cs.AI',
+        authors: const ['Grace Hopper'],
+      );
+      final newest = _item(
+        'Alpha Vision',
+        3,
+        category: 'cs.CV',
+        authors: const ['Katherine Johnson'],
+      );
+      final semantics = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ToReadListView(
+              items: [middle, oldest, newest],
+              onOpen: (_) {},
+              onRemove: (_) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      _expectTitleOrder(tester, ['Alpha Vision', 'Beta Logic', 'Zeta Systems']);
+      expect(find.byKey(const ValueKey('to-read-search')), findsOneWidget);
+      expect(find.bySemanticsLabel('3 saved papers'), findsOneWidget);
+      expect(
+        tester.getSize(find.byKey(const ValueKey('to-read-sort-menu'))).height,
+        greaterThanOrEqualTo(48),
+      );
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('to-read-category-menu')))
+            .height,
+        greaterThanOrEqualTo(48),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('to-read-sort-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Oldest saved').last);
+      await tester.pumpAndSettle();
+      _expectTitleOrder(tester, ['Zeta Systems', 'Beta Logic', 'Alpha Vision']);
+
+      await tester.tap(find.byKey(const ValueKey('to-read-sort-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Title A–Z').last);
+      await tester.pumpAndSettle();
+      _expectTitleOrder(tester, ['Alpha Vision', 'Beta Logic', 'Zeta Systems']);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('to-read-search')),
+        'katherine',
+      );
+      await tester.pump();
+      expect(find.text('Alpha Vision'), findsOneWidget);
+      expect(find.text('Beta Logic'), findsNothing);
+      expect(find.text('Zeta Systems'), findsNothing);
+      expect(
+        find.bySemanticsLabel('1 of 3 saved papers shown'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('to-read-clear-search')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('to-read-category-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('cs.AI').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Beta Logic'), findsOneWidget);
+      expect(find.text('Alpha Vision'), findsNothing);
+      expect(find.text('Zeta Systems'), findsNothing);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('to-read-search')),
+        'no such paper',
+      );
+      await tester.pump();
+      expect(find.text('No saved papers match these filters'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('to-read-clear-filters')));
+      await tester.pump();
+      expect(find.text('Alpha Vision'), findsOneWidget);
+      expect(find.text('Beta Logic'), findsOneWidget);
+      expect(find.text('Zeta Systems'), findsOneWidget);
+      expect(find.text('All categories'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      semantics.dispose();
+    },
+  );
+
+  testWidgets(
+    'To Read controls and scroll offset do not cross account scopes',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(420, 640));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      const accountB = '018f47a6-4b56-7f4c-8c7a-e2656e820002';
+      const scopeA = (accountId: _accountId, authEpoch: 7);
+      const scopeB = (accountId: accountB, authEpoch: 7);
+      final activeScopeProvider = StateProvider<ActiveLibraryScope>(
+        (ref) => scopeA,
+      );
+      final accountAItems = List.generate(
+        24,
+        (index) => _item(
+          'Account A saved paper ${index + 1}',
+          index + 1,
+          category: index.isEven ? 'cs.AI' : 'cs.CV',
+        ),
+      );
+      final accountBItems = List.generate(
+        24,
+        (index) => _item(
+          'Account B saved paper ${index + 1}',
+          index + 1,
+          category: index.isEven ? 'stat.ML' : 'math.OC',
+        ),
+      );
+      final database = PakPerkDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final repository = LibraryRepository(
+        local: LibraryDao(database),
+        remote: _UnusedLibraryRemote(),
+        sessionScope: () => scopeA,
+        verifiedScope: () => null,
+        localMutationScope: () => null,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            featureFlagsProvider.overrideWithValue(_libraryFlags),
+            libraryDisplayScopeProvider.overrideWith(
+              (ref) => ref.watch(activeScopeProvider),
+            ),
+            libraryMutationScopeProvider.overrideWithValue(null),
+            libraryReadOnlyAccountStatusProvider.overrideWithValue(null),
+            libraryRepositoryProvider.overrideWithValue(repository),
+            toReadItemsProvider.overrideWith(
+              (ref, scope) =>
+                  Stream.value(scope == scopeA ? accountAItems : accountBItems),
+            ),
+            authSessionOfflineUnknownProvider.overrideWithValue(false),
+            networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
+          ],
+          child: MaterialApp(home: ToReadScreen(onOpenPaper: (_) {})),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const ValueKey('to-read-search')),
+        'account a',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('to-read-sort-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Oldest saved').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('to-read-category-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('cs.AI').last);
+      await tester.pumpAndSettle();
+
+      expect(_toReadSearchText(tester), 'account a');
+      expect(find.text('Oldest saved'), findsOneWidget);
+      expect(find.text('cs.AI'), findsOneWidget);
+      await tester.drag(
+        find.byKey(const PageStorageKey<String>('to-read-list')),
+        const Offset(0, -900),
+      );
+      await tester.pumpAndSettle();
+
+      expect(_toReadScrollOffset(tester), greaterThan(0));
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ToReadScreen)),
+      );
+      container.read(activeScopeProvider.notifier).state = scopeB;
+      await tester.pumpAndSettle();
+
+      expect(_toReadSearchText(tester), isEmpty);
+      expect(find.text('Newest saved'), findsOneWidget);
+      expect(find.text('All categories'), findsOneWidget);
+      expect(_toReadScrollOffset(tester), 0);
+      expect(find.text('Account B saved paper 24'), findsOneWidget);
+      expect(find.textContaining('Account A saved paper'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'To Read dismisses an account-derived category overlay when display scope '
+    'changes asynchronously',
+    (tester) async {
+      const accountB = '018f47a6-4b56-7f4c-8c7a-e2656e820002';
+      const scopeA = (accountId: _accountId, authEpoch: 7);
+      const scopeB = (accountId: accountB, authEpoch: 8);
+      final activeScopeProvider = StateProvider<ActiveLibraryScope>(
+        (ref) => scopeA,
+      );
+      final database = PakPerkDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final repository = LibraryRepository(
+        local: LibraryDao(database),
+        remote: _UnusedLibraryRemote(),
+        sessionScope: () => scopeA,
+        verifiedScope: () => null,
+        localMutationScope: () => null,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            featureFlagsProvider.overrideWithValue(_libraryFlags),
+            libraryDisplayScopeProvider.overrideWith(
+              (ref) => ref.watch(activeScopeProvider),
+            ),
+            libraryMutationScopeProvider.overrideWithValue(null),
+            libraryReadOnlyAccountStatusProvider.overrideWithValue(null),
+            libraryRepositoryProvider.overrideWithValue(repository),
+            toReadItemsProvider.overrideWith(
+              (ref, scope) => Stream.value([
+                scope == scopeA
+                    ? _item('Account A private paper', 1, category: 'cs.AI')
+                    : _item('Account B private paper', 2, category: 'stat.ML'),
+              ]),
+            ),
+            authSessionOfflineUnknownProvider.overrideWithValue(false),
+            networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
+          ],
+          child: MaterialApp(home: ToReadScreen(onOpenPaper: (_) {})),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('to-read-category-menu')));
+      await tester.pumpAndSettle();
+      expect(find.text('cs.AI'), findsOneWidget);
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ToReadScreen)),
+      );
+      // Invalid-grant cleanup and identity rebinding can update this provider
+      // without a gesture while an account-derived menu is open.
+      await Future<void>.microtask(
+        () => container.read(activeScopeProvider.notifier).state = scopeB,
+      );
+      await tester.pump();
+
+      expect(find.text('cs.AI'), findsNothing);
+      expect(find.text('Account A private paper'), findsNothing);
+      await tester.pumpAndSettle();
+      expect(find.text('Account B private paper'), findsOneWidget);
+      expect(find.text('All categories'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('To Read controls reflow at 200 percent text without overflow', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 760));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: Scaffold(
+              body: ToReadListView(
+                items: [_item('Accessible saved paper', 4)],
+                onOpen: (_) {},
+                onRemove: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('to-read-search')), findsOneWidget);
+    expect(find.byKey(const ValueKey('to-read-sort-menu')), findsOneWidget);
+    expect(find.byKey(const ValueKey('to-read-category-menu')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('empty offline list remains usable at 200 percent text', (
     tester,
   ) async {
@@ -795,16 +1098,27 @@ Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
   }
 }
 
-LibraryListItem _item(String title, int day, {bool pending = false}) {
+LibraryListItem _item(
+  String title,
+  int day, {
+  bool pending = false,
+  String category = 'cs.AI',
+  List<String> authors = const ['Ada Reader', 'Grace Hopper'],
+}) {
   final timestamp = DateTime.utc(2026, 7, day);
   return LibraryListItem(
-    paper: _paper(title, day),
+    paper: _paper(title, day, category: category, authors: authors),
     savedAt: timestamp,
     savedState: LibrarySavedState(saved: true, syncPending: pending),
   );
 }
 
-PaperSummary _paper(String title, int day) {
+PaperSummary _paper(
+  String title,
+  int day, {
+  String category = 'cs.AI',
+  List<String> authors = const ['Ada Reader', 'Grace Hopper'],
+}) {
   final paperId = '17060376-2000-4000-8000-${day.toString().padLeft(12, '0')}';
   final timestamp = DateTime.utc(2026, 7, day);
   return PaperSummary(
@@ -812,14 +1126,38 @@ PaperSummary _paper(String title, int day) {
     arxivId: '2401.${day.toString().padLeft(5, '0')}v1',
     title: title,
     abstractText: 'Abstract',
-    authors: const ['Ada Reader', 'Grace Hopper'],
-    primaryCategory: 'cs.AI',
-    categories: const ['cs.AI'],
+    authors: authors,
+    primaryCategory: category,
+    categories: [category],
     publishedAt: timestamp,
     updatedAt: timestamp,
     absUrl: 'https://arxiv.org/abs/2401.00001v1',
     pdfUrl: 'https://arxiv.org/pdf/2401.00001v1',
   );
+}
+
+void _expectTitleOrder(WidgetTester tester, List<String> titles) {
+  final offsets = titles
+      .map((title) => tester.getTopLeft(find.text(title)).dy)
+      .toList();
+  expect(offsets, orderedEquals([...offsets]..sort()));
+}
+
+String _toReadSearchText(WidgetTester tester) => tester
+    .widget<TextField>(find.byKey(const ValueKey('to-read-search')))
+    .controller!
+    .text;
+
+double _toReadScrollOffset(WidgetTester tester) {
+  final list = find.byKey(const PageStorageKey<String>('to-read-list'));
+  final scrollable = find.descendant(
+    of: list,
+    matching: find.byWidgetPredicate(
+      (widget) =>
+          widget is Scrollable && widget.axisDirection == AxisDirection.down,
+    ),
+  );
+  return tester.state<ScrollableState>(scrollable).position.pixels;
 }
 
 const _libraryFlags = FeatureFlags(

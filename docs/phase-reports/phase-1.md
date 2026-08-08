@@ -13,6 +13,12 @@ store-release phases are complete.
 
 - Added `go_router` 17.3.0 and a `StatefulShellRoute.indexedStack` with exactly
   two Material 3 destinations: Read and You.
+- Added the Section 2.4 tablet adaptation on 2026-08-03. Compact widths retain
+  the bottom `NavigationBar`; widths of 600 logical pixels and above use a
+  leading, safe-area-aware `NavigationRail` with visible Read/You labels. Both
+  presentations call the same branch/reselection/restoration path, and the
+  rail is ordered so active nested routes cannot hide it from the semantics
+  tree.
 - Retained the existing linked-paper page navigator inside Read so paper trails,
   horizontal stage, scroll offsets, preparation intent, and Back behavior keep
   their exact restoration semantics.
@@ -110,6 +116,10 @@ The Android build produced `app-debug.apk`; the iOS build produced a simulator
 - **Read/You preservation:** controller, widget, platform restoration, branch
   reselection, and system-back tests preserve branch route, feed index, stage,
   preparation intent, and scroll state.
+- **Adaptive primary navigation:** a focused widget regression moves the same
+  mounted shell from a 390-pixel phone viewport to a 1024-pixel tablet
+  viewport, verifies exactly two destinations, selected-branch continuity,
+  top/bottom safe-area geometry, and selected destination semantics.
 - **Connection restoration:** original feed/restoration tests remain green;
   added UUID and arXiv public-route round trips preserve the source Connections
   view.

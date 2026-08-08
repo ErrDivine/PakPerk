@@ -88,6 +88,14 @@ already authorizes that read, so `query-users` and `view-users` are not granted.
 Keycloak generates its secret at import, and a local harness must
 retrieve it into an owner-only temporary file. No client secret exists in the
 realm export. Verify this contract with `./scripts/validate_keycloak_realm.sh`.
+The validator enforces the realm-wide provider policy, the exact four-client
+set, the sole least-privilege service-account user, and the absence of imported
+roles, groups, identity providers, custom authentication flows, or other
+extension surfaces. This development reference is a closed reviewed export:
+unknown realm/client/mapper fields are rejected, `sslRequired=external` is
+bound to the local Docker boundary, and SMTP is exactly unauthenticated Mailpit
+on `mailpit:1025`. `scripts/test_validate_keycloak_realm.py` proves that each
+required control and additive principal surface fails closed when tampered.
 Worker readiness exchanges those credentials and performs two
 non-destructive reads for the reserved nil UUID: the direct `GET` must return a
 bounded `404`, and an ID-prefixed query bounded to one result must return a JSON
@@ -100,7 +108,11 @@ user and never modifies, logs out, or deletes one.
 The local bootstrap administrator defaults are deliberately confined
 to Compose development; override them in `.env` even for a shared test host.
 Staging and production must use externally managed secrets, HTTPS, separate
-realms and clients, and their own reviewed realm export.
+realms and clients, and their own reviewed realm export. Their different HTTPS
+origins, TLS-authenticated SMTP provider, session policy, and secret-backed
+confidential clients require an equivalent protected closed-contract validator;
+they are substitutions to review, not reasons to relax this development
+reference.
 
 The API remains independently startable when this profile is absent. If
 accounts are disabled, public reading never waits for OIDC. If accounts are

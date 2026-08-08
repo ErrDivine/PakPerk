@@ -48,11 +48,24 @@ env:
   XCODE_BUILD: "17F113"
 
 jobs:
-  signed-candidate:
-    name: ${{ inputs.environment }} signed candidate
+  candidate-preparation:
+    name: ${{ inputs.environment }} credential-free candidate preparation
     runs-on: macos-26
-    timeout-minutes: 150
-    environment: ${{ inputs.environment }}
+    timeout-minutes: 90
+    outputs:
+      prepared_artifact_digest: ${{ steps.prepared_candidate_upload.outputs.artifact-digest }}
+      prepared_artifact_id: ${{ steps.prepared_candidate_upload.outputs.artifact-id }}
+      prepared_config_sha256: ${{ steps.prepared_config.outputs.config_sha256 }}
+      prepared_feature_evidence_sha256: ${{ steps.prepared_config.outputs.feature_evidence_sha256 }}
+      android_app_link_host: ${{ steps.release.outputs.android_app_link_host }}
+      android_version_name: ${{ steps.release.outputs.android_version_name }}
+      app_link_host: ${{ steps.release.outputs.app_link_host }}
+      build_number: ${{ steps.release.outputs.build_number }}
+      bundle_id: ${{ steps.release.outputs.bundle_id }}
+      callback_scheme: ${{ steps.release.outputs.callback_scheme }}
+      flavor: ${{ steps.release.outputs.flavor }}
+      source_revision: ${{ steps.source.outputs.source_revision }}
+      version_name: ${{ steps.release.outputs.version_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,6 +79,7 @@ jobs:
           DISPATCH_REF: ${{ github.ref }}
           RELEASE_ENVIRONMENT: ${{ inputs.environment }}
           REQUESTED_REVISION: ${{ inputs.source_revision }}
+          WORKFLOW_REVISION: ${{ github.workflow_sha }}
         run: |
           if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then
             echo "Signed-mobile release must be dispatched from main." >&2
@@ -75,8 +89,17 @@ jobs:
             echo "Signed-mobile environment must be development, staging, or production." >&2
             exit 2
           fi
-          if ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "source_revision must be a full lowercase Git commit SHA." >&2
+          if [[ "${{ inputs.upload_to_stores }}" == true && "$RELEASE_ENVIRONMENT" != production ]]; then
+            echo "Store uploads are allowed only for the production signed candidate." >&2
+            exit 1
+          fi
+          if ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]] || \
+             ! [[ "$WORKFLOW_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Source and workflow revisions must be full lowercase Git commit SHAs." >&2
+            exit 1
+          fi
+          if [[ "$REQUESTED_REVISION" != "$WORKFLOW_REVISION" ]]; then
+            echo "Signed-mobile release must build the exact commit that defines the reviewed workflow." >&2
             exit 1
           fi
           source_revision="$(git rev-parse HEAD)"
@@ -89,62 +112,6 @@ jobs:
             exit 1
           fi
           printf 'source_revision=%s\n' "$source_revision" >>"$GITHUB_OUTPUT"
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-
-      - name: Verify and record the exact reviewed Flutter SDK
-        shell: bash
-        run: |
-          mkdir -p "$RUNNER_TEMP/evidence"
-          flutter --version --machine >"$RUNNER_TEMP/evidence/flutter-toolchain.json"
-          python3 scripts/validate_flutter_toolchain.py \
-            "$RUNNER_TEMP/evidence/flutter-toolchain.json"
-
-      - name: Select and verify the reviewed Android JDK
-        shell: bash
-        run: |
-          reviewed_java_home="${JAVA_HOME_17_arm64:-}"
-          if [[ -z "$reviewed_java_home" || ! -x "$reviewed_java_home/bin/java" ]]; then
-            echo "The arm64 macOS 26 runner does not expose JAVA_HOME_17_arm64." >&2
-            exit 1
-          fi
-          java_properties="$("$reviewed_java_home/bin/java" -XshowSettings:properties -version 2>&1)"
-          runtime_version="$(awk -F' = ' '$1 ~ /^[[:space:]]*java.runtime.version$/ { print $2; exit }' <<<"$java_properties")"
-          java_vendor="$(awk -F' = ' '$1 ~ /^[[:space:]]*java.vendor$/ { print $2; exit }' <<<"$java_properties")"
-          if [[ "$runtime_version" != "$PAKPERK_JDK_RUNTIME_VERSION" || "$java_vendor" != "$PAKPERK_JDK_VENDOR" ]]; then
-            echo "The runner JDK does not match reviewed Temurin $PAKPERK_JDK_RUNTIME_VERSION." >&2
-            exit 1
-          fi
-          printf 'JAVA_HOME=%s\n' "$reviewed_java_home" >>"$GITHUB_ENV"
-          printf '%s/bin\n' "$reviewed_java_home" >>"$GITHUB_PATH"
-
-      - name: Select, verify, and record the reviewed Ruby runtime
-        shell: bash
-        run: |
-          ruby_engine="$(ruby -e 'print RUBY_ENGINE')"
-          ruby_version="$(ruby -e 'print RUBY_VERSION')"
-          if [[ "$ruby_engine" != "$PAKPERK_RUBY_ENGINE" || \
-                "$ruby_version" != "$PAKPERK_RUBY_VERSION" ]]; then
-            echo "The runner Ruby runtime does not match reviewed MRI $PAKPERK_RUBY_VERSION." >&2
-            exit 1
-          fi
-          rubygems_version="$(gem --version)"
-          if [[ "$rubygems_version" != "$PAKPERK_RUBYGEMS_VERSION" ]]; then
-            echo "The runner RubyGems does not match reviewed version $PAKPERK_RUBYGEMS_VERSION." >&2
-            exit 1
-          fi
-          mkdir -p "$RUNNER_TEMP/evidence"
-          {
-            printf 'ruby_engine=%s\n' "$ruby_engine"
-            printf 'ruby_version=%s\n' "$ruby_version"
-            printf 'rubygems_version=%s\n' "$rubygems_version"
-            printf 'ruby_executable=%s\n' "$(command -v ruby)"
-            ruby --version
-          } >"$RUNNER_TEMP/evidence/ruby-toolchain.txt"
-
       - name: Resolve and cross-check release identity
         id: release
         shell: bash
@@ -200,10 +167,41 @@ jobs:
             "build_number=$build_number"; do
             echo "$pair" >>"$GITHUB_OUTPUT"
           done
-
-      - name: Materialize protected mobile feature flags
-        shell: bash
+      - name: Validate monotonic store build inputs
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         env:
+          BASH_ENV: /dev/null
+          ENV: /dev/null
+          PREVIOUS_ANDROID_VERSION_CODE: ${{ inputs.previous_android_version_code }}
+          PREVIOUS_IOS_BUILD_NUMBER: ${{ inputs.previous_ios_build_number }}
+          RELEASE_BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+        run: |
+          if ! [[ "$PREVIOUS_ANDROID_VERSION_CODE" =~ ^[0-9]+$ ]] || \
+             ! [[ "$PREVIOUS_IOS_BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "Previous store build inputs must be non-negative integers." >&2
+            exit 1
+          fi
+          if (( RELEASE_BUILD_NUMBER <= PREVIOUS_ANDROID_VERSION_CODE )) || \
+             (( RELEASE_BUILD_NUMBER <= PREVIOUS_IOS_BUILD_NUMBER )); then
+            echo "The checked-in build number is not newer than both confirmed store builds." >&2
+            exit 1
+          fi
+      - name: Materialize protected mobile feature flags
+        id: prepared_config
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin:/usr/sbin:/sbin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
           RELEASE_ENVIRONMENT: ${{ inputs.environment }}
           RELEASE_FLAVOR: ${{ steps.release.outputs.flavor }}
           RELEASE_ACCOUNTS_ENABLED: ${{ vars.PAKPERK_ACCOUNTS_ENABLED }}
@@ -211,17 +209,47 @@ jobs:
           RELEASE_COMMENTS_ENABLED: ${{ vars.PAKPERK_COMMENTS_ENABLED }}
           RELEASE_DOCUMENT_VERSION: ${{ vars.PAKPERK_PUBLIC_DOCUMENT_VERSION }}
         run: |
-          mkdir -p "$RUNNER_TEMP/evidence"
-          python3 - <<'PY'
+          mkdir -p "$RUNNER_TEMP/prepared/evidence"
+          /usr/bin/python3 -I - <<'PY'
           import json
           import os
           import pathlib
 
           root = pathlib.Path(os.environ["GITHUB_WORKSPACE"])
           source = root / "mobile" / "config" / f"{os.environ['RELEASE_FLAVOR']}.json"
-          destination = pathlib.Path(os.environ["RUNNER_TEMP"]) / "mobile-release-config.json"
-          evidence = pathlib.Path(os.environ["RUNNER_TEMP"]) / "evidence" / "mobile-feature-flags.json"
+          destination = pathlib.Path(os.environ["RUNNER_TEMP"]) / "prepared" / "mobile-release-config.json"
+          evidence = pathlib.Path(os.environ["RUNNER_TEMP"]) / "prepared" / "evidence" / "mobile-feature-flags.json"
           config = json.loads(source.read_text(encoding="utf-8"))
+          expected_keys = {
+              "PAKPERK_ENV", "PAKPERK_API_BASE_URL", "PAKPERK_FULLTEXT_POLICY",
+              "PAKPERK_TERMS_DOCUMENT_VERSION", "PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION",
+              "PAKPERK_ACCOUNTS_ENABLED", "PAKPERK_LIBRARY_ENABLED", "PAKPERK_COMMENTS_ENABLED",
+              "PAKPERK_OPENING_MOTION_ENABLED", "PAKPERK_OIDC_ISSUER_URL",
+              "PAKPERK_OIDC_CLIENT_ID", "PAKPERK_OIDC_REDIRECT_URI",
+              "PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI", "PAKPERK_OIDC_SCOPES",
+              "PAKPERK_PUBLIC_SITE_ORIGIN", "PAKPERK_SUPPORT_URL",
+              "PAKPERK_ACCOUNT_DELETION_URL", "PAKPERK_APP_LINK_ORIGIN",
+              "PAKPERK_TELEMETRY_ENDPOINT",
+          }
+          if (
+              not isinstance(config, dict)
+              or set(config) != expected_keys
+              or config.get("PAKPERK_ENV") != os.environ["RELEASE_ENVIRONMENT"]
+              or any(
+                  not isinstance(value, str)
+                  or not 0 < len(value.encode("utf-8")) <= 2048
+                  or any(character in value for character in ("\x00", "\n", "\r"))
+                  for value in config.values()
+              )
+              or any(
+                  config[name] not in {"true", "false"}
+                  for name in (
+                      "PAKPERK_ACCOUNTS_ENABLED", "PAKPERK_LIBRARY_ENABLED",
+                      "PAKPERK_COMMENTS_ENABLED", "PAKPERK_OPENING_MOTION_ENABLED",
+                  )
+              )
+          ):
+              raise SystemExit("base mobile config violates the closed schema")
 
           if os.environ["RELEASE_ENVIRONMENT"] != "development":
               expected_document_version = os.environ.get("RELEASE_DOCUMENT_VERSION", "")
@@ -261,6 +289,8 @@ jobs:
               json.dumps(config, indent=2, sort_keys=True) + "\n",
               encoding="utf-8",
           )
+          if destination.stat().st_size > 65536:
+              raise SystemExit("prepared mobile config exceeds its byte bound")
           evidence.write_text(
               json.dumps(
                   {
@@ -278,91 +308,108 @@ jobs:
               + "\n",
               encoding="utf-8",
           )
-          with pathlib.Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
-              handle.write(f"PAKPERK_MOBILE_RELEASE_CONFIG={destination}\n")
+          import hashlib
+          config_digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+          feature_digest = hashlib.sha256(evidence.read_bytes()).hexdigest()
+          with pathlib.Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"config_sha256={config_digest}\n")
+              handle.write(f"feature_evidence_sha256={feature_digest}\n")
           PY
-
-      - name: Validate protected inputs and monotonic store builds
-        shell: bash
+      - name: Retain immutable credential-free prepared mobile config
+        id: prepared_candidate_upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.PAKPERK_ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_STORE_PASSWORD: ${{ secrets.PAKPERK_ANDROID_STORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.PAKPERK_ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.PAKPERK_ANDROID_KEY_PASSWORD }}
-          ANDROID_APP_SIGNING_SHA256: ${{ secrets.PAKPERK_ANDROID_APP_SIGNING_SHA256 }}
-          IOS_CERTIFICATE_BASE64: ${{ secrets.PAKPERK_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
-          IOS_CERTIFICATE_PASSWORD: ${{ secrets.PAKPERK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
-          IOS_PROFILE_BASE64: ${{ secrets.PAKPERK_IOS_PROVISIONING_PROFILE_BASE64 }}
-          IOS_TEAM_ID: ${{ secrets.PAKPERK_DEVELOPMENT_TEAM }}
-          IOS_PROFILE_NAME: ${{ secrets.PAKPERK_IOS_PROVISIONING_PROFILE_SPECIFIER }}
-          GOOGLE_PLAY_JSON_BASE64: ${{ secrets.PAKPERK_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}
-          APP_STORE_ISSUER_ID: ${{ secrets.PAKPERK_APP_STORE_CONNECT_ISSUER_ID }}
-          APP_STORE_KEY_ID: ${{ secrets.PAKPERK_APP_STORE_CONNECT_KEY_ID }}
-          APP_STORE_KEY_BASE64: ${{ secrets.PAKPERK_APP_STORE_CONNECT_PRIVATE_KEY_BASE64 }}
-          PREVIOUS_ANDROID_VERSION_CODE: ${{ inputs.previous_android_version_code }}
-          PREVIOUS_IOS_BUILD_NUMBER: ${{ inputs.previous_ios_build_number }}
-          RELEASE_BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+          ALL_PROXY: ""
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          CURL_HOME: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          HTTPS_PROXY: ""
+          HTTP_PROXY: ""
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NETRC: /dev/null
+          NO_PROXY: "*"
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+          all_proxy: ""
+          http_proxy: ""
+          https_proxy: ""
+          no_proxy: "*"
+        with:
+          name: mobile-prepared-config-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/prepared
+          if-no-files-found: error
+          retention-days: 1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Verify and record the exact reviewed Flutter SDK
+        shell: bash
         run: |
-          required=(
-            ANDROID_KEYSTORE_BASE64 ANDROID_STORE_PASSWORD ANDROID_KEY_ALIAS
-            ANDROID_KEY_PASSWORD IOS_CERTIFICATE_BASE64 IOS_CERTIFICATE_PASSWORD
-            IOS_PROFILE_BASE64 IOS_TEAM_ID IOS_PROFILE_NAME
-          )
-          if [[ "${{ inputs.environment }}" != development ]]; then
-            required+=(ANDROID_APP_SIGNING_SHA256)
-          fi
-          if [[ "${{ inputs.upload_to_stores }}" == true ]]; then
-            required+=(GOOGLE_PLAY_JSON_BASE64 APP_STORE_ISSUER_ID APP_STORE_KEY_ID APP_STORE_KEY_BASE64)
-          fi
-          for name in "${required[@]}"; do
-            if [[ -z "${!name:-}" ]]; then
-              echo "Protected environment input is missing: $name" >&2
-              exit 1
-            fi
-            if [[ "${!name}" == *$'\n'* || "${!name}" == *$'\r'* ]]; then
-              echo "Protected scalar input contains a line break: $name" >&2
-              exit 1
-            fi
-          done
-          if [[ "${{ inputs.environment }}" != development ]] && \
-             ! [[ "$ANDROID_APP_SIGNING_SHA256" =~ ^([A-F0-9]{2}:){31}[A-F0-9]{2}$ ]]; then
-            echo "The Play app-signing SHA-256 fingerprint has an invalid format." >&2
+          mkdir -p "$RUNNER_TEMP/evidence"
+          flutter --version --machine >"$RUNNER_TEMP/evidence/flutter-toolchain.json"
+          python3 scripts/validate_flutter_toolchain.py \
+            "$RUNNER_TEMP/evidence/flutter-toolchain.json"
+      - name: Select and verify the reviewed Android JDK
+        shell: bash
+        run: |
+          reviewed_java_home="${JAVA_HOME_17_arm64:-}"
+          if [[ -z "$reviewed_java_home" || ! -x "$reviewed_java_home/bin/java" ]]; then
+            echo "The arm64 macOS 26 runner does not expose JAVA_HOME_17_arm64." >&2
             exit 1
           fi
-          if [[ "${{ inputs.upload_to_stores }}" == true ]] && {
-            ! [[ "$APP_STORE_ISSUER_ID" =~ ^[0-9a-fA-F-]{36}$ ]] ||
-            ! [[ "$APP_STORE_KEY_ID" =~ ^[A-Z0-9]{10}$ ]];
-          }; then
-            echo "App Store Connect issuer/key identifiers have an invalid format." >&2
+          java_properties="$("$reviewed_java_home/bin/java" -XshowSettings:properties -version 2>&1)"
+          runtime_version="$(awk -F' = ' '$1 ~ /^[[:space:]]*java.runtime.version$/ { print $2; exit }' <<<"$java_properties")"
+          java_vendor="$(awk -F' = ' '$1 ~ /^[[:space:]]*java.vendor$/ { print $2; exit }' <<<"$java_properties")"
+          if [[ "$runtime_version" != "$PAKPERK_JDK_RUNTIME_VERSION" || "$java_vendor" != "$PAKPERK_JDK_VENDOR" ]]; then
+            echo "The runner JDK does not match reviewed Temurin $PAKPERK_JDK_RUNTIME_VERSION." >&2
             exit 1
           fi
-          if ! [[ "$PREVIOUS_ANDROID_VERSION_CODE" =~ ^[0-9]+$ ]] || \
-             ! [[ "$PREVIOUS_IOS_BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
-            echo "Previous store build inputs must be non-negative integers." >&2
+          printf 'JAVA_HOME=%s\n' "$reviewed_java_home" >>"$GITHUB_ENV"
+          printf '%s/bin\n' "$reviewed_java_home" >>"$GITHUB_PATH"
+      - name: Select, verify, and record the reviewed Ruby runtime
+        shell: bash
+        run: |
+          ruby_engine="$(ruby -e 'print RUBY_ENGINE')"
+          ruby_version="$(ruby -e 'print RUBY_VERSION')"
+          if [[ "$ruby_engine" != "$PAKPERK_RUBY_ENGINE" || \
+                "$ruby_version" != "$PAKPERK_RUBY_VERSION" ]]; then
+            echo "The runner Ruby runtime does not match reviewed MRI $PAKPERK_RUBY_VERSION." >&2
             exit 1
           fi
-          if (( RELEASE_BUILD_NUMBER <= PREVIOUS_ANDROID_VERSION_CODE )) || \
-             (( RELEASE_BUILD_NUMBER <= PREVIOUS_IOS_BUILD_NUMBER )); then
-            echo "The checked-in build number is not newer than both confirmed store builds." >&2
+          rubygems_version="$(gem --version)"
+          if [[ "$rubygems_version" != "$PAKPERK_RUBYGEMS_VERSION" ]]; then
+            echo "The runner RubyGems does not match reviewed version $PAKPERK_RUBYGEMS_VERSION." >&2
             exit 1
           fi
-
+          mkdir -p "$RUNNER_TEMP/evidence"
+          {
+            printf 'ruby_engine=%s\n' "$ruby_engine"
+            printf 'ruby_version=%s\n' "$ruby_version"
+            printf 'rubygems_version=%s\n' "$rubygems_version"
+            printf 'ruby_executable=%s\n' "$(command -v ruby)"
+            ruby --version
+          } >"$RUNNER_TEMP/evidence/ruby-toolchain.txt"
       - name: Resolve locked Flutter dependencies
         working-directory: mobile
         run: flutter pub get --enforce-lockfile
-
       - name: Gate candidate on Dart formatting
         working-directory: mobile
         run: dart format --output=none --set-exit-if-changed .
-
       - name: Gate candidate on Flutter analysis
         working-directory: mobile
         run: flutter analyze
-
       - name: Gate candidate on the complete Flutter test suite
         working-directory: mobile
         run: flutter test
-
       - name: Gate Apple SDK and capture exact build toolchain
         shell: bash
         run: |
@@ -403,39 +450,462 @@ jobs:
             (cd mobile/android && ./gradlew --no-daemon --version)
           } >"$RUNNER_TEMP/evidence/native-toolchain.txt"
 
-      - name: Materialize Android upload keystore
-        shell: bash
+  android-signed-candidate:
+    name: ${{ inputs.environment }} isolated Android signed candidate
+    needs: candidate-preparation
+    runs-on: macos-26
+    timeout-minutes: 120
+    environment: ${{ inputs.environment }}
+    outputs:
+      artifact_digest: ${{ steps.android_candidate_upload.outputs.artifact-digest }}
+      artifact_id: ${{ steps.android_candidate_upload.outputs.artifact-id }}
+      build_number: ${{ needs.candidate-preparation.outputs.build_number }}
+      bundle_id: ${{ needs.candidate-preparation.outputs.bundle_id }}
+      source_revision: ${{ steps.source.outputs.source_revision }}
+      version_name: ${{ needs.candidate-preparation.outputs.version_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_revision }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve reviewed source revision
+        id: source
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.PAKPERK_ANDROID_KEYSTORE_BASE64 }}
+          BASH_ENV: /dev/null
+          ENV: /dev/null
+          DISPATCH_REF: ${{ github.ref }}
+          RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+          REQUESTED_REVISION: ${{ inputs.source_revision }}
+          WORKFLOW_REVISION: ${{ github.workflow_sha }}
         run: |
-          python3 - <<'PY'
-          import base64, os, pathlib
-          pathlib.Path(os.environ["RUNNER_TEMP"], "pakperk-upload.jks").write_bytes(
-              base64.b64decode(os.environ["ANDROID_KEYSTORE_BASE64"], validate=True)
+          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then
+            echo "Signed-mobile release must be dispatched from main." >&2
+            exit 2
+          fi
+          if [[ "$RELEASE_ENVIRONMENT" != "development" && "$RELEASE_ENVIRONMENT" != "staging" && "$RELEASE_ENVIRONMENT" != "production" ]]; then
+            echo "Signed-mobile environment must be development, staging, or production." >&2
+            exit 2
+          fi
+          if ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]] || \
+             ! [[ "$WORKFLOW_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Source and workflow revisions must be full lowercase Git commit SHAs." >&2
+            exit 1
+          fi
+          if [[ "$REQUESTED_REVISION" != "$WORKFLOW_REVISION" ]]; then
+            echo "Signed-mobile release must build the exact commit that defines the reviewed workflow." >&2
+            exit 1
+          fi
+          source_revision="$(git rev-parse HEAD)"
+          if [[ "$source_revision" != "$REQUESTED_REVISION" ]]; then
+            echo "Checkout did not resolve the exact requested revision." >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$source_revision" origin/main; then
+            echo "The mobile release revision is not reachable from origin/main." >&2
+            exit 1
+          fi
+          printf 'source_revision=%s\n' "$source_revision" >>"$GITHUB_OUTPUT"
+      - name: Download immutable credential-free prepared config
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        env:
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        with:
+          artifact-ids: ${{ needs.candidate-preparation.outputs.prepared_artifact_id }}
+          path: ${{ runner.temp }}/prepared
+          merge-multiple: true
+          digest-mismatch: error
+      - name: Re-attest Android prepared config before credentials
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin:/usr/sbin:/sbin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+          EXPECTED_ARTIFACT_ID: ${{ needs.candidate-preparation.outputs.prepared_artifact_id }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ needs.candidate-preparation.outputs.prepared_artifact_digest }}
+          EXPECTED_CONFIG_SHA256: ${{ needs.candidate-preparation.outputs.prepared_config_sha256 }}
+          EXPECTED_FEATURE_EVIDENCE_SHA256: ${{ needs.candidate-preparation.outputs.prepared_feature_evidence_sha256 }}
+          RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+          RELEASE_FLAVOR: ${{ needs.candidate-preparation.outputs.flavor }}
+          RELEASE_ACCOUNTS_ENABLED: ${{ vars.PAKPERK_ACCOUNTS_ENABLED }}
+          RELEASE_LIBRARY_ENABLED: ${{ vars.PAKPERK_LIBRARY_ENABLED }}
+          RELEASE_COMMENTS_ENABLED: ${{ vars.PAKPERK_COMMENTS_ENABLED }}
+          RELEASE_DOCUMENT_VERSION: ${{ vars.PAKPERK_PUBLIC_DOCUMENT_VERSION }}
+        run: |
+          [[ "$EXPECTED_ARTIFACT_ID" =~ ^[1-9][0-9]{0,19}$ ]] || exit 1
+          [[ "$EXPECTED_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          [[ "$EXPECTED_CONFIG_SHA256" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          [[ "$EXPECTED_FEATURE_EVIDENCE_SHA256" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          observed="$(/usr/bin/shasum -a 256 "$RUNNER_TEMP/prepared/mobile-release-config.json")"
+          [[ "${observed%% *}" == "$EXPECTED_CONFIG_SHA256" ]] || exit 1
+          /usr/bin/python3 -I - "$RUNNER_TEMP/prepared" "$RUNNER_TEMP/evidence" <<'PY'
+          import hashlib, json, os, pathlib, stat, sys
+          root = pathlib.Path(sys.argv[1])
+          expected = {"mobile-release-config.json", "evidence/mobile-feature-flags.json"}
+          observed = {
+              path.relative_to(root).as_posix()
+              for path in root.rglob("*")
+              if not path.is_dir()
+          }
+          if observed != expected:
+              raise SystemExit("prepared mobile config tree is not closed")
+          for relative in sorted(expected):
+              path = root / relative
+              metadata = os.lstat(path)
+              if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_size <= 0 or metadata.st_size > 1048576:
+                  raise SystemExit("prepared mobile config is not one bounded regular file")
+          feature_digest = hashlib.sha256(
+              root.joinpath("evidence/mobile-feature-flags.json").read_bytes()
+          ).hexdigest()
+          if feature_digest != os.environ["EXPECTED_FEATURE_EVIDENCE_SHA256"]:
+              raise SystemExit("prepared feature evidence digest changed")
+          source = pathlib.Path(os.environ["GITHUB_WORKSPACE"], "mobile", "config", os.environ["RELEASE_FLAVOR"] + ".json")
+          expected_config = json.loads(source.read_text(encoding="utf-8"))
+          expected_keys = {
+              "PAKPERK_ENV", "PAKPERK_API_BASE_URL", "PAKPERK_FULLTEXT_POLICY",
+              "PAKPERK_TERMS_DOCUMENT_VERSION", "PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION",
+              "PAKPERK_ACCOUNTS_ENABLED", "PAKPERK_LIBRARY_ENABLED", "PAKPERK_COMMENTS_ENABLED",
+              "PAKPERK_OPENING_MOTION_ENABLED", "PAKPERK_OIDC_ISSUER_URL",
+              "PAKPERK_OIDC_CLIENT_ID", "PAKPERK_OIDC_REDIRECT_URI",
+              "PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI", "PAKPERK_OIDC_SCOPES",
+              "PAKPERK_PUBLIC_SITE_ORIGIN", "PAKPERK_SUPPORT_URL",
+              "PAKPERK_ACCOUNT_DELETION_URL", "PAKPERK_APP_LINK_ORIGIN",
+              "PAKPERK_TELEMETRY_ENDPOINT",
+          }
+          if (
+              not isinstance(expected_config, dict)
+              or set(expected_config) != expected_keys
+              or expected_config.get("PAKPERK_ENV") != os.environ["RELEASE_ENVIRONMENT"]
+              or any(
+                  not isinstance(value, str)
+                  or not 0 < len(value.encode("utf-8")) <= 2048
+                  or any(character in value for character in ("\x00", "\n", "\r"))
+                  for value in expected_config.values()
+              )
+              or any(
+                  expected_config[name] not in {"true", "false"}
+                  for name in (
+                      "PAKPERK_ACCOUNTS_ENABLED", "PAKPERK_LIBRARY_ENABLED",
+                      "PAKPERK_COMMENTS_ENABLED", "PAKPERK_OPENING_MOTION_ENABLED",
+                  )
+              )
+          ):
+              raise SystemExit("checked-out mobile config violates the closed schema")
+          if os.environ["RELEASE_ENVIRONMENT"] != "development":
+              document_version = os.environ.get("RELEASE_DOCUMENT_VERSION", "")
+              if not document_version or any(
+                  expected_config[name] != document_version
+                  for name in ("PAKPERK_TERMS_DOCUMENT_VERSION", "PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION")
+              ):
+                  raise SystemExit("protected document version does not match base config")
+              for short in ("ACCOUNTS", "LIBRARY", "COMMENTS"):
+                  value = os.environ.get("RELEASE_" + short + "_ENABLED", "") or "false"
+                  if value not in {"true", "false"}:
+                      raise SystemExit("protected feature flag is malformed")
+                  expected_config["PAKPERK_" + short + "_ENABLED"] = value
+          if expected_config.get("PAKPERK_LIBRARY_ENABLED") == "true" and expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true":
+              raise SystemExit("library requires accounts")
+          if expected_config.get("PAKPERK_COMMENTS_ENABLED") == "true" and expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true":
+              raise SystemExit("comments require accounts")
+          actual_config = json.loads(root.joinpath("mobile-release-config.json").read_text(encoding="utf-8"))
+          if actual_config != expected_config:
+              raise SystemExit("prepared config does not derive from protected inputs")
+          expected_evidence = {
+              "schema": 2,
+              "environment": os.environ["RELEASE_ENVIRONMENT"],
+              "accounts": expected_config["PAKPERK_ACCOUNTS_ENABLED"] == "true",
+              "library": expected_config["PAKPERK_LIBRARY_ENABLED"] == "true",
+              "comments": expected_config["PAKPERK_COMMENTS_ENABLED"] == "true",
+              "termsDocumentVersion": expected_config["PAKPERK_TERMS_DOCUMENT_VERSION"],
+              "communityGuidelinesDocumentVersion": expected_config["PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION"],
+          }
+          actual_evidence = json.loads(root.joinpath("evidence/mobile-feature-flags.json").read_text(encoding="utf-8"))
+          if actual_evidence != expected_evidence:
+              raise SystemExit("prepared feature evidence does not derive from config")
+          evidence = pathlib.Path(sys.argv[2])
+          evidence.mkdir(mode=0o700, parents=True, exist_ok=True)
+          evidence.joinpath("android-prepared-config-boundary.json").write_text(
+              json.dumps({
+                  "artifactDigest": os.environ["EXPECTED_ARTIFACT_DIGEST"],
+                  "artifactId": int(os.environ["EXPECTED_ARTIFACT_ID"]),
+                  "configSha256": os.environ["EXPECTED_CONFIG_SHA256"],
+                  "featureEvidenceSha256": feature_digest,
+                  "schema": 1,
+              }, separators=(",", ":"), sort_keys=True) + "\n",
+              encoding="ascii",
           )
           PY
-          chmod 0600 "$RUNNER_TEMP/pakperk-upload.jks"
-
-      - name: Build and inspect signed Android artifacts
-        id: android
-        shell: bash
+      - name: Materialize Android-only signing credentials before repository code
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin:/usr/sbin:/sbin
+          HOME: ${{ runner.temp }}
+          ALL_PROXY: ""
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.PAKPERK_ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.PAKPERK_ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.PAKPERK_ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.PAKPERK_ANDROID_KEY_PASSWORD }}
+          ANDROID_APP_SIGNING_SHA256: ${{ secrets.PAKPERK_ANDROID_APP_SIGNING_SHA256 }}
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          CURL_HOME: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          HTTPS_PROXY: ""
+          HTTP_PROXY: ""
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NETRC: /dev/null
+          NO_PROXY: "*"
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PERL5LIB: ""
+          PERL5OPT: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+          all_proxy: ""
+          http_proxy: ""
+          https_proxy: ""
+          no_proxy: "*"
+          RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          required=(ANDROID_KEYSTORE_BASE64 ANDROID_STORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD)
+          if [[ "$RELEASE_ENVIRONMENT" != development ]]; then
+            required+=(ANDROID_APP_SIGNING_SHA256)
+          fi
+          for name in "${required[@]}"; do
+            value="${!name:-}"
+            if [[ -z "$value" || "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+              echo "Android signing input is missing or malformed: $name" >&2
+              exit 1
+            fi
+          done
+          if [[ "$RELEASE_ENVIRONMENT" != development ]] && \
+             ! [[ "$ANDROID_APP_SIGNING_SHA256" =~ ^([A-F0-9]{2}:){31}[A-F0-9]{2}$ ]]; then
+            echo "The Play app-signing SHA-256 fingerprint is malformed." >&2
+            exit 1
+          fi
+          for reviewed in \
+            "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4 scripts/materialize_mobile_release_secret.py" \
+            "2d51f03bd21f2afa2af0396e801e0e950172210814a229ca50df67c5a8d135cd scripts/capture_mobile_credentialed_runtime.py" \
+            "d0787d5c01349d8f8a6166a530823a77a788b68ad6523ed5f684d2879c6f7f2d scripts/validate_flutter_toolchain.py" \
+            "062872df7e0b74235372e854c9eec15341dfe08f46d9e82326288aaed4db8786 scripts/verify_android_release_artifacts.sh" \
+            "ccd7b2361bbc0b18ff4746811f386be4281a5b0775a8d234eb9f6c75b48b1572 scripts/validate_android_native_sbom.py" \
+            "a55e0a5d9cdfd6f3b8e36874afde685e4d9af2b43f95b929c706fb83d8abfb5c scripts/cyclonedx-gradle.init.gradle.kts" \
+            "e9b147299ad1fa1c5dcd002a0d06a65c70ec574ff807e990c482e07dc9098bf3 mobile/tool/verify_strict_artifact_assets.dart"; do
+            expected="${reviewed%% *}"
+            relative="${reviewed#* }"
+            observed="$(/usr/bin/shasum -a 256 "$GITHUB_WORKSPACE/$relative")"
+            [[ "${observed%% *}" == "$expected" ]] || exit 1
+          done
+          /usr/bin/python3 -I "$GITHUB_WORKSPACE/scripts/materialize_mobile_release_secret.py" decode \
+            --root "$RUNNER_TEMP" --directory android-signing \
+            --secret ANDROID_KEYSTORE_BASE64 pakperk-upload.jks 1048576
+          /usr/bin/python3 -I - "$RUNNER_TEMP/android-signing" <<'PY'
+          import os, pathlib, stat, sys
+          root = pathlib.Path(sys.argv[1])
+          linked = os.lstat(root)
+          if not stat.S_ISDIR(linked.st_mode) or linked.st_uid != os.getuid() or linked.st_mode & 0o077:
+              raise SystemExit("Android signing root is not owner-only")
+          descriptor = os.open(root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0))
+          try:
+              for environment, filename, allow_empty in (
+                  ("ANDROID_STORE_PASSWORD", "store-password", False),
+                  ("ANDROID_KEY_ALIAS", "key-alias", False),
+                  ("ANDROID_KEY_PASSWORD", "key-password", False),
+                  ("ANDROID_APP_SIGNING_SHA256", "app-signing-sha256", True),
+              ):
+                  value = os.environ.get(environment, "")
+                  encoded = value.encode("utf-8")
+                  if (not allow_empty and not encoded) or len(encoded) > 4096 or b"\x00" in encoded or b"\n" in encoded or b"\r" in encoded:
+                      raise SystemExit(f"{environment} is not a bounded scalar")
+                  child = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600, dir_fd=descriptor)
+                  try:
+                      os.fchmod(child, 0o600)
+                      os.write(child, encoded)
+                      os.fsync(child)
+                  finally:
+                      os.close(child)
+          finally:
+              os.close(descriptor)
+          PY
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Capture isolated Android build tools after credential materialization
+        id: android_tools
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+        run: |
+          reviewed_java_home="${JAVA_HOME_17_arm64:-}"
+          [[ -n "$reviewed_java_home" && -x "$reviewed_java_home/bin/java" ]] || exit 1
+          properties="$("$reviewed_java_home/bin/java" -XshowSettings:properties -version 2>&1)"
+          runtime="$(/usr/bin/awk -F' = ' '$1 ~ /^[[:space:]]*java.runtime.version$/ { print $2; exit }' <<<"$properties")"
+          vendor="$(/usr/bin/awk -F' = ' '$1 ~ /^[[:space:]]*java.vendor$/ { print $2; exit }' <<<"$properties")"
+          [[ "$runtime" == "$PAKPERK_JDK_RUNTIME_VERSION" && "$vendor" == "$PAKPERK_JDK_VENDOR" ]] || exit 1
+          /bin/mkdir -p "$RUNNER_TEMP/evidence"
+          flutter --version --machine >"$RUNNER_TEMP/evidence/android-flutter-toolchain.json"
+          /usr/bin/python3 -I "$GITHUB_WORKSPACE/scripts/validate_flutter_toolchain.py" \
+            "$RUNNER_TEMP/evidence/android-flutter-toolchain.json"
+          /usr/bin/python3 -I "$GITHUB_WORKSPACE/scripts/capture_mobile_credentialed_runtime.py" \
+            --github-output "$GITHUB_OUTPUT"
+          printf 'java_home=%s\n' "$reviewed_java_home" >>"$GITHUB_OUTPUT"
+      - name: Resolve locked Flutter dependencies for Android signer
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         working-directory: mobile
         env:
-          PAKPERK_ANDROID_STORE_FILE: ${{ runner.temp }}/pakperk-upload.jks
-          PAKPERK_ANDROID_STORE_PASSWORD: ${{ secrets.PAKPERK_ANDROID_STORE_PASSWORD }}
-          PAKPERK_ANDROID_KEY_ALIAS: ${{ secrets.PAKPERK_ANDROID_KEY_ALIAS }}
-          PAKPERK_ANDROID_KEY_PASSWORD: ${{ secrets.PAKPERK_ANDROID_KEY_PASSWORD }}
-          ANDROID_APP_SIGNING_SHA256: ${{ secrets.PAKPERK_ANDROID_APP_SIGNING_SHA256 }}
+          PATH: ${{ steps.android_tools.outputs.reviewed_path }}
+          HOME: ${{ steps.android_tools.outputs.real_home }}
+          JAVA_HOME: ${{ steps.android_tools.outputs.java_home }}
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+        run: flutter pub get --enforce-lockfile
+      - name: Build and inspect signed Android artifacts
+        id: android
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        working-directory: mobile
+        env:
+          PATH: ${{ steps.android_tools.outputs.reviewed_path }}
+          HOME: ${{ steps.android_tools.outputs.real_home }}
+          JAVA_HOME: ${{ steps.android_tools.outputs.java_home }}
+          ALL_PROXY: ""
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          CURL_HOME: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          HTTPS_PROXY: ""
+          HTTP_PROXY: ""
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NETRC: /dev/null
+          NO_PROXY: "*"
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+          all_proxy: ""
+          http_proxy: ""
+          https_proxy: ""
+          no_proxy: "*"
+          EXPECTED_CONFIG_SHA256: ${{ needs.candidate-preparation.outputs.prepared_config_sha256 }}
+          ANDROID_SIGNING_ROOT: ${{ runner.temp }}/android-signing
+          PAKPERK_MOBILE_RELEASE_CONFIG: ${{ runner.temp }}/prepared/mobile-release-config.json
         run: |
+          config_digest="$(/usr/bin/shasum -a 256 "$PAKPERK_MOBILE_RELEASE_CONFIG")"
+          [[ "${config_digest%% *}" == "$EXPECTED_CONFIG_SHA256" ]] || exit 1
+          for reviewed in \
+            "062872df7e0b74235372e854c9eec15341dfe08f46d9e82326288aaed4db8786 scripts/verify_android_release_artifacts.sh" \
+            "e9b147299ad1fa1c5dcd002a0d06a65c70ec574ff807e990c482e07dc9098bf3 mobile/tool/verify_strict_artifact_assets.dart"; do
+            expected="${reviewed%% *}"; relative="${reviewed#* }"
+            observed="$(/usr/bin/shasum -a 256 "$GITHUB_WORKSPACE/$relative")"
+            [[ "${observed%% *}" == "$expected" ]] || exit 1
+          done
+          /usr/bin/python3 -I - "$ANDROID_SIGNING_ROOT" <<'PY'
+          import os, pathlib, stat, sys
+          root = pathlib.Path(sys.argv[1])
+          for name in ("store-password", "key-alias", "key-password", "app-signing-sha256"):
+              path = root / name
+              linked = os.lstat(path)
+              if not stat.S_ISREG(linked.st_mode) or linked.st_uid != os.getuid() or linked.st_nlink != 1 or linked.st_mode & 0o077 or linked.st_size > 4096:
+                  raise SystemExit("Android signing scalar is not owner-only bounded storage")
+          PY
+          export PAKPERK_ANDROID_STORE_FILE="$ANDROID_SIGNING_ROOT/pakperk-upload.jks"
+          export PAKPERK_ANDROID_STORE_PASSWORD="$(/bin/cat "$ANDROID_SIGNING_ROOT/store-password")"
+          export PAKPERK_ANDROID_KEY_ALIAS="$(/bin/cat "$ANDROID_SIGNING_ROOT/key-alias")"
+          export PAKPERK_ANDROID_KEY_PASSWORD="$(/bin/cat "$ANDROID_SIGNING_ROOT/key-password")"
+          export ANDROID_APP_SIGNING_SHA256="$(/bin/cat "$ANDROID_SIGNING_ROOT/app-signing-sha256")"
           mkdir -p "$RUNNER_TEMP/symbols/android-aab" "$RUNNER_TEMP/symbols/android-apk" "$RUNNER_TEMP/evidence" "$RUNNER_TEMP/artifacts"
-          flutter build appbundle --release --flavor "${{ steps.release.outputs.flavor }}" \
+          flutter build appbundle --release --flavor "${{ needs.candidate-preparation.outputs.flavor }}" \
             --dart-define-from-file="$PAKPERK_MOBILE_RELEASE_CONFIG" \
             --obfuscate --split-debug-info="$RUNNER_TEMP/symbols/android-aab"
-          flutter build apk --release --flavor "${{ steps.release.outputs.flavor }}" \
+          flutter build apk --release --flavor "${{ needs.candidate-preparation.outputs.flavor }}" \
             --dart-define-from-file="$PAKPERK_MOBILE_RELEASE_CONFIG" \
             --obfuscate --split-debug-info="$RUNNER_TEMP/symbols/android-apk"
-          aab="build/app/outputs/bundle/${{ steps.release.outputs.flavor }}Release/app-${{ steps.release.outputs.flavor }}-release.aab"
-          apk="build/app/outputs/flutter-apk/app-${{ steps.release.outputs.flavor }}-release.apk"
+          aab="build/app/outputs/bundle/${{ needs.candidate-preparation.outputs.flavor }}Release/app-${{ needs.candidate-preparation.outputs.flavor }}-release.aab"
+          apk="build/app/outputs/flutter-apk/app-${{ needs.candidate-preparation.outputs.flavor }}-release.apk"
           retained_aab="$RUNNER_TEMP/artifacts/${aab##*/}"
           retained_apk="$RUNNER_TEMP/artifacts/${apk##*/}"
           if [[ -e "$retained_aab" || -L "$retained_aab" || -e "$retained_apk" || -L "$retained_apk" ]]; then
@@ -446,10 +916,10 @@ jobs:
           cp "$apk" "$retained_apk"
           chmod 0400 "$retained_aab" "$retained_apk"
           "$GITHUB_WORKSPACE/scripts/verify_android_release_artifacts.sh" \
-            "$retained_aab" "$retained_apk" "${{ steps.release.outputs.bundle_id }}" \
-            "${{ steps.release.outputs.android_version_name }}" "${{ steps.release.outputs.build_number }}" \
-            "${{ steps.release.outputs.callback_scheme }}" \
-            "${{ steps.release.outputs.android_app_link_host }}" \
+            "$retained_aab" "$retained_apk" "${{ needs.candidate-preparation.outputs.bundle_id }}" \
+            "${{ needs.candidate-preparation.outputs.android_version_name }}" "${{ needs.candidate-preparation.outputs.build_number }}" \
+            "${{ needs.candidate-preparation.outputs.callback_scheme }}" \
+            "${{ needs.candidate-preparation.outputs.android_app_link_host }}" \
             | tee "$RUNNER_TEMP/evidence/android-upload-identity.txt"
           if [[ "${{ inputs.environment }}" != development ]]; then
             dart run tool/verify_strict_artifact_assets.dart "$retained_aab"
@@ -457,7 +927,7 @@ jobs:
             printf 'android_play_app_signing_sha256=%s\n' "$ANDROID_APP_SIGNING_SHA256" \
               >"$RUNNER_TEMP/evidence/android-installed-identity.txt"
           fi
-          python3 - "$retained_aab" "$retained_apk" \
+          /usr/bin/python3 -I - "$retained_aab" "$retained_apk" \
             "$RUNNER_TEMP/evidence/android-retained-digests.txt" <<'PY'
           import hashlib
           import os
@@ -502,12 +972,52 @@ jobs:
               handle.write(f"android_aab_artifact_sha256={digest(sys.argv[1])}\n")
               handle.write(f"android_apk_artifact_sha256={digest(sys.argv[2])}\n")
           PY
-
       - name: Generate and validate the exact native Android runtime SBOM
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         working-directory: mobile/android
         env:
-          PAKPERK_ANDROID_SBOM_FLAVOR: ${{ steps.release.outputs.flavor }}
+          PATH: ${{ steps.android_tools.outputs.reviewed_path }}
+          HOME: ${{ steps.android_tools.outputs.real_home }}
+          JAVA_HOME: ${{ steps.android_tools.outputs.java_home }}
+          ALL_PROXY: ""
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          CURL_HOME: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          HTTPS_PROXY: ""
+          HTTP_PROXY: ""
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NETRC: /dev/null
+          NO_PROXY: "*"
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+          all_proxy: ""
+          http_proxy: ""
+          https_proxy: ""
+          no_proxy: "*"
+          PAKPERK_ANDROID_SBOM_FLAVOR: ${{ needs.candidate-preparation.outputs.flavor }}
         run: |
+          for reviewed in \
+            "ccd7b2361bbc0b18ff4746811f386be4281a5b0775a8d234eb9f6c75b48b1572 ../../scripts/validate_android_native_sbom.py" \
+            "a55e0a5d9cdfd6f3b8e36874afde685e4d9af2b43f95b929c706fb83d8abfb5c ../../scripts/cyclonedx-gradle.init.gradle.kts"; do
+            expected="${reviewed%% *}"; relative="${reviewed#* }"
+            observed="$(/usr/bin/shasum -a 256 "$relative")"
+            [[ "${observed%% *}" == "$expected" ]] || exit 1
+          done
           ./gradlew :app:cyclonedxDirectBom \
             --init-script ../../scripts/cyclonedx-gradle.init.gradle.kts \
             --no-daemon
@@ -515,657 +1025,2224 @@ jobs:
             ../build/app/reports/cyclonedx-direct/bom.json
           cp ../build/app/reports/cyclonedx-direct/bom.json \
             "$RUNNER_TEMP/evidence/android-native.cdx.json"
-
-      - name: Import protected Apple signing identity and profile
-        id: apple_signing
-        shell: bash
+      - name: Remove Android-only signing material
+        id: android_signing_cleanup
+        if: always()
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         env:
+          ALL_PROXY: ""
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+          PROMPT_COMMAND: ""
+        run: |
+          /bin/rm -f \
+            "$RUNNER_TEMP/android-signing/pakperk-upload.jks" \
+            "$RUNNER_TEMP/android-signing/store-password" \
+            "$RUNNER_TEMP/android-signing/key-alias" \
+            "$RUNNER_TEMP/android-signing/key-password" \
+            "$RUNNER_TEMP/android-signing/app-signing-sha256"
+          /bin/rmdir "$RUNNER_TEMP/android-signing" >/dev/null 2>&1 || true
+      - name: Retain isolated signed Android candidate
+        id: android_candidate_upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+        with:
+          name: signed-android-${{ inputs.environment }}-${{ needs.candidate-preparation.outputs.version_name }}-${{ needs.candidate-preparation.outputs.build_number }}-${{ steps.source.outputs.source_revision }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/artifacts
+            ${{ runner.temp }}/symbols/android-aab
+            ${{ runner.temp }}/symbols/android-apk
+            ${{ runner.temp }}/evidence/android-upload-identity.txt
+            ${{ runner.temp }}/evidence/android-installed-identity.txt
+            ${{ runner.temp }}/evidence/android-retained-digests.txt
+            ${{ runner.temp }}/evidence/android-native.cdx.json
+            ${{ runner.temp }}/evidence/android-flutter-toolchain.json
+            ${{ runner.temp }}/evidence/android-prepared-config-boundary.json
+          if-no-files-found: error
+          retention-days: 1
+
+  ios-signed-candidate:
+    name: ${{ inputs.environment }} isolated iOS signed candidate
+    needs: candidate-preparation
+    runs-on: macos-26
+    timeout-minutes: 120
+    environment: ${{ inputs.environment }}
+    outputs:
+      artifact_digest: ${{ steps.ios_candidate_upload.outputs.artifact-digest }}
+      artifact_id: ${{ steps.ios_candidate_upload.outputs.artifact-id }}
+      build_number: ${{ needs.candidate-preparation.outputs.build_number }}
+      bundle_id: ${{ needs.candidate-preparation.outputs.bundle_id }}
+      source_revision: ${{ steps.source.outputs.source_revision }}
+      version_name: ${{ needs.candidate-preparation.outputs.version_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_revision }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve reviewed source revision
+        id: source
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          BASH_ENV: /dev/null
+          ENV: /dev/null
+          DISPATCH_REF: ${{ github.ref }}
+          RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+          REQUESTED_REVISION: ${{ inputs.source_revision }}
+          WORKFLOW_REVISION: ${{ github.workflow_sha }}
+        run: |
+          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then
+            echo "Signed-mobile release must be dispatched from main." >&2
+            exit 2
+          fi
+          if [[ "$RELEASE_ENVIRONMENT" != "development" && "$RELEASE_ENVIRONMENT" != "staging" && "$RELEASE_ENVIRONMENT" != "production" ]]; then
+            echo "Signed-mobile environment must be development, staging, or production." >&2
+            exit 2
+          fi
+          if ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]] || \
+             ! [[ "$WORKFLOW_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Source and workflow revisions must be full lowercase Git commit SHAs." >&2
+            exit 1
+          fi
+          if [[ "$REQUESTED_REVISION" != "$WORKFLOW_REVISION" ]]; then
+            echo "Signed-mobile release must build the exact commit that defines the reviewed workflow." >&2
+            exit 1
+          fi
+          source_revision="$(git rev-parse HEAD)"
+          if [[ "$source_revision" != "$REQUESTED_REVISION" ]]; then
+            echo "Checkout did not resolve the exact requested revision." >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$source_revision" origin/main; then
+            echo "The mobile release revision is not reachable from origin/main." >&2
+            exit 1
+          fi
+          printf 'source_revision=%s\n' "$source_revision" >>"$GITHUB_OUTPUT"
+      - name: Download immutable credential-free prepared config for iOS
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        env:
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        with:
+          artifact-ids: ${{ needs.candidate-preparation.outputs.prepared_artifact_id }}
+          path: ${{ runner.temp }}/prepared
+          merge-multiple: true
+          digest-mismatch: error
+      - name: Re-attest iOS prepared config before credentials
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin:/usr/sbin:/sbin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+          EXPECTED_ARTIFACT_ID: ${{ needs.candidate-preparation.outputs.prepared_artifact_id }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ needs.candidate-preparation.outputs.prepared_artifact_digest }}
+          EXPECTED_CONFIG_SHA256: ${{ needs.candidate-preparation.outputs.prepared_config_sha256 }}
+          EXPECTED_FEATURE_EVIDENCE_SHA256: ${{ needs.candidate-preparation.outputs.prepared_feature_evidence_sha256 }}
+          RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+          RELEASE_FLAVOR: ${{ needs.candidate-preparation.outputs.flavor }}
+          RELEASE_ACCOUNTS_ENABLED: ${{ vars.PAKPERK_ACCOUNTS_ENABLED }}
+          RELEASE_LIBRARY_ENABLED: ${{ vars.PAKPERK_LIBRARY_ENABLED }}
+          RELEASE_COMMENTS_ENABLED: ${{ vars.PAKPERK_COMMENTS_ENABLED }}
+          RELEASE_DOCUMENT_VERSION: ${{ vars.PAKPERK_PUBLIC_DOCUMENT_VERSION }}
+        run: |
+          [[ "$EXPECTED_ARTIFACT_ID" =~ ^[1-9][0-9]{0,19}$ ]] || exit 1
+          [[ "$EXPECTED_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          [[ "$EXPECTED_CONFIG_SHA256" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          [[ "$EXPECTED_FEATURE_EVIDENCE_SHA256" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          observed="$(/usr/bin/shasum -a 256 "$RUNNER_TEMP/prepared/mobile-release-config.json")"
+          [[ "${observed%% *}" == "$EXPECTED_CONFIG_SHA256" ]] || exit 1
+          /usr/bin/python3 -I - "$RUNNER_TEMP/prepared" "$RUNNER_TEMP/evidence" <<'PY'
+          import hashlib, json, os, pathlib, stat, sys
+          root = pathlib.Path(sys.argv[1])
+          expected = {"mobile-release-config.json", "evidence/mobile-feature-flags.json"}
+          observed = {
+              path.relative_to(root).as_posix()
+              for path in root.rglob("*")
+              if not path.is_dir()
+          }
+          if observed != expected:
+              raise SystemExit("prepared mobile config tree is not closed")
+          for relative in sorted(expected):
+              path = root / relative
+              metadata = os.lstat(path)
+              if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_size <= 0 or metadata.st_size > 1048576:
+                  raise SystemExit("prepared mobile config is not one bounded regular file")
+          feature_digest = hashlib.sha256(
+              root.joinpath("evidence/mobile-feature-flags.json").read_bytes()
+          ).hexdigest()
+          if feature_digest != os.environ["EXPECTED_FEATURE_EVIDENCE_SHA256"]:
+              raise SystemExit("prepared feature evidence digest changed")
+          source = pathlib.Path(os.environ["GITHUB_WORKSPACE"], "mobile", "config", os.environ["RELEASE_FLAVOR"] + ".json")
+          expected_config = json.loads(source.read_text(encoding="utf-8"))
+          expected_keys = {
+              "PAKPERK_ENV", "PAKPERK_API_BASE_URL", "PAKPERK_FULLTEXT_POLICY",
+              "PAKPERK_TERMS_DOCUMENT_VERSION", "PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION",
+              "PAKPERK_ACCOUNTS_ENABLED", "PAKPERK_LIBRARY_ENABLED", "PAKPERK_COMMENTS_ENABLED",
+              "PAKPERK_OPENING_MOTION_ENABLED", "PAKPERK_OIDC_ISSUER_URL",
+              "PAKPERK_OIDC_CLIENT_ID", "PAKPERK_OIDC_REDIRECT_URI",
+              "PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI", "PAKPERK_OIDC_SCOPES",
+              "PAKPERK_PUBLIC_SITE_ORIGIN", "PAKPERK_SUPPORT_URL",
+              "PAKPERK_ACCOUNT_DELETION_URL", "PAKPERK_APP_LINK_ORIGIN",
+              "PAKPERK_TELEMETRY_ENDPOINT",
+          }
+          if (
+              not isinstance(expected_config, dict)
+              or set(expected_config) != expected_keys
+              or expected_config.get("PAKPERK_ENV") != os.environ["RELEASE_ENVIRONMENT"]
+              or any(
+                  not isinstance(value, str)
+                  or not 0 < len(value.encode("utf-8")) <= 2048
+                  or any(character in value for character in ("\x00", "\n", "\r"))
+                  for value in expected_config.values()
+              )
+              or any(
+                  expected_config[name] not in {"true", "false"}
+                  for name in (
+                      "PAKPERK_ACCOUNTS_ENABLED", "PAKPERK_LIBRARY_ENABLED",
+                      "PAKPERK_COMMENTS_ENABLED", "PAKPERK_OPENING_MOTION_ENABLED",
+                  )
+              )
+          ):
+              raise SystemExit("checked-out mobile config violates the closed schema")
+          if os.environ["RELEASE_ENVIRONMENT"] != "development":
+              document_version = os.environ.get("RELEASE_DOCUMENT_VERSION", "")
+              if not document_version or any(
+                  expected_config[name] != document_version
+                  for name in ("PAKPERK_TERMS_DOCUMENT_VERSION", "PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION")
+              ):
+                  raise SystemExit("protected document version does not match base config")
+              for short in ("ACCOUNTS", "LIBRARY", "COMMENTS"):
+                  value = os.environ.get("RELEASE_" + short + "_ENABLED", "") or "false"
+                  if value not in {"true", "false"}:
+                      raise SystemExit("protected feature flag is malformed")
+                  expected_config["PAKPERK_" + short + "_ENABLED"] = value
+          if expected_config.get("PAKPERK_LIBRARY_ENABLED") == "true" and expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true":
+              raise SystemExit("library requires accounts")
+          if expected_config.get("PAKPERK_COMMENTS_ENABLED") == "true" and expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true":
+              raise SystemExit("comments require accounts")
+          actual_config = json.loads(root.joinpath("mobile-release-config.json").read_text(encoding="utf-8"))
+          if actual_config != expected_config:
+              raise SystemExit("prepared config does not derive from protected inputs")
+          expected_evidence = {
+              "schema": 2,
+              "environment": os.environ["RELEASE_ENVIRONMENT"],
+              "accounts": expected_config["PAKPERK_ACCOUNTS_ENABLED"] == "true",
+              "library": expected_config["PAKPERK_LIBRARY_ENABLED"] == "true",
+              "comments": expected_config["PAKPERK_COMMENTS_ENABLED"] == "true",
+              "termsDocumentVersion": expected_config["PAKPERK_TERMS_DOCUMENT_VERSION"],
+              "communityGuidelinesDocumentVersion": expected_config["PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION"],
+          }
+          actual_evidence = json.loads(root.joinpath("evidence/mobile-feature-flags.json").read_text(encoding="utf-8"))
+          if actual_evidence != expected_evidence:
+              raise SystemExit("prepared feature evidence does not derive from config")
+          evidence = pathlib.Path(sys.argv[2])
+          evidence.mkdir(mode=0o700, parents=True, exist_ok=True)
+          evidence.joinpath("ios-prepared-config-boundary.json").write_text(
+              json.dumps({
+                  "artifactDigest": os.environ["EXPECTED_ARTIFACT_DIGEST"],
+                  "artifactId": int(os.environ["EXPECTED_ARTIFACT_ID"]),
+                  "configSha256": os.environ["EXPECTED_CONFIG_SHA256"],
+                  "featureEvidenceSha256": feature_digest,
+                  "schema": 1,
+              }, separators=(",", ":"), sort_keys=True) + "\n",
+              encoding="ascii",
+          )
+          PY
+      - name: Import Apple-only signing credentials before repository code
+        id: apple_signing
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin:/usr/sbin:/sbin
+          HOME: ${{ runner.temp }}/ios-signer-home
+          ALL_PROXY: ""
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          CURL_HOME: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          HTTPS_PROXY: ""
+          HTTP_PROXY: ""
           IOS_CERTIFICATE_BASE64: ${{ secrets.PAKPERK_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.PAKPERK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
           IOS_PROFILE_BASE64: ${{ secrets.PAKPERK_IOS_PROVISIONING_PROFILE_BASE64 }}
           IOS_TEAM_ID: ${{ secrets.PAKPERK_DEVELOPMENT_TEAM }}
           IOS_PROFILE_NAME: ${{ secrets.PAKPERK_IOS_PROVISIONING_PROFILE_SPECIFIER }}
-          EXPECTED_BUNDLE_ID: ${{ steps.release.outputs.bundle_id }}
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NETRC: /dev/null
+          NO_PROXY: "*"
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PERL5LIB: ""
+          PERL5OPT: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+          all_proxy: ""
+          http_proxy: ""
+          https_proxy: ""
+          no_proxy: "*"
+          EXPECTED_BUNDLE_ID: ${{ needs.candidate-preparation.outputs.bundle_id }}
         run: |
-          python3 - <<'PY'
-          import base64, os, pathlib
-          root = pathlib.Path(os.environ["RUNNER_TEMP"])
-          root.joinpath("distribution.p12").write_bytes(base64.b64decode(os.environ["IOS_CERTIFICATE_BASE64"], validate=True))
-          root.joinpath("profile.mobileprovision").write_bytes(base64.b64decode(os.environ["IOS_PROFILE_BASE64"], validate=True))
-          PY
-          chmod 0600 "$RUNNER_TEMP/distribution.p12" "$RUNNER_TEMP/profile.mobileprovision"
-          keychain_password="$(openssl rand -hex 32)"
-          keychain="$RUNNER_TEMP/pakperk-release.keychain-db"
-          security create-keychain -p "$keychain_password" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$keychain_password" "$keychain"
-          security import "$RUNNER_TEMP/distribution.p12" -k "$keychain" \
-            -P "$IOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12
-          security set-key-partition-list -S apple-tool:,apple: -s \
-            -k "$keychain_password" "$keychain"
-          security list-keychains -d user -s "$keychain"
-          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" >"$RUNNER_TEMP/profile.plist"
-          profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/profile.plist")"
-          profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")"
-          profile_team="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$RUNNER_TEMP/profile.plist")"
-          profile_app_id="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/profile.plist")"
-          if ! [[ "$profile_uuid" =~ ^[A-Fa-f0-9-]{36}$ ]] || \
-             ! [[ "$IOS_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || \
+          for name in IOS_CERTIFICATE_BASE64 IOS_CERTIFICATE_PASSWORD IOS_PROFILE_BASE64 IOS_TEAM_ID IOS_PROFILE_NAME; do
+            value="${!name:-}"
+            if [[ -z "$value" || "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+              echo "Apple signing input is missing or malformed: $name" >&2
+              exit 1
+            fi
+          done
+          if ! [[ "$IOS_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || \
              ! [[ "$IOS_PROFILE_NAME" =~ ^[A-Za-z0-9._\ -]{1,128}$ ]]; then
-            echo "Protected Apple signing identifiers have an invalid format." >&2
+            echo "Apple signing identity is malformed." >&2
             exit 1
           fi
-          if [[ "$profile_name" != "$IOS_PROFILE_NAME" || "$profile_team" != "$IOS_TEAM_ID" || \
-                "$profile_app_id" != "$IOS_TEAM_ID.$EXPECTED_BUNDLE_ID" ]]; then
+          for reviewed in \
+            "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4 scripts/materialize_mobile_release_secret.py" \
+            "2d51f03bd21f2afa2af0396e801e0e950172210814a229ca50df67c5a8d135cd scripts/capture_mobile_credentialed_runtime.py" \
+            "d0787d5c01349d8f8a6166a530823a77a788b68ad6523ed5f684d2879c6f7f2d scripts/validate_flutter_toolchain.py" \
+            "e5e0193a51b71f1455eeadae610d82155abaf5257ddf7fad1d927c1fcadeaee5 scripts/verify_ios_release_artifact.sh" \
+            "e9b147299ad1fa1c5dcd002a0d06a65c70ec574ff807e990c482e07dc9098bf3 mobile/tool/verify_strict_artifact_assets.dart"; do
+            expected="${reviewed%% *}"; relative="${reviewed#* }"
+            observed="$(/usr/bin/shasum -a 256 "$GITHUB_WORKSPACE/$relative")"
+            [[ "${observed%% *}" == "$expected" ]] || exit 1
+          done
+          /bin/mkdir -m 0700 "$HOME"
+          /usr/bin/python3 -I "$GITHUB_WORKSPACE/scripts/materialize_mobile_release_secret.py" decode \
+            --root "$RUNNER_TEMP" --directory apple-signing \
+            --secret IOS_CERTIFICATE_BASE64 distribution.p12 4194304 \
+            --secret IOS_PROFILE_BASE64 profile.mobileprovision 4194304
+          keychain_password="$(/usr/bin/openssl rand -hex 32)"
+          keychain="$RUNNER_TEMP/apple-signing/pakperk-release.keychain-db"
+          /usr/bin/security create-keychain -p "$keychain_password" "$keychain"
+          /usr/bin/python3 -I "$GITHUB_WORKSPACE/scripts/materialize_mobile_release_secret.py" validate \
+            --path "$keychain" --maximum-bytes 16777216
+          /usr/bin/security set-keychain-settings -lut 21600 "$keychain"
+          /usr/bin/security unlock-keychain -p "$keychain_password" "$keychain"
+          /usr/bin/security import "$RUNNER_TEMP/apple-signing/distribution.p12" -k "$keychain" \
+            -P "$IOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12
+          /usr/bin/security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$keychain_password" "$keychain"
+          /usr/bin/security list-keychains -d user -s "$keychain"
+          profile_plist="$RUNNER_TEMP/apple-signing/profile.plist"
+          (umask 077; set -o noclobber; /usr/bin/security cms -D \
+            -i "$RUNNER_TEMP/apple-signing/profile.mobileprovision" >"$profile_plist")
+          /usr/bin/python3 -I "$GITHUB_WORKSPACE/scripts/materialize_mobile_release_secret.py" validate \
+            --path "$profile_plist" --maximum-bytes 4194304
+          profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$profile_plist")"
+          profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$profile_plist")"
+          profile_team="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$profile_plist")"
+          profile_app_id="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$profile_plist")"
+          if ! [[ "$profile_uuid" =~ ^[A-Fa-f0-9-]{36}$ ]] || \
+             [[ "$profile_name" != "$IOS_PROFILE_NAME" ]] || \
+             [[ "$profile_team" != "$IOS_TEAM_ID" ]] || \
+             [[ "$profile_app_id" != "$IOS_TEAM_ID.$EXPECTED_BUNDLE_ID" ]]; then
             echo "Protected provisioning profile does not match this environment." >&2
             exit 1
           fi
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          cp "$RUNNER_TEMP/profile.mobileprovision" \
-            "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
-          echo "profile_uuid=$profile_uuid" >>"$GITHUB_OUTPUT"
-          python3 - <<'PY'
+          /usr/bin/python3 -I "$GITHUB_WORKSPACE/scripts/materialize_mobile_release_secret.py" copy \
+            --source "$RUNNER_TEMP/apple-signing/profile.mobileprovision" \
+            --root "$HOME" \
+            --relative-path "Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision" \
+            --maximum-bytes 4194304
+          printf 'profile_uuid=%s\n' "$profile_uuid" >>"$GITHUB_OUTPUT"
+          /usr/bin/python3 -I - <<'PY'
           import os, pathlib, plistlib
-          root = pathlib.Path(os.environ["RUNNER_TEMP"])
-          pathlib.Path("mobile/ios/Flutter/LocalSigning.xcconfig").write_text(
-              "PAKPERK_DEVELOPMENT_TEAM = " + os.environ["IOS_TEAM_ID"] + "\n"
-              "CODE_SIGN_STYLE = Manual\n"
-              "CODE_SIGN_IDENTITY = Apple Distribution\n"
-              "PROVISIONING_PROFILE_SPECIFIER = " + os.environ["IOS_PROFILE_NAME"] + "\n",
-              encoding="utf-8",
-          )
-          with root.joinpath("ExportOptions.plist").open("wb") as handle:
+          config = pathlib.Path(os.environ["GITHUB_WORKSPACE"], "mobile/ios/Flutter/LocalSigning.xcconfig")
+          with config.open("x", encoding="utf-8") as handle:
+              handle.write(
+                  "PAKPERK_DEVELOPMENT_TEAM = " + os.environ["IOS_TEAM_ID"] + "\n"
+                  "CODE_SIGN_STYLE = Manual\n"
+                  "CODE_SIGN_IDENTITY = Apple Distribution\n"
+                  "PROVISIONING_PROFILE_SPECIFIER = " + os.environ["IOS_PROFILE_NAME"] + "\n"
+              )
+          export = pathlib.Path(os.environ["RUNNER_TEMP"], "ExportOptions.plist")
+          with export.open("xb") as handle:
               plistlib.dump({
                   "method": "app-store-connect",
                   "signingStyle": "manual",
                   "teamID": os.environ["IOS_TEAM_ID"],
-                  "provisioningProfiles": {
-                      os.environ["EXPECTED_BUNDLE_ID"]: os.environ["IOS_PROFILE_NAME"],
-                  },
+                  "provisioningProfiles": {os.environ["EXPECTED_BUNDLE_ID"]: os.environ["IOS_PROFILE_NAME"]},
                   "manageAppVersionAndBuildNumber": False,
                   "uploadSymbols": False,
               }, handle)
           PY
-
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Capture isolated iOS build tools after credential materialization
+        id: ios_tools
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          HOME: ${{ runner.temp }}/ios-signer-home
+          DEVELOPER_DIR: /Applications/Xcode_${{ env.XCODE_VERSION }}.app/Contents/Developer
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+        run: |
+          [[ -d "$DEVELOPER_DIR" ]] || exit 1
+          /bin/mkdir -p "$RUNNER_TEMP/evidence"
+          flutter --version --machine >"$RUNNER_TEMP/evidence/ios-flutter-toolchain.json"
+          /usr/bin/python3 -I "$GITHUB_WORKSPACE/scripts/validate_flutter_toolchain.py" \
+            "$RUNNER_TEMP/evidence/ios-flutter-toolchain.json"
+          xcode_version="$(/usr/bin/xcrun xcodebuild -version | /usr/bin/awk '$1 == "Xcode" { print $2; exit }')"
+          xcode_build="$(/usr/bin/xcrun xcodebuild -version | /usr/bin/awk '$1 == "Build" && $2 == "version" { print $3; exit }')"
+          iphoneos_sdk="$(/usr/bin/xcrun --sdk iphoneos --show-sdk-version)"
+          [[ "$xcode_version" == "$XCODE_VERSION" && "$xcode_build" == "$XCODE_BUILD" ]] || exit 1
+          [[ "$iphoneos_sdk" =~ ^[0-9]+([.][0-9]+)*$ ]] && (( ${iphoneos_sdk%%.*} >= 26 )) || exit 1
+          /usr/bin/python3 -I "$GITHUB_WORKSPACE/scripts/capture_mobile_credentialed_runtime.py" \
+            --github-output "$GITHUB_OUTPUT"
+          {
+            printf 'github_runner_image=%s\n' "${ImageOS:-unknown}"
+            printf 'github_runner_version=%s\n' "${ImageVersion:-unknown}"
+            /usr/bin/sw_vers
+            /usr/bin/uname -m
+            /usr/bin/xcrun xcodebuild -version
+            printf 'iphoneos_sdk=%s\n' "$iphoneos_sdk"
+            flutter --version
+            /usr/bin/ruby --version
+          } >"$RUNNER_TEMP/evidence/ios-native-toolchain.txt"
+      - name: Resolve locked Flutter dependencies for iOS signer
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        working-directory: mobile
+        env:
+          PATH: ${{ steps.ios_tools.outputs.reviewed_path }}
+          HOME: ${{ steps.ios_tools.outputs.real_home }}
+          DEVELOPER_DIR: /Applications/Xcode_${{ env.XCODE_VERSION }}.app/Contents/Developer
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+        run: flutter pub get --enforce-lockfile
       - name: Build and inspect signed iOS artifact
         id: ios
-        shell: bash
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         working-directory: mobile
+        env:
+          PATH: ${{ steps.ios_tools.outputs.reviewed_path }}
+          HOME: ${{ steps.ios_tools.outputs.real_home }}
+          DEVELOPER_DIR: /Applications/Xcode_${{ env.XCODE_VERSION }}.app/Contents/Developer
+          ALL_PROXY: ""
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          CURL_HOME: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          HTTPS_PROXY: ""
+          HTTP_PROXY: ""
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NETRC: /dev/null
+          NO_PROXY: "*"
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+          all_proxy: ""
+          http_proxy: ""
+          https_proxy: ""
+          no_proxy: "*"
+          EXPECTED_CONFIG_SHA256: ${{ needs.candidate-preparation.outputs.prepared_config_sha256 }}
+          PAKPERK_MOBILE_RELEASE_CONFIG: ${{ runner.temp }}/prepared/mobile-release-config.json
         run: |
-          mkdir -p "$RUNNER_TEMP/symbols/ios" "$RUNNER_TEMP/native-symbols"
-          flutter build ipa --release --flavor "${{ steps.release.outputs.flavor }}" \
+          config_digest="$(/usr/bin/shasum -a 256 "$PAKPERK_MOBILE_RELEASE_CONFIG")"
+          [[ "${config_digest%% *}" == "$EXPECTED_CONFIG_SHA256" ]] || exit 1
+          for reviewed in \
+            "e5e0193a51b71f1455eeadae610d82155abaf5257ddf7fad1d927c1fcadeaee5 scripts/verify_ios_release_artifact.sh" \
+            "e9b147299ad1fa1c5dcd002a0d06a65c70ec574ff807e990c482e07dc9098bf3 mobile/tool/verify_strict_artifact_assets.dart"; do
+            expected="${reviewed%% *}"; relative="${reviewed#* }"
+            observed="$(/usr/bin/shasum -a 256 "$GITHUB_WORKSPACE/$relative")"
+            [[ "${observed%% *}" == "$expected" ]] || exit 1
+          done
+          /bin/mkdir -p "$RUNNER_TEMP/artifacts" "$RUNNER_TEMP/symbols/ios" \
+            "$RUNNER_TEMP/native-symbols" "$RUNNER_TEMP/evidence"
+          flutter build ipa --release --flavor "${{ needs.candidate-preparation.outputs.flavor }}" \
             --dart-define-from-file="$PAKPERK_MOBILE_RELEASE_CONFIG" \
             --export-options-plist="$RUNNER_TEMP/ExportOptions.plist" \
             --obfuscate --split-debug-info="$RUNNER_TEMP/symbols/ios"
           shopt -s nullglob
           ipas=(build/ios/ipa/*.ipa)
-          if [[ ${#ipas[@]} -ne 1 ]]; then
-            echo "Expected exactly one signed IPA, found ${#ipas[@]}." >&2
-            exit 1
-          fi
+          [[ ${#ipas[@]} -eq 1 ]] || exit 1
           ipa="${ipas[0]}"
           retained_ipa="$RUNNER_TEMP/artifacts/${ipa##*/}"
-          if [[ -e "$retained_ipa" || -L "$retained_ipa" ]]; then
-            echo "Retained iOS artifact destination must not pre-exist." >&2
-            exit 1
-          fi
-          cp "$ipa" "$retained_ipa"
-          chmod 0400 "$retained_ipa"
+          [[ ! -e "$retained_ipa" && ! -L "$retained_ipa" ]] || exit 1
+          /bin/cp "$ipa" "$retained_ipa"
+          /bin/chmod 0400 "$retained_ipa"
           "$GITHUB_WORKSPACE/scripts/verify_ios_release_artifact.sh" \
-            "$retained_ipa" "${{ steps.release.outputs.bundle_id }}" \
-            "${{ steps.release.outputs.version_name }}" "${{ steps.release.outputs.build_number }}" \
-            "${{ steps.release.outputs.callback_scheme }}" "${{ steps.release.outputs.app_link_host }}" \
-            | tee "$RUNNER_TEMP/evidence/apple-installed-identity.txt"
+            "$retained_ipa" "${{ needs.candidate-preparation.outputs.bundle_id }}" \
+            "${{ needs.candidate-preparation.outputs.version_name }}" "${{ needs.candidate-preparation.outputs.build_number }}" \
+            "${{ needs.candidate-preparation.outputs.callback_scheme }}" "${{ needs.candidate-preparation.outputs.app_link_host }}" \
+            | /usr/bin/tee "$RUNNER_TEMP/evidence/apple-installed-identity.txt"
           if [[ "${{ inputs.environment }}" != development ]]; then
             dart run tool/verify_strict_artifact_assets.dart "$retained_ipa"
           fi
-          find build/ios/archive -type d -name '*.dSYM' \
-            -exec cp -R '{}' "$RUNNER_TEMP/native-symbols/" ';'
-
-      - name: Verify deployed association documents against installed-app identities
-        if: inputs.environment != 'development'
-        shell: bash
-        env:
-          ANDROID_APP_SIGNING_SHA256: ${{ secrets.PAKPERK_ANDROID_APP_SIGNING_SHA256 }}
-        run: |
-          host="${{ steps.release.outputs.app_link_host }}"
-          for document in assetlinks.json apple-app-site-association; do
-            curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
-              --max-redirs 0 --connect-timeout 5 --max-time 15 \
-              --dump-header "$RUNNER_TEMP/evidence/$document.headers" \
-              --output "$RUNNER_TEMP/evidence/$document" \
-              "https://$host/.well-known/$document"
-            if ! grep -Eiq '^content-type:[[:space:]]*application/json([[:space:]]*;|[[:space:]]*$)' \
-              "$RUNNER_TEMP/evidence/$document.headers"; then
-              echo "$document was not served as application/json." >&2
-              exit 1
-            fi
-          done
-          apple_team_id="$(sed -n 's/^apple_team_id=//p' "$RUNNER_TEMP/evidence/apple-installed-identity.txt")"
-          PAKPERK_RELEASE_ENV="${{ inputs.environment }}" \
-          PAKPERK_ANDROID_PACKAGE="${{ steps.release.outputs.bundle_id }}" \
-          PAKPERK_ANDROID_SHA256="$ANDROID_APP_SIGNING_SHA256" \
-          PAKPERK_APPLE_TEAM_ID="$apple_team_id" \
-          PAKPERK_APPLE_BUNDLE_ID="${{ steps.release.outputs.bundle_id }}" \
-            ./scripts/verify_mobile_associations.sh \
-              "$RUNNER_TEMP/evidence/assetlinks.json" \
-              "$RUNNER_TEMP/evidence/apple-app-site-association"
-
-      - name: Install and record the pinned store upload client
-        if: inputs.upload_to_stores
-        shell: bash
-        env:
-          FASTLANE_SKIP_UPDATE_CHECK: "1"
-        run: |
-          python3 scripts/validate_fastlane_lock.py
-          bundler_gem="$RUNNER_TEMP/bundler-$BUNDLER_VERSION.gem"
-          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-            --output "$bundler_gem" \
-            "https://rubygems.org/downloads/bundler-$BUNDLER_VERSION.gem"
-          printf '%s  %s\n' "$BUNDLER_SHA256" "$bundler_gem" | shasum -a 256 --check
-          gem install --user-install --local "$bundler_gem" --no-document
-          bundle_bin="$(ruby -e 'print Gem.user_dir')/bin/bundle"
-          export BUNDLE_GEMFILE="$GITHUB_WORKSPACE/mobile/Gemfile"
-          export BUNDLE_PATH="$RUNNER_TEMP/fastlane-bundle"
-          export BUNDLE_FROZEN=true
-          export BUNDLE_LOCKFILE_CHECKSUMS=true
-          "$bundle_bin" "_${BUNDLER_VERSION}_" install --jobs 4 --retry 3
-          {
-            printf 'PAKPERK_BUNDLE_BIN=%s\n' "$bundle_bin"
-            printf 'BUNDLE_GEMFILE=%s\n' "$BUNDLE_GEMFILE"
-            printf 'BUNDLE_PATH=%s\n' "$BUNDLE_PATH"
-            printf 'BUNDLE_FROZEN=true\n'
-            printf 'BUNDLE_LOCKFILE_CHECKSUMS=true\n'
-          } >>"$GITHUB_ENV"
-          "$bundle_bin" "_${BUNDLER_VERSION}_" exec fastlane --version \
-            >"$RUNNER_TEMP/evidence/fastlane.txt" 2>&1
-          "$bundle_bin" "_${BUNDLER_VERSION}_" list \
-            >"$RUNNER_TEMP/evidence/ruby-gems.txt"
-          cp mobile/Gemfile.lock "$RUNNER_TEMP/evidence/fastlane-Gemfile.lock"
-
-      - name: Generate SBOM, notices, and immutable evidence hashes
-        id: manifests
-        shell: bash
-        env:
-          RELEASE_SOURCE_REVISION: ${{ steps.source.outputs.source_revision }}
-          RELEASE_ENVIRONMENT: ${{ inputs.environment }}
-          RELEASE_APP_VERSION: ${{ steps.release.outputs.version_name }}
-          RELEASE_ANDROID_VERSION_NAME: ${{ steps.release.outputs.android_version_name }}
-          RELEASE_BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
-          RELEASE_APPLICATION_ID: ${{ steps.release.outputs.bundle_id }}
-          RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          RELEASE_REPOSITORY: ${{ github.repository }}
-          RELEASE_JOB: ${{ github.job }}
-          RELEASE_RUN_ID: ${{ github.run_id }}
-          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
-        run: |
-          if [[ "$(git rev-parse HEAD)" != "$RELEASE_SOURCE_REVISION" ]] || \
-             ! git diff --quiet --ignore-submodules -- || \
-             ! git diff --cached --quiet --ignore-submodules --; then
-            echo "Tracked release source changed before candidate provenance generation." >&2
-            exit 1
-          fi
-          source_epoch="$(git show -s --format=%ct HEAD)"
-          SOURCE_REVISION="${{ steps.source.outputs.source_revision }}" SOURCE_DATE_EPOCH="$source_epoch" \
-            ./scripts/generate_release_metadata.py \
-              --flutter-sdk-version "$FLUTTER_VERSION" \
-              --output-dir "$RUNNER_TEMP/evidence/release-metadata"
-          python3 - <<'PY'
-          import datetime as dt
-          import hashlib
-          import json
-          import os
-          import pathlib
-          import re
-          import stat
-
-          root = pathlib.Path(os.environ["RUNNER_TEMP"])
-
-          def fail(message):
-              raise SystemExit(message)
-
-          release_roots = {}
-          for name in ("artifacts", "symbols", "native-symbols", "evidence"):
-              path = root / name
-              metadata = os.lstat(path)
-              if not stat.S_ISDIR(metadata.st_mode):
-                  fail(f"release evidence root is not a real directory: {name}")
-              release_roots[name] = path
-
-          def artifact(suffix):
-              matches = sorted(root.joinpath("artifacts").glob(f"*{suffix}"))
-              if len(matches) != 1:
-                  fail(f"expected exactly one retained {suffix} artifact")
-              path = matches[0]
-              metadata = os.lstat(path)
-              if (
-                  not stat.S_ISREG(metadata.st_mode)
-                  or metadata.st_nlink != 1
-                  or metadata.st_size <= 0
-                  or metadata.st_size > 8 * 1024**3
-              ):
-                  fail(f"retained {suffix} artifact is not one bounded regular file")
-              digest = hashlib.sha256()
-              flags = os.O_RDONLY
-              if hasattr(os, "O_NOFOLLOW"):
-                  flags |= os.O_NOFOLLOW
-              descriptor = os.open(path, flags)
-              try:
-                  before = os.fstat(descriptor)
-                  while True:
-                      chunk = os.read(descriptor, 1024 * 1024)
-                      if not chunk:
-                          break
-                      digest.update(chunk)
-                  after = os.fstat(descriptor)
-              finally:
-                  os.close(descriptor)
-              identity = lambda value: (
-                  value.st_dev,
-                  value.st_ino,
-                  value.st_size,
-                  value.st_mtime_ns,
-                  value.st_ctime_ns,
-              )
-              if identity(before) != identity(after) or identity(metadata) != identity(before):
-                  fail(f"retained {suffix} artifact changed while it was hashed")
-              return digest.hexdigest()
-
-          def identity_file(name):
-              path = root / "evidence" / name
-              metadata = os.lstat(path)
-              if (
-                  not stat.S_ISREG(metadata.st_mode)
-                  or metadata.st_nlink != 1
-                  or metadata.st_size <= 0
-                  or metadata.st_size > 64 * 1024
-              ):
-                  fail("release identity evidence is not one bounded regular file")
-              descriptor = os.open(
-                  path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-              )
-              data = bytearray()
-              try:
-                  before = os.fstat(descriptor)
-                  while True:
-                      chunk = os.read(descriptor, 64 * 1024)
-                      if not chunk:
-                          break
-                      data.extend(chunk)
-                      if len(data) > 64 * 1024:
-                          fail("release identity evidence exceeded its read budget")
-                  after = os.fstat(descriptor)
-              finally:
-                  os.close(descriptor)
-              identity = lambda value: (
-                  value.st_dev,
-                  value.st_ino,
-                  value.st_size,
-                  value.st_mtime_ns,
-                  value.st_ctime_ns,
-              )
-              if identity(metadata) != identity(before) or identity(before) != identity(after):
-                  fail("release identity evidence changed while it was read")
-              try:
-                  text = data.decode("utf-8")
-              except UnicodeDecodeError:
-                  fail("release identity evidence is not UTF-8")
-              values = {}
-              for line in text.splitlines():
-                  key, separator, value = line.partition("=")
-                  if (
-                      separator != "="
-                      or re.fullmatch(r"[a-z][a-z0-9_]{0,63}", key) is None
-                      or not value
-                      or key in values
-                  ):
-                      fail("release identity evidence is malformed or duplicated")
-                  values[key] = value
-              return values
-
-          def exact_environment(name, pattern):
-              value = os.environ[name]
-              if re.fullmatch(pattern, value) is None:
-                  fail(f"{name} is outside its closed format")
-              return value
-
-          source_revision = exact_environment("RELEASE_SOURCE_REVISION", r"[0-9a-f]{40}")
-          environment = exact_environment(
-              "RELEASE_ENVIRONMENT", r"development|staging|production"
-          )
-          app_version = exact_environment(
-              "RELEASE_APP_VERSION",
-              r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]{1,32})?",
-          )
-          android_version_name = exact_environment(
-              "RELEASE_ANDROID_VERSION_NAME", r"[0-9A-Za-z][0-9A-Za-z._+-]{0,63}"
-          )
-          build_number = exact_environment("RELEASE_BUILD_NUMBER", r"[1-9][0-9]{0,9}")
-          application_id = exact_environment(
-              "RELEASE_APPLICATION_ID",
-              r"[A-Za-z][A-Za-z0-9_-]{0,62}(?:\.[A-Za-z][A-Za-z0-9_-]{0,62}){1,9}",
-          )
-          workflow_sha = exact_environment("RELEASE_WORKFLOW_SHA", r"[0-9a-f]{40}")
-          repository = exact_environment(
-              "RELEASE_REPOSITORY", r"[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}"
-          )
-          if os.environ["RELEASE_JOB"] != "signed-candidate":
-              fail("release provenance job identity is invalid")
-          run_id = exact_environment("RELEASE_RUN_ID", r"[1-9][0-9]{0,19}")
-          run_attempt = exact_environment("RELEASE_RUN_ATTEMPT", r"[1-9][0-9]{0,9}")
-
-          android_identity = identity_file("android-upload-identity.txt")
-          android_artifact_digests = identity_file("android-retained-digests.txt")
-          ios_identity = identity_file("apple-installed-identity.txt")
-          if (
-              android_identity.get("android_package") != application_id
-              or android_identity.get("android_version_name") != android_version_name
-              or android_identity.get("android_version_code") != build_number
-              or ios_identity.get("apple_bundle_id") != application_id
-              or ios_identity.get("apple_version") != app_version
-              or ios_identity.get("apple_build") != build_number
-          ):
-              fail("observed signed-artifact identity does not match the release")
-          android_upload_fingerprint = android_identity.get("android_upload_sha256", "")
-          if re.fullmatch(r"(?:[A-F0-9]{2}:){31}[A-F0-9]{2}", android_upload_fingerprint) is None:
-              fail("observed Android signer fingerprint is invalid")
-          android_signer_sha256 = android_upload_fingerprint.replace(":", "").lower()
-          ios_team_id = ios_identity.get("apple_team_id", "")
-          ios_signer_sha256 = ios_identity.get("apple_signer_sha256", "")
-          if re.fullmatch(r"[A-Z0-9]{10}", ios_team_id) is None or re.fullmatch(
-              r"[0-9a-f]{64}", ios_signer_sha256
-          ) is None:
-              fail("observed Apple signing identity is invalid")
-
-          aab_sha256 = artifact(".aab")
-          apk_sha256 = artifact(".apk")
-          ipa_sha256 = artifact(".ipa")
-          if set(android_artifact_digests) != {
-              "android_aab_artifact_sha256",
-              "android_apk_artifact_sha256",
-          }:
-              fail("retained Android digest evidence has an unexpected schema")
-          if (
-              android_artifact_digests["android_aab_artifact_sha256"] != aab_sha256
-              or android_artifact_digests["android_apk_artifact_sha256"] != apk_sha256
-              or ios_identity.get("apple_ipa_sha256") != ipa_sha256
-          ):
-              fail("retained signed artifact changed after verification")
-
-          config_path = pathlib.Path(os.environ["PAKPERK_MOBILE_RELEASE_CONFIG"])
-          config = json.loads(config_path.read_text(encoding="utf-8"))
-          if config.get("PAKPERK_ENV") != environment:
-              fail("materialized mobile config environment does not match the release")
-          strict_full_text = config.get("PAKPERK_FULLTEXT_POLICY") == "strict"
-          android = {
-              "aab_sha256": aab_sha256,
-              "apk_sha256": apk_sha256,
-              "application_id": application_id,
-              "signer_sha256": android_signer_sha256,
-          }
-          ios = {
-              "application_id": application_id,
-              "ipa_sha256": ipa_sha256,
-              "signer_sha256": ios_signer_sha256,
-              "team_id": ios_team_id,
-          }
-          now = (
-              dt.datetime.now(dt.timezone.utc)
-              .replace(microsecond=0)
-              .isoformat()
-              .replace("+00:00", "Z")
-          )
-          provenance = {
-              "android": android,
-              "app_version": app_version,
-              "build_number": build_number,
-              "classification": "protected signed mobile release provenance",
-              "created_at": now,
-              "environment": environment,
-              "ios": ios,
-              "schema": 1,
-              "source_revision": source_revision,
-              "workflow": {
-                  "github_run_attempt": run_attempt,
-                  "github_run_id": run_id,
-                  "job": "signed-candidate",
-                  "path": ".github/workflows/mobile-release.yml",
-                  "repository": repository,
-                  "stage": "artifacts_verified",
-                  "workflow_sha": workflow_sha,
-              },
-          }
-
-          def canonical_json_bytes(value):
-              return (
-                  json.dumps(
-                      value,
-                      allow_nan=False,
-                      ensure_ascii=True,
-                      separators=(",", ":"),
-                      sort_keys=True,
-                  )
-                  + "\n"
-              ).encode("ascii")
-
-          evidence_root = root / "evidence"
-          provenance_bytes = canonical_json_bytes(provenance)
-          provenance_id = "sha256:" + hashlib.sha256(provenance_bytes).hexdigest()
-          candidate = {
-              "android": android,
-              "app_version": app_version,
-              "build_number": build_number,
-              "classification": "protected signed mobile candidate",
-              "environment": environment,
-              "ios": ios,
-              "provenance_id": provenance_id,
-              "schema": 1,
-              "source_revision": source_revision,
-              "strict_full_text": strict_full_text,
-          }
-          candidate_bytes = canonical_json_bytes(candidate)
-          candidate_id = "sha256:" + hashlib.sha256(candidate_bytes).hexdigest()
-          for name, data in (
-              ("mobile-release-provenance.json", provenance_bytes),
-              ("mobile-candidate.json", candidate_bytes),
-          ):
-              path = evidence_root / name
-              descriptor = os.open(
-                  path,
-                  os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-                  0o600,
-              )
-              try:
-                  remaining = memoryview(data)
-                  while remaining:
-                      written = os.write(descriptor, remaining)
-                      if written <= 0:
-                          fail("canonical manifest write did not make progress")
-                      remaining = remaining[written:]
-                  os.fsync(descriptor)
-              finally:
-                  os.close(descriptor)
-
-          with pathlib.Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
-              output.write(f"provenance_id={provenance_id}\n")
-              output.write(f"candidate_id={candidate_id}\n")
-          with pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as summary:
-              summary.write("## Signed mobile candidate\n\n")
-              summary.write(f"- Candidate ID: `{candidate_id}`\n")
-              summary.write(f"- Provenance ID: `{provenance_id}`\n")
-
-          expected_release_digests = {
-              ".aab": aab_sha256,
-              ".apk": apk_sha256,
-              ".ipa": ipa_sha256,
-              "evidence/mobile-release-provenance.json": provenance_id[7:],
-              "evidence/mobile-candidate.json": candidate_id[7:],
-          }
-          observed_release_digests = set()
-          lines = []
-          for name, release_root in release_roots.items():
-              for path in sorted(release_root.rglob("*")):
-                  if path.is_symlink():
-                      fail("release evidence must not contain symbolic links")
-                  if path.is_dir():
-                      continue
-                  metadata = os.lstat(path)
-                  if (
-                      not stat.S_ISREG(metadata.st_mode)
-                      or metadata.st_nlink != 1
-                      or metadata.st_size > 8 * 1024**3
-                  ):
-                      fail("release evidence contains an unbounded non-regular file")
-                  descriptor = os.open(
-                      path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-                  )
-                  digest = hashlib.sha256()
-                  try:
-                      before = os.fstat(descriptor)
-                      while True:
-                          chunk = os.read(descriptor, 1024 * 1024)
-                          if not chunk:
-                              break
-                          digest.update(chunk)
-                      after = os.fstat(descriptor)
-                  finally:
-                      os.close(descriptor)
-                  identity = lambda value: (
-                      value.st_dev,
-                      value.st_ino,
-                      value.st_size,
-                      value.st_mtime_ns,
-                      value.st_ctime_ns,
-                  )
-                  if identity(metadata) != identity(before) or identity(before) != identity(after):
-                      fail("release evidence changed while it was hashed")
-                  relative = path.relative_to(root).as_posix()
-                  if "\n" in relative or "\r" in relative:
-                      fail("release evidence path contains a line break")
-                  observed_digest = digest.hexdigest()
-                  expected_key = path.suffix if name == "artifacts" else relative
-                  if name == "artifacts" and expected_key not in {".aab", ".apk", ".ipa"}:
-                      fail("release evidence contains an unexpected retained artifact")
-                  if expected_key in expected_release_digests:
-                      if observed_digest != expected_release_digests[expected_key]:
-                          fail("release evidence no longer matches its content identity")
-                      observed_release_digests.add(expected_key)
-                  lines.append(f"{observed_digest}  {relative}")
-          if observed_release_digests != set(expected_release_digests):
-              fail("release evidence is missing a content-addressed artifact or manifest")
-          checksum_bytes = ("\n".join(lines) + "\n").encode("utf-8")
-          checksum_path = root / "release-sha256.txt"
-          descriptor = os.open(
-              checksum_path,
-              os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-              0o600,
-          )
-          try:
-              remaining = memoryview(checksum_bytes)
-              while remaining:
-                  written = os.write(descriptor, remaining)
-                  if written <= 0:
-                      fail("release checksum write did not make progress")
-                  remaining = remaining[written:]
-              os.fsync(descriptor)
-          finally:
-              os.close(descriptor)
+          /usr/bin/find build/ios/archive -type d -name '*.dSYM' \
+            -exec /bin/cp -R '{}' "$RUNNER_TEMP/native-symbols/" ';'
+          /usr/bin/python3 -I - "$retained_ipa" "$RUNNER_TEMP/evidence/ios-retained-digest.txt" <<'PY'
+          import hashlib, os, pathlib, stat, sys
+          path = pathlib.Path(sys.argv[1]); metadata = os.lstat(path)
+          if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or not 0 < metadata.st_size <= 8 * 1024**3:
+              raise SystemExit("retained IPA is not one bounded regular file")
+          value = hashlib.sha256(path.read_bytes()).hexdigest()
+          pathlib.Path(sys.argv[2]).write_text("ios_ipa_artifact_sha256=" + value + "\n", encoding="ascii")
           PY
-
-      - name: Retain signed candidates, symbols, SBOM, and release evidence
+      - name: Remove Apple-only signing material
+        id: ios_signing_cleanup
+        if: always()
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          HOME: ${{ runner.temp }}/ios-signer-home
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          PROFILE_UUID: ${{ steps.apple_signing.outputs.profile_uuid }}
+        run: |
+          /usr/bin/security delete-keychain "$RUNNER_TEMP/apple-signing/pakperk-release.keychain-db" >/dev/null 2>&1 || true
+          /bin/rm -f \
+            "$RUNNER_TEMP/apple-signing/distribution.p12" \
+            "$RUNNER_TEMP/apple-signing/profile.mobileprovision" \
+            "$RUNNER_TEMP/apple-signing/profile.plist" \
+            "$RUNNER_TEMP/ExportOptions.plist" \
+            "$GITHUB_WORKSPACE/mobile/ios/Flutter/LocalSigning.xcconfig"
+          if [[ "$PROFILE_UUID" =~ ^[A-Fa-f0-9-]{36}$ ]]; then
+            /bin/rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          fi
+          /bin/rmdir "$RUNNER_TEMP/apple-signing" >/dev/null 2>&1 || true
+          /bin/rmdir "$HOME/Library/MobileDevice/Provisioning Profiles" >/dev/null 2>&1 || true
+          /bin/rmdir "$HOME/Library/MobileDevice" >/dev/null 2>&1 || true
+          /bin/rmdir "$HOME/Library" >/dev/null 2>&1 || true
+          /bin/rmdir "$HOME" >/dev/null 2>&1 || true
+      - name: Retain isolated signed iOS candidate
+        id: ios_candidate_upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
         with:
-          name: pakperk-${{ inputs.environment }}-${{ steps.release.outputs.version_name }}-${{ steps.release.outputs.build_number }}-${{ steps.source.outputs.source_revision }}
+          name: signed-ios-${{ inputs.environment }}-${{ needs.candidate-preparation.outputs.version_name }}-${{ needs.candidate-preparation.outputs.build_number }}-${{ steps.source.outputs.source_revision }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/artifacts
-            ${{ runner.temp }}/symbols
+            ${{ runner.temp }}/symbols/ios
             ${{ runner.temp }}/native-symbols
-            ${{ runner.temp }}/evidence
-            ${{ runner.temp }}/release-sha256.txt
+            ${{ runner.temp }}/evidence/apple-installed-identity.txt
+            ${{ runner.temp }}/evidence/ios-retained-digest.txt
+            ${{ runner.temp }}/evidence/ios-flutter-toolchain.json
+            ${{ runner.temp }}/evidence/ios-native-toolchain.txt
+            ${{ runner.temp }}/evidence/ios-prepared-config-boundary.json
+          if-no-files-found: error
+          retention-days: 1
+
+  signed-candidate:
+    name: ${{ inputs.environment }} signed candidate
+    needs: [candidate-preparation, android-signed-candidate, ios-signed-candidate]
+    runs-on: macos-26
+    timeout-minutes: 45
+    outputs:
+      artifact_digest: ${{ steps.signed_candidate_upload.outputs.artifact-digest }}
+      artifact_id: ${{ steps.signed_candidate_upload.outputs.artifact-id }}
+      build_number: ${{ needs.candidate-preparation.outputs.build_number }}
+      bundle_id: ${{ needs.candidate-preparation.outputs.bundle_id }}
+      candidate_id: ${{ steps.manifests.outputs.candidate_id }}
+      provenance_id: ${{ steps.manifests.outputs.provenance_id }}
+      source_revision: ${{ needs.candidate-preparation.outputs.source_revision }}
+      version_name: ${{ needs.candidate-preparation.outputs.version_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_revision }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify credential-free aggregation identity
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin:/usr/sbin:/sbin
+          BASH_ENV: /dev/null
+          ENV: /dev/null
+          REQUESTED_REVISION: ${{ inputs.source_revision }}
+          WORKFLOW_REVISION: ${{ github.workflow_sha }}
+          PREPARED_SOURCE_REVISION: ${{ needs.candidate-preparation.outputs.source_revision }}
+          ANDROID_SOURCE_REVISION: ${{ needs.android-signed-candidate.outputs.source_revision }}
+          IOS_SOURCE_REVISION: ${{ needs.ios-signed-candidate.outputs.source_revision }}
+          PREPARED_ARTIFACT_ID: ${{ needs.candidate-preparation.outputs.prepared_artifact_id }}
+          ANDROID_ARTIFACT_ID: ${{ needs.android-signed-candidate.outputs.artifact_id }}
+          IOS_ARTIFACT_ID: ${{ needs.ios-signed-candidate.outputs.artifact_id }}
+          PREPARED_ARTIFACT_DIGEST: ${{ needs.candidate-preparation.outputs.prepared_artifact_digest }}
+          ANDROID_ARTIFACT_DIGEST: ${{ needs.android-signed-candidate.outputs.artifact_digest }}
+          IOS_ARTIFACT_DIGEST: ${{ needs.ios-signed-candidate.outputs.artifact_digest }}
+          PREPARED_BUILD_NUMBER: ${{ needs.candidate-preparation.outputs.build_number }}
+          ANDROID_BUILD_NUMBER: ${{ needs.android-signed-candidate.outputs.build_number }}
+          IOS_BUILD_NUMBER: ${{ needs.ios-signed-candidate.outputs.build_number }}
+          PREPARED_BUNDLE_ID: ${{ needs.candidate-preparation.outputs.bundle_id }}
+          ANDROID_BUNDLE_ID: ${{ needs.android-signed-candidate.outputs.bundle_id }}
+          IOS_BUNDLE_ID: ${{ needs.ios-signed-candidate.outputs.bundle_id }}
+          PREPARED_VERSION_NAME: ${{ needs.candidate-preparation.outputs.version_name }}
+          ANDROID_VERSION_NAME: ${{ needs.android-signed-candidate.outputs.version_name }}
+          IOS_VERSION_NAME: ${{ needs.ios-signed-candidate.outputs.version_name }}
+        run: |
+          checked_out="$(/usr/bin/git rev-parse HEAD)"
+          if [[ "$checked_out" != "$REQUESTED_REVISION" || \
+                "$checked_out" != "$WORKFLOW_REVISION" || \
+                "$checked_out" != "$PREPARED_SOURCE_REVISION" || \
+                "$checked_out" != "$ANDROID_SOURCE_REVISION" || \
+                "$checked_out" != "$IOS_SOURCE_REVISION" ]] || \
+             ! /usr/bin/git merge-base --is-ancestor "$checked_out" origin/main; then
+            echo "Credential-free aggregation source identity is invalid." >&2
+            exit 1
+          fi
+          for value in "$PREPARED_ARTIFACT_ID" "$ANDROID_ARTIFACT_ID" "$IOS_ARTIFACT_ID"; do
+            [[ "$value" =~ ^[1-9][0-9]{0,19}$ ]] || exit 1
+          done
+          [[ "$PREPARED_ARTIFACT_ID" != "$ANDROID_ARTIFACT_ID" && \
+             "$PREPARED_ARTIFACT_ID" != "$IOS_ARTIFACT_ID" && \
+             "$ANDROID_ARTIFACT_ID" != "$IOS_ARTIFACT_ID" ]] || exit 1
+          for value in "$PREPARED_ARTIFACT_DIGEST" "$ANDROID_ARTIFACT_DIGEST" "$IOS_ARTIFACT_DIGEST"; do
+            [[ "$value" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          done
+          [[ "$PREPARED_BUILD_NUMBER" == "$ANDROID_BUILD_NUMBER" && \
+             "$PREPARED_BUILD_NUMBER" == "$IOS_BUILD_NUMBER" && \
+             "$PREPARED_BUNDLE_ID" == "$ANDROID_BUNDLE_ID" && \
+             "$PREPARED_BUNDLE_ID" == "$IOS_BUNDLE_ID" && \
+             "$PREPARED_VERSION_NAME" == "$ANDROID_VERSION_NAME" && \
+             "$PREPARED_VERSION_NAME" == "$IOS_VERSION_NAME" ]] || exit 1
+      - name: Download immutable prepared config for aggregation
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        env:
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        with:
+          artifact-ids: ${{ needs.candidate-preparation.outputs.prepared_artifact_id }}
+          path: ${{ runner.temp }}/aggregate-prepared
+          merge-multiple: true
+          digest-mismatch: error
+      - name: Download immutable Android signer result for aggregation
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        env:
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        with:
+          artifact-ids: ${{ needs.android-signed-candidate.outputs.artifact_id }}
+          path: ${{ runner.temp }}/aggregate-android
+          merge-multiple: true
+          digest-mismatch: error
+      - name: Download immutable iOS signer result for aggregation
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        env:
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        with:
+          artifact-ids: ${{ needs.ios-signed-candidate.outputs.artifact_id }}
+          path: ${{ runner.temp }}/aggregate-ios
+          merge-multiple: true
+          digest-mismatch: error
+      - name: Assemble canonical credential-free signed candidate
+        id: manifests
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin:/usr/sbin:/sbin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+        run: |
+          assembler_sha256="$(/usr/bin/shasum -a 256 \
+            "$GITHUB_WORKSPACE/scripts/assemble_mobile_signed_candidate.py")"
+          [[ "${assembler_sha256%% *}" == \
+            "863011bef3cc83b1b15c0d9dd74dfac57d100a4926bd24d881736bd699b034bb" ]] || exit 1
+          /usr/bin/python3 -I \
+            "$GITHUB_WORKSPACE/scripts/assemble_mobile_signed_candidate.py" assemble \
+            --prepared-root "$RUNNER_TEMP/aggregate-prepared" \
+            --android-root "$RUNNER_TEMP/aggregate-android" \
+            --ios-root "$RUNNER_TEMP/aggregate-ios" \
+            --output-root "$RUNNER_TEMP/release-candidate" \
+            --environment "${{ inputs.environment }}" \
+            --source-revision "${{ needs.candidate-preparation.outputs.source_revision }}" \
+            --workflow-sha "${{ github.workflow_sha }}" \
+            --app-version "${{ needs.candidate-preparation.outputs.version_name }}" \
+            --android-version-name "${{ needs.candidate-preparation.outputs.android_version_name }}" \
+            --build-number "${{ needs.candidate-preparation.outputs.build_number }}" \
+            --application-id "${{ needs.candidate-preparation.outputs.bundle_id }}" \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --prepared-artifact-id "${{ needs.candidate-preparation.outputs.prepared_artifact_id }}" \
+            --prepared-artifact-digest "${{ needs.candidate-preparation.outputs.prepared_artifact_digest }}" \
+            --android-artifact-id "${{ needs.android-signed-candidate.outputs.artifact_id }}" \
+            --android-artifact-digest "${{ needs.android-signed-candidate.outputs.artifact_digest }}" \
+            --ios-artifact-id "${{ needs.ios-signed-candidate.outputs.artifact_id }}" \
+            --ios-artifact-digest "${{ needs.ios-signed-candidate.outputs.artifact_digest }}" \
+            --config-sha256 "${{ needs.candidate-preparation.outputs.prepared_config_sha256 }}" \
+            --feature-evidence-sha256 "${{ needs.candidate-preparation.outputs.prepared_feature_evidence_sha256 }}" \
+            --github-output "$GITHUB_OUTPUT" \
+            --github-step-summary "$GITHUB_STEP_SUMMARY"
+      - name: Retain canonical signed candidate
+        id: signed_candidate_upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+        with:
+          name: pakperk-${{ inputs.environment }}-${{ needs.candidate-preparation.outputs.version_name }}-${{ needs.candidate-preparation.outputs.build_number }}-${{ needs.candidate-preparation.outputs.source_revision }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-candidate
+          if-no-files-found: error
+          retention-days: 90
+      - name: Revalidate canonical candidate after retention
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin:/usr/sbin:/sbin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+        run: |
+          assembler_sha256="$(/usr/bin/shasum -a 256 \
+            "$GITHUB_WORKSPACE/scripts/assemble_mobile_signed_candidate.py")"
+          [[ "${assembler_sha256%% *}" == \
+            "863011bef3cc83b1b15c0d9dd74dfac57d100a4926bd24d881736bd699b034bb" ]] || exit 1
+          /usr/bin/python3 -I \
+            "$GITHUB_WORKSPACE/scripts/assemble_mobile_signed_candidate.py" verify \
+            --root "$RUNNER_TEMP/release-candidate" \
+            --candidate-id "${{ steps.manifests.outputs.candidate_id }}" \
+            --provenance-id "${{ steps.manifests.outputs.provenance_id }}"
+
+  store-client-bootstrap:
+    name: isolated store-client bootstrap
+    needs: signed-candidate
+    if: inputs.upload_to_stores
+    runs-on: macos-26
+    timeout-minutes: 45
+    outputs:
+      archive_artifact_digest: ${{ steps.store_client_archive_upload.outputs.artifact-digest }}
+      archive_artifact_id: ${{ steps.store_client_archive_upload.outputs.artifact-id }}
+      archive_sha256: ${{ steps.store_client_archive.outputs.archive_sha256 }}
+      bundle_sha256: ${{ steps.store_client.outputs.bundle_bin_sha256 }}
+      tree_sha256: ${{ steps.store_client.outputs.tree_sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_revision }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify isolated store-client bootstrap source
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          BASH_ENV: /dev/null
+          CANDIDATE_SOURCE_REVISION: ${{ needs.signed-candidate.outputs.source_revision }}
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+          WORKFLOW_REVISION: ${{ github.workflow_sha }}
+        run: |
+          source_revision="$(/usr/bin/git rev-parse HEAD)"
+          if [[ "$source_revision" != "$WORKFLOW_REVISION" || \
+                "$source_revision" != "$CANDIDATE_SOURCE_REVISION" ]] || \
+             ! /usr/bin/git merge-base --is-ancestor "$source_revision" origin/main; then
+            echo "Store-client bootstrap source identity is invalid." >&2
+            exit 1
+          fi
+
+      - name: Select and verify bootstrap Ruby
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+        run: |
+          ruby_engine="$(ruby -e 'print RUBY_ENGINE')"
+          ruby_version="$(ruby -e 'print RUBY_VERSION')"
+          rubygems_version="$(gem --version)"
+          if [[ "$ruby_engine" != "ruby" || "$ruby_version" != "3.4.10" || \
+                "$rubygems_version" != "4.0.17" ]]; then
+            echo "Store-client bootstrap Ruby toolchain is not reviewed." >&2
+            exit 1
+          fi
+
+      - name: Capture bootstrap runner paths
+        id: credentialed_runtime
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+        run: |
+          runtime_capture_sha256="$(/usr/bin/shasum -a 256 \
+            "$GITHUB_WORKSPACE/scripts/capture_mobile_credentialed_runtime.py")"
+          if [[ "${runtime_capture_sha256%% *}" != \
+                "2d51f03bd21f2afa2af0396e801e0e950172210814a229ca50df67c5a8d135cd" ]]; then
+            echo "Credentialed runtime capture helper changed after source review." >&2
+            exit 1
+          fi
+          /usr/bin/git --no-pager diff --no-ext-diff --exit-code HEAD -- \
+            scripts/capture_mobile_credentialed_runtime.py
+          /usr/bin/python3 -I \
+            "$GITHUB_WORKSPACE/scripts/capture_mobile_credentialed_runtime.py" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Prepare bootstrap store client
+        id: store_client
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: ${{ steps.credentialed_runtime.outputs.reviewed_path }}
+          HOME: ${{ steps.credentialed_runtime.outputs.real_home }}
+          ALL_PROXY: ""
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          CURL_HOME: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          GEM_HOME: ""
+          GEM_PATH: ""
+          HTTPS_PROXY: ""
+          HTTP_PROXY: ""
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NETRC: /dev/null
+          NO_PROXY: "*"
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYGEMS_GEMDEPS: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+          all_proxy: ""
+          http_proxy: ""
+          https_proxy: ""
+          no_proxy: "*"
+        run: |
+          preparer_sha256="$(/usr/bin/shasum -a 256 \
+            "$GITHUB_WORKSPACE/scripts/prepare_mobile_store_client.sh")"
+          if [[ "${preparer_sha256%% *}" != \
+                "2346df0d861df39b5b0b6f580b6afb49648e9d7f6468c22dd47948f84a0ec076" ]]; then
+            echo "Store-client preparer changed after source review." >&2
+            exit 1
+          fi
+          /bin/bash --noprofile --norc \
+            "$GITHUB_WORKSPACE/scripts/prepare_mobile_store_client.sh" \
+            "$GITHUB_WORKSPACE" "$RUNNER_TEMP" "$GITHUB_OUTPUT" \
+            "${{ steps.credentialed_runtime.outputs.ruby_bin }}" \
+            "${{ steps.credentialed_runtime.outputs.ruby_sha256 }}" \
+            "${{ steps.credentialed_runtime.outputs.gem_bin }}" \
+            "${{ steps.credentialed_runtime.outputs.gem_sha256 }}"
+
+      - name: Package attested store client for isolated transfer
+        id: store_client_archive
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: ${{ steps.credentialed_runtime.outputs.reviewed_path }}
+          HOME: ${{ steps.store_client.outputs.home }}
+          BASH_ENV: /dev/null
+          BUNDLE_APP_CONFIG: ${{ steps.store_client.outputs.bundle_app_config }}
+          BUNDLE_GEMFILE: ${{ steps.store_client.outputs.bundle_gemfile }}
+          BUNDLE_LOCKFILE: ${{ steps.store_client.outputs.bundle_lockfile }}
+          BUNDLE_PATH: ${{ steps.store_client.outputs.bundle_path }}
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEM_HOME: ${{ steps.store_client.outputs.gem_home }}
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PAKPERK_BUNDLE_BIN: ${{ steps.store_client.outputs.bundle_bin }}
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          STORE_CLIENT_BUNDLE_SHA256: ${{ steps.store_client.outputs.bundle_bin_sha256 }}
+          STORE_CLIENT_HOME: ${{ steps.store_client.outputs.home }}
+          STORE_CLIENT_ROOT: ${{ steps.store_client.outputs.root }}
+          STORE_CLIENT_ROOT_DEVICE: ${{ steps.store_client.outputs.root_device }}
+          STORE_CLIENT_ROOT_INODE: ${{ steps.store_client.outputs.root_inode }}
+          STORE_CLIENT_TREE_SHA256: ${{ steps.store_client.outputs.tree_sha256 }}
+        run: |
+          validator_sha256="$(/usr/bin/shasum -a 256 \
+            "$GITHUB_WORKSPACE/scripts/validate_mobile_store_client.py")"
+          if [[ "${validator_sha256%% *}" != \
+                "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf" ]]; then
+            echo "Store-client validator changed after source review." >&2
+            exit 1
+          fi
+          /usr/bin/python3 -I \
+            "$GITHUB_WORKSPACE/scripts/validate_mobile_store_client.py" verify \
+            --root "$STORE_CLIENT_ROOT" \
+            --root-device "$STORE_CLIENT_ROOT_DEVICE" \
+            --root-inode "$STORE_CLIENT_ROOT_INODE" \
+            --bundle-sha256 "$STORE_CLIENT_BUNDLE_SHA256" \
+            --tree-sha256 "$STORE_CLIENT_TREE_SHA256" \
+            --bundle-bin "$PAKPERK_BUNDLE_BIN" \
+            --gem-home "$GEM_HOME" \
+            --bundle-gemfile "$BUNDLE_GEMFILE" \
+            --bundle-lockfile "$BUNDLE_LOCKFILE" \
+            --bundle-path "$BUNDLE_PATH" \
+            --bundle-app-config "$BUNDLE_APP_CONFIG" \
+            --client-home "$STORE_CLIENT_HOME"
+          transfer_root="$(umask 077; /usr/bin/mktemp -d \
+            "$RUNNER_TEMP/pakperk-store-client-transfer.XXXXXXXXXX")"
+          archive="$transfer_root/store-client.tar.gz"
+          /usr/bin/tar -C "$STORE_CLIENT_ROOT" -czf "$archive" \
+            bundle config download gem-home home manifest
+          /bin/mkdir -m 0700 "$transfer_root/controls"
+          for reviewed in \
+            "2d51f03bd21f2afa2af0396e801e0e950172210814a229ca50df67c5a8d135cd scripts/capture_mobile_credentialed_runtime.py" \
+            "f1f2b989dd433223114c85451147404ad4e65992d1f5a86ed3f3c6937ea1fd3a scripts/extract_mobile_store_client.py" \
+            "61b72373391b5fd8d9ae92e69f5ebd7b03c52d1675eb7be870425e4d1ceef183 scripts/generate_mobile_store_upload_attempt.py" \
+            "aaf319c661faf1b7eb775b50e7f842c42a7c4d23cbc32a6d8fb2e4c8ff2c2f40 scripts/generate_mobile_store_upload_handoff.py" \
+            "a30ae0bc85b5977cb546af8d9fa8bb311543392dbb9d5b86125de2964afa56e9 scripts/finalize_mobile_signed_release.py" \
+            "2fb30a5ed3341e22254d2e6548d22b9b10e235176317b7b403d48d49d445c3ac scripts/manage_google_play_rollout.rb" \
+            "ee7e55a902bfe4f1f9fe2f933871e44d51c1f8906eff93aad8c8aa6c3f05b68c scripts/manage_app_store_phased_release.rb" \
+            "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4 scripts/materialize_mobile_release_secret.py" \
+            "b6c4597b55db335fc46af14e0ba9c6969e99ca8ec29d43c817d699045fe12498 scripts/prepare_mobile_credentialed_upload.py" \
+            "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107 scripts/validate_mobile_store_candidate.py" \
+            "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93 scripts/validate_mobile_signed_release_run.py" \
+            "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf scripts/validate_mobile_store_client.py" \
+            "df7c9313182c54ae68a3312f720334dc9f524d17973f6a3b1339e8892d778175 mobile/Gemfile.lock"; do
+            expected="${reviewed%% *}"
+            relative="${reviewed#* }"
+            source_hash="$(/usr/bin/shasum -a 256 "$GITHUB_WORKSPACE/$relative")"
+            [[ "${source_hash%% *}" == "$expected" ]] || exit 1
+            destination="$transfer_root/controls/${relative##*/}"
+            /bin/cp "$GITHUB_WORKSPACE/$relative" "$destination"
+            /bin/chmod 0400 "$destination"
+            copied_hash="$(/usr/bin/shasum -a 256 "$destination")"
+            [[ "${copied_hash%% *}" == "$expected" ]] || exit 1
+          done
+          archive_sha256="$(/usr/bin/shasum -a 256 "$archive")"
+          printf 'archive_sha256=%s\n' "${archive_sha256%% *}" >>"$GITHUB_OUTPUT"
+          printf 'archive=%s\n' "$archive" >>"$GITHUB_OUTPUT"
+          printf 'transfer_root=%s\n' "$transfer_root" >>"$GITHUB_OUTPUT"
+
+      - name: Retain attested store-client transfer
+        id: store_client_archive_upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        env:
+          ALL_PROXY: ""
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          HTTPS_PROXY: ""
+          HTTP_PROXY: ""
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          NO_PROXY: "*"
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+          all_proxy: ""
+          http_proxy: ""
+          https_proxy: ""
+          no_proxy: "*"
+        with:
+          name: mobile-store-client-${{ needs.signed-candidate.outputs.source_revision }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.store_client_archive.outputs.transfer_root }}
+          if-no-files-found: error
+          retention-days: 1
+
+  android-store-upload:
+    name: ${{ inputs.environment }} isolated Android store upload
+    needs: [signed-candidate, store-client-bootstrap]
+    if: inputs.upload_to_stores
+    runs-on: macos-26
+    timeout-minutes: 60
+    environment: ${{ inputs.environment }}
+    outputs:
+      evidence_artifact_digest: ${{ steps.android_evidence_upload.outputs.artifact-digest }}
+      evidence_artifact_id: ${{ steps.android_evidence_upload.outputs.artifact-id }}
+    steps:
+      - name: Download immutable Android signed candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        env:
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        with:
+          artifact-ids: ${{ needs.signed-candidate.outputs.artifact_id }}
+          path: ${{ runner.temp }}/release-candidate
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Download attested Android store controls and client
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        env:
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        with:
+          artifact-ids: ${{ needs.store-client-bootstrap.outputs.archive_artifact_id }}
+          path: ${{ runner.temp }}/store-client-transfer
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Re-attest Android candidate controls and client before credentials
+        id: prepared
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          CONTROL_ROOT: ${{ runner.temp }}/store-client-transfer/controls
+          EXPECTED_SOURCE_REVISION: ${{ needs.signed-candidate.outputs.source_revision }}
+          EXPECTED_CANDIDATE_ID: ${{ needs.signed-candidate.outputs.candidate_id }}
+          EXPECTED_PROVENANCE_ID: ${{ needs.signed-candidate.outputs.provenance_id }}
+          EXPECTED_VERSION_NAME: ${{ needs.signed-candidate.outputs.version_name }}
+          EXPECTED_BUILD_NUMBER: ${{ needs.signed-candidate.outputs.build_number }}
+          EXPECTED_BUNDLE_ID: ${{ needs.signed-candidate.outputs.bundle_id }}
+          EXPECTED_CANDIDATE_ARTIFACT_ID: ${{ needs.signed-candidate.outputs.artifact_id }}
+          EXPECTED_CANDIDATE_ARTIFACT_DIGEST: ${{ needs.signed-candidate.outputs.artifact_digest }}
+          EXPECTED_STORE_CLIENT_ARTIFACT_ID: ${{ needs.store-client-bootstrap.outputs.archive_artifact_id }}
+          EXPECTED_STORE_CLIENT_ARTIFACT_DIGEST: ${{ needs.store-client-bootstrap.outputs.archive_artifact_digest }}
+          EXPECTED_ARCHIVE_SHA256: ${{ needs.store-client-bootstrap.outputs.archive_sha256 }}
+          EXPECTED_CLIENT_BUNDLE_SHA256: ${{ needs.store-client-bootstrap.outputs.bundle_sha256 }}
+          EXPECTED_CLIENT_TREE_SHA256: ${{ needs.store-client-bootstrap.outputs.tree_sha256 }}
+        run: |
+          for value in "$EXPECTED_CANDIDATE_ARTIFACT_ID" "$EXPECTED_STORE_CLIENT_ARTIFACT_ID"; do
+            [[ "$value" =~ ^[1-9][0-9]{0,19}$ ]] || exit 1
+          done
+          [[ "$EXPECTED_CANDIDATE_ARTIFACT_ID" != "$EXPECTED_STORE_CLIENT_ARTIFACT_ID" ]] || exit 1
+          for value in "$EXPECTED_CANDIDATE_ARTIFACT_DIGEST" "$EXPECTED_STORE_CLIENT_ARTIFACT_DIGEST"; do
+            [[ "$value" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          done
+          if [[ "$(ruby -e 'print RUBY_ENGINE')" != ruby || \
+                "$(ruby -e 'print RUBY_VERSION')" != 3.4.10 || \
+                "$(gem --version)" != 4.0.17 ]]; then
+            exit 1
+          fi
+          for reviewed in \
+            "2d51f03bd21f2afa2af0396e801e0e950172210814a229ca50df67c5a8d135cd capture_mobile_credentialed_runtime.py" \
+            "f1f2b989dd433223114c85451147404ad4e65992d1f5a86ed3f3c6937ea1fd3a extract_mobile_store_client.py" \
+            "61b72373391b5fd8d9ae92e69f5ebd7b03c52d1675eb7be870425e4d1ceef183 generate_mobile_store_upload_attempt.py" \
+            "2fb30a5ed3341e22254d2e6548d22b9b10e235176317b7b403d48d49d445c3ac manage_google_play_rollout.rb" \
+            "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4 materialize_mobile_release_secret.py" \
+            "b6c4597b55db335fc46af14e0ba9c6969e99ca8ec29d43c817d699045fe12498 prepare_mobile_credentialed_upload.py" \
+            "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107 validate_mobile_store_candidate.py" \
+            "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93 validate_mobile_signed_release_run.py" \
+            "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf validate_mobile_store_client.py"; do
+            expected="${reviewed%% *}"
+            name="${reviewed#* }"
+            observed="$(/usr/bin/shasum -a 256 "$CONTROL_ROOT/$name")"
+            [[ "${observed%% *}" == "$expected" ]] || exit 1
+          done
+          /usr/bin/python3 -I - "$CONTROL_ROOT" \
+            --candidate-root "$RUNNER_TEMP/release-candidate" \
+            --archive "$RUNNER_TEMP/store-client-transfer/store-client.tar.gz" \
+            --temp-root "$RUNNER_TEMP" \
+            --source-revision "$EXPECTED_SOURCE_REVISION" \
+            --candidate-id "$EXPECTED_CANDIDATE_ID" \
+            --provenance-id "$EXPECTED_PROVENANCE_ID" \
+            --version-name "$EXPECTED_VERSION_NAME" \
+            --build-number "$EXPECTED_BUILD_NUMBER" \
+            --bundle-id "$EXPECTED_BUNDLE_ID" \
+            --archive-sha256 "$EXPECTED_ARCHIVE_SHA256" \
+            --bundle-sha256 "$EXPECTED_CLIENT_BUNDLE_SHA256" \
+            --tree-sha256 "$EXPECTED_CLIENT_TREE_SHA256" \
+            --github-output "$GITHUB_OUTPUT" <<'PY'
+          import os, runpy, sys
+          controls = os.path.realpath(sys.argv[1])
+          target = os.path.join(controls, "prepare_mobile_credentialed_upload.py")
+          sys.path.insert(0, controls)
+          sys.argv = [target, *sys.argv[2:]]
+          runpy.run_path(target, run_name="__main__")
+          PY
+
+      - name: Create isolated Android upload evidence root
+        id: android_evidence
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+        run: |
+          root="$(umask 077; /usr/bin/mktemp -d \
+            "$RUNNER_TEMP/pakperk-android-upload-evidence.XXXXXXXXXX")"
+          /bin/chmod 0700 "$root"
+          printf 'root=%s\n' "$root" >>"$GITHUB_OUTPUT"
+
+      - name: Upload Android candidate with Android-only credential
+        id: android_upload
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: ${{ steps.prepared.outputs.reviewed-path }}
+          HOME: ${{ steps.prepared.outputs.client-home }}
+          ALL_PROXY: ""
+          BASH_ENV: /dev/null
+          BUNDLE_APP_CONFIG: ${{ steps.prepared.outputs.bundle-app-config }}
+          BUNDLE_FROZEN: "true"
+          BUNDLE_GEMFILE: ${{ steps.prepared.outputs.bundle-gemfile }}
+          BUNDLE_IGNORE_CONFIG: "true"
+          BUNDLE_LOCKFILE_CHECKSUMS: "true"
+          BUNDLE_PATH: ${{ steps.prepared.outputs.bundle-path }}
+          BUNDLER_VERSION: ${{ steps.prepared.outputs.bundler-version }}
+          CURL_CA_BUNDLE: ""
+          CURL_HOME: ""
+          CONTROL_ROOT: ${{ runner.temp }}/store-client-transfer/controls
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          EVIDENCE_ROOT: ${{ steps.android_evidence.outputs.root }}
+          GEMRC: /dev/null
+          GEM_HOME: ${{ steps.prepared.outputs.gem-home }}
+          GEM_PATH: ${{ steps.prepared.outputs.gem-home }}
+          GOOGLE_PLAY_JSON_BASE64: ${{ secrets.PAKPERK_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}
+          HTTPS_PROXY: ""
+          HTTP_PROXY: ""
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NETRC: /dev/null
+          NO_PROXY: "*"
+          PAKPERK_BUNDLE_BIN: ${{ steps.prepared.outputs.bundle-bin }}
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          REVIEWED_RUBY_BIN: ${{ steps.prepared.outputs.ruby-bin }}
+          REVIEWED_RUBY_SHA256: ${{ steps.prepared.outputs.ruby-sha256 }}
+          RUBYGEMS_GEMDEPS: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+          STORE_CLIENT_BUNDLE_SHA256: ${{ steps.prepared.outputs.bundle-bin-sha256 }}
+          STORE_CLIENT_HOME: ${{ steps.prepared.outputs.client-home }}
+          STORE_CLIENT_ROOT: ${{ steps.prepared.outputs.client-root }}
+          STORE_CLIENT_ROOT_DEVICE: ${{ steps.prepared.outputs.client-root-device }}
+          STORE_CLIENT_ROOT_INODE: ${{ steps.prepared.outputs.client-root-inode }}
+          STORE_CLIENT_TREE_SHA256: ${{ steps.prepared.outputs.client-tree-sha256 }}
+          all_proxy: ""
+          http_proxy: ""
+          https_proxy: ""
+          no_proxy: "*"
+        run: |
+          for reviewed in \
+            "61b72373391b5fd8d9ae92e69f5ebd7b03c52d1675eb7be870425e4d1ceef183 generate_mobile_store_upload_attempt.py" \
+            "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4 materialize_mobile_release_secret.py" \
+            "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107 validate_mobile_store_candidate.py" \
+            "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93 validate_mobile_signed_release_run.py" \
+            "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf validate_mobile_store_client.py"; do
+            expected="${reviewed%% *}"
+            name="${reviewed#* }"
+            observed="$(/usr/bin/shasum -a 256 "$CONTROL_ROOT/$name")"
+            [[ "${observed%% *}" == "$expected" ]] || exit 1
+          done
+          [[ "$(/usr/bin/shasum -a 256 "$REVIEWED_RUBY_BIN" | /usr/bin/awk '{print $1}')" == \
+            "$REVIEWED_RUBY_SHA256" ]] || exit 1
+          /usr/bin/python3 -I \
+            "$CONTROL_ROOT/validate_mobile_store_client.py" verify \
+            --root "$STORE_CLIENT_ROOT" \
+            --root-device "$STORE_CLIENT_ROOT_DEVICE" \
+            --root-inode "$STORE_CLIENT_ROOT_INODE" \
+            --bundle-sha256 "$STORE_CLIENT_BUNDLE_SHA256" \
+            --tree-sha256 "$STORE_CLIENT_TREE_SHA256" \
+            --bundle-bin "$PAKPERK_BUNDLE_BIN" \
+            --gem-home "$GEM_HOME" \
+            --bundle-gemfile "$BUNDLE_GEMFILE" \
+            --bundle-lockfile "$BUNDLE_GEMFILE.lock" \
+            --bundle-path "$BUNDLE_PATH" \
+            --bundle-app-config "$BUNDLE_APP_CONFIG" \
+            --client-home "$STORE_CLIENT_HOME"
+          credential_parent="$(umask 077; /usr/bin/mktemp -d \
+            "$RUNNER_TEMP/pakperk-android-credential.XXXXXXXXXX")"
+          printf 'credential_root=%s\n' "$credential_parent/google-play" >>"$GITHUB_OUTPUT"
+          /usr/bin/python3 -I \
+            "$CONTROL_ROOT/materialize_mobile_release_secret.py" decode \
+            --root "$credential_parent" --directory google-play \
+            --secret GOOGLE_PLAY_JSON_BASE64 google-play.json 131072
+          shopt -s nullglob
+          aabs=("$RUNNER_TEMP"/release-candidate/artifacts/*.aab)
+          [[ ${#aabs[@]} -eq 1 ]] || exit 1
+          aab="${aabs[0]}"
+          /usr/bin/python3 -I - "$CONTROL_ROOT" \
+            --candidate "$RUNNER_TEMP/release-candidate/evidence/mobile-candidate.json" \
+            --artifact "$aab" \
+            --output "$EVIDENCE_ROOT/android-upload-attempt.json" \
+            --platform android \
+            --candidate-id "${{ steps.prepared.outputs.candidate-id }}" \
+            --provenance-id "${{ steps.prepared.outputs.provenance-id }}" \
+            --source-revision "${{ needs.signed-candidate.outputs.source_revision }}" \
+            --app-version "${{ steps.prepared.outputs.version-name }}" \
+            --build-number "${{ steps.prepared.outputs.build-number }}" \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --github-output "$GITHUB_OUTPUT" <<'PY'
+          import os
+          import runpy
+          import sys
+          scripts = os.path.realpath(sys.argv[1])
+          target = os.path.join(scripts, "generate_mobile_store_upload_attempt.py")
+          sys.path.insert(0, scripts)
+          sys.argv = [target, *sys.argv[2:]]
+          runpy.run_path(target, run_name="__main__")
+          PY
+          /usr/bin/env -i PATH="$PATH" HOME="$HOME" TMPDIR="$RUNNER_TEMP" \
+            LANG=en_US.UTF-8 CI=true GITHUB_ACTIONS=true \
+            GEMRC=/dev/null GEM_HOME="$GEM_HOME" GEM_PATH="$GEM_PATH" \
+            RUBYGEMS_GEMDEPS= RUBYLIB= RUBYOPT= \
+            BUNDLE_APP_CONFIG="$BUNDLE_APP_CONFIG" BUNDLE_FROZEN=true \
+            BUNDLE_GEMFILE="$BUNDLE_GEMFILE" BUNDLE_IGNORE_CONFIG=true \
+            BUNDLE_LOCKFILE_CHECKSUMS=true BUNDLE_PATH="$BUNDLE_PATH" \
+            FASTLANE_SKIP_UPDATE_CHECK=1 \
+            "$REVIEWED_RUBY_BIN" "$PAKPERK_BUNDLE_BIN" \
+            "_${BUNDLER_VERSION}_" exec fastlane supply \
+            --aab "$aab" \
+            --package_name "${{ steps.prepared.outputs.bundle-id }}" \
+            --track internal --release_status completed \
+            --json_key "$credential_parent/google-play/google-play.json" \
+            --skip_upload_metadata true --skip_upload_images true \
+            --skip_upload_screenshots true --skip_upload_changelogs true
+
+      - name: Verify isolated Android upload with Google Play
+        id: android_verification
+        if: steps.android_upload.outcome == 'success'
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: ${{ steps.prepared.outputs.reviewed-path }}
+          HOME: ${{ steps.prepared.outputs.client-home }}
+          BASH_ENV: /dev/null
+          BUNDLE_APP_CONFIG: ${{ steps.prepared.outputs.bundle-app-config }}
+          BUNDLE_FROZEN: "true"
+          BUNDLE_GEMFILE: ${{ steps.prepared.outputs.bundle-gemfile }}
+          BUNDLE_IGNORE_CONFIG: "true"
+          BUNDLE_LOCKFILE_CHECKSUMS: "true"
+          BUNDLE_PATH: ${{ steps.prepared.outputs.bundle-path }}
+          BUNDLER_VERSION: ${{ steps.prepared.outputs.bundler-version }}
+          CONTROL_ROOT: ${{ runner.temp }}/store-client-transfer/controls
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          EVIDENCE_ROOT: ${{ steps.android_evidence.outputs.root }}
+          GEMRC: /dev/null
+          GEM_HOME: ${{ steps.prepared.outputs.gem-home }}
+          GEM_PATH: ${{ steps.prepared.outputs.gem-home }}
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PAKPERK_BUNDLE_BIN: ${{ steps.prepared.outputs.bundle-bin }}
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          REVIEWED_RUBY_BIN: ${{ steps.prepared.outputs.ruby-bin }}
+          RUBYGEMS_GEMDEPS: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+        run: |
+          manager="$(/usr/bin/shasum -a 256 "$CONTROL_ROOT/manage_google_play_rollout.rb")"
+          [[ "${manager%% *}" == \
+            "2fb30a5ed3341e22254d2e6548d22b9b10e235176317b7b403d48d49d445c3ac" ]] || exit 1
+          /usr/bin/env -i PATH="$PATH" HOME="$HOME" TMPDIR="$RUNNER_TEMP" \
+            LANG=en_US.UTF-8 CI=true GITHUB_ACTIONS=true \
+            GEMRC=/dev/null GEM_HOME="$GEM_HOME" GEM_PATH="$GEM_PATH" \
+            RUBYGEMS_GEMDEPS= RUBYLIB= RUBYOPT= \
+            BUNDLE_APP_CONFIG="$BUNDLE_APP_CONFIG" BUNDLE_FROZEN=true \
+            BUNDLE_GEMFILE="$BUNDLE_GEMFILE" BUNDLE_IGNORE_CONFIG=true \
+            BUNDLE_LOCKFILE_CHECKSUMS=true BUNDLE_PATH="$BUNDLE_PATH" \
+            "$REVIEWED_RUBY_BIN" "$PAKPERK_BUNDLE_BIN" \
+            "_${BUNDLER_VERSION}_" exec ruby \
+            "$CONTROL_ROOT/manage_google_play_rollout.rb" \
+            --operation verify-upload \
+            --package-name "${{ steps.prepared.outputs.bundle-id }}" \
+            --version-code "${{ steps.prepared.outputs.build-number }}" \
+            --artifact-sha256 "${{ steps.android_upload.outputs.artifact_sha256 }}" \
+            --service-account "${{ steps.android_upload.outputs.credential_root }}/google-play.json" \
+            --output "$EVIDENCE_ROOT/google-upload-verification.json"
+
+      - name: Remove isolated Android credential and client
+        id: android_cleanup
+        if: always()
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+          CREDENTIAL_ROOT: ${{ steps.android_upload.outputs.credential_root }}
+          STORE_CLIENT_ROOT: ${{ steps.prepared.outputs.client-root }}
+        run: |
+          if [[ -n "$CREDENTIAL_ROOT" ]]; then
+            /bin/rm -rf -- "$CREDENTIAL_ROOT"
+            /bin/rmdir "${CREDENTIAL_ROOT%/*}" >/dev/null 2>&1 || true
+          fi
+          if [[ -n "$STORE_CLIENT_ROOT" ]]; then
+            /usr/bin/python3 -I - "$RUNNER_TEMP" "$STORE_CLIENT_ROOT" <<'PY'
+          import os, stat, sys
+          parent, target = os.path.realpath(sys.argv[1]), os.path.realpath(sys.argv[2])
+          metadata = os.lstat(target)
+          if target != sys.argv[2] or os.path.commonpath((parent, target)) != parent or not os.path.basename(target).startswith("pakperk-store-client.") or not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_mode & 0o077:
+              raise SystemExit("unsafe store-client cleanup target")
+          PY
+            /bin/rm -rf -- "$STORE_CLIENT_ROOT"
+          fi
+
+      - name: Record isolated Android upload outcome
+        id: android_outcome
+        if: always()
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          EVIDENCE_ROOT: ${{ steps.android_evidence.outputs.root }}
+          CANDIDATE_ARTIFACT_ID: ${{ needs.signed-candidate.outputs.artifact_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ needs.signed-candidate.outputs.artifact_digest }}
+          STORE_CLIENT_ARTIFACT_ID: ${{ needs.store-client-bootstrap.outputs.archive_artifact_id }}
+          STORE_CLIENT_ARTIFACT_DIGEST: ${{ needs.store-client-bootstrap.outputs.archive_artifact_digest }}
+          CANDIDATE_ID: ${{ needs.signed-candidate.outputs.candidate_id }}
+          PROVENANCE_ID: ${{ needs.signed-candidate.outputs.provenance_id }}
+          SOURCE_REVISION: ${{ needs.signed-candidate.outputs.source_revision }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          UPLOAD_OUTCOME: ${{ steps.android_upload.outcome }}
+          VERIFICATION_OUTCOME: ${{ steps.android_verification.outcome }}
+          CLEANUP_OUTCOME: ${{ steps.android_cleanup.outcome }}
+        run: |
+          /usr/bin/python3 -I - <<'PY'
+          import json, os, pathlib
+          steps = {
+              "cleanup": os.environ["CLEANUP_OUTCOME"],
+              "upload": os.environ["UPLOAD_OUTCOME"],
+              "verification": os.environ["VERIFICATION_OUTCOME"],
+          }
+          value = {
+              "candidate_artifact": {
+                  "digest": os.environ["CANDIDATE_ARTIFACT_DIGEST"],
+                  "id": int(os.environ["CANDIDATE_ARTIFACT_ID"]),
+              },
+              "candidate_id": os.environ["CANDIDATE_ID"],
+              "classification": "isolated mobile store upload platform outcome",
+              "platform": "android",
+              "provenance_id": os.environ["PROVENANCE_ID"],
+              "requested": True,
+              "run": {"attempt": os.environ["RUN_ATTEMPT"], "id": os.environ["RUN_ID"]},
+              "schema": 1,
+              "source_revision": os.environ["SOURCE_REVISION"],
+              "status": "succeeded_verified" if set(steps.values()) == {"success"} else "failed",
+              "steps": steps,
+              "store_client_artifact": {
+                  "digest": os.environ["STORE_CLIENT_ARTIFACT_DIGEST"],
+                  "id": int(os.environ["STORE_CLIENT_ARTIFACT_ID"]),
+              },
+          }
+          path = pathlib.Path(os.environ["EVIDENCE_ROOT"], "android-platform-outcome.json")
+          path.write_text(json.dumps(value, separators=(",", ":"), sort_keys=True) + "\n", encoding="ascii")
+          path.chmod(0o600)
+          PY
+
+      - name: Retain isolated Android upload evidence
+        id: android_evidence_upload
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+        with:
+          name: mobile-android-upload-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.android_evidence.outputs.root }}
           if-no-files-found: error
           retention-days: 90
 
-      - name: Revalidate retained release evidence after upload
-        shell: bash
-        working-directory: ${{ runner.temp }}
-        run: /usr/bin/shasum -a 256 --check release-sha256.txt
-
-      - name: Upload Android candidate to Google Play internal track
-        if: inputs.upload_to_stores
-        shell: bash
+      - name: Fail isolated Android upload after evidence retention
+        if: always()
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         env:
-          GOOGLE_PLAY_JSON_BASE64: ${{ secrets.PAKPERK_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}
+          BASH_ENV: /dev/null
+          UPLOAD_OUTCOME: ${{ steps.android_upload.outcome }}
+          VERIFICATION_OUTCOME: ${{ steps.android_verification.outcome }}
+          CLEANUP_OUTCOME: ${{ steps.android_cleanup.outcome }}
+          OUTCOME_OUTCOME: ${{ steps.android_outcome.outcome }}
+          RETENTION_OUTCOME: ${{ steps.android_evidence_upload.outcome }}
         run: |
-          python3 - <<'PY'
-          import base64, os, pathlib
-          pathlib.Path(os.environ["RUNNER_TEMP"], "google-play.json").write_bytes(
-              base64.b64decode(os.environ["GOOGLE_PLAY_JSON_BASE64"], validate=True)
-          )
-          PY
-          chmod 0600 "$RUNNER_TEMP/google-play.json"
-          shopt -s nullglob
-          aabs=("$RUNNER_TEMP"/artifacts/*.aab)
-          if [[ ${#aabs[@]} -ne 1 ]]; then
-            echo "Expected exactly one retained AAB." >&2
+          [[ "$UPLOAD_OUTCOME" == success && "$VERIFICATION_OUTCOME" == success && \
+             "$CLEANUP_OUTCOME" == success && "$OUTCOME_OUTCOME" == success && \
+             "$RETENTION_OUTCOME" == success ]]
+
+  ios-store-upload:
+    name: ${{ inputs.environment }} isolated iOS store upload
+    needs: [signed-candidate, store-client-bootstrap]
+    if: inputs.upload_to_stores
+    runs-on: macos-26
+    timeout-minutes: 60
+    environment: ${{ inputs.environment }}
+    outputs:
+      evidence_artifact_digest: ${{ steps.ios_evidence_upload.outputs.artifact-digest }}
+      evidence_artifact_id: ${{ steps.ios_evidence_upload.outputs.artifact-id }}
+    steps:
+      - name: Download immutable iOS signed candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        env:
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        with:
+          artifact-ids: ${{ needs.signed-candidate.outputs.artifact_id }}
+          path: ${{ runner.temp }}/release-candidate
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Download attested iOS store controls and client
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        env:
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        with:
+          artifact-ids: ${{ needs.store-client-bootstrap.outputs.archive_artifact_id }}
+          path: ${{ runner.temp }}/store-client-transfer
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Re-attest iOS candidate controls and client before credentials
+        id: prepared
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          CONTROL_ROOT: ${{ runner.temp }}/store-client-transfer/controls
+          EXPECTED_SOURCE_REVISION: ${{ needs.signed-candidate.outputs.source_revision }}
+          EXPECTED_CANDIDATE_ID: ${{ needs.signed-candidate.outputs.candidate_id }}
+          EXPECTED_PROVENANCE_ID: ${{ needs.signed-candidate.outputs.provenance_id }}
+          EXPECTED_VERSION_NAME: ${{ needs.signed-candidate.outputs.version_name }}
+          EXPECTED_BUILD_NUMBER: ${{ needs.signed-candidate.outputs.build_number }}
+          EXPECTED_BUNDLE_ID: ${{ needs.signed-candidate.outputs.bundle_id }}
+          EXPECTED_CANDIDATE_ARTIFACT_ID: ${{ needs.signed-candidate.outputs.artifact_id }}
+          EXPECTED_CANDIDATE_ARTIFACT_DIGEST: ${{ needs.signed-candidate.outputs.artifact_digest }}
+          EXPECTED_STORE_CLIENT_ARTIFACT_ID: ${{ needs.store-client-bootstrap.outputs.archive_artifact_id }}
+          EXPECTED_STORE_CLIENT_ARTIFACT_DIGEST: ${{ needs.store-client-bootstrap.outputs.archive_artifact_digest }}
+          EXPECTED_ARCHIVE_SHA256: ${{ needs.store-client-bootstrap.outputs.archive_sha256 }}
+          EXPECTED_CLIENT_BUNDLE_SHA256: ${{ needs.store-client-bootstrap.outputs.bundle_sha256 }}
+          EXPECTED_CLIENT_TREE_SHA256: ${{ needs.store-client-bootstrap.outputs.tree_sha256 }}
+        run: |
+          for value in "$EXPECTED_CANDIDATE_ARTIFACT_ID" "$EXPECTED_STORE_CLIENT_ARTIFACT_ID"; do
+            [[ "$value" =~ ^[1-9][0-9]{0,19}$ ]] || exit 1
+          done
+          [[ "$EXPECTED_CANDIDATE_ARTIFACT_ID" != "$EXPECTED_STORE_CLIENT_ARTIFACT_ID" ]] || exit 1
+          for value in "$EXPECTED_CANDIDATE_ARTIFACT_DIGEST" "$EXPECTED_STORE_CLIENT_ARTIFACT_DIGEST"; do
+            [[ "$value" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          done
+          if [[ "$(ruby -e 'print RUBY_ENGINE')" != ruby || \
+                "$(ruby -e 'print RUBY_VERSION')" != 3.4.10 || \
+                "$(gem --version)" != 4.0.17 ]]; then
             exit 1
           fi
-          aab="${aabs[0]}"
-          "$PAKPERK_BUNDLE_BIN" "_${BUNDLER_VERSION}_" exec fastlane supply \
-            --aab "$aab" \
-            --package_name "${{ steps.release.outputs.bundle_id }}" \
-            --track internal \
-            --release_status completed \
-            --json_key "$RUNNER_TEMP/google-play.json" \
-            --skip_upload_metadata true \
-            --skip_upload_images true \
-            --skip_upload_screenshots true \
-            --skip_upload_changelogs true
+          for reviewed in \
+            "2d51f03bd21f2afa2af0396e801e0e950172210814a229ca50df67c5a8d135cd capture_mobile_credentialed_runtime.py" \
+            "f1f2b989dd433223114c85451147404ad4e65992d1f5a86ed3f3c6937ea1fd3a extract_mobile_store_client.py" \
+            "61b72373391b5fd8d9ae92e69f5ebd7b03c52d1675eb7be870425e4d1ceef183 generate_mobile_store_upload_attempt.py" \
+            "ee7e55a902bfe4f1f9fe2f933871e44d51c1f8906eff93aad8c8aa6c3f05b68c manage_app_store_phased_release.rb" \
+            "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4 materialize_mobile_release_secret.py" \
+            "b6c4597b55db335fc46af14e0ba9c6969e99ca8ec29d43c817d699045fe12498 prepare_mobile_credentialed_upload.py" \
+            "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107 validate_mobile_store_candidate.py" \
+            "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93 validate_mobile_signed_release_run.py" \
+            "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf validate_mobile_store_client.py"; do
+            expected="${reviewed%% *}"
+            name="${reviewed#* }"
+            observed="$(/usr/bin/shasum -a 256 "$CONTROL_ROOT/$name")"
+            [[ "${observed%% *}" == "$expected" ]] || exit 1
+          done
+          /usr/bin/python3 -I - "$CONTROL_ROOT" \
+            --candidate-root "$RUNNER_TEMP/release-candidate" \
+            --archive "$RUNNER_TEMP/store-client-transfer/store-client.tar.gz" \
+            --temp-root "$RUNNER_TEMP" \
+            --source-revision "$EXPECTED_SOURCE_REVISION" \
+            --candidate-id "$EXPECTED_CANDIDATE_ID" \
+            --provenance-id "$EXPECTED_PROVENANCE_ID" \
+            --version-name "$EXPECTED_VERSION_NAME" \
+            --build-number "$EXPECTED_BUILD_NUMBER" \
+            --bundle-id "$EXPECTED_BUNDLE_ID" \
+            --archive-sha256 "$EXPECTED_ARCHIVE_SHA256" \
+            --bundle-sha256 "$EXPECTED_CLIENT_BUNDLE_SHA256" \
+            --tree-sha256 "$EXPECTED_CLIENT_TREE_SHA256" \
+            --github-output "$GITHUB_OUTPUT" <<'PY'
+          import os, runpy, sys
+          controls = os.path.realpath(sys.argv[1])
+          target = os.path.join(controls, "prepare_mobile_credentialed_upload.py")
+          sys.path.insert(0, controls)
+          sys.argv = [target, *sys.argv[2:]]
+          runpy.run_path(target, run_name="__main__")
+          PY
 
-      - name: Upload iOS candidate to TestFlight
-        if: inputs.upload_to_stores
-        shell: bash
+      - name: Create isolated iOS upload evidence root
+        id: ios_evidence
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+        run: |
+          root="$(umask 077; /usr/bin/mktemp -d \
+            "$RUNNER_TEMP/pakperk-ios-upload-evidence.XXXXXXXXXX")"
+          /bin/chmod 0700 "$root"
+          printf 'root=%s\n' "$root" >>"$GITHUB_OUTPUT"
+
+      - name: Upload and verify iOS candidate with iOS-only credentials
+        id: ios_upload
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: ${{ steps.prepared.outputs.reviewed-path }}
+          HOME: ${{ steps.prepared.outputs.client-home }}
+          ALL_PROXY: ""
           APP_STORE_ISSUER_ID: ${{ secrets.PAKPERK_APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_KEY_ID: ${{ secrets.PAKPERK_APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_KEY_BASE64: ${{ secrets.PAKPERK_APP_STORE_CONNECT_PRIVATE_KEY_BASE64 }}
+          BASH_ENV: /dev/null
+          BUNDLE_APP_CONFIG: ${{ steps.prepared.outputs.bundle-app-config }}
+          BUNDLE_FROZEN: "true"
+          BUNDLE_GEMFILE: ${{ steps.prepared.outputs.bundle-gemfile }}
+          BUNDLE_IGNORE_CONFIG: "true"
+          BUNDLE_LOCKFILE_CHECKSUMS: "true"
+          BUNDLE_PATH: ${{ steps.prepared.outputs.bundle-path }}
+          BUNDLER_VERSION: ${{ steps.prepared.outputs.bundler-version }}
+          CURL_CA_BUNDLE: ""
+          CURL_HOME: ""
+          CONTROL_ROOT: ${{ runner.temp }}/store-client-transfer/controls
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          EVIDENCE_ROOT: ${{ steps.ios_evidence.outputs.root }}
+          GEMRC: /dev/null
+          GEM_HOME: ${{ steps.prepared.outputs.gem-home }}
+          GEM_PATH: ${{ steps.prepared.outputs.gem-home }}
+          HTTPS_PROXY: ""
+          HTTP_PROXY: ""
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NETRC: /dev/null
+          NO_PROXY: "*"
+          PAKPERK_BUNDLE_BIN: ${{ steps.prepared.outputs.bundle-bin }}
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          REVIEWED_RUBY_BIN: ${{ steps.prepared.outputs.ruby-bin }}
+          REVIEWED_RUBY_SHA256: ${{ steps.prepared.outputs.ruby-sha256 }}
+          RUBYGEMS_GEMDEPS: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+          STORE_CLIENT_BUNDLE_SHA256: ${{ steps.prepared.outputs.bundle-bin-sha256 }}
+          STORE_CLIENT_HOME: ${{ steps.prepared.outputs.client-home }}
+          STORE_CLIENT_ROOT: ${{ steps.prepared.outputs.client-root }}
+          STORE_CLIENT_ROOT_DEVICE: ${{ steps.prepared.outputs.client-root-device }}
+          STORE_CLIENT_ROOT_INODE: ${{ steps.prepared.outputs.client-root-inode }}
+          STORE_CLIENT_TREE_SHA256: ${{ steps.prepared.outputs.client-tree-sha256 }}
+          all_proxy: ""
+          http_proxy: ""
+          https_proxy: ""
+          no_proxy: "*"
         run: |
-          key_dir="$HOME/.appstoreconnect/private_keys"
-          mkdir -p "$key_dir"
-          export APP_STORE_KEY_PATH="$key_dir/AuthKey_${APP_STORE_KEY_ID}.p8"
-          python3 - <<'PY'
-          import base64, os, pathlib
-          pathlib.Path(os.environ["APP_STORE_KEY_PATH"]).write_bytes(
-              base64.b64decode(os.environ["APP_STORE_KEY_BASE64"], validate=True)
-          )
-          PY
-          chmod 0600 "$APP_STORE_KEY_PATH"
-          shopt -s nullglob
-          ipas=("$RUNNER_TEMP"/artifacts/*.ipa)
-          if [[ ${#ipas[@]} -ne 1 ]]; then
-            echo "Expected exactly one retained IPA." >&2
+          for reviewed in \
+            "61b72373391b5fd8d9ae92e69f5ebd7b03c52d1675eb7be870425e4d1ceef183 generate_mobile_store_upload_attempt.py" \
+            "ee7e55a902bfe4f1f9fe2f933871e44d51c1f8906eff93aad8c8aa6c3f05b68c manage_app_store_phased_release.rb" \
+            "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4 materialize_mobile_release_secret.py" \
+            "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107 validate_mobile_store_candidate.py" \
+            "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93 validate_mobile_signed_release_run.py" \
+            "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf validate_mobile_store_client.py"; do
+            expected="${reviewed%% *}"
+            name="${reviewed#* }"
+            observed="$(/usr/bin/shasum -a 256 "$CONTROL_ROOT/$name")"
+            [[ "${observed%% *}" == "$expected" ]] || exit 1
+          done
+          [[ "$(/usr/bin/shasum -a 256 "$REVIEWED_RUBY_BIN" | /usr/bin/awk '{print $1}')" == \
+            "$REVIEWED_RUBY_SHA256" ]] || exit 1
+          /usr/bin/python3 -I \
+            "$CONTROL_ROOT/validate_mobile_store_client.py" verify \
+            --root "$STORE_CLIENT_ROOT" \
+            --root-device "$STORE_CLIENT_ROOT_DEVICE" \
+            --root-inode "$STORE_CLIENT_ROOT_INODE" \
+            --bundle-sha256 "$STORE_CLIENT_BUNDLE_SHA256" \
+            --tree-sha256 "$STORE_CLIENT_TREE_SHA256" \
+            --bundle-bin "$PAKPERK_BUNDLE_BIN" \
+            --gem-home "$GEM_HOME" \
+            --bundle-gemfile "$BUNDLE_GEMFILE" \
+            --bundle-lockfile "$BUNDLE_GEMFILE.lock" \
+            --bundle-path "$BUNDLE_PATH" \
+            --bundle-app-config "$BUNDLE_APP_CONFIG" \
+            --client-home "$STORE_CLIENT_HOME"
+          if ! [[ "$APP_STORE_ISSUER_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || \
+             ! [[ "$APP_STORE_KEY_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo "App Store credential identity is malformed." >&2
             exit 1
           fi
+          credential_parent="$(umask 077; /usr/bin/mktemp -d \
+            "$RUNNER_TEMP/pakperk-ios-credential.XXXXXXXXXX")"
+          printf 'credential_root=%s\n' "$credential_parent/app-store" >>"$GITHUB_OUTPUT"
+          /usr/bin/python3 -I \
+            "$CONTROL_ROOT/materialize_mobile_release_secret.py" decode \
+            --root "$credential_parent" --directory app-store \
+            --secret APP_STORE_KEY_BASE64 app-store-key.p8 32768
+          shopt -s nullglob
+          ipas=("$RUNNER_TEMP"/release-candidate/artifacts/*.ipa)
+          [[ ${#ipas[@]} -eq 1 ]] || exit 1
           ipa="${ipas[0]}"
-          xcrun altool --upload-app --type ios --file "$ipa" \
-            --apiKey "$APP_STORE_KEY_ID" --apiIssuer "$APP_STORE_ISSUER_ID"
+          /usr/bin/python3 -I - "$CONTROL_ROOT" \
+            --candidate "$RUNNER_TEMP/release-candidate/evidence/mobile-candidate.json" \
+            --artifact "$ipa" \
+            --output "$EVIDENCE_ROOT/ios-upload-attempt.json" \
+            --platform ios \
+            --candidate-id "${{ steps.prepared.outputs.candidate-id }}" \
+            --provenance-id "${{ steps.prepared.outputs.provenance-id }}" \
+            --source-revision "${{ needs.signed-candidate.outputs.source_revision }}" \
+            --app-version "${{ steps.prepared.outputs.version-name }}" \
+            --build-number "${{ steps.prepared.outputs.build-number }}" \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --github-output "$GITHUB_OUTPUT" <<'PY'
+          import os
+          import runpy
+          import sys
+          scripts = os.path.realpath(sys.argv[1])
+          target = os.path.join(scripts, "generate_mobile_store_upload_attempt.py")
+          sys.path.insert(0, scripts)
+          sys.argv = [target, *sys.argv[2:]]
+          runpy.run_path(target, run_name="__main__")
+          PY
+          (cd "$credential_parent" && \
+            /usr/bin/env -i PATH="$PATH" HOME="$HOME" TMPDIR="$RUNNER_TEMP" \
+            /usr/bin/xcrun altool --upload-app --type ios --file "$ipa" \
+              --apiKey "$APP_STORE_KEY_ID" --apiIssuer "$APP_STORE_ISSUER_ID")
+          apple_verified=false
+          for attempt in {1..40}; do
+            if /usr/bin/env -i PATH="$PATH" HOME="$HOME" TMPDIR="$RUNNER_TEMP" \
+              LANG=en_US.UTF-8 CI=true GITHUB_ACTIONS=true \
+              GEMRC=/dev/null GEM_HOME="$GEM_HOME" GEM_PATH="$GEM_PATH" \
+              RUBYGEMS_GEMDEPS= RUBYLIB= RUBYOPT= \
+              BUNDLE_APP_CONFIG="$BUNDLE_APP_CONFIG" BUNDLE_FROZEN=true \
+              BUNDLE_GEMFILE="$BUNDLE_GEMFILE" BUNDLE_IGNORE_CONFIG=true \
+              BUNDLE_LOCKFILE_CHECKSUMS=true BUNDLE_PATH="$BUNDLE_PATH" \
+              "$REVIEWED_RUBY_BIN" "$PAKPERK_BUNDLE_BIN" \
+              "_${BUNDLER_VERSION}_" exec ruby \
+              "$CONTROL_ROOT/manage_app_store_phased_release.rb" \
+              --operation verify-build \
+              --bundle-id "${{ steps.prepared.outputs.bundle-id }}" \
+              --app-version "${{ steps.prepared.outputs.version-name }}" \
+              --build-number "${{ steps.prepared.outputs.build-number }}" \
+              --artifact-sha256 "${{ steps.ios_upload.outputs.artifact_sha256 }}" \
+              --artifact-size "${{ steps.ios_upload.outputs.artifact_size }}" \
+              --key-id "$APP_STORE_KEY_ID" --issuer-id "$APP_STORE_ISSUER_ID" \
+              --private-key "$credential_parent/app-store/app-store-key.p8" \
+              --output "$EVIDENCE_ROOT/apple-upload-verification.json"; then
+              apple_verified=true
+              break
+            fi
+            /bin/rm -f "$EVIDENCE_ROOT/apple-upload-verification.json"
+            /bin/sleep 30
+          done
+          [[ "$apple_verified" == true ]]
 
-      - name: Remove protected signing material
+      - name: Remove isolated iOS credentials and client
+        id: ios_cleanup
         if: always()
-        shell: bash
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         env:
-          APP_STORE_KEY_ID: ${{ secrets.PAKPERK_APP_STORE_CONNECT_KEY_ID }}
-          PROFILE_UUID: ${{ steps.apple_signing.outputs.profile_uuid }}
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+          CREDENTIAL_ROOT: ${{ steps.ios_upload.outputs.credential_root }}
+          STORE_CLIENT_ROOT: ${{ steps.prepared.outputs.client-root }}
         run: |
-          security delete-keychain "$RUNNER_TEMP/pakperk-release.keychain-db" >/dev/null 2>&1 || true
-          rm -f \
-            "$RUNNER_TEMP/pakperk-upload.jks" \
-            "$RUNNER_TEMP/distribution.p12" \
-            "$RUNNER_TEMP/profile.mobileprovision" \
-            "$RUNNER_TEMP/google-play.json" \
-            mobile/ios/Flutter/LocalSigning.xcconfig
-          if [[ "$PROFILE_UUID" =~ ^[A-Fa-f0-9-]{36}$ ]]; then
-            rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          if [[ -n "$CREDENTIAL_ROOT" ]]; then
+            /bin/rm -rf -- "$CREDENTIAL_ROOT"
+            /bin/rmdir "${CREDENTIAL_ROOT%/*}" >/dev/null 2>&1 || true
           fi
-          if [[ "$APP_STORE_KEY_ID" =~ ^[A-Z0-9]{10}$ ]]; then
-            rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_KEY_ID}.p8"
+          if [[ -n "$STORE_CLIENT_ROOT" ]]; then
+            /usr/bin/python3 -I - "$RUNNER_TEMP" "$STORE_CLIENT_ROOT" <<'PY'
+          import os, stat, sys
+          parent, target = os.path.realpath(sys.argv[1]), os.path.realpath(sys.argv[2])
+          metadata = os.lstat(target)
+          if target != sys.argv[2] or os.path.commonpath((parent, target)) != parent or not os.path.basename(target).startswith("pakperk-store-client.") or not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_mode & 0o077:
+              raise SystemExit("unsafe store-client cleanup target")
+          PY
+            /bin/rm -rf -- "$STORE_CLIENT_ROOT"
           fi
+
+      - name: Record isolated iOS upload outcome
+        id: ios_outcome
+        if: always()
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          EVIDENCE_ROOT: ${{ steps.ios_evidence.outputs.root }}
+          CANDIDATE_ARTIFACT_ID: ${{ needs.signed-candidate.outputs.artifact_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ needs.signed-candidate.outputs.artifact_digest }}
+          STORE_CLIENT_ARTIFACT_ID: ${{ needs.store-client-bootstrap.outputs.archive_artifact_id }}
+          STORE_CLIENT_ARTIFACT_DIGEST: ${{ needs.store-client-bootstrap.outputs.archive_artifact_digest }}
+          CANDIDATE_ID: ${{ needs.signed-candidate.outputs.candidate_id }}
+          PROVENANCE_ID: ${{ needs.signed-candidate.outputs.provenance_id }}
+          SOURCE_REVISION: ${{ needs.signed-candidate.outputs.source_revision }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          UPLOAD_OUTCOME: ${{ steps.ios_upload.outcome }}
+          CLEANUP_OUTCOME: ${{ steps.ios_cleanup.outcome }}
+        run: |
+          /usr/bin/python3 -I - <<'PY'
+          import json, os, pathlib
+          steps = {
+              "cleanup": os.environ["CLEANUP_OUTCOME"],
+              "upload_and_verification": os.environ["UPLOAD_OUTCOME"],
+          }
+          value = {
+              "candidate_artifact": {
+                  "digest": os.environ["CANDIDATE_ARTIFACT_DIGEST"],
+                  "id": int(os.environ["CANDIDATE_ARTIFACT_ID"]),
+              },
+              "candidate_id": os.environ["CANDIDATE_ID"],
+              "classification": "isolated mobile store upload platform outcome",
+              "platform": "ios",
+              "provenance_id": os.environ["PROVENANCE_ID"],
+              "requested": True,
+              "run": {"attempt": os.environ["RUN_ATTEMPT"], "id": os.environ["RUN_ID"]},
+              "schema": 1,
+              "source_revision": os.environ["SOURCE_REVISION"],
+              "status": "succeeded_verified" if set(steps.values()) == {"success"} else "failed",
+              "steps": steps,
+              "store_client_artifact": {
+                  "digest": os.environ["STORE_CLIENT_ARTIFACT_DIGEST"],
+                  "id": int(os.environ["STORE_CLIENT_ARTIFACT_ID"]),
+              },
+          }
+          path = pathlib.Path(os.environ["EVIDENCE_ROOT"], "ios-platform-outcome.json")
+          path.write_text(json.dumps(value, separators=(",", ":"), sort_keys=True) + "\n", encoding="ascii")
+          path.chmod(0o600)
+          PY
+
+      - name: Retain isolated iOS upload evidence
+        id: ios_evidence_upload
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+        with:
+          name: mobile-ios-upload-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.ios_evidence.outputs.root }}
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Fail isolated iOS upload after evidence retention
+        if: always()
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          BASH_ENV: /dev/null
+          UPLOAD_OUTCOME: ${{ steps.ios_upload.outcome }}
+          CLEANUP_OUTCOME: ${{ steps.ios_cleanup.outcome }}
+          OUTCOME_OUTCOME: ${{ steps.ios_outcome.outcome }}
+          RETENTION_OUTCOME: ${{ steps.ios_evidence_upload.outcome }}
+        run: |
+          [[ "$UPLOAD_OUTCOME" == success && "$CLEANUP_OUTCOME" == success && \
+             "$OUTCOME_OUTCOME" == success && "$RETENTION_OUTCOME" == success ]]
+
+  signed-release-finalizer:
+    name: ${{ inputs.environment }} signed release finalizer
+    needs: [signed-candidate, store-client-bootstrap, android-store-upload, ios-store-upload]
+    if: always()
+    runs-on: macos-26
+    timeout-minutes: 30
+    outputs:
+      handoff_artifact_digest: ${{ steps.handoff_upload.outputs.artifact-digest }}
+      handoff_artifact_id: ${{ steps.handoff_upload.outputs.artifact-id }}
+      outcome_artifact_digest: ${{ steps.final_outcome_upload.outputs.artifact-digest }}
+      outcome_artifact_id: ${{ steps.final_outcome_upload.outputs.artifact-id }}
+      outcome_id: ${{ steps.final_outcome.outputs.outcome_id }}
+      store_handoff_id: ${{ steps.handoff.outputs.store_handoff_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Create credential-free final evidence root
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          BASH_ENV: /dev/null
+          ENV: /dev/null
+        run: |
+          /bin/mkdir -m 0700 "$RUNNER_TEMP/final-evidence"
+      - name: Download final canonical signed candidate by artifact ID
+        id: final_candidate_download
+        if: needs.signed-candidate.result == 'success' && needs.signed-candidate.outputs.artifact_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        env:
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        with:
+          artifact-ids: ${{ needs.signed-candidate.outputs.artifact_id }}
+          path: ${{ runner.temp }}/final-candidate
+          merge-multiple: true
+          digest-mismatch: error
+      - name: Download final attested store controls by artifact ID
+        id: final_store_client_download
+        if: inputs.upload_to_stores && needs.store-client-bootstrap.result == 'success' && needs.store-client-bootstrap.outputs.archive_artifact_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        env:
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        with:
+          artifact-ids: ${{ needs.store-client-bootstrap.outputs.archive_artifact_id }}
+          path: ${{ runner.temp }}/final-store-client
+          merge-multiple: true
+          digest-mismatch: error
+      - name: Download immutable Android upload outcome by artifact ID
+        id: final_android_download
+        if: inputs.upload_to_stores && needs.android-store-upload.outputs.evidence_artifact_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        env:
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        with:
+          artifact-ids: ${{ needs.android-store-upload.outputs.evidence_artifact_id }}
+          path: ${{ runner.temp }}/final-android
+          merge-multiple: true
+          digest-mismatch: error
+      - name: Download immutable iOS upload outcome by artifact ID
+        id: final_ios_download
+        if: inputs.upload_to_stores && needs.ios-store-upload.outputs.evidence_artifact_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        env:
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+        with:
+          artifact-ids: ${{ needs.ios-store-upload.outputs.evidence_artifact_id }}
+          path: ${{ runner.temp }}/final-ios
+          merge-multiple: true
+          digest-mismatch: error
+      - name: Create verified cross-platform store handoff
+        id: handoff
+        if: inputs.upload_to_stores && needs.signed-candidate.result == 'success' && needs.store-client-bootstrap.result == 'success' && needs.android-store-upload.result == 'success' && needs.ios-store-upload.result == 'success' && steps.final_candidate_download.outcome == 'success' && steps.final_store_client_download.outcome == 'success' && steps.final_android_download.outcome == 'success' && steps.final_ios_download.outcome == 'success'
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin:/usr/sbin:/sbin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          CONTROL_ROOT: ${{ runner.temp }}/final-store-client/controls
+        run: |
+          for reviewed in \
+            "aaf319c661faf1b7eb775b50e7f842c42a7c4d23cbc32a6d8fb2e4c8ff2c2f40 generate_mobile_store_upload_handoff.py" \
+            "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107 validate_mobile_store_candidate.py" \
+            "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93 validate_mobile_signed_release_run.py" \
+            "2fb30a5ed3341e22254d2e6548d22b9b10e235176317b7b403d48d49d445c3ac manage_google_play_rollout.rb" \
+            "ee7e55a902bfe4f1f9fe2f933871e44d51c1f8906eff93aad8c8aa6c3f05b68c manage_app_store_phased_release.rb" \
+            "df7c9313182c54ae68a3312f720334dc9f524d17973f6a3b1339e8892d778175 Gemfile.lock"; do
+            expected="${reviewed%% *}"
+            name="${reviewed#* }"
+            observed="$(/usr/bin/shasum -a 256 "$CONTROL_ROOT/$name")"
+            [[ "${observed%% *}" == "$expected" ]] || exit 1
+          done
+          /usr/bin/python3 -I - "$CONTROL_ROOT" \
+            --candidate "$RUNNER_TEMP/final-candidate/evidence/mobile-candidate.json" \
+            --provenance "$RUNNER_TEMP/final-candidate/evidence/mobile-release-provenance.json" \
+            --google-verification "$RUNNER_TEMP/final-android/google-upload-verification.json" \
+            --apple-verification "$RUNNER_TEMP/final-ios/apple-upload-verification.json" \
+            --output-root "$RUNNER_TEMP/handoff" \
+            --tooling-root "$CONTROL_ROOT" \
+            --candidate-id "${{ needs.signed-candidate.outputs.candidate_id }}" \
+            --provenance-id "${{ needs.signed-candidate.outputs.provenance_id }}" \
+            --source-revision "${{ needs.signed-candidate.outputs.source_revision }}" \
+            --app-version "${{ needs.signed-candidate.outputs.version_name }}" \
+            --build-number "${{ needs.signed-candidate.outputs.build_number }}" \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --ruby-version "${{ env.PAKPERK_RUBY_VERSION }}" \
+            --rubygems-version "${{ env.PAKPERK_RUBYGEMS_VERSION }}" \
+            --bundler-version "${{ env.BUNDLER_VERSION }}" <<'PY'
+          import os, runpy, sys
+          controls = os.path.realpath(sys.argv[1])
+          target = os.path.join(controls, "generate_mobile_store_upload_handoff.py")
+          sys.path.insert(0, controls)
+          sys.argv = [target, *sys.argv[2:]]
+          runpy.run_path(target, run_name="__main__")
+          PY
+      - name: Retain immutable verified store handoff
+        id: handoff_upload
+        if: steps.handoff.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+        with:
+          name: pakperk-${{ inputs.environment }}-store-handoff-${{ needs.signed-candidate.outputs.version_name }}-${{ needs.signed-candidate.outputs.build_number }}-${{ needs.signed-candidate.outputs.source_revision }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/handoff
+          if-no-files-found: error
+          retention-days: 90
+      - name: Create unconditional canonical signed-release outcome
+        id: final_outcome
+        if: always()
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin:/usr/sbin:/sbin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+        run: |
+          finalizer_sha256="$(/usr/bin/shasum -a 256 \
+            "$GITHUB_WORKSPACE/scripts/finalize_mobile_signed_release.py")"
+          [[ "${finalizer_sha256%% *}" == \
+            "a30ae0bc85b5977cb546af8d9fa8bb311543392dbb9d5b86125de2964afa56e9" ]] || exit 1
+          /usr/bin/python3 -I \
+            "$GITHUB_WORKSPACE/scripts/finalize_mobile_signed_release.py" \
+            --requested-uploads "${{ inputs.upload_to_stores }}" \
+            --environment "${{ inputs.environment }}" \
+            --android-application-id "${{ needs.signed-candidate.outputs.bundle_id }}" \
+            --ios-application-id "${{ needs.signed-candidate.outputs.bundle_id }}" \
+            --repository "${{ github.repository }}" \
+            --source-revision "${{ needs.signed-candidate.outputs.source_revision }}" \
+            --app-version "${{ needs.signed-candidate.outputs.version_name }}" \
+            --build-number "${{ needs.signed-candidate.outputs.build_number }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --candidate-id "${{ needs.signed-candidate.outputs.candidate_id }}" \
+            --provenance-id "${{ needs.signed-candidate.outputs.provenance_id }}" \
+            --candidate-job-result "${{ needs.signed-candidate.result }}" \
+            --bootstrap-job-result "${{ needs.store-client-bootstrap.result }}" \
+            --android-job-result "${{ needs.android-store-upload.result }}" \
+            --ios-job-result "${{ needs.ios-store-upload.result }}" \
+            --candidate-artifact-id "${{ needs.signed-candidate.outputs.artifact_id }}" \
+            --candidate-artifact-digest "${{ needs.signed-candidate.outputs.artifact_digest }}" \
+            --store-client-artifact-id "${{ needs.store-client-bootstrap.outputs.archive_artifact_id }}" \
+            --store-client-artifact-digest "${{ needs.store-client-bootstrap.outputs.archive_artifact_digest }}" \
+            --android-evidence-artifact-id "${{ needs.android-store-upload.outputs.evidence_artifact_id }}" \
+            --android-evidence-artifact-digest "${{ needs.android-store-upload.outputs.evidence_artifact_digest }}" \
+            --ios-evidence-artifact-id "${{ needs.ios-store-upload.outputs.evidence_artifact_id }}" \
+            --ios-evidence-artifact-digest "${{ needs.ios-store-upload.outputs.evidence_artifact_digest }}" \
+            --store-handoff-id "${{ steps.handoff.outputs.store_handoff_id }}" \
+            --handoff-artifact-id "${{ steps.handoff_upload.outputs.artifact-id }}" \
+            --handoff-artifact-digest "${{ steps.handoff_upload.outputs.artifact-digest }}" \
+            --handoff-step-outcome "${{ steps.handoff.outcome }}" \
+            --handoff-upload-outcome "${{ steps.handoff_upload.outcome }}" \
+            --candidate-root "$RUNNER_TEMP/final-candidate" \
+            --android-evidence-root "$RUNNER_TEMP/final-android" \
+            --ios-evidence-root "$RUNNER_TEMP/final-ios" \
+            --handoff-root "$RUNNER_TEMP/handoff" \
+            --output-root "$RUNNER_TEMP/final-evidence/outcome" \
+            --github-output "$GITHUB_OUTPUT"
+      - name: Retain unconditional aggregate signed-release evidence
+        id: final_outcome_upload
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+        with:
+          name: pakperk-${{ inputs.environment }}-store-outcome-${{ needs.signed-candidate.outputs.version_name }}-${{ needs.signed-candidate.outputs.build_number }}-${{ needs.signed-candidate.outputs.source_revision }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/final-evidence
+          if-no-files-found: error
+          retention-days: 90
+      - name: Enforce canonical final signed-release result after retention
+        if: always()
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          BASH_ENV: /dev/null
+          ENV: /dev/null
+          FINAL_OUTCOME: ${{ steps.final_outcome.outputs.overall_result }}
+          FINALIZATION_STEP: ${{ steps.final_outcome.outcome }}
+          RETENTION_STEP: ${{ steps.final_outcome_upload.outcome }}
+        run: |
+          [[ "$FINALIZATION_STEP" == success && "$RETENTION_STEP" == success && \
+             "$FINAL_OUTCOME" == succeeded ]]

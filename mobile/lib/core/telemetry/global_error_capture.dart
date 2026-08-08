@@ -30,6 +30,7 @@ final class GlobalErrorCapture {
   final PlatformDispatcher _dispatcher;
   final bool preserveDebugPresentation;
   final Set<Object> _recentErrors = LinkedHashSet<Object>.identity();
+  final Set<Object> _fatalReplacements = LinkedHashSet<Object>.identity();
 
   FlutterExceptionHandler? _previousFlutterHandler;
   ErrorCallback? _previousPlatformHandler;
@@ -60,21 +61,52 @@ final class GlobalErrorCapture {
       }
     };
     _installedPlatformHandler = (error, stack) {
-      record(error, stack, source: GlobalErrorSource.platformDispatcher);
-      final previous = _previousPlatformHandler;
-      if (previous == null) {
-        // False lets Flutter's engine/OS retain its normal uncaught-error and
-        // crash semantics. The callback has already emitted one redacted
-        // telemetry category; returning true here would silently swallow the
-        // fatal error and make crash-free evidence dishonest.
+      if (_fatalReplacements.remove(error)) {
+        // The prior handler already declined the original occurrence. This is
+        // the content-free replacement's engine pass; returning false here is
+        // what preserves the fatal fallback without invoking that handler a
+        // second time or exposing the original callback arguments.
         return false;
       }
-      // A prior handler keeps ownership of handled/unhandled semantics, while
-      // receiving only the same bounded category allowed into telemetry.
-      return previous(
-        RedactingTelemetrySink.classifyError(error),
-        StackTrace.empty,
-      );
+      final safeError = _validatedCategory(error);
+      final isAlreadySanitized =
+          identical(error, safeError) && stack.toString().isEmpty;
+
+      if (!isAlreadySanitized) {
+        record(error, stack, source: GlobalErrorSource.platformDispatcher);
+      }
+      final previous = _previousPlatformHandler;
+      if (isAlreadySanitized) {
+        if (previous == null) return false;
+        try {
+          return previous(safeError, StackTrace.empty);
+        } on Object {
+          // A failing diagnostic callback must not replace the content-free
+          // fatal signal with its own potentially sensitive exception.
+          return false;
+        }
+      }
+
+      if (previous != null) {
+        try {
+          if (previous(safeError, StackTrace.empty)) return true;
+        } on Object {
+          // Continue into the sanitized fatal path below.
+        }
+      }
+
+      // Returning false for the original error would let the engine fallback
+      // print its raw message and stack. Mark that occurrence handled, then
+      // raise the bounded category on the same error zone. The zone guard
+      // forwards it as an actually unhandled error; the second dispatcher
+      // pass returns false only for that content-free object and empty stack.
+      // This preserves honest fatal/crash semantics without leaking content.
+      _remember(safeError);
+      _rememberFatalReplacement(safeError);
+      scheduleMicrotask(() {
+        Error.throwWithStackTrace(safeError, StackTrace.empty);
+      });
+      return true;
     };
     FlutterError.onError = _installedFlutterHandler;
     _dispatcher.onError = _installedPlatformHandler;
@@ -85,11 +117,11 @@ final class GlobalErrorCapture {
   }
 
   /// Records one redacted category and then preserves the parent zone/OS fatal
-  /// path. The original error never enters Pakperk telemetry, but rethrowing it
-  /// is necessary for platform crash diagnostics and process integrity.
+  /// path using only the same bounded category and an empty stack.
   Never recordZoneErrorAndRethrow(Object error, StackTrace stack) {
     recordZoneError(error, stack);
-    Error.throwWithStackTrace(error, stack);
+    final safeError = _validatedCategory(error);
+    Error.throwWithStackTrace(safeError, StackTrace.empty);
   }
 
   void record(
@@ -100,11 +132,7 @@ final class GlobalErrorCapture {
     // One uncaught object can traverse the framework, zone, and engine with
     // distinct StackTrace wrappers. Identity-based error deduplication avoids
     // double telemetry without merging separate exception instances.
-    if (!_recentErrors.add(error)) return;
-    if (_recentErrors.length > 32) _recentErrors.remove(_recentErrors.first);
-    Timer(const Duration(seconds: 1), () {
-      _recentErrors.remove(error);
-    });
+    if (!_remember(error)) return;
     unawaited(
       _telemetry
           .error(
@@ -119,6 +147,35 @@ final class GlobalErrorCapture {
     );
   }
 
+  bool _remember(Object error) {
+    if (!_recentErrors.add(error)) return false;
+    if (_recentErrors.length > 32) _recentErrors.remove(_recentErrors.first);
+    Timer(const Duration(seconds: 1), () {
+      _recentErrors.remove(error);
+    });
+    return true;
+  }
+
+  void _rememberFatalReplacement(Object error) {
+    _fatalReplacements.add(error);
+    if (_fatalReplacements.length > 32) {
+      _fatalReplacements.remove(_fatalReplacements.first);
+    }
+    Timer(const Duration(seconds: 1), () {
+      _fatalReplacements.remove(error);
+    });
+  }
+
+  TelemetryErrorCategory _validatedCategory(Object error) {
+    final classified = RedactingTelemetrySink.classifyError(error);
+    if (error case TelemetryErrorCategory(
+      :final category,
+    ) when category == classified.category) {
+      return error;
+    }
+    return classified;
+  }
+
   void dispose() {
     if (!_installed) return;
     if (identical(FlutterError.onError, _installedFlutterHandler)) {
@@ -128,6 +185,7 @@ final class GlobalErrorCapture {
       _dispatcher.onError = _previousPlatformHandler;
     }
     _recentErrors.clear();
+    _fatalReplacements.clear();
     _installed = false;
   }
 

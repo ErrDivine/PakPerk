@@ -75,6 +75,10 @@ class ToReadScreen extends ConsumerWidget {
       body: cached == null && items.isLoading
           ? const Center(child: CircularProgressIndicator())
           : ToReadListView(
+              // A PageStorageKey resets the stateful controls just like a
+              // ValueKey while also namespacing the descendant ListView's
+              // persisted scroll offset to this exact account/auth epoch.
+              key: PageStorageKey<ActiveLibraryScope>(scope),
               items: cached ?? const [],
               offline: offline,
               syncIssue:

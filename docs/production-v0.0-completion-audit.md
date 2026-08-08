@@ -2,7 +2,9 @@
 
 **Status:** repository implementation audited; public/store release not accepted
 
-**Audit date:** 2026-08-02
+**Audit date:** 2026-08-03
+
+**Last revalidated:** 2026-08-08
 
 **Authority:** the [canonical implementation plan](../pakperk_production_v0_0_implementation_plan.md)
 remains normative
@@ -37,7 +39,7 @@ complete** and public account/comment flags and store release must remain
 blocked until every applicable **P** and **H** item below has immutable evidence.
 The known locally implementable gaps identified during this audit are reflected
 in the repository. The final local current-tree canonical harness passed the
-fresh-database Rust workspace, Flutter analysis and all 601 locked tests, every
+fresh-database Rust workspace, Flutter analysis and all 610 locked tests, every
 Android debug and iOS simulator flavor, strict artifact inspection, 31 browser
 tests, Helm validation, and the opt-in Collector export E2E. Fresh isolated
 Keycloak/PostgreSQL reference runs also passed the complete account-deletion
@@ -80,10 +82,12 @@ identifies what still prevents canonical acceptance.
 | 22.8 Strict content policy | Metadata/save/comments/canonical arXiv remain; prototype-derived caches and offline fallbacks are masked in mobile and backend tests | R/P/H — exact signed strict candidate and deployed backend plus qualified content-rights approval |
 
 The protected mobile workflow requires an exact `main` revision, root-imported
-content-addressed candidate and signed-release provenance manifests, a pinned
-external driver, a short-lived root-owned dedicated/ephemeral runner-session
-attestation, and four exact physical roles: Android gesture, Android
-three-button, iPhone home-indicator, and physical-keyboard iPad/second sync. Its
+content-addressed candidate and signed-release provenance manifests, pinned
+root-owned validator and driver bytes, a short-lived root-owned
+dedicated/ephemeral runner-session attestation, and four exact physical roles:
+Android gesture, Android three-button, iPhone home-indicator, and
+physical-keyboard iPad/second sync. The candidate checkout is a data-only input:
+no candidate-provided program executes in the credentialed runner session. Its
 schema-v2 artifact requires all 16 ordered scenarios with their exact role
 assignments, 70 ordered assertion IDs, 37 closed integer metrics, exact platform
 artifact/application/signer/team bindings, four challenge-keyed physical-
@@ -129,10 +133,10 @@ environment approval, can satisfy the corresponding **P** rows. See the
 | Requirement | Audit classification | Open evidence |
 | --- | --- | --- |
 | API is split into maintainable routes/middleware | R | None beyond exact-source CI/review |
-| OIDC JWT validation is strict | R/P | Release issuer/JWKS rotation and token-expiry exercise |
+| OIDC JWT validation is strict | R/P | Protected release-issuer rotation/removal: a replacement-key token is accepted, a removed-key token is rejected after the configured cache bound, and token expiry/refresh is exercised |
 | Authorization never trusts client user IDs | R | None beyond exact-source CI and protected abuse checks |
-| Library and comment writes are idempotent | R/P | Protected staging replay paths |
-| Shared rate limits work across instances | R/P | Deployed multi-replica/load evidence |
+| Library and comment writes are idempotent | R/P | Protected staging replays of the exact same library operation and exact same comment operation with the same idempotency identities, stable outcomes, and one durable side effect each |
+| Shared rate limits work across instances | R/P | Protected cross-replica quota exhaustion with stable HTTP 429, `RATE_LIMITED`, and delta-seconds `Retry-After` evidence |
 | Comments are filtered, moderated, reportable, and blockable | R/P/H | Target moderation-readiness evidence |
 | Account deletion is idempotent and monitored | R/P/H | Target deletion E2E, live alerts, and privacy approval |
 | OpenAPI is generated and checked | R | Generated parity and base-compatibility gates must pass for the release revision |
@@ -150,7 +154,7 @@ environment approval, can satisfy the corresponding **P** rows. See the
 | OTLP telemetry is live and redacted | R/P | Live sink, retention, redaction, replay, and receiver canaries |
 | Security/dependency/container scans pass | R/P/H | Current exact-source/image scans and approved disposition of every finding |
 | SBOM and license inventory exist | R/P | Generators/notices exist; exact protected image/mobile artifacts and checksums remain required |
-| Feature kill switches are tested | R/P | Repository behavior exists; dark-deployed independent switch exercise remains required |
+| Feature kill switches are tested | R/P | Repository behavior exists; every independently controlled feature/kill switch still needs a dark-deployed before/after result under a valid dependency combination |
 | Incident, moderation, and deletion runbooks exist | R/H | Runbooks exist; named staffed ownership and exercise approvals remain human |
 
 ### Store and policy
@@ -167,6 +171,24 @@ environment approval, can satisfy the corresponding **P** rows. See the
 | Reviewer account/instructions are prepared | R/P/H | Sanitized exact-candidate notes and protected disposable-account lifecycle |
 | Full-text display/retention received appropriate review | R/P/H | Qualified approval bound to exact policy and candidate |
 | Package/build versions increase monotonically | R/P/H | Checked-in version gate plus both stores' private history and upload receipts |
+
+## Section 2.4 optional P1 disposition
+
+The repository now includes the practical broad-launch P1 items for My
+Comments, post-onboarding display-name editing, tablet `NavigationRail`
+adaptation, and local saved-paper sort/search/category filtering. These remain
+subject to the same installed-device and UX approval gates as their P0 parent
+surfaces.
+
+The following P1 items are deliberately deferred, as Section 2.4 permits for
+the first internal/TestFlight/closed-track release: machine-readable account
+export, a network remote-flag service beyond protected build/environment flags,
+an optional third-party crash provider beyond the privacy-safe telemetry
+interface and store diagnostics, a moderation web UI beyond the authenticated
+admin CLI fallback, and cloud read-progress synchronization. They do not block
+P0 release acceptance. Reassess their data model, privacy/disclosure, abuse,
+offline-conflict, operations, and migration impact before broad launch; do not
+represent them as shipped capabilities in product or store copy.
 
 ## Required immutable evidence for every open P/H gate
 
@@ -188,14 +210,18 @@ schema applies, its canonical manifest must include:
   personal data, raw UGC, and unbounded logs are absent.
 
 An approval is valid only when the approver can retrieve and verify the exact
-manifest and artifacts. The following inventory is exhaustive for the remaining
-release gates identified by this audit.
+manifest and artifacts. The following inventory is the minimum known set for
+the remaining release gates identified by this audit; it is not an exhaustive
+substitute for the canonical plan, current store/provider requirements, or a
+newly applicable risk review. Any additional applicable gate remains blocking
+until it has equally bound, retrievable evidence.
 
 | Gate | Exact immutable evidence required | Owner/approval and reference |
 | --- | --- | --- |
 | Current CI and security | Exact revision; all required CI job outcomes; target-environment database/integration bodies with no unexplained skip; scanner names/versions and advisory-database timestamps; findings, exceptions, expiry, and artifact checksums | Release/security owners; [release runbook](runbooks/release.md) |
 | Protected image publication, SBOM, and licenses | Exact source; protected workflow approval; backend/site image repositories and OCI digests; scan results; CycloneDX and notices digests; provenance; verified `promotion-handoff.json` and `SHA256SUMS`; registry publication outcome | Release/security owners; [release runbook](runbooks/release.md) |
 | Dark deployment and staging/production parity | Rendered release-binding ConfigMap and values digest; actual Pod `imageID` values; chart/version; auth, database-role, NetworkPolicy, feature-map, retention, and secret-version identifiers; protected staging smoke results; platform approval | Platform/service/database owners; [release runbook](runbooks/release.md) |
+| Protected auth, replay, shared-limit, and switch exercise | Exact source, deployment, release issuer/discovery/JWKS identities, configured JWKS cache bound, old/replacement key IDs, accepted replacement-key result, and removed-key rejection after the bound; same-operation/same-idempotency-identity library and comment replay results with one durable side effect each; at least two independently identified serving replicas, quota/window/action identity, requests routed through both replicas, stable cross-replica HTTP 429 + `RATE_LIMITED` + delta-seconds `Retry-After`, and reset result; before/after rendered values and observed allowed/disabled behavior for `ACCOUNTS_ENABLED`, `LIBRARY_ENABLED`, `LIBRARY_WRITES_ENABLED`, `COMMENTS_ENABLED`, `COMMENT_CREATION_ENABLED`, and `ACCOUNT_DELETION_ENABLED` under valid dependency combinations, including fail-closed invalid-combination results; sanitized assertion counts, UTC window, cleanup, and owner approvals | Identity/service/database/platform/release owners, plus privacy/safety for authenticated UGC; [protected exercise runbook](runbooks/release.md#protected-auth-write-and-switch-exercise) |
 | Public edge and associations | Passing exact-source `public-edge-sha256:` artifact; target environment; promotion-handoff candidate ID; public-site source marker; HTTPS/TLS/HSTS/header/document/runtime/readiness results; deployed Android/Apple association identities; workflow approval; separate comparison of Pod image IDs to promotion handoff | Platform/release owners; [release runbook](runbooks/release.md#public-edge-technical-evidence) and [app-links runbook](mobile-app-links.md) |
 | Migration and rollback exercise | Source and migration-image digest; backup evidence ID; starting/ending schema and app versions; migration Job status/log digest; DDL-role proof; expand/compatibility/rollback-or-forward sequence; data-integrity checks; feature-switch states; UTC window and database/release approvals | Database and release owners; [release runbook](runbooks/release.md#expandcontract-deployment) |
 | Protected staging load | Closed aggregate JSON and checksum; exact source and deployment topology; scenario/sample counts; p50/p95/p99/error rates; configured thresholds/fault profile; database saturation/telemetry references; synthetic-fixture and cleanup result; protected workflow approval | Service/database/release owners, plus privacy/safety when authenticated; [load runbook](runbooks/backend-load-testing.md) |
@@ -204,18 +230,20 @@ release gates identified by this audit.
 | Backup/PITR and deletion replay | Valid externally anchored `restoreDrillId`; canonical schema-2 protected attestation and digest; backup ID, recovery/latest-recoverable/observation timestamps; exact database guard; PostgreSQL/Keycloak/physical-storage inventory; exact current ledger count and domain-separated logical signed-record inventory digest; source and worker digest; schema version; content-addressed v2 reapply and finalize packages; finalize and standalone verification reopen the actual prior package and require its reapply phase, computed content ID, byte-identical attestation, protected `migration`/`papers`/`core_jobs`/`ledger_records` continuity plus the domain-separated exact local ledger-identity/job-binding digest, prior-before-final chronology, and `restore_completed_at <= recorded_at <= restore_completed_at + 24h`; strict cross-file digest equality; exact `public, pg_catalog` session binding and exact `public` namespace placement for `vector`, `pg_trgm`, and `pgcrypto` verified before snapshots or migration/replay mutations despite URL startup options; attested/guard-bound change marker forced as the database audit actor; zero unfinished/terminal jobs and resurrected users; retained public-data counts; computed RPO/RTO; operator/change record | Database recovery and privacy approvals; [backup/restore runbook](runbooks/backup-restore.md) |
 | Moderation readiness | Valid `moderationReadinessId`; exact deployed candidate; operator issuer/audience/recent-auth/allowlist and rejection matrix; live comment/user-report/comment-report/block queues; inspect/hide/restore/resolve/suspend/reinstate audit UUIDs; kill-switch and high-risk/outage fallback; guest reads; alert/ticket canaries; staffed response targets and escalation result | Trust & Safety approval; [moderation runbook](runbooks/moderation.md#acceptance-and-production-readiness-evidence) |
 | Signed mobile candidate, IdP, and links | Protected Android AAB/APK and Apple IPA digests; signing/profile identities and expiry; upload-key and Play app-signing fingerprints; bundle/package/version/build; toolchain versions; SDK/minimum OS/API/alignment/entitlement/privacy-manifest results; native SBOM/notices/symbol/checksum digests; protected feature map; release OIDC registrations/redirects; deployed association checks | Mobile signing, identity, platform, and release approvals; [mobile release runbook](mobile-release.md) |
-| Protected physical mobile acceptance | Passing canonical schema-v2 `mobile-acceptance-evidence.json` and checksum for the exact root-imported candidate/provenance manifests and source; protected environment approval; short-lived root-owned runner-session attestation; pinned driver digest; fresh run challenge/ID/attempt/time binding; four distinct installation hashes and four challenge-keyed physical-identity hashes derived from distinct root-attested commitments for Android gesture, Android three-button, iPhone home-indicator, and physical-keyboard iPad/second-sync roles; all 16 ordered scenarios with exact role assignments, 70 assertion IDs, and 37 closed integer metric rules; exact platform artifact/application/signer/team and staging API/issuer/client bindings; sanitized-data markers | Mobile QA/release approval; [mobile release runbook](mobile-release.md) |
+| Protected physical mobile acceptance | Passing closed three-member tar containing canonical schema-v2 `mobile-acceptance-evidence.json`, canonical `mobile-acceptance-tooling.json`, and `SHA256SUMS` for the exact root-imported candidate/provenance manifests and source; protected environment approval; short-lived root-owned runner-session attestation; protected validator and driver digests; local tar digest plus immutable upload artifact ID and server digest; fresh run challenge/ID/attempt/time binding; four distinct installation hashes and four challenge-keyed physical-identity hashes derived from distinct root-attested commitments for Android gesture, Android three-button, iPhone home-indicator, and physical-keyboard iPad/second-sync roles; all 16 ordered scenarios with exact role assignments, 70 assertion IDs, and 37 closed integer metric rules; exact platform artifact/application/signer/team and staging API/issuer/client bindings; sanitized-data markers | Mobile QA/release approval; [mobile release runbook](mobile-release.md) |
 | Mobile performance and crash window | Exact signed build and device/OS matrix; cold/warm first-readable-frame samples; opening duration; sequential cache-hit and blank-card counts; frame sample/window; aggregate privacy-reviewed crash denominator and source query/store report; at least 99.5% crash-free sessions; observation window and approver | Mobile QA/release/privacy owners; [mobile release runbook](mobile-release.md#telemetry-and-release-candidate-gates) |
 | Legal, privacy, support, and publication | Valid `legalReviewId`; exact published Privacy/Terms/Guidelines/Support versions and direct HTTPS checks; monitored support-contact result; actual enabled features, SDKs/processors, collection, retention, deletion/backup behavior, jurisdictions/contracts, and public URLs; reviewer identity/role, approval timestamp, and manifest digest | Privacy/legal owner; [privacy worksheet](store/mobile-privacy-review.md) and [release runbook](runbooks/release.md#release-evidence-binding-scope) |
 | Strict content rights | Valid `strictContentReviewId`; exact strict backend/mobile configuration and candidate; metadata/save/comments/arXiv availability; displayed/retained Introduction behavior; cache/offline masking results; actual retention/display policy; qualified reviewer decision, scope, date, and approval | Legal/content owner; [content policy](content-policy.md) and [UGC review](store/ugc-content-review.md) |
 | Reviewer flow | Valid `reviewerFlowId`; exact signed candidate; disposable verified-email account lifecycle and expiry owner without credentials in evidence; completed sanitized guest/sign-in/save/comment/report/block/deletion/web-deletion/strict-content steps; physical acceptance, deletion, SBOM, and policy evidence references; store-ready notes | Store release owner; [reviewer-notes template](store/reviewer-notes-template.md) |
-| Store submission and approval | App Store Connect/TestFlight and Play closed-track upload receipts; exact artifact digest/version/build; highest prior store versions and monotonic comparison; signed-archive SDK/privacy reports; completed current App Privacy, Data Safety, age-rating, deletion-URL, developer-identity, package/signing registrations; reviewer notes/account reference; review outcome and owner approvals | Store, privacy/legal, and mobile signing owners; [privacy worksheet](store/mobile-privacy-review.md), [UGC review](store/ugc-content-review.md), and [mobile release runbook](mobile-release.md#external-release-blockers) |
+| Store submission, staged rollout, and approval | App Store Connect/TestFlight and Play closed-track upload receipts; authenticated GitHub Actions run/job IDs plus immutable artifact IDs and server digests; exact artifact digest/version/build; Play remote bundle SHA-256; Apple exact completed BuildUpload-to-Build/assetFile resource linkage with IPA UTI, byte size, and remote SHA-256; highest prior store versions and monotonic comparison; signed-archive SDK/privacy reports; completed current App Privacy, Data Safety, age-rating, deletion-URL, developer-identity, package/signing registrations; reviewer notes/account reference; trusted rollout-tooling revision bound separately from candidate source, with the signed-release source equal to its recorded workflow revision; protected receipts bound to the downloaded candidate/provenance and signed-release run, retaining every selected platform's success/failure/not-run outcome before final failure. **Updates:** exact eligible prior completed Play production fallback, reviewed Play pre/post state for one-percent start and every advance/halt/complete, any Android-only post-completion full-release halt; for iOS start, an exact prior public `appVersionState=READY_FOR_DISTRIBUTION`, exact target pre-submit state, and exact post-submit `INACTIVE` phased resource; every later Apple phased state/decision; the exact-candidate crash/performance window; and the manual-download exposure accepted for an Apple pause. **First public versions:** no staged/phased claim; a separately approved 100% Play first-publication record and an App Store first-version record containing exact submission/review state, selected manual-release setting, pre/post release or deliberately withheld state, UTC action time, portal audit, and owner approval. All paths require independent store audit/history, review outcome, partial-success reconciliation, and store/privacy/legal/mobile-signing approvals | Store, privacy/legal, and mobile signing owners; [privacy worksheet](store/mobile-privacy-review.md), [UGC review](store/ugc-content-review.md), and [protected rollout runbook](mobile-release.md#protected-staged-store-rollout) |
 
 The disposable `live comments acceptance` and `live account deletion` workflows
 remain valuable reference-stack evidence, but their classifications explicitly
 exclude target protected staging and they cannot supply
-`moderationReadinessId` or `accountDeletionE2eId`. Likewise, the restore harness
-proves a fail-closed mechanism, not that a provider backup was restored.
+`moderationReadinessId` or `accountDeletionE2eId`. Their local JWKS, replay, and
+shared-limit assertions also cannot satisfy the protected auth/write/switch
+gate. Likewise, the restore harness proves a fail-closed mechanism, not that a
+provider backup was restored.
 
 ## Evidence references
 

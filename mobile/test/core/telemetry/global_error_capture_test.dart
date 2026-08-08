@@ -103,14 +103,16 @@ void main() {
 
   for (final previousResult in const <bool>[false, true]) {
     test(
-      'platform handler preserves previous result $previousResult',
+      'platform handler preserves safe prior handling $previousResult',
       () async {
         final dispatcher = PlatformDispatcher.instance;
         final originalFlutterHandler = FlutterError.onError;
         final originalPlatformHandler = dispatcher.onError;
         Object? delegatedError;
         StackTrace? delegatedStack;
+        var delegatedCalls = 0;
         dispatcher.onError = (error, stack) {
+          delegatedCalls += 1;
           delegatedError = error;
           delegatedStack = stack;
           return previousResult;
@@ -123,17 +125,43 @@ void main() {
         )..install();
         try {
           const sentinel = 'Bearer platform-secret';
-          final handled = dispatcher.onError!(
-            FormatException(sentinel),
-            StackTrace.fromString('/private/$sentinel'),
+          Object? forwardedFatal;
+          StackTrace? forwardedStack;
+          late bool handled;
+          runZonedGuarded(
+            () {
+              handled = dispatcher.onError!(
+                FormatException(sentinel),
+                StackTrace.fromString('/private/$sentinel'),
+              );
+            },
+            (error, stack) {
+              forwardedFatal = error;
+              forwardedStack = stack;
+            },
           );
           await Future<void>.delayed(Duration.zero);
 
-          expect(handled, previousResult);
+          // A false result cannot be returned for the original error because
+          // Flutter would print its raw callback arguments. It is converted
+          // into a separate, content-free uncaught failure instead.
+          expect(handled, isTrue);
           expect(delegatedError, isA<TelemetryErrorCategory>());
           expect(delegatedError.toString(), contains('format'));
           expect(delegatedError.toString(), isNot(contains(sentinel)));
           expect(delegatedStack.toString(), isEmpty);
+          if (previousResult) {
+            expect(forwardedFatal, isNull);
+          } else {
+            expect(forwardedFatal, isA<TelemetryErrorCategory>());
+            expect(forwardedFatal.toString(), isNot(contains(sentinel)));
+            expect(forwardedStack.toString(), isEmpty);
+            expect(
+              dispatcher.onError!(forwardedFatal!, forwardedStack!),
+              isFalse,
+            );
+          }
+          expect(delegatedCalls, 1);
           expect(telemetry.errors, hasLength(1));
         } finally {
           capture.dispose();
@@ -145,7 +173,7 @@ void main() {
   }
 
   test(
-    'platform handler returns false when no previous handler exists',
+    'platform handler replaces a raw unhandled error with a safe fatal error',
     () async {
       final dispatcher = PlatformDispatcher.instance;
       final originalFlutterHandler = FlutterError.onError;
@@ -158,13 +186,30 @@ void main() {
         preserveDebugPresentation: false,
       )..install();
       try {
-        final handled = dispatcher.onError!(
-          ArgumentError('private'),
-          StackTrace.current,
+        const sentinel = 'token=private-platform-value';
+        Object? forwardedFatal;
+        StackTrace? forwardedStack;
+        late bool handled;
+        runZonedGuarded(
+          () {
+            handled = dispatcher.onError!(
+              ArgumentError(sentinel),
+              StackTrace.fromString('/private/$sentinel'),
+            );
+          },
+          (error, stack) {
+            forwardedFatal = error;
+            forwardedStack = stack;
+          },
         );
         await Future<void>.delayed(Duration.zero);
 
-        expect(handled, isFalse);
+        expect(handled, isTrue);
+        expect(forwardedFatal, isA<TelemetryErrorCategory>());
+        expect(forwardedFatal.toString(), contains('argument'));
+        expect(forwardedFatal.toString(), isNot(contains(sentinel)));
+        expect(forwardedStack.toString(), isEmpty);
+        expect(dispatcher.onError!(forwardedFatal!, forwardedStack!), isFalse);
         expect(telemetry.errors, hasLength(1));
       } finally {
         capture.dispose();
@@ -174,7 +219,110 @@ void main() {
     },
   );
 
-  test('zone capture records once and rethrows the original failure', () async {
+  test(
+    'a failing prior platform handler cannot replace the safe fatal',
+    () async {
+      final dispatcher = PlatformDispatcher.instance;
+      final originalFlutterHandler = FlutterError.onError;
+      final originalPlatformHandler = dispatcher.onError;
+      const sentinel = 'prior-handler-secret@example.test';
+      dispatcher.onError = (_, _) => throw StateError(sentinel);
+
+      final telemetry = _RecordingTelemetry();
+      final capture = GlobalErrorCapture(
+        telemetry: RedactingTelemetrySink(telemetry),
+        preserveDebugPresentation: false,
+      )..install();
+      try {
+        Object? forwardedFatal;
+        StackTrace? forwardedStack;
+        late bool handled;
+        runZonedGuarded(
+          () {
+            handled = dispatcher.onError!(
+              StateError('raw-platform-secret'),
+              StackTrace.fromString('/private/raw-platform-secret'),
+            );
+          },
+          (error, stack) {
+            forwardedFatal = error;
+            forwardedStack = stack;
+          },
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(handled, isTrue);
+        expect(forwardedFatal, isA<TelemetryErrorCategory>());
+        expect(forwardedFatal.toString(), isNot(contains(sentinel)));
+        expect(forwardedStack.toString(), isEmpty);
+        expect(dispatcher.onError!(forwardedFatal!, forwardedStack!), isFalse);
+        expect(telemetry.errors, hasLength(1));
+      } finally {
+        capture.dispose();
+        FlutterError.onError = originalFlutterHandler;
+        dispatcher.onError = originalPlatformHandler;
+      }
+    },
+  );
+
+  test('invalid nominal category cannot reach the platform fallback', () async {
+    final dispatcher = PlatformDispatcher.instance;
+    final originalFlutterHandler = FlutterError.onError;
+    final originalPlatformHandler = dispatcher.onError;
+    dispatcher.onError = null;
+    const sentinel = 'Bearer invalid-category-secret';
+    final unsafeInput = TelemetryErrorCategory(sentinel);
+    expect(unsafeInput.category, 'unexpected');
+
+    final telemetry = _RecordingTelemetry();
+    final capture = GlobalErrorCapture(
+      telemetry: RedactingTelemetrySink(telemetry),
+      preserveDebugPresentation: false,
+    )..install();
+    try {
+      final handled = dispatcher.onError!(unsafeInput, StackTrace.empty);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(handled, isFalse);
+      expect(unsafeInput.toString(), isNot(contains(sentinel)));
+      expect(telemetry.errors, isEmpty);
+    } finally {
+      capture.dispose();
+      FlutterError.onError = originalFlutterHandler;
+      dispatcher.onError = originalPlatformHandler;
+    }
+  });
+
+  test('invalid nominal category cannot cross the zone boundary', () async {
+    const sentinel = 'reader@example.test private-zone-category';
+    final unsafeInput = TelemetryErrorCategory(sentinel);
+    final telemetry = _RecordingTelemetry();
+    final capture = GlobalErrorCapture(
+      telemetry: RedactingTelemetrySink(telemetry),
+    );
+    Object? propagatedError;
+    StackTrace? propagatedStack;
+
+    runZonedGuarded(
+      () => capture.recordZoneErrorAndRethrow(
+        unsafeInput,
+        StackTrace.fromString('/private/$sentinel'),
+      ),
+      (caught, caughtStack) {
+        propagatedError = caught;
+        propagatedStack = caughtStack;
+      },
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(propagatedError, isA<TelemetryErrorCategory>());
+    expect((propagatedError! as TelemetryErrorCategory).category, 'unexpected');
+    expect(propagatedError.toString(), isNot(contains(sentinel)));
+    expect(propagatedStack.toString(), isEmpty);
+    expect(telemetry.errors, hasLength(1));
+  });
+
+  test('zone capture records once and rethrows a safe fatal failure', () async {
     final telemetry = _RecordingTelemetry();
     final capture = GlobalErrorCapture(
       telemetry: RedactingTelemetrySink(telemetry),
@@ -193,8 +341,10 @@ void main() {
     });
     await Future<void>.delayed(Duration.zero);
 
-    expect(propagatedError, same(error));
-    expect(propagatedStack.toString(), stack.toString());
+    expect(propagatedError, isA<TelemetryErrorCategory>());
+    expect(propagatedError.toString(), contains('state'));
+    expect(propagatedError.toString(), isNot(contains('private-zone-message')));
+    expect(propagatedStack.toString(), isEmpty);
     expect(telemetry.errors, hasLength(1));
     expect(telemetry.errors.single.error.toString(), contains('state'));
     expect(

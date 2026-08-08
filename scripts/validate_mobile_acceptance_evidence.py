@@ -28,6 +28,7 @@ STAGING_CONFIG = (
 STAGING_ANDROID_APPLICATION_ID = "app.pakperk.pakperk.staging"
 STAGING_IOS_APPLICATION_ID = "app.pakperk.pakperk.staging"
 EVIDENCE_ARCHIVE_NAME = "mobile-acceptance-evidence.json"
+TOOLING_ARCHIVE_NAME = "mobile-acceptance-tooling.json"
 CHECKSUM_ARCHIVE_NAME = "SHA256SUMS"
 
 SCENARIO_ASSERTIONS = {
@@ -319,6 +320,16 @@ RUNNER_SESSION_BINDING_KEYS = {
     "expires_at",
 }
 RUNNER_SESSION_VALIDATED_KEYS = RUNNER_SESSION_BINDING_KEYS | {"physical_identities"}
+SOURCE_BINDING_KEYS = {
+    "api_origin",
+    "app_version",
+    "build_number",
+    "environment",
+    "oidc_client_id",
+    "oidc_issuer",
+    "schema",
+    "source_revision",
+}
 
 TOP_LEVEL_KEYS = {
     "schema",
@@ -498,7 +509,11 @@ def _timestamp(value: Any, label: str) -> dt.datetime:
 
 
 def _https_coordinate(value: Any, label: str, *, allow_path: bool) -> str:
-    if not isinstance(value, str) or len(value) > 512:
+    if (
+        not isinstance(value, str)
+        or len(value.encode("utf-8")) > 512
+        or any(ord(character) < 0x20 or ord(character) == 0x7F for character in value)
+    ):
         raise EvidenceError(f"{label} is not a bounded string")
     parsed = urllib.parse.urlsplit(value)
     try:
@@ -508,6 +523,7 @@ def _https_coordinate(value: Any, label: str, *, allow_path: bool) -> str:
     if (
         parsed.scheme != "https"
         or not parsed.hostname
+        or parsed.geturl() != value
         or parsed.username is not None
         or parsed.password is not None
         or parsed.query
@@ -546,6 +562,59 @@ def load_staging_contract(path: pathlib.Path = STAGING_CONFIG) -> dict[str, str]
     if payload.get("PAKPERK_FULLTEXT_POLICY") != "strict":
         raise EvidenceError("staging mobile config must use strict full-text policy")
     return expected
+
+
+def load_source_binding(
+    path: pathlib.Path,
+    *,
+    source_revision: str,
+    app_version: str,
+    build_number: str,
+) -> dict[str, str]:
+    """Load the closed data-only binding created before protected credentials."""
+
+    _string(source_revision, "expected source revision", SOURCE_REVISION)
+    _string(app_version, "expected app version", APP_VERSION)
+    _string(build_number, "expected build number", BUILD_NUMBER)
+    try:
+        metadata = os.lstat(path)
+    except OSError as error:
+        raise EvidenceError("source binding is unavailable") from error
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or metadata.st_mode & 0o077
+        or metadata.st_nlink != 1
+    ):
+        raise EvidenceError("source binding is not one owner-only regular file")
+    raw_bytes = _read_regular_file_once(path, 32 * 1024, "source binding")
+    payload = _parse_canonical_json(raw_bytes, "source binding")
+    if not isinstance(payload, dict):
+        raise EvidenceError("source binding must be an object")
+    _exact_keys(payload, SOURCE_BINDING_KEYS, "source binding")
+    _exact_integer(payload["schema"], 1, "source binding schema")
+    if payload["source_revision"] != source_revision:
+        raise EvidenceError("source binding revision does not match")
+    if payload["environment"] != "staging":
+        raise EvidenceError("source binding environment does not match")
+    if payload["app_version"] != app_version:
+        raise EvidenceError("source binding app version does not match")
+    if payload["build_number"] != build_number:
+        raise EvidenceError("source binding build number does not match")
+    api_origin = _https_coordinate(
+        payload["api_origin"], "source binding API origin", allow_path=False
+    )
+    oidc_issuer = _https_coordinate(
+        payload["oidc_issuer"], "source binding OIDC issuer", allow_path=True
+    )
+    oidc_client_id = _string(
+        payload["oidc_client_id"], "source binding OIDC client ID", CLIENT_ID
+    )
+    return {
+        "api_origin": api_origin,
+        "oidc_issuer": oidc_issuer,
+        "oidc_client_id": oidc_client_id,
+    }
 
 
 def _reject_sensitive_data(value: Any, label: str = "evidence") -> None:
@@ -1336,12 +1405,79 @@ def _tar_info(name: str, size: int) -> tarfile.TarInfo:
     return info
 
 
+def tooling_manifest_bytes(
+    *,
+    validator_sha256: str,
+    driver_sha256: str,
+) -> bytes:
+    _string(validator_sha256, "validator SHA-256", HEX_64)
+    _string(driver_sha256, "driver SHA-256", HEX_64)
+    return canonical_json_bytes(
+        {
+            "schema": 1,
+            "classification": "protected mobile acceptance tooling",
+            "validator": {
+                "name": "pakperk-mobile-acceptance-validator.py",
+                "sha256": validator_sha256,
+            },
+            "driver": {
+                "name": "pakperk-mobile-acceptance-driver",
+                "sha256": driver_sha256,
+            },
+        }
+    )
+
+
+def _validate_tooling_manifest(
+    raw_bytes: bytes,
+    *,
+    expected_validator_sha256: str,
+    expected_driver_sha256: str,
+) -> None:
+    _string(expected_validator_sha256, "expected validator SHA-256", HEX_64)
+    _string(expected_driver_sha256, "expected driver SHA-256", HEX_64)
+    payload = _parse_canonical_json(raw_bytes, "acceptance tooling manifest")
+    if not isinstance(payload, dict):
+        raise EvidenceError("acceptance tooling manifest must be an object")
+    _exact_keys(
+        payload,
+        frozenset({"schema", "classification", "validator", "driver"}),
+        "acceptance tooling manifest",
+    )
+    _exact_integer(payload["schema"], 1, "acceptance tooling manifest schema")
+    if payload["classification"] != "protected mobile acceptance tooling":
+        raise EvidenceError("acceptance tooling manifest classification is invalid")
+    for key, expected_name, expected_digest in (
+        (
+            "validator",
+            "pakperk-mobile-acceptance-validator.py",
+            expected_validator_sha256,
+        ),
+        ("driver", "pakperk-mobile-acceptance-driver", expected_driver_sha256),
+    ):
+        tool = payload[key]
+        if not isinstance(tool, dict):
+            raise EvidenceError("acceptance tooling identity must be an object")
+        _exact_keys(
+            tool,
+            frozenset({"name", "sha256"}),
+            "acceptance tooling identity",
+        )
+        if tool["name"] != expected_name:
+            raise EvidenceError("acceptance tooling name is invalid")
+        _string(tool["sha256"], "acceptance tooling SHA-256", HEX_64)
+        if not hmac.compare_digest(tool["sha256"], expected_digest):
+            raise EvidenceError("acceptance tooling SHA-256 does not match")
+
+
 def _publish_archive(
     archive: pathlib.Path,
     evidence_bytes: bytes,
+    tooling_bytes: bytes,
 ) -> str:
     checksum = (
         f"{hashlib.sha256(evidence_bytes).hexdigest()}  {EVIDENCE_ARCHIVE_NAME}\n"
+        f"{hashlib.sha256(tooling_bytes).hexdigest()}  {TOOLING_ARCHIVE_NAME}\n"
     ).encode("ascii")
     buffer = io.BytesIO()
     with tarfile.open(
@@ -1350,6 +1486,10 @@ def _publish_archive(
         archive_file.addfile(
             _tar_info(EVIDENCE_ARCHIVE_NAME, len(evidence_bytes)),
             io.BytesIO(evidence_bytes),
+        )
+        archive_file.addfile(
+            _tar_info(TOOLING_ARCHIVE_NAME, len(tooling_bytes)),
+            io.BytesIO(tooling_bytes),
         )
         archive_file.addfile(
             _tar_info(CHECKSUM_ARCHIVE_NAME, len(checksum)),
@@ -1410,7 +1550,13 @@ def _publish_archive(
     return archive_digest
 
 
-def verify_archive(archive: pathlib.Path, expected_sha256: str) -> None:
+def verify_archive(
+    archive: pathlib.Path,
+    expected_sha256: str,
+    *,
+    expected_validator_sha256: str,
+    expected_driver_sha256: str,
+) -> None:
     _string(expected_sha256, "expected archive SHA-256", HEX_64)
     try:
         metadata = os.lstat(archive)
@@ -1431,6 +1577,7 @@ def verify_archive(archive: pathlib.Path, expected_sha256: str) -> None:
             members = archive_file.getmembers()
             if [member.name for member in members] != [
                 EVIDENCE_ARCHIVE_NAME,
+                TOOLING_ARCHIVE_NAME,
                 CHECKSUM_ARCHIVE_NAME,
             ]:
                 raise EvidenceError("evidence archive member surface is not closed")
@@ -1443,13 +1590,22 @@ def verify_archive(archive: pathlib.Path, expected_sha256: str) -> None:
                 ):
                     raise EvidenceError("evidence archive member metadata is invalid")
             evidence_file = archive_file.extractfile(EVIDENCE_ARCHIVE_NAME)
+            tooling_file = archive_file.extractfile(TOOLING_ARCHIVE_NAME)
             checksum_file = archive_file.extractfile(CHECKSUM_ARCHIVE_NAME)
-            if evidence_file is None or checksum_file is None:
+            if evidence_file is None or tooling_file is None or checksum_file is None:
                 raise EvidenceError("evidence archive members are unreadable")
             evidence_bytes = evidence_file.read()
+            tooling_bytes = tooling_file.read()
+            _validate_tooling_manifest(
+                tooling_bytes,
+                expected_validator_sha256=expected_validator_sha256,
+                expected_driver_sha256=expected_driver_sha256,
+            )
             expected_checksum = (
                 f"{hashlib.sha256(evidence_bytes).hexdigest()}  "
                 f"{EVIDENCE_ARCHIVE_NAME}\n"
+                f"{hashlib.sha256(tooling_bytes).hexdigest()}  "
+                f"{TOOLING_ARCHIVE_NAME}\n"
             ).encode("ascii")
             if checksum_file.read() != expected_checksum:
                 raise EvidenceError("evidence archive checksum does not match")
@@ -1468,6 +1624,7 @@ def validate_and_package(
     candidate_id: str,
     provenance_id: str,
     runner_session_id: str,
+    validator_sha256: str,
     driver_sha256: str,
     app_version: str,
     build_number: str,
@@ -1528,7 +1685,11 @@ def validate_and_package(
         not_before=not_before,
         validated_at=validated_at,
     )
-    return _publish_archive(archive_path, evidence_bytes)
+    tooling_bytes = tooling_manifest_bytes(
+        validator_sha256=validator_sha256,
+        driver_sha256=driver_sha256,
+    )
+    return _publish_archive(archive_path, evidence_bytes, tooling_bytes)
 
 
 def _add_candidate_arguments(parser: argparse.ArgumentParser) -> None:
@@ -1589,10 +1750,9 @@ def parse_args() -> argparse.Namespace:
     package.add_argument("archive", type=pathlib.Path)
     _add_candidate_arguments(package)
     _add_runner_session_arguments(package)
+    package.add_argument("--validator-sha256", required=True)
     package.add_argument("--driver-sha256", required=True)
-    package.add_argument("--api-origin", required=True)
-    package.add_argument("--oidc-issuer", required=True)
-    package.add_argument("--oidc-client-id", required=True)
+    package.add_argument("--source-binding", required=True, type=pathlib.Path)
     package.add_argument("--run-id", required=True)
     package.add_argument("--run-attempt", required=True)
     package.add_argument("--run-challenge", required=True)
@@ -1602,6 +1762,8 @@ def parse_args() -> argparse.Namespace:
     verify = commands.add_parser("verify-archive")
     verify.add_argument("archive", type=pathlib.Path)
     verify.add_argument("--expected-sha256", required=True)
+    verify.add_argument("--expected-validator-sha256", required=True)
+    verify.add_argument("--expected-driver-sha256", required=True)
     return parser.parse_args()
 
 
@@ -1637,10 +1799,21 @@ def main() -> int:
             return 0
 
         if arguments.command == "verify-archive":
-            verify_archive(arguments.archive, arguments.expected_sha256)
+            verify_archive(
+                arguments.archive,
+                arguments.expected_sha256,
+                expected_validator_sha256=arguments.expected_validator_sha256,
+                expected_driver_sha256=arguments.expected_driver_sha256,
+            )
             print("Protected mobile acceptance archive verified.")
             return 0
 
+        source_binding = load_source_binding(
+            arguments.source_binding,
+            source_revision=arguments.source_revision,
+            app_version=arguments.app_version,
+            build_number=arguments.build_number,
+        )
         archive_digest = validate_and_package(
             arguments.evidence,
             arguments.archive,
@@ -1651,12 +1824,13 @@ def main() -> int:
             candidate_id=arguments.candidate_id,
             provenance_id=arguments.provenance_id,
             runner_session_id=arguments.runner_session_id,
+            validator_sha256=arguments.validator_sha256,
             driver_sha256=arguments.driver_sha256,
             app_version=arguments.app_version,
             build_number=arguments.build_number,
-            api_origin=arguments.api_origin,
-            oidc_issuer=arguments.oidc_issuer,
-            oidc_client_id=arguments.oidc_client_id,
+            api_origin=source_binding["api_origin"],
+            oidc_issuer=source_binding["oidc_issuer"],
+            oidc_client_id=source_binding["oidc_client_id"],
             android_signer_sha256=arguments.android_signer_sha256,
             ios_team_id=arguments.ios_team_id,
             ios_signer_sha256=arguments.ios_signer_sha256,

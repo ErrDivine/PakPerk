@@ -9,6 +9,14 @@ import 'package:pakperk/core/telemetry/telemetry.dart';
 import 'package:pakperk/features/feed/feed_prefetch_telemetry.dart';
 
 void main() {
+  test('error category constructor rejects arbitrary content', () {
+    const sentinel = 'Bearer token reader@example.test';
+    final category = TelemetryErrorCategory(sentinel);
+
+    expect(category.category, 'unexpected');
+    expect(category.toString(), isNot(contains(sentinel)));
+  });
+
   group('RedactingTelemetrySink', () {
     test('unknown events never reach the exporter', () async {
       final delegate = _RecordingSink();

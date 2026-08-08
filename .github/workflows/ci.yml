@@ -74,6 +74,8 @@ jobs:
         run: |
           python3 scripts/test_validate_workflow_pins.py
           python3 scripts/validate_workflow_pins.py
+          python3 scripts/test_validate_dependency_automation.py
+          python3 scripts/validate_dependency_automation.py
           python3 scripts/test_validate_release_image_workflow.py
           python3 scripts/validate_release_image_workflow.py
           python3 scripts/test_validate_android_native_sbom.py
@@ -84,6 +86,34 @@ jobs:
           python3 scripts/test_validate_flutter_toolchain.py
           python3 scripts/test_validate_mobile_release_workflow.py
           python3 scripts/validate_mobile_release_workflow.py
+          python3 scripts/test_materialize_mobile_release_secret.py
+          python3 scripts/materialize_mobile_release_secret.py --help
+          python3 scripts/test_validate_mobile_store_client.py
+          python3 scripts/validate_mobile_store_client.py --help
+          python3 scripts/test_capture_mobile_credentialed_runtime.py
+          python3 scripts/capture_mobile_credentialed_runtime.py --help
+          python3 scripts/test_extract_mobile_store_client.py
+          python3 scripts/extract_mobile_store_client.py --help
+          python3 scripts/test_prepare_mobile_credentialed_upload.py
+          python3 -I scripts/prepare_mobile_credentialed_upload.py --help
+          bash -n scripts/prepare_mobile_store_client.sh
+          python3 scripts/test_assemble_mobile_signed_candidate.py
+          python3 -I scripts/assemble_mobile_signed_candidate.py --help
+          python3 scripts/test_validate_mobile_signed_release_run.py
+          python3 scripts/validate_mobile_signed_release_run.py --help
+          python3 scripts/test_validate_mobile_store_candidate.py
+          python3 scripts/validate_mobile_store_candidate.py --help
+          python3 scripts/test_generate_mobile_store_upload_attempt.py
+          python3 scripts/generate_mobile_store_upload_attempt.py --help
+          python3 scripts/test_generate_mobile_store_upload_outcome.py
+          python3 scripts/generate_mobile_store_upload_outcome.py --help
+          python3 scripts/test_generate_mobile_store_upload_handoff.py
+          python3 scripts/generate_mobile_store_upload_handoff.py --help
+          python3 scripts/test_finalize_mobile_signed_release.py
+          python3 -I scripts/finalize_mobile_signed_release.py --help
+          python3 scripts/test_generate_mobile_store_rollout_receipt.py
+          python3 scripts/test_validate_mobile_store_rollout_workflow.py
+          python3 scripts/validate_mobile_store_rollout_workflow.py
           python3 scripts/test_validate_mobile_device_workflow.py
           python3 scripts/validate_mobile_device_workflow.py
           python3 scripts/test_validate_mobile_acceptance_evidence.py
@@ -118,7 +148,10 @@ jobs:
           mobile/assets/prepared_connections.json
           deploy/keycloak/pakperk-realm.json
           deploy/helm/pakperk/values.schema.json
-      - run: ./scripts/validate_keycloak_realm.sh
+      - name: Validate Keycloak realm policy and client boundaries
+        run: |
+          python3 scripts/test_validate_keycloak_realm.py
+          ./scripts/validate_keycloak_realm.sh
       - name: Verify live account-deletion harness contract without Docker
         run: ./scripts/test_live_account_deletion.sh --self-test
       - name: Verify backend load-gate contract without live calls
@@ -133,11 +166,20 @@ jobs:
           repository::tests::migrations_apply_and_required_extensions_are_ready
           -- --ignored --exact --test-threads=1
       - name: Verify isolated empty, oldest-supported, and no-op migrations
-        run: >-
-          cargo test --manifest-path backend/Cargo.toml --locked
-          --package pakperk-migrate --bin pakperk-migrate
-          tests::empty_v1_and_latest_postgres_schemas_converge
-          -- --exact --test-threads=1
+        shell: bash
+        run: |
+          selector='tests::standalone_run_bootstraps_upgrades_and_rejects_wrong_extension_namespace'
+          listed="$({
+            cargo test --manifest-path backend/Cargo.toml --locked \
+              --package pakperk-migrate --bin pakperk-migrate -- --list
+          })"
+          if ! grep -Fqx "$selector: test" <<<"$listed"; then
+            echo "Exact migration test selector is absent; refusing a zero-test pass." >&2
+            exit 1
+          fi
+          cargo test --manifest-path backend/Cargo.toml --locked \
+            --package pakperk-migrate --bin pakperk-migrate \
+            "$selector" -- --exact --test-threads=1
       - run: cargo fmt --manifest-path backend/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path backend/Cargo.toml --locked --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --manifest-path backend/Cargo.toml --locked --workspace --all-features
@@ -195,6 +237,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Verify store rollout API clients
+        run: |
+          ruby -c scripts/manage_app_store_phased_release.rb
+          ruby scripts/test_manage_app_store_phased_release.rb
+          ruby -c scripts/manage_google_play_rollout.rb
+          ruby scripts/test_manage_google_play_rollout.rb
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}

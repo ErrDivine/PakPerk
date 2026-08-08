@@ -2,6 +2,7 @@
 
 **Status:** repository implementation present; public/store release not accepted
 **Report date:** 2026-08-02
+**Last revalidated:** 2026-08-08
 **Companion:** [mobile evidence](phase-6-mobile.md)
 
 ## Delivered repository boundaries
@@ -52,7 +53,26 @@
   source checkout/ancestry checks, and a reviewed native toolchain/dependency
   boundary: SwiftPM AppAuth-iOS source revision and license, checksum-complete
   Gradle artifacts, MRI Ruby 3.4.10 with RubyGems 4.0.17, and frozen Bundler/
-  Fastlane packages.
+  Fastlane packages. Credential-free preparation publishes its immutable
+  binding before candidate execution; Android and iOS signing and upload occur
+  on separate fresh runners with only the corresponding secret family, while
+  credential-free jobs assemble/finalize the canonical retained evidence.
+- A separate manual `production-store` rollout contract that retrieves and
+  validates the exact protected production candidate/provenance bytes before
+  exposing platform-isolated store credentials; packages trusted tooling from
+  the exact workflow revision in an uncredentialed bootstrap, then runs it from
+  a literal-hashed closure in fresh no-checkout platform jobs, separately from
+  candidate source; and refuses first-publication use. Play binds the highest
+  completed fallback and exact
+  pre/post state for every reviewed fraction, halt, completion, and protected
+  post-completion fallback halt. App Store start proves an exact prior
+  `READY_FOR_DISTRIBUTION` version, exact target pre-submit state, and exact
+  post-submit `INACTIVE` phased resource; later operations bind exact phased
+  state and re-observe mutations. Every selected platform receives a retained
+  content-addressed succeeded/failed/not-run outcome before final failure, so
+  partial success remains auditable. Repository validators plus hermetic Play,
+  App Store, and receipt tests cover the contract; no store was mutated and no
+  environment/store approval is inferred.
 - An opt-in reference-provider deletion acceptance harness and manual workflow
   for disposable local Keycloak/PostgreSQL services. It covers real PKCE,
   recent-auth rejection/acceptance, immediate disablement, worker/provider/data
@@ -163,7 +183,7 @@ that exact expected schema version.
   authoritative suspended/deletion-pending responses; preserves only bound
   cache/draft access while authentication is offline-unknown; and permits
   read-only accounts to fetch published comments anonymously. On the final
-  source tree, Flutter analysis and all 601 locked tests passed, including cold
+  source tree, Flutter analysis and all 610 locked tests passed, including cold
   restored-identity rebinding, same-epoch account isolation, terminal deletion
   latching, async comment-intent guards, and fail-closed cache purging.
 - The public deletion page now retains signed deletion authority through both
@@ -172,14 +192,16 @@ that exact expected schema version.
   production site origin. All 31 static and browser site tests passed against
   a staging Helm render.
 - CI and `scripts/check.sh` now invoke a tested validator that runs `bash -n`
-  independently for all 27 top-level shell scripts and rejects an empty,
+  independently for all 28 top-level shell scripts and rejects an empty,
   symlinked, or syntactically invalid input set. The validator's four
   regressions and the complete shell set passed.
 - The full production Helm contract passed with the official checksum-verified
-  Helm 3.18.6 binary. The regenerated OpenAPI contract, its 21 compatibility
-  regressions, and the 52 signed-mobile workflow validation regressions also
-  passed. All nine bounded backend-load contract tests passed against their
-  local content-redacted mock server.
+  Helm 3.18.6 binary. The regenerated OpenAPI contract and its 21 compatibility
+  regressions passed. The signed-mobile workflow validator passed 36
+  regressions; the candidate assembler, finalizer, authenticated-run verifier,
+  and candidate validator passed 8, 15, 13, and 43 tests respectively. All nine
+  bounded backend-load contract tests passed against their local content-
+  redacted mock server.
 
 - Trusted-proxy client-origin unit tests passed, including right-to-left chain,
   spoof resistance, malformed fallback, canonical CIDRs, and keyed address
@@ -219,8 +241,16 @@ that exact expected schema version.
 - During the operations audit, the backend stdout and direct-OTLP Collector
   harness passed twice against the pinned image for logs, traces, metrics, and
   resource attributes, with every configured protected field and source file
-  path absent. A live deployed sink, retention job, and alert route remain
-  external evidence.
+  path absent. A subsequent hostile-body regression against the same pinned
+  Collector verified that arbitrary scalar and structured direct-OTLP log
+  bodies become a static redaction marker, while the separate stdout pipeline
+  replaces arbitrary scalar or structured messages with a constant marker and
+  preserves only the exact content-free ledger alert for its ERROR severity/
+  Rust namespace; fixed stdout service/environment resource upserts defeat
+  spoofing. An exact
+  closed-schema mobile event keeps its identity. The harness also rejects drift
+  between the gateway and Collector mobile-event allowlists. A live deployed
+  sink, retention job, and alert route remain external evidence.
 - Secret initialization was structurally changed to copy/chmod before per-file
   ownership transfer using only `CAP_CHOWN`; the security workflow contains a
   real runtime-image capability smoke.
@@ -254,20 +284,25 @@ that exact expected schema version.
   `058e0af2c2b57e369d905a03ac9748b0ebf543c6` with Dart 3.12.2. The signed-
   mobile, security, and release-image workflows validate and retain that
   machine-readable identity before resolving Pub dependencies.
-- The image-publication workflow's 29 validation tests and the signed-mobile
-  workflow's 52 validation tests passed. In this reviewed workflow revision, both
-  jobs run an executable source gate instead of using a job-level branch
-  condition, so a non-`main` or tag dispatch fails rather than completing as a
-  skipped green job. Their validators
-  lock the dispatch schema, non-cancelling concurrency, inherited environment,
-  complete step-header surface, pinned exact-source checkout, and source gate;
-  the existing scan/SBOM/publication and signed-candidate boundaries remain in
-  force. Neither protected workflow was run, so no registry publication or
-  signed candidate is inferred. GitHub deployment-branch/environment protection
-  is still required to prevent dispatching historical refs that contain an
-  older copy of either workflow.
+- The image-publication workflow's 47 validation tests passed. The signed-
+  mobile workflow's 36 workflow-validator tests, 8 assembler tests, 15
+  finalizer tests, 13 authenticated-run verifier tests, and 43 candidate-
+  validator tests passed. Its exact eight-job surface is credential-free
+  preparation; isolated Android and iOS signers; credential-free signed-
+  candidate assembly; uncredentialed store-client bootstrap; isolated no-
+  checkout Android and iOS uploads; and an always-run credential-free
+  finalizer. Executable source gates fail non-`main`, tag, or mismatched exact-
+  SHA dispatches rather than completing as skipped green jobs. The
+  authenticated-run verifier requires distinct immutable candidate, store-
+  handoff, and signed-release-outcome artifacts by server-issued ID and raw
+  digest. Image building, uncredentialed archive scanning/SBOM creation, and
+  protected publication remain isolated on three fresh runners. Neither
+  protected workflow was run, so no registry publication, signed candidate, or
+  store upload is inferred. GitHub deployment-branch/environment protection is
+  still required to prevent dispatching historical refs that contain an older
+  copy of either workflow.
 - The repository contract for the protected physical-mobile acceptance lane
-  passed 37 closed-evidence and 53 workflow-tamper regressions. The lane requires
+  passed 42 closed-evidence and 63 workflow-tamper regressions. The lane requires
   exact staging coordinates from the
   reviewed config, content-addressed signed-release provenance, a short-lived
   root-owned dedicated/ephemeral runner attestation, four distinct
@@ -347,7 +382,7 @@ that exact expected schema version.
   local disposable-database results; a current exact-source green CI lane and
   protected target-environment execution remain separate release evidence.
 - On the final current-tree canonical run, direct Dart formatting, Flutter
-  analysis, all 601 locked tests, every Android debug flavor, every iOS
+  analysis, all 610 locked tests, every Android debug flavor, every iOS
   simulator flavor, and strict staging/production artifact inspection passed.
   The physical-device matrix remains unexecuted, as detailed in the companion
   report.
@@ -389,6 +424,7 @@ pass from the repository validators.
   a successful protected public-edge run for the exact dark-deployed candidate;
   current advisory/container scans;
   protected image publication/digest promotion and production mobile signing;
+  protected production-store rollout execution and store audit reconciliation;
   measured startup/cache/crash targets; physical-device QA; legal/content
   review; reviewer account/notes; current store forms; TestFlight/closed Play
   upload and review status.
@@ -399,9 +435,11 @@ timestamp, environment/build, immutable evidence location, and approval.
 
 ## Known risks and operator obligations
 
-- The Collector filelog offset store is in-memory; a node-agent restart may
-  replay bounded retained files. The sink must tolerate/deduplicate replay and
-  operators must test node coverage/rotation.
+- The Collector filelog offsets and exporter retry queue use separate bounded,
+  Pod-scoped `emptyDir` stores. A container restart within that Pod preserves
+  both, but Pod replacement, rescheduling, or node loss may replay bounded
+  retained files. The sink must tolerate/deduplicate replay and operators must
+  test node coverage, rotation, and queue saturation.
 - Ingress proxy CIDRs must match source addresses actually observed by the API,
   while the controller trusts forwarded addresses only from platform load
   balancers. An internet-wide trusted range is forbidden.
@@ -413,6 +451,13 @@ timestamp, environment/build, immutable evidence location, and approval.
 - Store history, signing keys, infrastructure retention, contacts, and legal/
   moderation staffing are intentionally external and cannot be inferred from
   this repository.
+- A rollout outcome receipt proves which bounded API attempt succeeded, failed,
+  or was not run, including dependency-skipped and partial-success cases; it
+  does not prove that either store approved or fully propagated a release.
+  Store-side history and the exact-candidate observation window remain
+  required. A pre-completion halt is terminal and uses a higher fix-forward
+  build; Android alone also has the protected post-completion fallback halt
+  described in the release runbook.
 - Public-edge evidence observes the site notices source marker and expected
   public response contracts. Platform owners must still compare actual Pod
   image IDs and the immutable release-binding ConfigMap with the protected

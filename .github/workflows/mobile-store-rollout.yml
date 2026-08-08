@@ -1,0 +1,1618 @@
+name: protected-mobile-store-rollout
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact reviewed main commit used by the signed candidate
+        required: true
+        type: string
+      signed_release_run_id:
+        description: GitHub run ID that produced the protected production candidate
+        required: true
+        type: string
+      candidate_id:
+        description: Content ID from mobile-candidate.json (sha256:...)
+        required: true
+        type: string
+      provenance_id:
+        description: Content ID from mobile-release-provenance.json (sha256:...)
+        required: true
+        type: string
+      store_handoff_id:
+        description: Content ID from the verified post-upload store handoff
+        required: true
+        type: string
+      app_version:
+        description: Exact App Store/Play version name from the candidate
+        required: true
+        type: string
+      build_number:
+        description: Exact iOS build number and Android target version code
+        required: true
+        type: string
+      platforms:
+        description: Store mutation scope
+        required: true
+        type: choice
+        options: [both, android, ios]
+      operation:
+        description: Exact reviewed store transition
+        required: true
+        type: choice
+        options: [start, advance, halt, complete, rollback]
+      android_previous_production_version_code:
+        description: Exact completed fallback version code; use none for iOS-only
+        required: true
+        type: string
+      android_expected_current_fraction:
+        description: Exact Play pre-state fraction; use none for start or iOS-only
+        required: true
+        type: choice
+        options: [none, "0.01", "0.02", "0.05", "0.10", "0.20", "0.50", "1.00"]
+      android_rollout_fraction:
+        description: Exact Play post-state fraction; use none for iOS-only
+        required: true
+        type: choice
+        options: [none, "0.01", "0.02", "0.05", "0.10", "0.20", "0.50", "1.00"]
+      ios_previous_public_version:
+        description: Exact prior public iOS version for start; otherwise use none
+        required: true
+        type: string
+      change_id:
+        description: Sanitized release/change record identifier (no user data)
+        required: true
+        type: string
+      confirmation:
+        description: Type MUTATE_PRODUCTION_MOBILE_STORES
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: production-mobile-store-rollout
+  cancel-in-progress: false
+
+env:
+  PAKPERK_RUBY_ENGINE: ruby
+  PAKPERK_RUBY_VERSION: 3.4.10
+  PAKPERK_RUBYGEMS_VERSION: 4.0.17
+  BUNDLER_VERSION: 2.6.9
+  BUNDLER_SHA256: a25675ffbd055ae1186766cc1e120b4cf62588e88abb59b99c57e22b1c55c9eb
+
+jobs:
+  store-client-bootstrap:
+    name: credential-free rollout intent and client bootstrap
+    runs-on: macos-26
+    timeout-minutes: 45
+    outputs:
+      transfer_artifact_id: ${{ steps.transfer_upload.outputs.artifact-id }}
+      transfer_artifact_digest: ${{ steps.transfer_upload.outputs.artifact-digest }}
+      archive_sha256: ${{ steps.package.outputs.archive_sha256 }}
+      bundle_sha256: ${{ steps.store_client.outputs.bundle_bin_sha256 }}
+      tree_sha256: ${{ steps.store_client.outputs.tree_sha256 }}
+      candidate_artifact_id: ${{ steps.release_run.outputs.candidate_artifact_id }}
+      handoff_artifact_id: ${{ steps.release_run.outputs.store_handoff_artifact_id }}
+      signed_release_run_attempt: ${{ steps.release_run.outputs.run_attempt }}
+    steps:
+      - name: Check out trusted rollout controls
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted-rollout
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check out exact candidate source without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_revision }}
+          path: candidate-source
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact rollout intent before any protected environment
+        id: intent
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+          DISPATCH_REF: ${{ github.ref }}
+          WORKFLOW_REVISION: ${{ github.workflow_sha }}
+          REQUESTED_REVISION: ${{ inputs.source_revision }}
+          SIGNED_RELEASE_RUN_ID: ${{ inputs.signed_release_run_id }}
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          PROVENANCE_ID: ${{ inputs.provenance_id }}
+          STORE_HANDOFF_ID: ${{ inputs.store_handoff_id }}
+          APP_VERSION: ${{ inputs.app_version }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+          PLATFORMS: ${{ inputs.platforms }}
+          OPERATION: ${{ inputs.operation }}
+          ANDROID_PREVIOUS_VERSION: ${{ inputs.android_previous_production_version_code }}
+          ANDROID_EXPECTED_FRACTION: ${{ inputs.android_expected_current_fraction }}
+          ANDROID_TARGET_FRACTION: ${{ inputs.android_rollout_fraction }}
+          IOS_PREVIOUS_PUBLIC_VERSION: ${{ inputs.ios_previous_public_version }}
+          CHANGE_ID: ${{ inputs.change_id }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          trusted="$GITHUB_WORKSPACE/trusted-rollout"
+          candidate="$GITHUB_WORKSPACE/candidate-source"
+          if [[ "$DISPATCH_REF" != refs/heads/main ]] || \
+             ! [[ "$WORKFLOW_REVISION" =~ ^[0-9a-f]{40}$ ]] || \
+             ! [[ "$REQUESTED_REVISION" =~ ^[0-9a-f]{40}$ ]] || \
+             ! [[ "$SIGNED_RELEASE_RUN_ID" =~ ^[1-9][0-9]{0,19}$ ]]; then
+            echo "Store rollout dispatch identity is invalid." >&2
+            exit 2
+          fi
+          if [[ "$(/usr/bin/git -C "$trusted" rev-parse HEAD)" != "$WORKFLOW_REVISION" ]] || \
+             ! /usr/bin/git -C "$trusted" diff --quiet --ignore-submodules -- || \
+             ! /usr/bin/git -C "$trusted" diff --cached --quiet --ignore-submodules --; then
+            echo "Trusted rollout controls do not match the workflow revision." >&2
+            exit 1
+          fi
+          if [[ "$(/usr/bin/git -C "$candidate" rev-parse HEAD)" != "$REQUESTED_REVISION" ]] || \
+             ! /usr/bin/git -C "$candidate" merge-base --is-ancestor \
+               "$REQUESTED_REVISION" refs/remotes/origin/main || \
+             ! /usr/bin/git -C "$candidate" diff --quiet --ignore-submodules -- || \
+             ! /usr/bin/git -C "$candidate" diff --cached --quiet --ignore-submodules --; then
+            echo "Candidate source is not the exact clean reviewed main commit." >&2
+            exit 1
+          fi
+          if ! [[ "$CANDIDATE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+             ! [[ "$PROVENANCE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+             ! [[ "$STORE_HANDOFF_ID" =~ ^store-handoff-v1:sha256:[0-9a-f]{64}$ ]] || \
+             [[ "$CANDIDATE_ID" == "$PROVENANCE_ID" ]]; then
+            echo "Candidate, provenance, or handoff identity is invalid." >&2
+            exit 1
+          fi
+          mobile_version="$(/usr/bin/awk '$1 == "version:" { print $2; exit }' \
+            "$candidate/mobile/pubspec.yaml")"
+          if [[ "$APP_VERSION" != "${mobile_version%%+*}" || \
+                "$BUILD_NUMBER" != "${mobile_version##*+}" || \
+                ! "$BUILD_NUMBER" =~ ^[1-9][0-9]{0,9}$ ]]; then
+            echo "Store identity does not match the reviewed candidate." >&2
+            exit 1
+          fi
+          if [[ "$CONFIRMATION" != MUTATE_PRODUCTION_MOBILE_STORES ]] || \
+             ! [[ "$CHANGE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$ ]]; then
+            echo "Protected confirmation or change ID is invalid." >&2
+            exit 2
+          fi
+          case "$PLATFORMS" in both|android|ios) ;; *) exit 2 ;; esac
+          case "$OPERATION" in start|advance|halt|complete|rollback) ;; *) exit 2 ;; esac
+          if [[ "$PLATFORMS" == ios ]]; then
+            [[ "$OPERATION" != rollback && "$ANDROID_PREVIOUS_VERSION" == none && \
+               "$ANDROID_EXPECTED_FRACTION" == none && "$ANDROID_TARGET_FRACTION" == none ]] || exit 2
+          else
+            if ! [[ "$ANDROID_PREVIOUS_VERSION" =~ ^[1-9][0-9]{0,9}$ ]] || \
+               (( 10#$ANDROID_PREVIOUS_VERSION > 2100000000 )) || \
+               (( 10#$BUILD_NUMBER > 2100000000 )) || \
+               (( 10#$ANDROID_PREVIOUS_VERSION >= 10#$BUILD_NUMBER )); then
+              exit 2
+            fi
+            case "$OPERATION:$ANDROID_EXPECTED_FRACTION:$ANDROID_TARGET_FRACTION" in
+              start:none:0.01) ;;
+              advance:0.01:0.02|advance:0.02:0.05|advance:0.05:0.10|\
+              advance:0.10:0.20|advance:0.20:0.50) ;;
+              halt:0.01:0.01|halt:0.02:0.02|halt:0.05:0.05|\
+              halt:0.10:0.10|halt:0.20:0.20|halt:0.50:0.50) ;;
+              complete:0.50:1.00) ;;
+              rollback:1.00:1.00) [[ "$PLATFORMS" == android ]] || exit 2 ;;
+              *) exit 2 ;;
+            esac
+          fi
+          if [[ "$PLATFORMS" == android ]]; then
+            [[ "$IOS_PREVIOUS_PUBLIC_VERSION" == none ]] || exit 2
+          elif [[ "$OPERATION" == start ]]; then
+            [[ "$IOS_PREVIOUS_PUBLIC_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]{1,32})?$ && \
+               "$IOS_PREVIOUS_PUBLIC_VERSION" != "$APP_VERSION" ]] || exit 2
+          else
+            [[ "$IOS_PREVIOUS_PUBLIC_VERSION" == none ]] || exit 2
+          fi
+          binding_root="$(umask 077; /usr/bin/mktemp -d \
+            "$RUNNER_TEMP/pakperk-rollout-binding.XXXXXXXXXX")"
+          /bin/chmod 0700 "$binding_root"
+          printf 'binding_root=%s\n' "$binding_root" >>"$GITHUB_OUTPUT"
+
+      - name: Authenticate the signed release run and artifact IDs
+        id: release_run
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          ALL_PROXY: ""
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          CURL_HOME: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GITHUB_TOKEN: ${{ github.token }}
+          HTTPS_PROXY: ""
+          HTTP_PROXY: ""
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NETRC: /dev/null
+          NO_PROXY: "*"
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+          BINDING_ROOT: ${{ steps.intent.outputs.binding_root }}
+          SIGNED_RELEASE_RUN_ID: ${{ inputs.signed_release_run_id }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          APP_VERSION: ${{ inputs.app_version }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          validator="$GITHUB_WORKSPACE/trusted-rollout/scripts/validate_mobile_signed_release_run.py"
+          observed="$(/usr/bin/shasum -a 256 "$validator")"
+          [[ "${observed%% *}" == e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93 ]] || exit 1
+          api_root="https://api.github.com/repos/ErrDivine/PakPerk/actions/runs/$SIGNED_RELEASE_RUN_ID"
+          options=(--proto '=https' --tlsv1.2 --fail --silent --show-error \
+            --connect-timeout 10 --max-time 30 --max-filesize 1048576 --retry 2 \
+            --retry-connrefused --retry-max-time 30 \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $GITHUB_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2026-03-10')
+          /usr/bin/env -i PATH=/usr/bin:/bin HOME="$BINDING_ROOT" NO_PROXY='*' no_proxy='*' \
+            /usr/bin/curl --disable "${options[@]}" -o "$BINDING_ROOT/run.json" "$api_root"
+          /usr/bin/env -i PATH=/usr/bin:/bin HOME="$BINDING_ROOT" NO_PROXY='*' no_proxy='*' \
+            /usr/bin/curl --disable "${options[@]}" -o "$BINDING_ROOT/artifacts.json" \
+            "$api_root/artifacts?per_page=100"
+          /usr/bin/env -i PATH=/usr/bin:/bin HOME="$BINDING_ROOT" NO_PROXY='*' no_proxy='*' \
+            /usr/bin/curl --disable "${options[@]}" -o "$BINDING_ROOT/jobs.json" \
+            "$api_root/jobs?filter=latest&per_page=100"
+          /usr/bin/python3 -I "$validator" \
+            --run-response "$BINDING_ROOT/run.json" \
+            --artifacts-response "$BINDING_ROOT/artifacts.json" \
+            --jobs-response "$BINDING_ROOT/jobs.json" \
+            --output "$BINDING_ROOT/signed-release-run-verification.json" \
+            --repository "$GITHUB_REPOSITORY" --run-id "$SIGNED_RELEASE_RUN_ID" \
+            --source-revision "$SOURCE_REVISION" --app-version "$APP_VERSION" \
+            --build-number "$BUILD_NUMBER" --github-output "$GITHUB_OUTPUT"
+
+      - name: Select and verify bootstrap Ruby
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+        run: |
+          [[ "$(ruby -e 'print RUBY_ENGINE')" == "$PAKPERK_RUBY_ENGINE" && \
+             "$(ruby -e 'print RUBY_VERSION')" == "$PAKPERK_RUBY_VERSION" && \
+             "$(gem --version)" == "$PAKPERK_RUBYGEMS_VERSION" ]]
+
+      - name: Capture bootstrap runtime
+        id: runtime
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+        run: |
+          helper="$GITHUB_WORKSPACE/trusted-rollout/scripts/capture_mobile_credentialed_runtime.py"
+          observed="$(/usr/bin/shasum -a 256 "$helper")"
+          [[ "${observed%% *}" == 2d51f03bd21f2afa2af0396e801e0e950172210814a229ca50df67c5a8d135cd ]] || exit 1
+          /usr/bin/python3 -I "$helper" --github-output "$GITHUB_OUTPUT"
+
+      - name: Prepare uncredentialed store client
+        id: store_client
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: ${{ steps.runtime.outputs.reviewed_path }}
+          HOME: ${{ steps.runtime.outputs.real_home }}
+          ALL_PROXY: ""
+          BASH_ENV: /dev/null
+          CURL_CA_BUNDLE: ""
+          CURL_HOME: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          HTTPS_PROXY: ""
+          HTTP_PROXY: ""
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NETRC: /dev/null
+          NO_PROXY: "*"
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+        run: |
+          helper="$GITHUB_WORKSPACE/trusted-rollout/scripts/prepare_mobile_store_client.sh"
+          observed="$(/usr/bin/shasum -a 256 "$helper")"
+          [[ "${observed%% *}" == 2346df0d861df39b5b0b6f580b6afb49648e9d7f6468c22dd47948f84a0ec076 ]] || exit 1
+          /bin/bash --noprofile --norc "$helper" \
+            "$GITHUB_WORKSPACE/trusted-rollout" "$RUNNER_TEMP" "$GITHUB_OUTPUT" \
+            "${{ steps.runtime.outputs.ruby_bin }}" "${{ steps.runtime.outputs.ruby_sha256 }}" \
+            "${{ steps.runtime.outputs.gem_bin }}" "${{ steps.runtime.outputs.gem_sha256 }}"
+
+      - name: Package literal-hashed rollout controls and client
+        id: package
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: ${{ steps.runtime.outputs.reviewed_path }}
+          HOME: ${{ steps.store_client.outputs.home }}
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          BINDING_ROOT: ${{ steps.intent.outputs.binding_root }}
+          STORE_CLIENT_ROOT: ${{ steps.store_client.outputs.root }}
+          STORE_CLIENT_ROOT_DEVICE: ${{ steps.store_client.outputs.root_device }}
+          STORE_CLIENT_ROOT_INODE: ${{ steps.store_client.outputs.root_inode }}
+          STORE_CLIENT_BUNDLE_SHA256: ${{ steps.store_client.outputs.bundle_bin_sha256 }}
+          STORE_CLIENT_TREE_SHA256: ${{ steps.store_client.outputs.tree_sha256 }}
+          PAKPERK_BUNDLE_BIN: ${{ steps.store_client.outputs.bundle_bin }}
+          GEM_HOME: ${{ steps.store_client.outputs.gem_home }}
+          BUNDLE_GEMFILE: ${{ steps.store_client.outputs.bundle_gemfile }}
+          BUNDLE_LOCKFILE: ${{ steps.store_client.outputs.bundle_lockfile }}
+          BUNDLE_PATH: ${{ steps.store_client.outputs.bundle_path }}
+          BUNDLE_APP_CONFIG: ${{ steps.store_client.outputs.bundle_app_config }}
+          STORE_CLIENT_HOME: ${{ steps.store_client.outputs.home }}
+        run: |
+          trusted="$GITHUB_WORKSPACE/trusted-rollout"
+          validator="$trusted/scripts/validate_mobile_store_client.py"
+          observed="$(/usr/bin/shasum -a 256 "$validator")"
+          [[ "${observed%% *}" == 6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf ]] || exit 1
+          /usr/bin/python3 -I "$validator" verify \
+            --root "$STORE_CLIENT_ROOT" --root-device "$STORE_CLIENT_ROOT_DEVICE" \
+            --root-inode "$STORE_CLIENT_ROOT_INODE" \
+            --bundle-sha256 "$STORE_CLIENT_BUNDLE_SHA256" \
+            --tree-sha256 "$STORE_CLIENT_TREE_SHA256" --bundle-bin "$PAKPERK_BUNDLE_BIN" \
+            --gem-home "$GEM_HOME" --bundle-gemfile "$BUNDLE_GEMFILE" \
+            --bundle-lockfile "$BUNDLE_LOCKFILE" --bundle-path "$BUNDLE_PATH" \
+            --bundle-app-config "$BUNDLE_APP_CONFIG" --client-home "$STORE_CLIENT_HOME"
+          transfer="$(umask 077; /usr/bin/mktemp -d \
+            "$RUNNER_TEMP/pakperk-rollout-transfer.XXXXXXXXXX")"
+          /bin/mkdir -m 0700 "$transfer/controls" "$transfer/binding"
+          archive="$transfer/store-client.tar.gz"
+          /usr/bin/tar -C "$STORE_CLIENT_ROOT" -czf "$archive" \
+            bundle config download gem-home home manifest
+          for reviewed in \
+            "2d51f03bd21f2afa2af0396e801e0e950172210814a229ca50df67c5a8d135cd capture_mobile_credentialed_runtime.py" \
+            "f1f2b989dd433223114c85451147404ad4e65992d1f5a86ed3f3c6937ea1fd3a extract_mobile_store_client.py" \
+            "38133d7c8a9fc5c4ade2935e6340754d8a94c60bf15fbad463a88d96190c0f5c generate_mobile_store_rollout_receipt.py" \
+            "2fb30a5ed3341e22254d2e6548d22b9b10e235176317b7b403d48d49d445c3ac manage_google_play_rollout.rb" \
+            "ee7e55a902bfe4f1f9fe2f933871e44d51c1f8906eff93aad8c8aa6c3f05b68c manage_app_store_phased_release.rb" \
+            "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4 materialize_mobile_release_secret.py" \
+            "b6c4597b55db335fc46af14e0ba9c6969e99ca8ec29d43c817d699045fe12498 prepare_mobile_credentialed_upload.py" \
+            "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93 validate_mobile_signed_release_run.py" \
+            "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107 validate_mobile_store_candidate.py" \
+            "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf validate_mobile_store_client.py"; do
+            expected="${reviewed%% *}"
+            name="${reviewed#* }"
+            source="$trusted/scripts/$name"
+            observed="$(/usr/bin/shasum -a 256 "$source")"
+            [[ "${observed%% *}" == "$expected" ]] || exit 1
+            /bin/cp "$source" "$transfer/controls/$name"
+            /bin/chmod 0400 "$transfer/controls/$name"
+            copied="$(/usr/bin/shasum -a 256 "$transfer/controls/$name")"
+            [[ "${copied%% *}" == "$expected" ]] || exit 1
+          done
+          /bin/cp "$BINDING_ROOT/signed-release-run-verification.json" \
+            "$transfer/binding/signed-release-run-verification.json"
+          /bin/chmod 0400 "$transfer/binding/signed-release-run-verification.json"
+          archive_digest="$(/usr/bin/shasum -a 256 "$archive")"
+          printf 'archive_sha256=%s\n' "${archive_digest%% *}" >>"$GITHUB_OUTPUT"
+          printf 'transfer_root=%s\n' "$transfer" >>"$GITHUB_OUTPUT"
+
+      - name: Upload immutable rollout controls and client by ID
+        id: transfer_upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+        with:
+          name: mobile-rollout-controls-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.package.outputs.transfer_root }}
+          if-no-files-found: error
+          retention-days: 1
+
+  android-rollout:
+    name: isolated Android production rollout
+    needs: store-client-bootstrap
+    if: >-
+      always() &&
+      (inputs.platforms == 'android' || inputs.platforms == 'both')
+    runs-on: macos-26
+    timeout-minutes: 45
+    environment: production-store
+    outputs:
+      evidence_artifact_id: ${{ steps.evidence_upload.outputs.artifact-id }}
+      evidence_artifact_digest: ${{ steps.evidence_upload.outputs.artifact-digest }}
+    steps:
+      - name: Create owner-only Android outcome root
+        id: evidence
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+        run: |
+          root="$(umask 077; /usr/bin/mktemp -d \
+            "$RUNNER_TEMP/pakperk-android-rollout.XXXXXXXXXX")"
+          /bin/chmod 0700 "$root"
+          printf 'root=%s\n' "$root" >>"$GITHUB_OUTPUT"
+
+      - name: Download exact Android candidate by immutable artifact ID
+        if: needs.store-client-bootstrap.outputs.candidate_artifact_id != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.store-client-bootstrap.outputs.candidate_artifact_id }}
+          path: ${{ runner.temp }}/release-candidate
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.signed_release_run_id }}
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Download exact Android handoff by immutable artifact ID
+        if: needs.store-client-bootstrap.outputs.handoff_artifact_id != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.store-client-bootstrap.outputs.handoff_artifact_id }}
+          path: ${{ runner.temp }}/store-upload-handoff
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.signed_release_run_id }}
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Download Android controls and client by immutable artifact ID
+        if: needs.store-client-bootstrap.outputs.transfer_artifact_id != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.store-client-bootstrap.outputs.transfer_artifact_id }}
+          path: ${{ runner.temp }}/rollout-transfer
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Re-attest Android artifacts controls and local client before credentials
+        id: prepared
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          CONTROL_ROOT: ${{ runner.temp }}/rollout-transfer/controls
+          TRANSFER_DIGEST: ${{ needs.store-client-bootstrap.outputs.transfer_artifact_digest }}
+          ARCHIVE_SHA256: ${{ needs.store-client-bootstrap.outputs.archive_sha256 }}
+          BUNDLE_SHA256: ${{ needs.store-client-bootstrap.outputs.bundle_sha256 }}
+          TREE_SHA256: ${{ needs.store-client-bootstrap.outputs.tree_sha256 }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          SIGNED_RELEASE_RUN_ID: ${{ inputs.signed_release_run_id }}
+          SIGNED_RELEASE_RUN_ATTEMPT: ${{ needs.store-client-bootstrap.outputs.signed_release_run_attempt }}
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          PROVENANCE_ID: ${{ inputs.provenance_id }}
+          STORE_HANDOFF_ID: ${{ inputs.store_handoff_id }}
+          APP_VERSION: ${{ inputs.app_version }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+          EVIDENCE_ROOT: ${{ steps.evidence.outputs.root }}
+        run: |
+          [[ "$TRANSFER_DIGEST" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          /usr/bin/python3 -I - "$CONTROL_ROOT" <<'PY'
+          import hashlib, os, pathlib, stat, sys
+          expected = {
+              "capture_mobile_credentialed_runtime.py": "2d51f03bd21f2afa2af0396e801e0e950172210814a229ca50df67c5a8d135cd",
+              "extract_mobile_store_client.py": "f1f2b989dd433223114c85451147404ad4e65992d1f5a86ed3f3c6937ea1fd3a",
+              "generate_mobile_store_rollout_receipt.py": "38133d7c8a9fc5c4ade2935e6340754d8a94c60bf15fbad463a88d96190c0f5c",
+              "manage_app_store_phased_release.rb": "ee7e55a902bfe4f1f9fe2f933871e44d51c1f8906eff93aad8c8aa6c3f05b68c",
+              "manage_google_play_rollout.rb": "2fb30a5ed3341e22254d2e6548d22b9b10e235176317b7b403d48d49d445c3ac",
+              "materialize_mobile_release_secret.py": "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4",
+              "prepare_mobile_credentialed_upload.py": "b6c4597b55db335fc46af14e0ba9c6969e99ca8ec29d43c817d699045fe12498",
+              "validate_mobile_signed_release_run.py": "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93",
+              "validate_mobile_store_candidate.py": "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107",
+              "validate_mobile_store_client.py": "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf",
+          }
+          root = pathlib.Path(os.path.realpath(sys.argv[1]))
+          meta = root.lstat()
+          if root != pathlib.Path(sys.argv[1]) or not stat.S_ISDIR(meta.st_mode) or meta.st_uid != os.getuid() or meta.st_mode & 0o022:
+              raise SystemExit("unsafe rollout control root")
+          if {item.name for item in root.iterdir()} != set(expected):
+              raise SystemExit("rollout control closure changed")
+          for name, digest in expected.items():
+              path = root / name
+              linked = path.lstat()
+              if not stat.S_ISREG(linked.st_mode) or linked.st_uid != os.getuid() or linked.st_nlink != 1 or linked.st_mode & 0o022 or linked.st_size <= 0 or linked.st_size > 1024 * 1024:
+                  raise SystemExit("unsafe rollout control file")
+              descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+              try:
+                  before = os.fstat(descriptor)
+                  data = b""
+                  while True:
+                      chunk = os.read(descriptor, 65536)
+                      if not chunk: break
+                      data += chunk
+                  after = os.fstat(descriptor)
+              finally:
+                  os.close(descriptor)
+              identity = lambda value: (value.st_dev, value.st_ino, value.st_uid, value.st_mode, value.st_nlink, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+              if identity(linked) != identity(before) or identity(before) != identity(after) or hashlib.sha256(data).hexdigest() != digest:
+                  raise SystemExit("rollout control file changed")
+          PY
+          [[ "$(ruby -e 'print RUBY_ENGINE')" == ruby && \
+             "$(ruby -e 'print RUBY_VERSION')" == 3.4.10 && \
+             "$(gem --version)" == 4.0.17 ]] || exit 1
+          /usr/bin/python3 -I - "$CONTROL_ROOT" \
+            --candidate-root "$RUNNER_TEMP/release-candidate" \
+            --archive "$RUNNER_TEMP/rollout-transfer/store-client.tar.gz" \
+            --temp-root "$RUNNER_TEMP" --source-revision "$SOURCE_REVISION" \
+            --candidate-id "$CANDIDATE_ID" --provenance-id "$PROVENANCE_ID" \
+            --version-name "$APP_VERSION" --build-number "$BUILD_NUMBER" \
+            --bundle-id app.pakperk.pakperk --archive-sha256 "$ARCHIVE_SHA256" \
+            --bundle-sha256 "$BUNDLE_SHA256" --tree-sha256 "$TREE_SHA256" \
+            --github-output "$GITHUB_OUTPUT" <<'PY'
+          import os, runpy, sys
+          controls = os.path.realpath(sys.argv[1])
+          target = os.path.join(controls, "prepare_mobile_credentialed_upload.py")
+          sys.path.insert(0, controls)
+          sys.argv = [target, *sys.argv[2:]]
+          runpy.run_path(target, run_name="__main__")
+          PY
+          /usr/bin/python3 -I - "$CONTROL_ROOT" \
+            --candidate "$RUNNER_TEMP/release-candidate/evidence/mobile-candidate.json" \
+            --provenance "$RUNNER_TEMP/release-candidate/evidence/mobile-release-provenance.json" \
+            --artifact-root "$RUNNER_TEMP/release-candidate/artifacts" \
+            --store-handoff "$RUNNER_TEMP/store-upload-handoff/mobile-store-upload-handoff.json" \
+            --store-handoff-checksum "$RUNNER_TEMP/store-upload-handoff/mobile-store-upload-handoff.sha256" \
+            --run-verification "$RUNNER_TEMP/rollout-transfer/binding/signed-release-run-verification.json" \
+            --candidate-id "$CANDIDATE_ID" --provenance-id "$PROVENANCE_ID" \
+            --store-handoff-id "$STORE_HANDOFF_ID" --source-revision "$SOURCE_REVISION" \
+            --app-version "$APP_VERSION" --build-number "$BUILD_NUMBER" \
+            --signed-release-run-id "$SIGNED_RELEASE_RUN_ID" \
+            --signed-release-run-attempt "$SIGNED_RELEASE_RUN_ATTEMPT" \
+            --github-output "$GITHUB_OUTPUT" <<'PY'
+          import os, runpy, sys
+          controls = os.path.realpath(sys.argv[1])
+          target = os.path.join(controls, "validate_mobile_store_candidate.py")
+          sys.path.insert(0, controls)
+          sys.argv = [target, *sys.argv[2:]]
+          runpy.run_path(target, run_name="__main__")
+          PY
+          /bin/cp "$RUNNER_TEMP/rollout-transfer/binding/signed-release-run-verification.json" \
+            "$EVIDENCE_ROOT/signed-release-run-verification.json"
+          /bin/chmod 0600 "$EVIDENCE_ROOT/signed-release-run-verification.json"
+
+      - name: Apply exact Google Play transition with Android-only credential
+        id: store
+        if: steps.prepared.outcome == 'success'
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: ${{ steps.prepared.outputs.reviewed-path }}
+          HOME: ${{ steps.prepared.outputs.client-home }}
+          ALL_PROXY: ""
+          BASH_ENV: /dev/null
+          BUNDLE_APP_CONFIG: ${{ steps.prepared.outputs.bundle-app-config }}
+          BUNDLE_FROZEN: "true"
+          BUNDLE_GEMFILE: ${{ steps.prepared.outputs.bundle-gemfile }}
+          BUNDLE_IGNORE_CONFIG: "true"
+          BUNDLE_LOCKFILE_CHECKSUMS: "true"
+          BUNDLE_PATH: ${{ steps.prepared.outputs.bundle-path }}
+          CURL_CA_BUNDLE: ""
+          CURL_HOME: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          GEM_HOME: ${{ steps.prepared.outputs.gem-home }}
+          GEM_PATH: ${{ steps.prepared.outputs.gem-home }}
+          GOOGLE_PLAY_JSON_BASE64: ${{ secrets.PAKPERK_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}
+          HTTPS_PROXY: ""
+          HTTP_PROXY: ""
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NETRC: /dev/null
+          NO_PROXY: "*"
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          RUBYGEMS_GEMDEPS: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+          all_proxy: ""
+          http_proxy: ""
+          https_proxy: ""
+          no_proxy: "*"
+          CONTROL_ROOT: ${{ runner.temp }}/rollout-transfer/controls
+          EVIDENCE_ROOT: ${{ steps.evidence.outputs.root }}
+          CLIENT_ROOT: ${{ steps.prepared.outputs.client-root }}
+          CLIENT_DEVICE: ${{ steps.prepared.outputs.client-root-device }}
+          CLIENT_INODE: ${{ steps.prepared.outputs.client-root-inode }}
+          CLIENT_TREE: ${{ steps.prepared.outputs.client-tree-sha256 }}
+          BUNDLE_BIN: ${{ steps.prepared.outputs.bundle-bin }}
+          BUNDLE_DIGEST: ${{ steps.prepared.outputs.bundle-bin-sha256 }}
+          CLIENT_HOME: ${{ steps.prepared.outputs.client-home }}
+          REVIEWED_RUBY_BIN: ${{ steps.prepared.outputs.ruby-bin }}
+          REVIEWED_RUBY_SHA256: ${{ steps.prepared.outputs.ruby-sha256 }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+          PREVIOUS_VERSION: ${{ inputs.android_previous_production_version_code }}
+          OPERATION: ${{ inputs.operation }}
+          EXPECTED_FRACTION: ${{ inputs.android_expected_current_fraction }}
+          TARGET_FRACTION: ${{ inputs.android_rollout_fraction }}
+        run: |
+          [[ "$(/usr/bin/shasum -a 256 "$REVIEWED_RUBY_BIN" | /usr/bin/awk '{print $1}')" == "$REVIEWED_RUBY_SHA256" ]]
+          /usr/bin/python3 -I "$CONTROL_ROOT/validate_mobile_store_client.py" verify \
+            --root "$CLIENT_ROOT" --root-device "$CLIENT_DEVICE" --root-inode "$CLIENT_INODE" \
+            --bundle-sha256 "$BUNDLE_DIGEST" --tree-sha256 "$CLIENT_TREE" \
+            --bundle-bin "$BUNDLE_BIN" --gem-home "$GEM_HOME" \
+            --bundle-gemfile "$BUNDLE_GEMFILE" --bundle-lockfile "$BUNDLE_GEMFILE.lock" \
+            --bundle-path "$BUNDLE_PATH" --bundle-app-config "$BUNDLE_APP_CONFIG" \
+            --client-home "$CLIENT_HOME"
+          credential_parent="$(umask 077; /usr/bin/mktemp -d \
+            "$RUNNER_TEMP/pakperk-google-rollout.XXXXXXXXXX")"
+          printf 'credential_parent=%s\n' "$credential_parent" >>"$GITHUB_OUTPUT"
+          /usr/bin/python3 -I "$CONTROL_ROOT/materialize_mobile_release_secret.py" decode \
+            --root "$credential_parent" --directory google-play \
+            --secret GOOGLE_PLAY_JSON_BASE64 google-play.json 131072
+          /usr/bin/python3 -I - "$credential_parent/google-play/google-play.json" <<'PY'
+          import json, os, pathlib, sys
+          path = pathlib.Path(sys.argv[1])
+          descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+          try: raw = os.read(descriptor, 131073)
+          finally: os.close(descriptor)
+          value = json.loads(raw)
+          if len(raw) > 131072 or value.get("type") != "service_account":
+              raise SystemExit("Google Play credential is invalid")
+          PY
+          /usr/bin/env -i PATH="$PATH" HOME="$HOME" TMPDIR="$RUNNER_TEMP" \
+            LANG=en_US.UTF-8 CI=true GITHUB_ACTIONS=true GEMRC=/dev/null \
+            GEM_HOME="$GEM_HOME" GEM_PATH="$GEM_PATH" RUBYGEMS_GEMDEPS= RUBYLIB= RUBYOPT= \
+            BUNDLE_APP_CONFIG="$BUNDLE_APP_CONFIG" BUNDLE_FROZEN=true \
+            BUNDLE_GEMFILE="$BUNDLE_GEMFILE" BUNDLE_IGNORE_CONFIG=true \
+            BUNDLE_LOCKFILE_CHECKSUMS=true BUNDLE_PATH="$BUNDLE_PATH" \
+            "$REVIEWED_RUBY_BIN" "$BUNDLE_BIN" "_${BUNDLER_VERSION}_" exec ruby \
+            "$CONTROL_ROOT/manage_google_play_rollout.rb" \
+            --operation "$OPERATION" --package-name app.pakperk.pakperk \
+            --version-code "$BUILD_NUMBER" \
+            --previous-production-version-code "$PREVIOUS_VERSION" \
+            --expected-current-fraction "$EXPECTED_FRACTION" \
+            --target-fraction "$TARGET_FRACTION" \
+            --service-account "$credential_parent/google-play/google-play.json" \
+            --journal "$EVIDENCE_ROOT/google-play-attempt.json" \
+            --output "$EVIDENCE_ROOT/google-play-rollout.json"
+
+      - name: Remove Android credential and local client
+        id: cleanup
+        if: always()
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          CREDENTIAL_PARENT: ${{ steps.store.outputs.credential_parent }}
+          CLIENT_ROOT: ${{ steps.prepared.outputs.client-root }}
+        run: |
+          if [[ -n "$CREDENTIAL_PARENT" ]]; then
+            safe_credential="$(/usr/bin/python3 -I - "$RUNNER_TEMP" "$CREDENTIAL_PARENT" <<'PY'
+          import os, pathlib, stat, sys
+          parent = pathlib.Path(os.path.realpath(sys.argv[1]))
+          supplied = pathlib.Path(sys.argv[2])
+          target = pathlib.Path(os.path.realpath(supplied))
+          metadata = supplied.lstat()
+          if target != supplied or target.parent != parent or not target.name.startswith("pakperk-google-rollout.") or not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_mode & 0o077:
+              raise SystemExit("unsafe Android credential cleanup target")
+          print(target)
+          PY
+            )"
+            /bin/rm -rf -- "$safe_credential"
+          fi
+          if [[ -n "$CLIENT_ROOT" ]]; then
+            /usr/bin/python3 -I - "$RUNNER_TEMP" "$CLIENT_ROOT" <<'PY'
+          import os, pathlib, stat, sys
+          parent, target = pathlib.Path(os.path.realpath(sys.argv[1])), pathlib.Path(os.path.realpath(sys.argv[2]))
+          metadata = target.lstat()
+          if target != pathlib.Path(sys.argv[2]) or os.path.commonpath((parent, target)) != str(parent) or not target.name.startswith("pakperk-store-client.") or not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_mode & 0o077:
+              raise SystemExit("unsafe client cleanup target")
+          PY
+            /bin/rm -rf -- "$CLIENT_ROOT"
+          fi
+
+      - name: Generate closed Android platform receipt after cleanup
+        id: receipt
+        if: always()
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          CONTROL_ROOT: ${{ runner.temp }}/rollout-transfer/controls
+          EVIDENCE_ROOT: ${{ steps.evidence.outputs.root }}
+          STORE_OUTCOME: ${{ steps.store.outcome }}
+        run: |
+          /usr/bin/python3 -I - "$CONTROL_ROOT" \
+            --source-revision "${{ inputs.source_revision }}" \
+            --signed-release-run-id "${{ inputs.signed_release_run_id }}" \
+            --candidate-id "${{ inputs.candidate_id }}" \
+            --provenance-id "${{ inputs.provenance_id }}" \
+            --store-handoff-id "${{ inputs.store_handoff_id }}" \
+            --app-version "${{ inputs.app_version }}" --build-number "${{ inputs.build_number }}" \
+            --platforms android --operation "${{ inputs.operation }}" \
+            --android-previous-version "${{ inputs.android_previous_production_version_code }}" \
+            --android-expected-fraction "${{ inputs.android_expected_current_fraction }}" \
+            --android-target-fraction "${{ inputs.android_rollout_fraction }}" \
+            --ios-previous-public-version none --android-outcome "$STORE_OUTCOME" \
+            --ios-outcome skipped --change-id "${{ inputs.change_id }}" \
+            --confirmation "${{ inputs.confirmation }}" --intent-outcome success \
+            --workflow-sha "${{ github.workflow_sha }}" --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" \
+            --run-verification "$EVIDENCE_ROOT/signed-release-run-verification.json" \
+            --android-journal "$EVIDENCE_ROOT/google-play-attempt.json" \
+            --evidence-root "$EVIDENCE_ROOT" --github-output "$GITHUB_OUTPUT" \
+            --github-step-summary "$GITHUB_STEP_SUMMARY" <<'PY'
+          import os, runpy, sys
+          controls = os.path.realpath(sys.argv[1])
+          target = os.path.join(controls, "generate_mobile_store_rollout_receipt.py")
+          sys.path.insert(0, controls)
+          sys.argv = [target, *sys.argv[2:]]
+          runpy.run_path(target, run_name="__main__")
+          PY
+
+      - name: Record unconditional Android job outcome
+        if: always()
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          EVIDENCE_ROOT: ${{ steps.evidence.outputs.root }}
+          PREPARED: ${{ steps.prepared.outcome }}
+          STORE: ${{ steps.store.outcome }}
+          CLEANUP: ${{ steps.cleanup.outcome }}
+          RECEIPT: ${{ steps.receipt.outcome }}
+        run: |
+          /usr/bin/python3 -I - <<'PY'
+          import json, os, pathlib, stat
+          root = pathlib.Path(os.environ["EVIDENCE_ROOT"])
+          retention = root / "retention"
+          retention.mkdir(mode=0o700)
+          value = {"cleanup": os.environ["CLEANUP"], "platform": "android", "preparation": os.environ["PREPARED"], "receipt": os.environ["RECEIPT"], "schema": 1, "store": os.environ["STORE"]}
+          path = retention / "android-job-outcome.json"
+          path.write_text(json.dumps(value, separators=(",", ":"), sort_keys=True) + "\n", encoding="ascii")
+          path.chmod(0o600)
+          for name in ("mobile-store-rollout-receipt.json", "PACKAGE_SHA256.json"):
+              source = root / name
+              if not source.exists():
+                  continue
+              metadata = source.lstat()
+              if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_nlink != 1 or metadata.st_mode & 0o077 or not 0 < metadata.st_size <= 65536:
+                  raise SystemExit("unsafe Android retention source")
+              data = source.read_bytes()
+              destination = retention / name
+              descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+              try: os.write(descriptor, data)
+              finally: os.close(descriptor)
+          PY
+
+      - name: Upload immutable Android outcome after cleanup
+        id: evidence_upload
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+        with:
+          name: mobile-android-rollout-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.evidence.outputs.root }}/retention
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Fail Android job after immutable evidence retention
+        if: always()
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          PREPARED: ${{ steps.prepared.outcome }}
+          STORE: ${{ steps.store.outcome }}
+          CLEANUP: ${{ steps.cleanup.outcome }}
+          RECEIPT: ${{ steps.receipt.outcome }}
+          RECEIPT_RESULT: ${{ steps.receipt.outputs.overall_result }}
+          UPLOAD: ${{ steps.evidence_upload.outcome }}
+          ARTIFACT_ID: ${{ steps.evidence_upload.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.evidence_upload.outputs.artifact-digest }}
+        run: |
+          [[ "$PREPARED" == success && "$STORE" == success && "$CLEANUP" == success && \
+             "$RECEIPT" == success && "$RECEIPT_RESULT" == succeeded && "$UPLOAD" == success && \
+             "$ARTIFACT_ID" =~ ^[1-9][0-9]{0,19}$ && "$ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+
+  ios-rollout:
+    name: isolated iOS production rollout
+    needs: [store-client-bootstrap, android-rollout]
+    if: >-
+      always() &&
+      (inputs.platforms == 'ios' ||
+       (inputs.platforms == 'both' && needs.android-rollout.result == 'success'))
+    runs-on: macos-26
+    timeout-minutes: 45
+    environment: production-store
+    outputs:
+      evidence_artifact_id: ${{ steps.evidence_upload.outputs.artifact-id }}
+      evidence_artifact_digest: ${{ steps.evidence_upload.outputs.artifact-digest }}
+    steps:
+      - name: Create owner-only iOS outcome root
+        id: evidence
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+        run: |
+          root="$(umask 077; /usr/bin/mktemp -d \
+            "$RUNNER_TEMP/pakperk-ios-rollout.XXXXXXXXXX")"
+          /bin/chmod 0700 "$root"
+          printf 'root=%s\n' "$root" >>"$GITHUB_OUTPUT"
+
+      - name: Download exact iOS candidate by immutable artifact ID
+        if: needs.store-client-bootstrap.outputs.candidate_artifact_id != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.store-client-bootstrap.outputs.candidate_artifact_id }}
+          path: ${{ runner.temp }}/release-candidate
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.signed_release_run_id }}
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Download exact iOS handoff by immutable artifact ID
+        if: needs.store-client-bootstrap.outputs.handoff_artifact_id != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.store-client-bootstrap.outputs.handoff_artifact_id }}
+          path: ${{ runner.temp }}/store-upload-handoff
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.signed_release_run_id }}
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Download iOS controls and client by immutable artifact ID
+        if: needs.store-client-bootstrap.outputs.transfer_artifact_id != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.store-client-bootstrap.outputs.transfer_artifact_id }}
+          path: ${{ runner.temp }}/rollout-transfer
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Download exact Android proof before combined iOS mutation
+        if: inputs.platforms == 'both' && needs.android-rollout.outputs.evidence_artifact_id != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.android-rollout.outputs.evidence_artifact_id }}
+          path: ${{ runner.temp }}/android-rollout-proof
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Re-attest iOS artifacts controls and local client before credentials
+        id: prepared
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          CONTROL_ROOT: ${{ runner.temp }}/rollout-transfer/controls
+          TRANSFER_DIGEST: ${{ needs.store-client-bootstrap.outputs.transfer_artifact_digest }}
+          ARCHIVE_SHA256: ${{ needs.store-client-bootstrap.outputs.archive_sha256 }}
+          BUNDLE_SHA256: ${{ needs.store-client-bootstrap.outputs.bundle_sha256 }}
+          TREE_SHA256: ${{ needs.store-client-bootstrap.outputs.tree_sha256 }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          SIGNED_RELEASE_RUN_ID: ${{ inputs.signed_release_run_id }}
+          SIGNED_RELEASE_RUN_ATTEMPT: ${{ needs.store-client-bootstrap.outputs.signed_release_run_attempt }}
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          PROVENANCE_ID: ${{ inputs.provenance_id }}
+          STORE_HANDOFF_ID: ${{ inputs.store_handoff_id }}
+          APP_VERSION: ${{ inputs.app_version }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+          EVIDENCE_ROOT: ${{ steps.evidence.outputs.root }}
+        run: |
+          [[ "$TRANSFER_DIGEST" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          /usr/bin/python3 -I - "$CONTROL_ROOT" <<'PY'
+          import hashlib, os, pathlib, stat, sys
+          expected = {
+              "capture_mobile_credentialed_runtime.py": "2d51f03bd21f2afa2af0396e801e0e950172210814a229ca50df67c5a8d135cd",
+              "extract_mobile_store_client.py": "f1f2b989dd433223114c85451147404ad4e65992d1f5a86ed3f3c6937ea1fd3a",
+              "generate_mobile_store_rollout_receipt.py": "38133d7c8a9fc5c4ade2935e6340754d8a94c60bf15fbad463a88d96190c0f5c",
+              "manage_app_store_phased_release.rb": "ee7e55a902bfe4f1f9fe2f933871e44d51c1f8906eff93aad8c8aa6c3f05b68c",
+              "manage_google_play_rollout.rb": "2fb30a5ed3341e22254d2e6548d22b9b10e235176317b7b403d48d49d445c3ac",
+              "materialize_mobile_release_secret.py": "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4",
+              "prepare_mobile_credentialed_upload.py": "b6c4597b55db335fc46af14e0ba9c6969e99ca8ec29d43c817d699045fe12498",
+              "validate_mobile_signed_release_run.py": "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93",
+              "validate_mobile_store_candidate.py": "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107",
+              "validate_mobile_store_client.py": "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf",
+          }
+          root = pathlib.Path(os.path.realpath(sys.argv[1]))
+          metadata = root.lstat()
+          if root != pathlib.Path(sys.argv[1]) or not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_mode & 0o022 or {item.name for item in root.iterdir()} != set(expected):
+              raise SystemExit("unsafe or incomplete rollout controls")
+          identity = lambda value: (value.st_dev, value.st_ino, value.st_uid, value.st_mode, value.st_nlink, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+          for name, digest in expected.items():
+              path = root / name
+              linked = path.lstat()
+              if not stat.S_ISREG(linked.st_mode) or linked.st_uid != os.getuid() or linked.st_nlink != 1 or linked.st_mode & 0o022 or not 0 < linked.st_size <= 1024 * 1024:
+                  raise SystemExit("unsafe rollout control file")
+              descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+              try:
+                  before = os.fstat(descriptor)
+                  data = b""
+                  while True:
+                      chunk = os.read(descriptor, 65536)
+                      if not chunk: break
+                      data += chunk
+                  after = os.fstat(descriptor)
+              finally: os.close(descriptor)
+              if identity(linked) != identity(before) or identity(before) != identity(after) or hashlib.sha256(data).hexdigest() != digest:
+                  raise SystemExit("rollout control file changed")
+          PY
+          [[ "$(ruby -e 'print RUBY_ENGINE')" == ruby && \
+             "$(ruby -e 'print RUBY_VERSION')" == 3.4.10 && \
+             "$(gem --version)" == 4.0.17 ]] || exit 1
+          /usr/bin/python3 -I - "$CONTROL_ROOT" \
+            --candidate-root "$RUNNER_TEMP/release-candidate" \
+            --archive "$RUNNER_TEMP/rollout-transfer/store-client.tar.gz" \
+            --temp-root "$RUNNER_TEMP" --source-revision "$SOURCE_REVISION" \
+            --candidate-id "$CANDIDATE_ID" --provenance-id "$PROVENANCE_ID" \
+            --version-name "$APP_VERSION" --build-number "$BUILD_NUMBER" \
+            --bundle-id app.pakperk.pakperk --archive-sha256 "$ARCHIVE_SHA256" \
+            --bundle-sha256 "$BUNDLE_SHA256" --tree-sha256 "$TREE_SHA256" \
+            --github-output "$GITHUB_OUTPUT" <<'PY'
+          import os, runpy, sys
+          controls = os.path.realpath(sys.argv[1])
+          target = os.path.join(controls, "prepare_mobile_credentialed_upload.py")
+          sys.path.insert(0, controls)
+          sys.argv = [target, *sys.argv[2:]]
+          runpy.run_path(target, run_name="__main__")
+          PY
+          /usr/bin/python3 -I - "$CONTROL_ROOT" \
+            --candidate "$RUNNER_TEMP/release-candidate/evidence/mobile-candidate.json" \
+            --provenance "$RUNNER_TEMP/release-candidate/evidence/mobile-release-provenance.json" \
+            --artifact-root "$RUNNER_TEMP/release-candidate/artifacts" \
+            --store-handoff "$RUNNER_TEMP/store-upload-handoff/mobile-store-upload-handoff.json" \
+            --store-handoff-checksum "$RUNNER_TEMP/store-upload-handoff/mobile-store-upload-handoff.sha256" \
+            --run-verification "$RUNNER_TEMP/rollout-transfer/binding/signed-release-run-verification.json" \
+            --candidate-id "$CANDIDATE_ID" --provenance-id "$PROVENANCE_ID" \
+            --store-handoff-id "$STORE_HANDOFF_ID" --source-revision "$SOURCE_REVISION" \
+            --app-version "$APP_VERSION" --build-number "$BUILD_NUMBER" \
+            --signed-release-run-id "$SIGNED_RELEASE_RUN_ID" \
+            --signed-release-run-attempt "$SIGNED_RELEASE_RUN_ATTEMPT" \
+            --github-output "$GITHUB_OUTPUT" <<'PY'
+          import os, runpy, sys
+          controls = os.path.realpath(sys.argv[1])
+          target = os.path.join(controls, "validate_mobile_store_candidate.py")
+          sys.path.insert(0, controls)
+          sys.argv = [target, *sys.argv[2:]]
+          runpy.run_path(target, run_name="__main__")
+          PY
+          /bin/cp "$RUNNER_TEMP/rollout-transfer/binding/signed-release-run-verification.json" \
+            "$EVIDENCE_ROOT/signed-release-run-verification.json"
+          /bin/chmod 0600 "$EVIDENCE_ROOT/signed-release-run-verification.json"
+
+      - name: Validate immutable Android proof before combined iOS credentials
+        id: android_proof
+        if: inputs.platforms == 'both'
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          CONTROL_ROOT: ${{ runner.temp }}/rollout-transfer/controls
+        run: |
+          /usr/bin/python3 -I "$CONTROL_ROOT/generate_mobile_store_rollout_receipt.py" verify-platform \
+            --root "$RUNNER_TEMP/android-rollout-proof" --platform android \
+            --source-revision "${{ inputs.source_revision }}" \
+            --signed-release-run-id "${{ inputs.signed_release_run_id }}" \
+            --candidate-id "${{ inputs.candidate_id }}" --provenance-id "${{ inputs.provenance_id }}" \
+            --store-handoff-id "${{ inputs.store_handoff_id }}" \
+            --app-version "${{ inputs.app_version }}" --build-number "${{ inputs.build_number }}" \
+            --operation "${{ inputs.operation }}" \
+            --android-previous-version "${{ inputs.android_previous_production_version_code }}" \
+            --android-expected-fraction "${{ inputs.android_expected_current_fraction }}" \
+            --android-target-fraction "${{ inputs.android_rollout_fraction }}" \
+            --ios-previous-public-version none --change-id "${{ inputs.change_id }}" \
+            --workflow-sha "${{ github.workflow_sha }}" --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}"
+
+      - name: Apply exact App Store transition with iOS-only credentials
+        id: store
+        if: >-
+          steps.prepared.outcome == 'success' &&
+          (inputs.platforms == 'ios' || steps.android_proof.outcome == 'success')
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: ${{ steps.prepared.outputs.reviewed-path }}
+          HOME: ${{ steps.prepared.outputs.client-home }}
+          ALL_PROXY: ""
+          APP_STORE_ISSUER_ID: ${{ secrets.PAKPERK_APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_KEY_ID: ${{ secrets.PAKPERK_APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_KEY_BASE64: ${{ secrets.PAKPERK_APP_STORE_CONNECT_PRIVATE_KEY_BASE64 }}
+          BASH_ENV: /dev/null
+          BUNDLE_APP_CONFIG: ${{ steps.prepared.outputs.bundle-app-config }}
+          BUNDLE_FROZEN: "true"
+          BUNDLE_GEMFILE: ${{ steps.prepared.outputs.bundle-gemfile }}
+          BUNDLE_IGNORE_CONFIG: "true"
+          BUNDLE_LOCKFILE_CHECKSUMS: "true"
+          BUNDLE_PATH: ${{ steps.prepared.outputs.bundle-path }}
+          CURL_CA_BUNDLE: ""
+          CURL_HOME: ""
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          GEMRC: /dev/null
+          GEM_HOME: ${{ steps.prepared.outputs.gem-home }}
+          GEM_PATH: ${{ steps.prepared.outputs.gem-home }}
+          HTTPS_PROXY: ""
+          HTTP_PROXY: ""
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NETRC: /dev/null
+          NO_PROXY: "*"
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          RUBYGEMS_GEMDEPS: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+          SSL_CERT_DIR: ""
+          SSL_CERT_FILE: ""
+          all_proxy: ""
+          http_proxy: ""
+          https_proxy: ""
+          no_proxy: "*"
+          CONTROL_ROOT: ${{ runner.temp }}/rollout-transfer/controls
+          EVIDENCE_ROOT: ${{ steps.evidence.outputs.root }}
+          CLIENT_ROOT: ${{ steps.prepared.outputs.client-root }}
+          CLIENT_DEVICE: ${{ steps.prepared.outputs.client-root-device }}
+          CLIENT_INODE: ${{ steps.prepared.outputs.client-root-inode }}
+          CLIENT_TREE: ${{ steps.prepared.outputs.client-tree-sha256 }}
+          BUNDLE_BIN: ${{ steps.prepared.outputs.bundle-bin }}
+          BUNDLE_DIGEST: ${{ steps.prepared.outputs.bundle-bin-sha256 }}
+          CLIENT_HOME: ${{ steps.prepared.outputs.client-home }}
+          REVIEWED_RUBY_BIN: ${{ steps.prepared.outputs.ruby-bin }}
+          REVIEWED_RUBY_SHA256: ${{ steps.prepared.outputs.ruby-sha256 }}
+          APP_VERSION: ${{ inputs.app_version }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+          OPERATION: ${{ inputs.operation }}
+          PREVIOUS_PUBLIC_VERSION: ${{ inputs.ios_previous_public_version }}
+          EXPECTED_APP_ID: ${{ steps.prepared.outputs.app_store_app_id }}
+          EXPECTED_BUILD_ID: ${{ steps.prepared.outputs.app_store_build_id }}
+          EXPECTED_PRE_RELEASE_VERSION_ID: ${{ steps.prepared.outputs.app_store_pre_release_version_id }}
+        run: |
+          [[ "$(/usr/bin/shasum -a 256 "$REVIEWED_RUBY_BIN" | /usr/bin/awk '{print $1}')" == "$REVIEWED_RUBY_SHA256" ]]
+          /usr/bin/python3 -I "$CONTROL_ROOT/validate_mobile_store_client.py" verify \
+            --root "$CLIENT_ROOT" --root-device "$CLIENT_DEVICE" --root-inode "$CLIENT_INODE" \
+            --bundle-sha256 "$BUNDLE_DIGEST" --tree-sha256 "$CLIENT_TREE" \
+            --bundle-bin "$BUNDLE_BIN" --gem-home "$GEM_HOME" \
+            --bundle-gemfile "$BUNDLE_GEMFILE" --bundle-lockfile "$BUNDLE_GEMFILE.lock" \
+            --bundle-path "$BUNDLE_PATH" --bundle-app-config "$BUNDLE_APP_CONFIG" \
+            --client-home "$CLIENT_HOME"
+          [[ "$APP_STORE_KEY_ID" =~ ^[A-Z0-9]{10}$ && \
+             "$APP_STORE_ISSUER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || exit 1
+          credential_parent="$(umask 077; /usr/bin/mktemp -d \
+            "$RUNNER_TEMP/pakperk-apple-rollout.XXXXXXXXXX")"
+          printf 'credential_parent=%s\n' "$credential_parent" >>"$GITHUB_OUTPUT"
+          /usr/bin/python3 -I "$CONTROL_ROOT/materialize_mobile_release_secret.py" decode \
+            --root "$credential_parent" --directory app-store \
+            --secret APP_STORE_KEY_BASE64 app-store-key.p8 32768
+          /usr/bin/python3 -I - "$credential_parent/app-store" <<'PY'
+          import json, os, pathlib, stat, sys
+          root = pathlib.Path(sys.argv[1])
+          key = (root / "app-store-key.p8").read_text(encoding="ascii")
+          value = {"in_house": False, "issuer_id": os.environ["APP_STORE_ISSUER_ID"], "key": key, "key_id": os.environ["APP_STORE_KEY_ID"]}
+          path = root / "app-store-api-key.json"
+          descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+          try: os.write(descriptor, json.dumps(value, separators=(",", ":"), sort_keys=True).encode("ascii"))
+          finally: os.close(descriptor)
+          metadata = path.lstat()
+          if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_mode & 0o077:
+              raise SystemExit("unsafe App Store API key file")
+          PY
+          run_bundle() {
+            /usr/bin/env -i PATH="$PATH" HOME="$HOME" TMPDIR="$RUNNER_TEMP" \
+              LANG=en_US.UTF-8 CI=true GITHUB_ACTIONS=true GEMRC=/dev/null \
+              GEM_HOME="$GEM_HOME" GEM_PATH="$GEM_PATH" RUBYGEMS_GEMDEPS= RUBYLIB= RUBYOPT= \
+              BUNDLE_APP_CONFIG="$BUNDLE_APP_CONFIG" BUNDLE_FROZEN=true \
+              BUNDLE_GEMFILE="$BUNDLE_GEMFILE" BUNDLE_IGNORE_CONFIG=true \
+              BUNDLE_LOCKFILE_CHECKSUMS=true BUNDLE_PATH="$BUNDLE_PATH" \
+              "$REVIEWED_RUBY_BIN" "$BUNDLE_BIN" "_${BUNDLER_VERSION}_" "$@"
+          }
+          if [[ "$OPERATION" == start ]]; then
+            run_bundle exec ruby "$CONTROL_ROOT/manage_app_store_phased_release.rb" \
+              --operation verify-update --bundle-id app.pakperk.pakperk \
+              --app-version "$APP_VERSION" --build-number "$BUILD_NUMBER" \
+              --expected-app-id "$EXPECTED_APP_ID" --expected-build-id "$EXPECTED_BUILD_ID" \
+              --expected-pre-release-version-id "$EXPECTED_PRE_RELEASE_VERSION_ID" \
+              --previous-public-version "$PREVIOUS_PUBLIC_VERSION" \
+              --key-id "$APP_STORE_KEY_ID" --issuer-id "$APP_STORE_ISSUER_ID" \
+              --private-key "$credential_parent/app-store/app-store-key.p8" \
+              --output "$EVIDENCE_ROOT/apple-update-preflight.json"
+            run_bundle exec fastlane deliver submit_build \
+              --api_key_path "$credential_parent/app-store/app-store-api-key.json" \
+              --app_identifier app.pakperk.pakperk --app_version "$APP_VERSION" \
+              --build_number "$BUILD_NUMBER" --platform ios --submit_for_review true \
+              --automatic_release true --phased_release true --skip_binary_upload true \
+              --skip_metadata true --skip_screenshots true --force true
+            run_bundle exec ruby "$CONTROL_ROOT/manage_app_store_phased_release.rb" \
+              --operation verify-submission --bundle-id app.pakperk.pakperk \
+              --app-version "$APP_VERSION" --build-number "$BUILD_NUMBER" \
+              --expected-app-id "$EXPECTED_APP_ID" --expected-build-id "$EXPECTED_BUILD_ID" \
+              --expected-pre-release-version-id "$EXPECTED_PRE_RELEASE_VERSION_ID" \
+              --key-id "$APP_STORE_KEY_ID" --issuer-id "$APP_STORE_ISSUER_ID" \
+              --private-key "$credential_parent/app-store/app-store-key.p8" \
+              --output "$EVIDENCE_ROOT/apple-store-operation.json"
+          else
+            case "$OPERATION" in advance) api_operation=observe ;; halt) api_operation=pause ;; complete) api_operation=complete ;; *) exit 2 ;; esac
+            run_bundle exec ruby "$CONTROL_ROOT/manage_app_store_phased_release.rb" \
+              --operation "$api_operation" --bundle-id app.pakperk.pakperk \
+              --app-version "$APP_VERSION" --build-number "$BUILD_NUMBER" \
+              --expected-app-id "$EXPECTED_APP_ID" --expected-build-id "$EXPECTED_BUILD_ID" \
+              --expected-pre-release-version-id "$EXPECTED_PRE_RELEASE_VERSION_ID" \
+              --key-id "$APP_STORE_KEY_ID" --issuer-id "$APP_STORE_ISSUER_ID" \
+              --private-key "$credential_parent/app-store/app-store-key.p8" \
+              --journal "$EVIDENCE_ROOT/apple-store-attempt.json" \
+              --output "$EVIDENCE_ROOT/apple-store-operation.json"
+          fi
+
+      - name: Remove iOS credentials and local client
+        id: cleanup
+        if: always()
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          CREDENTIAL_PARENT: ${{ steps.store.outputs.credential_parent }}
+          CLIENT_ROOT: ${{ steps.prepared.outputs.client-root }}
+        run: |
+          if [[ -n "$CREDENTIAL_PARENT" ]]; then
+            safe_credential="$(/usr/bin/python3 -I - "$RUNNER_TEMP" "$CREDENTIAL_PARENT" <<'PY'
+          import os, pathlib, stat, sys
+          parent = pathlib.Path(os.path.realpath(sys.argv[1]))
+          supplied = pathlib.Path(sys.argv[2])
+          target = pathlib.Path(os.path.realpath(supplied))
+          metadata = supplied.lstat()
+          if target != supplied or target.parent != parent or not target.name.startswith("pakperk-apple-rollout.") or not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_mode & 0o077:
+              raise SystemExit("unsafe iOS credential cleanup target")
+          print(target)
+          PY
+            )"
+            /bin/rm -rf -- "$safe_credential"
+          fi
+          if [[ -n "$CLIENT_ROOT" ]]; then
+            /usr/bin/python3 -I - "$RUNNER_TEMP" "$CLIENT_ROOT" <<'PY'
+          import os, pathlib, stat, sys
+          parent, target = pathlib.Path(os.path.realpath(sys.argv[1])), pathlib.Path(os.path.realpath(sys.argv[2]))
+          metadata = target.lstat()
+          if target != pathlib.Path(sys.argv[2]) or os.path.commonpath((parent, target)) != str(parent) or not target.name.startswith("pakperk-store-client.") or not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_mode & 0o077:
+              raise SystemExit("unsafe client cleanup target")
+          PY
+            /bin/rm -rf -- "$CLIENT_ROOT"
+          fi
+
+      - name: Generate closed iOS platform receipt after cleanup
+        id: receipt
+        if: always()
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PYTHONHOME: ""
+          PYTHONPATH: ""
+          CONTROL_ROOT: ${{ runner.temp }}/rollout-transfer/controls
+          EVIDENCE_ROOT: ${{ steps.evidence.outputs.root }}
+          STORE_OUTCOME: ${{ steps.store.outcome }}
+        run: |
+          /usr/bin/python3 -I - "$CONTROL_ROOT" \
+            --source-revision "${{ inputs.source_revision }}" \
+            --signed-release-run-id "${{ inputs.signed_release_run_id }}" \
+            --candidate-id "${{ inputs.candidate_id }}" \
+            --provenance-id "${{ inputs.provenance_id }}" \
+            --store-handoff-id "${{ inputs.store_handoff_id }}" \
+            --app-version "${{ inputs.app_version }}" --build-number "${{ inputs.build_number }}" \
+            --platforms ios --operation "${{ inputs.operation }}" \
+            --android-previous-version none --android-expected-fraction none \
+            --android-target-fraction none \
+            --ios-previous-public-version "${{ inputs.ios_previous_public_version }}" \
+            --android-outcome skipped --ios-outcome "$STORE_OUTCOME" \
+            --change-id "${{ inputs.change_id }}" --confirmation "${{ inputs.confirmation }}" \
+            --intent-outcome success --workflow-sha "${{ github.workflow_sha }}" \
+            --repository "${{ github.repository }}" --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --run-verification "$EVIDENCE_ROOT/signed-release-run-verification.json" \
+            --ios-journal "$EVIDENCE_ROOT/apple-store-attempt.json" \
+            --evidence-root "$EVIDENCE_ROOT" --github-output "$GITHUB_OUTPUT" \
+            --github-step-summary "$GITHUB_STEP_SUMMARY" <<'PY'
+          import os, runpy, sys
+          controls = os.path.realpath(sys.argv[1])
+          target = os.path.join(controls, "generate_mobile_store_rollout_receipt.py")
+          sys.path.insert(0, controls)
+          sys.argv = [target, *sys.argv[2:]]
+          runpy.run_path(target, run_name="__main__")
+          PY
+
+      - name: Record unconditional iOS job outcome
+        if: always()
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          EVIDENCE_ROOT: ${{ steps.evidence.outputs.root }}
+          PREPARED: ${{ steps.prepared.outcome }}
+          ANDROID_PROOF: ${{ steps.android_proof.outcome }}
+          STORE: ${{ steps.store.outcome }}
+          CLEANUP: ${{ steps.cleanup.outcome }}
+          RECEIPT: ${{ steps.receipt.outcome }}
+        run: |
+          /usr/bin/python3 -I - <<'PY'
+          import json, os, pathlib, stat
+          root = pathlib.Path(os.environ["EVIDENCE_ROOT"])
+          retention = root / "retention"
+          retention.mkdir(mode=0o700)
+          value = {"android_proof": os.environ["ANDROID_PROOF"], "cleanup": os.environ["CLEANUP"], "platform": "ios", "preparation": os.environ["PREPARED"], "receipt": os.environ["RECEIPT"], "schema": 1, "store": os.environ["STORE"]}
+          path = retention / "ios-job-outcome.json"
+          path.write_text(json.dumps(value, separators=(",", ":"), sort_keys=True) + "\n", encoding="ascii")
+          path.chmod(0o600)
+          for name in ("mobile-store-rollout-receipt.json", "PACKAGE_SHA256.json"):
+              source = root / name
+              if not source.exists():
+                  continue
+              metadata = source.lstat()
+              if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_nlink != 1 or metadata.st_mode & 0o077 or not 0 < metadata.st_size <= 65536:
+                  raise SystemExit("unsafe iOS retention source")
+              data = source.read_bytes()
+              destination = retention / name
+              descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+              try: os.write(descriptor, data)
+              finally: os.close(descriptor)
+          PY
+
+      - name: Upload immutable iOS outcome after cleanup
+        id: evidence_upload
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+        with:
+          name: mobile-ios-rollout-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.evidence.outputs.root }}/retention
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Fail iOS job after immutable evidence retention
+        if: always()
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          PLATFORMS: ${{ inputs.platforms }}
+          PREPARED: ${{ steps.prepared.outcome }}
+          ANDROID_PROOF: ${{ steps.android_proof.outcome }}
+          STORE: ${{ steps.store.outcome }}
+          CLEANUP: ${{ steps.cleanup.outcome }}
+          RECEIPT: ${{ steps.receipt.outcome }}
+          RECEIPT_RESULT: ${{ steps.receipt.outputs.overall_result }}
+          UPLOAD: ${{ steps.evidence_upload.outcome }}
+          ARTIFACT_ID: ${{ steps.evidence_upload.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.evidence_upload.outputs.artifact-digest }}
+        run: |
+          proof_ok=false
+          [[ "$PLATFORMS" == ios && "$ANDROID_PROOF" == skipped ]] && proof_ok=true
+          [[ "$PLATFORMS" == both && "$ANDROID_PROOF" == success ]] && proof_ok=true
+          [[ "$PREPARED" == success && "$proof_ok" == true && "$STORE" == success && \
+             "$CLEANUP" == success && "$RECEIPT" == success && "$RECEIPT_RESULT" == succeeded && \
+             "$UPLOAD" == success && "$ARTIFACT_ID" =~ ^[1-9][0-9]{0,19}$ && \
+             "$ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+
+  finalize:
+    name: credential-free rollout finalization
+    needs: [store-client-bootstrap, android-rollout, ios-rollout]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact credential-free finalizer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted-finalizer
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Create owner-only final receipt root
+        id: evidence
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+        run: |
+          root="$(umask 077; /usr/bin/mktemp -d \
+            "$RUNNER_TEMP/pakperk-rollout-final.XXXXXXXXXX")"
+          /bin/chmod 0700 "$root"
+          printf 'root=%s\n' "$root" >>"$GITHUB_OUTPUT"
+
+      - name: Download Android outcome strictly by immutable artifact ID
+        if: >-
+          always() &&
+          (inputs.platforms == 'android' || inputs.platforms == 'both') &&
+          needs.android-rollout.outputs.evidence_artifact_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.android-rollout.outputs.evidence_artifact_id }}
+          path: ${{ runner.temp }}/android-outcome
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Download iOS outcome strictly by immutable artifact ID
+        if: >-
+          always() &&
+          (inputs.platforms == 'ios' || inputs.platforms == 'both') &&
+          needs.ios-rollout.outputs.evidence_artifact_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.ios-rollout.outputs.evidence_artifact_id }}
+          path: ${{ runner.temp }}/ios-outcome
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Aggregate exact platform evidence without credentials
+        id: receipt
+        if: always()
+        continue-on-error: true
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          PROMPT_COMMAND: ""
+          PYTHONHOME: ""
+          PYTHONINSPECT: "0"
+          PYTHONPATH: ""
+          PYTHONSTARTUP: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+        run: |
+          trusted="$GITHUB_WORKSPACE/trusted-finalizer"
+          [[ "$(/usr/bin/git -C "$trusted" rev-parse HEAD)" == "${{ github.workflow_sha }}" ]] || exit 1
+          helper="$trusted/scripts/generate_mobile_store_rollout_receipt.py"
+          observed="$(/usr/bin/shasum -a 256 "$helper")"
+          [[ "${observed%% *}" == 38133d7c8a9fc5c4ade2935e6340754d8a94c60bf15fbad463a88d96190c0f5c ]] || exit 1
+          signed_validator="$trusted/scripts/validate_mobile_signed_release_run.py"
+          observed="$(/usr/bin/shasum -a 256 "$signed_validator")"
+          [[ "${observed%% *}" == e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93 ]] || exit 1
+          /usr/bin/python3 -I "$helper" aggregate \
+            --source-revision "${{ inputs.source_revision }}" \
+            --signed-release-run-id "${{ inputs.signed_release_run_id }}" \
+            --candidate-id "${{ inputs.candidate_id }}" \
+            --provenance-id "${{ inputs.provenance_id }}" \
+            --store-handoff-id "${{ inputs.store_handoff_id }}" \
+            --app-version "${{ inputs.app_version }}" --build-number "${{ inputs.build_number }}" \
+            --platforms "${{ inputs.platforms }}" --operation "${{ inputs.operation }}" \
+            --android-previous-version "${{ inputs.android_previous_production_version_code }}" \
+            --android-expected-fraction "${{ inputs.android_expected_current_fraction }}" \
+            --android-target-fraction "${{ inputs.android_rollout_fraction }}" \
+            --ios-previous-public-version "${{ inputs.ios_previous_public_version }}" \
+            --change-id "${{ inputs.change_id }}" --confirmation "${{ inputs.confirmation }}" \
+            --workflow-sha "${{ github.workflow_sha }}" --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" \
+            --android-job-result "${{ needs.android-rollout.result }}" \
+            --android-artifact-id "${{ needs.android-rollout.outputs.evidence_artifact_id }}" \
+            --android-artifact-digest "${{ needs.android-rollout.outputs.evidence_artifact_digest }}" \
+            --android-root "$RUNNER_TEMP/android-outcome" \
+            --ios-job-result "${{ needs.ios-rollout.result }}" \
+            --ios-artifact-id "${{ needs.ios-rollout.outputs.evidence_artifact_id }}" \
+            --ios-artifact-digest "${{ needs.ios-rollout.outputs.evidence_artifact_digest }}" \
+            --ios-root "$RUNNER_TEMP/ios-outcome" \
+            --output-root "${{ steps.evidence.outputs.root }}" \
+            --github-output "$GITHUB_OUTPUT" --github-step-summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload canonical credential-free rollout receipt
+        id: receipt_upload
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        env:
+          BASH_ENV: /dev/null
+          DYLD_INSERT_LIBRARIES: ""
+          DYLD_LIBRARY_PATH: ""
+          ENV: /dev/null
+          LD_LIBRARY_PATH: ""
+          LD_PRELOAD: ""
+          NODE_EXTRA_CA_CERTS: ""
+          NODE_OPTIONS: ""
+          NODE_PATH: ""
+          PYTHONPATH: ""
+          RUBYLIB: ""
+          RUBYOPT: ""
+        with:
+          name: mobile-store-rollout-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.evidence.outputs.root }}
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Fail requested skipped cancelled failed or missing outcomes
+        if: always()
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PATH: /usr/bin:/bin
+          BASH_ENV: /dev/null
+          PLATFORMS: ${{ inputs.platforms }}
+          BOOTSTRAP_RESULT: ${{ needs.store-client-bootstrap.result }}
+          ANDROID_RESULT: ${{ needs.android-rollout.result }}
+          IOS_RESULT: ${{ needs.ios-rollout.result }}
+          RECEIPT_OUTCOME: ${{ steps.receipt.outcome }}
+          RECEIPT_RESULT: ${{ steps.receipt.outputs.overall_result }}
+          RECEIPT_UPLOAD: ${{ steps.receipt_upload.outcome }}
+        run: |
+          failed=0
+          [[ "$BOOTSTRAP_RESULT" == success && "$RECEIPT_OUTCOME" == success && \
+             "$RECEIPT_RESULT" == succeeded && "$RECEIPT_UPLOAD" == success ]] || failed=1
+          if [[ "$PLATFORMS" == android || "$PLATFORMS" == both ]]; then
+            [[ "$ANDROID_RESULT" == success ]] || failed=1
+          else
+            [[ "$ANDROID_RESULT" == skipped ]] || failed=1
+          fi
+          if [[ "$PLATFORMS" == ios || "$PLATFORMS" == both ]]; then
+            [[ "$IOS_RESULT" == success ]] || failed=1
+          else
+            [[ "$IOS_RESULT" == skipped ]] || failed=1
+          fi
+          (( failed == 0 )) || {
+            echo "A requested platform was skipped, cancelled, failed, or lacked exact immutable evidence." >&2
+            exit 1
+          }

@@ -13,23 +13,25 @@ on:
         type: choice
         options: [staging, production]
 
-permissions:
-  contents: read
-  packages: write
+permissions: {}
 
 concurrency:
   group: release-images-${{ inputs.environment }}
   cancel-in-progress: false
 
-env:
-  RUST_TOOLCHAIN: 1.91.1
-  FLUTTER_VERSION: 3.44.8
-
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
-    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+    env:
+      RUST_TOOLCHAIN: 1.91.1
+      FLUTTER_VERSION: 3.44.8
+    outputs:
+      source_revision: ${{ steps.release.outputs.source_revision }}
+      build_artifact_id: ${{ steps.build-upload.outputs.artifact-id }}
+      build_artifact_digest: ${{ steps.build-upload.outputs.artifact-digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -109,129 +111,1260 @@ jobs:
 
       - name: Build commit-addressed release images
         env:
+          RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+          SOURCE_REVISION: ${{ steps.release.outputs.source_revision }}
+          BACKEND_REPOSITORY: ${{ steps.release.outputs.backend_repository }}
+          SITE_REPOSITORY: ${{ steps.release.outputs.site_repository }}
           BACKEND_TAG: ${{ steps.release.outputs.backend_tag }}
           SITE_TAG: ${{ steps.release.outputs.site_tag }}
         run: |
           docker build --file backend/Dockerfile --target runtime --tag "$BACKEND_TAG" .
           docker build --file site/Dockerfile --tag "$SITE_TAG" .
-          mkdir -p release/image-publication
+          backend_image_id="$(docker image inspect --format '{{.Id}}' "$BACKEND_TAG")"
+          site_image_id="$(docker image inspect --format '{{.Id}}' "$SITE_TAG")"
+          if ! [[ "$backend_image_id" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+             ! [[ "$site_image_id" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+             [[ "$backend_image_id" == "$site_image_id" ]]; then
+            echo "Built image IDs are unavailable, invalid, or unexpectedly identical." >&2
+            exit 1
+          fi
+          build_dir="release/image-build-handoff"
+          if [[ -e "$build_dir" || -L "$build_dir" ]]; then
+            echo "Image build handoff path must be fresh." >&2
+            exit 1
+          fi
+          umask 077
+          mkdir "$build_dir"
+          docker save --output "$build_dir/backend-image.tar" "$BACKEND_TAG"
+          docker save --output "$build_dir/site-image.tar" "$SITE_TAG"
+          if [[ "$(docker image inspect --format '{{.Id}}' "$BACKEND_TAG")" != "$backend_image_id" ]] || \
+             [[ "$(docker image inspect --format '{{.Id}}' "$SITE_TAG")" != "$site_image_id" ]]; then
+            echo "A built image identity changed while its handoff archive was created." >&2
+            exit 1
+          fi
+          backend_archive_sha256="$(/usr/bin/sha256sum "$build_dir/backend-image.tar" | /usr/bin/cut -d ' ' -f 1)"
+          site_archive_sha256="$(/usr/bin/sha256sum "$build_dir/site-image.tar" | /usr/bin/cut -d ' ' -f 1)"
+          if ! [[ "$backend_archive_sha256" =~ ^[0-9a-f]{64}$ ]] || \
+             ! [[ "$site_archive_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Built image archive digests are unavailable or invalid." >&2
+            exit 1
+          fi
+          cp release/metadata/dependencies.cdx.json "$build_dir/source-dependencies.cdx.json"
+          cp release/metadata/open-source-notices.txt "$build_dir/open-source-notices.txt"
+          cp release/metadata/flutter-toolchain.json "$build_dir/flutter-toolchain.json"
+          /usr/bin/python3 -I - \
+            "$build_dir/release-image-build.json" \
+            "$RELEASE_ENVIRONMENT" \
+            "$SOURCE_REVISION" \
+            "$BACKEND_REPOSITORY" \
+            "$BACKEND_TAG" \
+            "$backend_image_id" \
+            "$backend_archive_sha256" \
+            "$SITE_REPOSITORY" \
+            "$SITE_TAG" \
+            "$site_image_id" \
+            "$site_archive_sha256" <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
+
+          (
+              destination_raw,
+              environment,
+              revision,
+              backend_repository,
+              backend_tag,
+              backend_image_id,
+              backend_archive_sha256,
+              site_repository,
+              site_tag,
+              site_image_id,
+              site_archive_sha256,
+          ) = sys.argv[1:]
+          payload = {
+              "schema": 1,
+              "classification": "untrusted release image build handoff",
+              "environment": environment,
+              "source_revision": revision,
+              "images": {
+                  "backend": {
+                      "archive": "backend-image.tar",
+                      "archive_sha256": backend_archive_sha256,
+                      "image_id": backend_image_id,
+                      "repository": backend_repository,
+                      "tag": backend_tag,
+                  },
+                  "site": {
+                      "archive": "site-image.tar",
+                      "archive_sha256": site_archive_sha256,
+                      "image_id": site_image_id,
+                      "repository": site_repository,
+                      "tag": site_tag,
+                  },
+              },
+          }
+          serialized = (
+              json.dumps(
+                  payload,
+                  allow_nan=False,
+                  ensure_ascii=True,
+                  separators=(",", ":"),
+                  sort_keys=True,
+              )
+              + "\n"
+          ).encode("ascii")
+          destination = pathlib.Path(destination_raw)
+          flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+          if hasattr(os, "O_NOFOLLOW"):
+              flags |= os.O_NOFOLLOW
+          descriptor = os.open(destination, flags, 0o600)
+          try:
+              view = memoryview(serialized)
+              while view:
+                  written = os.write(descriptor, view)
+                  if written <= 0:
+                      raise SystemExit("build manifest write did not make progress")
+                  view = view[written:]
+              os.fsync(descriptor)
+          finally:
+              os.close(descriptor)
+          PY
+
+      - name: Upload immutable untrusted build handoff
+        id: build-upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-image-build-${{ inputs.environment }}-${{ steps.release.outputs.source_revision }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release/image-build-handoff
+          if-no-files-found: error
+          compression-level: 0
+          include-hidden-files: false
+          retention-days: 1
+
+  scan:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions: {}
+    env:
+      PATH: /usr/bin:/bin
+      BASH_ENV: /dev/null
+      ENV: /dev/null
+    outputs:
+      source_revision: ${{ needs.build.outputs.source_revision }}
+      build_artifact_id: ${{ needs.build.outputs.build_artifact_id }}
+      build_artifact_digest: ${{ needs.build.outputs.build_artifact_digest }}
+      build_manifest_sha256: ${{ steps.validate-build.outputs.build_manifest_sha256 }}
+      handoff_artifact_id: ${{ steps.handoff-upload.outputs.artifact-id }}
+      handoff_artifact_digest: ${{ steps.handoff-upload.outputs.artifact-digest }}
+    steps:
+      - name: Download exact immutable untrusted build handoff
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.build.outputs.build_artifact_id }}
+          path: ${{ runner.temp }}/release-image-build-handoff
+          digest-mismatch: error
+
+      - name: Validate untrusted build handoff on fresh scan runner
+        id: validate-build
+        shell: bash
+        env:
+          BUILD_DIR: ${{ runner.temp }}/release-image-build-handoff
+          EXPECTED_ARTIFACT_ID: ${{ needs.build.outputs.build_artifact_id }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ needs.build.outputs.build_artifact_digest }}
+          EXPECTED_ENVIRONMENT: ${{ inputs.environment }}
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+          BUILD_SOURCE_REVISION: ${{ needs.build.outputs.source_revision }}
+          REGISTRY_OWNER: ${{ github.repository_owner }}
+        run: |
+          /usr/bin/python3 -I - \
+            "$BUILD_DIR" \
+            "$EXPECTED_ARTIFACT_ID" \
+            "$EXPECTED_ARTIFACT_DIGEST" \
+            "$EXPECTED_ENVIRONMENT" \
+            "$EXPECTED_SOURCE_REVISION" \
+            "$BUILD_SOURCE_REVISION" \
+            "$REGISTRY_OWNER" \
+            "$GITHUB_OUTPUT" <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import re
+          import stat
+          import subprocess
+          import sys
+
+          (
+              root_raw,
+              artifact_id,
+              artifact_digest,
+              environment,
+              revision,
+              build_revision,
+              owner_raw,
+              output_raw,
+          ) = sys.argv[1:]
+          root = pathlib.Path(root_raw)
+          if re.fullmatch(r"[1-9][0-9]{0,19}", artifact_id) is None:
+              raise SystemExit("immutable build artifact ID is invalid")
+          if re.fullmatch(r"[0-9a-f]{64}", artifact_digest) is None:
+              raise SystemExit("immutable build artifact digest is invalid")
+          if environment not in {"staging", "production"}:
+              raise SystemExit("scan environment is invalid")
+          if re.fullmatch(r"[0-9a-f]{40}", revision) is None or build_revision != revision:
+              raise SystemExit("build and scan revisions do not match")
+          owner = owner_raw.lower()
+          if re.fullmatch(r"[a-z0-9-]{1,64}", owner) is None:
+              raise SystemExit("registry owner is invalid")
+          expected_repositories = {
+              "backend": f"ghcr.io/{owner}/pakperk-backend",
+              "site": f"ghcr.io/{owner}/pakperk-site",
+          }
+          evidence_names = {
+              "flutter-toolchain.json",
+              "open-source-notices.txt",
+              "source-dependencies.cdx.json",
+          }
+          expected_files = evidence_names | {
+              "backend-image.tar",
+              "site-image.tar",
+              "release-image-build.json",
+          }
+          directory = os.lstat(root)
+          if (
+              not stat.S_ISDIR(directory.st_mode)
+              or directory.st_uid != os.getuid()
+              or directory.st_mode & 0o022
+          ):
+              raise SystemExit("downloaded build directory is not runner-owned and closed")
+          if {entry.name for entry in os.scandir(root)} != expected_files:
+              raise SystemExit("downloaded build handoff file surface is not closed")
+
+          def read_once(path, maximum):
+              flags = os.O_RDONLY
+              if hasattr(os, "O_NOFOLLOW"):
+                  flags |= os.O_NOFOLLOW
+              descriptor = os.open(path, flags)
+              try:
+                  before = os.fstat(descriptor)
+                  if (
+                      not stat.S_ISREG(before.st_mode)
+                      or before.st_uid != os.getuid()
+                      or before.st_mode & 0o022
+                      or before.st_nlink != 1
+                      or before.st_size <= 0
+                      or before.st_size > maximum
+                  ):
+                      raise SystemExit("downloaded build file is outside its bounds")
+                  chunks = []
+                  remaining = maximum + 1
+                  while remaining > 0:
+                      chunk = os.read(descriptor, min(1024 * 1024, remaining))
+                      if not chunk:
+                          break
+                      chunks.append(chunk)
+                      remaining -= len(chunk)
+                  after = os.fstat(descriptor)
+              finally:
+                  os.close(descriptor)
+              current = os.lstat(path)
+              identity = lambda value: (
+                  value.st_dev,
+                  value.st_ino,
+                  value.st_uid,
+                  stat.S_IMODE(value.st_mode),
+                  value.st_nlink,
+                  value.st_size,
+                  value.st_mtime_ns,
+                  value.st_ctime_ns,
+              )
+              data = b"".join(chunks)
+              if (
+                  identity(before) != identity(after)
+                  or identity(after) != identity(current)
+                  or len(data) != before.st_size
+              ):
+                  raise SystemExit("downloaded build file changed while reading")
+              return data
+
+          def digest_once(path, maximum):
+              flags = os.O_RDONLY
+              if hasattr(os, "O_NOFOLLOW"):
+                  flags |= os.O_NOFOLLOW
+              descriptor = os.open(path, flags)
+              try:
+                  before = os.fstat(descriptor)
+                  if (
+                      not stat.S_ISREG(before.st_mode)
+                      or before.st_uid != os.getuid()
+                      or before.st_mode & 0o022
+                      or before.st_nlink != 1
+                      or before.st_size <= 0
+                      or before.st_size > maximum
+                  ):
+                      raise SystemExit("downloaded build file is outside its bounds")
+                  state = hashlib.sha256()
+                  while True:
+                      chunk = os.read(descriptor, 1024 * 1024)
+                      if not chunk:
+                          break
+                      state.update(chunk)
+                  after = os.fstat(descriptor)
+              finally:
+                  os.close(descriptor)
+              current = os.lstat(path)
+              identity = lambda value: (
+                  value.st_dev,
+                  value.st_ino,
+                  value.st_uid,
+                  stat.S_IMODE(value.st_mode),
+                  value.st_nlink,
+                  value.st_size,
+                  value.st_mtime_ns,
+                  value.st_ctime_ns,
+              )
+              if identity(before) != identity(after) or identity(after) != identity(current):
+                  raise SystemExit("downloaded build file changed while hashing")
+              return state.hexdigest()
+
+          raw = read_once(root / "release-image-build.json", 64 * 1024)
+
+          def reject_pairs(pairs):
+              value = {}
+              for key, child in pairs:
+                  if key in value:
+                      raise SystemExit("build manifest contains a duplicate key")
+                  value[key] = child
+              return value
+
+          def reject_constant(_value):
+              raise SystemExit("build manifest contains a non-finite number")
+
+          payload = json.loads(
+              raw.decode("utf-8"),
+              object_pairs_hook=reject_pairs,
+              parse_constant=reject_constant,
+          )
+          canonical = (
+              json.dumps(
+                  payload,
+                  allow_nan=False,
+                  ensure_ascii=True,
+                  separators=(",", ":"),
+                  sort_keys=True,
+              )
+              + "\n"
+          ).encode("ascii")
+          if raw != canonical or not isinstance(payload, dict):
+              raise SystemExit("build manifest is not canonical JSON")
+          if set(payload) != {
+              "schema",
+              "classification",
+              "environment",
+              "source_revision",
+              "images",
+          }:
+              raise SystemExit("build manifest root contract is not closed")
+          if type(payload["schema"]) is not int or payload["schema"] != 1:
+              raise SystemExit("build manifest schema is invalid")
+          if payload["classification"] != "untrusted release image build handoff":
+              raise SystemExit("build manifest classification is invalid")
+          if payload["environment"] != environment or payload["source_revision"] != revision:
+              raise SystemExit("build manifest target binding does not match")
+          images = payload["images"]
+          if not isinstance(images, dict) or set(images) != {"backend", "site"}:
+              raise SystemExit("build manifest image contract is not closed")
+          archive_digests = {}
+          image_ids = {}
+          for role, archive_name in (
+              ("backend", "backend-image.tar"),
+              ("site", "site-image.tar"),
+          ):
+              image = images[role]
+              if not isinstance(image, dict) or set(image) != {
+                  "archive",
+                  "archive_sha256",
+                  "image_id",
+                  "repository",
+                  "tag",
+              }:
+                  raise SystemExit("build image identity contract is not closed")
+              repository = expected_repositories[role]
+              expected_tag = f"{repository}:sha-{revision}"
+              if image["archive"] != archive_name or image["repository"] != repository:
+                  raise SystemExit("build repository/archive binding does not match")
+              if image["tag"] != expected_tag:
+                  raise SystemExit("build tag binding does not match")
+              archive_digest = digest_once(root / archive_name, 8 * 1024**3)
+              if archive_digest != image["archive_sha256"]:
+                  raise SystemExit("build archive digest does not match")
+              subprocess.run(
+                  ["/usr/bin/docker", "load", "--input", str(root / archive_name)],
+                  check=True,
+                  stdin=subprocess.DEVNULL,
+                  stdout=subprocess.DEVNULL,
+                  stderr=subprocess.PIPE,
+                  timeout=600,
+              )
+              image_id = subprocess.run(
+                  ["/usr/bin/docker", "image", "inspect", "--format", "{{.Id}}", expected_tag],
+                  check=True,
+                  stdin=subprocess.DEVNULL,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+                  timeout=60,
+                  text=True,
+              ).stdout.strip()
+              if image_id != image["image_id"] or re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None:
+                  raise SystemExit("loaded build image identity does not match")
+              archive_digests[role] = archive_digest
+              image_ids[role] = image_id
+          if image_ids["backend"] == image_ids["site"]:
+              raise SystemExit("loaded build image identities must be distinct")
+          for name in evidence_names:
+              read_once(root / name, 128 * 1024 * 1024)
+          output = pathlib.Path(output_raw)
+          with output.open("a", encoding="ascii") as destination:
+              destination.write(f"backend_image_id={image_ids['backend']}\n")
+              destination.write(f"site_image_id={image_ids['site']}\n")
+              destination.write(f"backend_archive_sha256={archive_digests['backend']}\n")
+              destination.write(f"site_archive_sha256={archive_digests['site']}\n")
+              destination.write(f"build_manifest_sha256={hashlib.sha256(raw).hexdigest()}\n")
+          for name in expected_files:
+              os.chmod(root / name, 0o400)
+          os.chmod(root, 0o500)
+          PY
+
+      - name: Prepare fresh scan output directory
+        shell: bash
+        env:
+          SCAN_DIR: ${{ runner.temp }}/release-image-scan
+        run: |
+          if [[ -e "$SCAN_DIR" || -L "$SCAN_DIR" ]]; then
+            echo "Release-image scan output path must be fresh." >&2
+            exit 1
+          fi
+          umask 077
+          /usr/bin/mkdir "$SCAN_DIR"
 
       - name: Scan exact backend image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ${{ steps.release.outputs.backend_tag }}
+          input: ${{ runner.temp }}/release-image-build-handoff/backend-image.tar
           format: sarif
-          output: release/image-publication/backend-trivy.sarif
+          output: ${{ runner.temp }}/release-image-scan/backend-trivy.sarif
           exit-code: "1"
           severity: HIGH,CRITICAL
 
       - name: Scan exact site image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ${{ steps.release.outputs.site_tag }}
+          input: ${{ runner.temp }}/release-image-build-handoff/site-image.tar
           format: sarif
-          output: release/image-publication/site-trivy.sarif
+          output: ${{ runner.temp }}/release-image-scan/site-trivy.sarif
           exit-code: "1"
           severity: HIGH,CRITICAL
 
       - name: Generate exact backend image SBOM
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ${{ steps.release.outputs.backend_tag }}
+          input: ${{ runner.temp }}/release-image-build-handoff/backend-image.tar
           format: cyclonedx
-          output: release/image-publication/backend-image.cdx.json
+          output: ${{ runner.temp }}/release-image-scan/backend-image.cdx.json
           scanners: vuln
 
       - name: Generate exact site image SBOM
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ${{ steps.release.outputs.site_tag }}
+          input: ${{ runner.temp }}/release-image-build-handoff/site-image.tar
           format: cyclonedx
-          output: release/image-publication/site-image.cdx.json
+          output: ${{ runner.temp }}/release-image-scan/site-image.cdx.json
           scanners: vuln
 
-      - name: Publish immutable images after successful scans
+      - name: Create closed scanned-image publication handoff
+        shell: bash
+        env:
+          BUILD_DIR: ${{ runner.temp }}/release-image-build-handoff
+          SCAN_DIR: ${{ runner.temp }}/release-image-scan
+          HANDOFF_DIR: ${{ runner.temp }}/release-image-handoff
+          RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+          SOURCE_REVISION: ${{ needs.build.outputs.source_revision }}
+          REGISTRY_OWNER: ${{ github.repository_owner }}
+          BUILD_ARTIFACT_ID: ${{ needs.build.outputs.build_artifact_id }}
+          BUILD_ARTIFACT_DIGEST: ${{ needs.build.outputs.build_artifact_digest }}
+          BUILD_MANIFEST_SHA256: ${{ steps.validate-build.outputs.build_manifest_sha256 }}
+          SCANNED_BACKEND_IMAGE_ID: ${{ steps.validate-build.outputs.backend_image_id }}
+          SCANNED_SITE_IMAGE_ID: ${{ steps.validate-build.outputs.site_image_id }}
+          SCANNED_BACKEND_ARCHIVE_SHA256: ${{ steps.validate-build.outputs.backend_archive_sha256 }}
+          SCANNED_SITE_ARCHIVE_SHA256: ${{ steps.validate-build.outputs.site_archive_sha256 }}
+        run: |
+          if [[ -e "$HANDOFF_DIR" || -L "$HANDOFF_DIR" ]]; then
+            echo "Scanned-image handoff path must be fresh." >&2
+            exit 1
+          fi
+          umask 077
+          /usr/bin/mkdir "$HANDOFF_DIR"
+          /usr/bin/cp "$BUILD_DIR/backend-image.tar" "$HANDOFF_DIR/backend-image.tar"
+          /usr/bin/cp "$BUILD_DIR/site-image.tar" "$HANDOFF_DIR/site-image.tar"
+          /usr/bin/cp "$BUILD_DIR/release-image-build.json" "$HANDOFF_DIR/untrusted-build-handoff.json"
+          /usr/bin/cp "$BUILD_DIR/source-dependencies.cdx.json" "$HANDOFF_DIR/source-dependencies.cdx.json"
+          /usr/bin/cp "$BUILD_DIR/open-source-notices.txt" "$HANDOFF_DIR/open-source-notices.txt"
+          /usr/bin/cp "$BUILD_DIR/flutter-toolchain.json" "$HANDOFF_DIR/flutter-toolchain.json"
+          /usr/bin/cp "$SCAN_DIR/backend-trivy.sarif" "$HANDOFF_DIR/backend-trivy.sarif"
+          /usr/bin/cp "$SCAN_DIR/site-trivy.sarif" "$HANDOFF_DIR/site-trivy.sarif"
+          /usr/bin/cp "$SCAN_DIR/backend-image.cdx.json" "$HANDOFF_DIR/backend-image.cdx.json"
+          /usr/bin/cp "$SCAN_DIR/site-image.cdx.json" "$HANDOFF_DIR/site-image.cdx.json"
+
+          backend_image_id="$SCANNED_BACKEND_IMAGE_ID"
+          site_image_id="$SCANNED_SITE_IMAGE_ID"
+          if ! [[ "$backend_image_id" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+             ! [[ "$site_image_id" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+             [[ "$backend_image_id" == "$site_image_id" ]]; then
+            echo "Scanned image IDs are unavailable, invalid, or unexpectedly identical." >&2
+            exit 1
+          fi
+          registry_owner="$(printf '%s' "$REGISTRY_OWNER" | /usr/bin/tr '[:upper:]' '[:lower:]')"
+          backend_repository="ghcr.io/$registry_owner/pakperk-backend"
+          site_repository="ghcr.io/$registry_owner/pakperk-site"
+          backend_tag="$backend_repository:sha-$SOURCE_REVISION"
+          site_tag="$site_repository:sha-$SOURCE_REVISION"
+          if [[ "$(/usr/bin/docker image inspect --format '{{.Id}}' "$backend_tag")" != "$backend_image_id" ]] || \
+             [[ "$(/usr/bin/docker image inspect --format '{{.Id}}' "$site_tag")" != "$site_image_id" ]]; then
+            echo "A commit tag no longer points to the exact archived image ID." >&2
+            exit 1
+          fi
+
+          /usr/bin/python3 -I - \
+            "$HANDOFF_DIR" \
+            "$RELEASE_ENVIRONMENT" \
+            "$SOURCE_REVISION" \
+            "$backend_repository" \
+            "$backend_tag" \
+            "$backend_image_id" \
+            "$site_repository" \
+            "$site_tag" \
+            "$site_image_id" \
+            "$SCANNED_BACKEND_ARCHIVE_SHA256" \
+            "$SCANNED_SITE_ARCHIVE_SHA256" \
+            "$BUILD_ARTIFACT_ID" \
+            "$BUILD_ARTIFACT_DIGEST" \
+            "$BUILD_MANIFEST_SHA256" <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import re
+          import stat
+          import sys
+
+          (
+              root_raw,
+              environment,
+              revision,
+              backend_repository,
+              backend_tag,
+              backend_image_id,
+              site_repository,
+              site_tag,
+              site_image_id,
+              expected_backend_archive_sha256,
+              expected_site_archive_sha256,
+              build_artifact_id,
+              build_artifact_digest,
+              expected_build_manifest_sha256,
+          ) = sys.argv[1:]
+          root = pathlib.Path(root_raw)
+          evidence_names = (
+              "backend-image.cdx.json",
+              "backend-trivy.sarif",
+              "flutter-toolchain.json",
+              "open-source-notices.txt",
+              "site-image.cdx.json",
+              "site-trivy.sarif",
+              "source-dependencies.cdx.json",
+              "untrusted-build-handoff.json",
+          )
+          expected_before = set(evidence_names) | {
+              "backend-image.tar",
+              "site-image.tar",
+          }
+          if {entry.name for entry in os.scandir(root)} != expected_before:
+              raise SystemExit("scanned-image handoff file surface is not closed")
+          if environment not in {"staging", "production"}:
+              raise SystemExit("scanned-image handoff environment is invalid")
+          if re.fullmatch(r"[0-9a-f]{40}", revision) is None:
+              raise SystemExit("scanned-image handoff revision is invalid")
+          if re.fullmatch(r"[1-9][0-9]{0,19}", build_artifact_id) is None:
+              raise SystemExit("build artifact ID is invalid")
+          if re.fullmatch(r"[0-9a-f]{64}", build_artifact_digest) is None:
+              raise SystemExit("build artifact digest is invalid")
+          if re.fullmatch(r"[0-9a-f]{64}", expected_build_manifest_sha256) is None:
+              raise SystemExit("build manifest digest is invalid")
+          for repository, tag, image_id, suffix in (
+              (backend_repository, backend_tag, backend_image_id, "pakperk-backend"),
+              (site_repository, site_tag, site_image_id, "pakperk-site"),
+          ):
+              if re.fullmatch(rf"ghcr\.io/[a-z0-9-]{{1,64}}/{suffix}", repository) is None:
+                  raise SystemExit("scanned-image repository is invalid")
+              if tag != f"{repository}:sha-{revision}":
+                  raise SystemExit("scanned-image tag is not revision-addressed")
+              if re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None:
+                  raise SystemExit("scanned-image ID is invalid")
+
+          def digest(path, maximum):
+              flags = os.O_RDONLY
+              if hasattr(os, "O_NOFOLLOW"):
+                  flags |= os.O_NOFOLLOW
+              descriptor = os.open(path, flags)
+              try:
+                  before = os.fstat(descriptor)
+                  if (
+                      not stat.S_ISREG(before.st_mode)
+                      or before.st_uid != os.getuid()
+                      or before.st_mode & 0o022
+                      or before.st_nlink != 1
+                      or before.st_size <= 0
+                      or before.st_size > maximum
+                  ):
+                      raise SystemExit("scanned-image handoff file is outside its bounds")
+                  state = hashlib.sha256()
+                  while True:
+                      chunk = os.read(descriptor, 1024 * 1024)
+                      if not chunk:
+                          break
+                      state.update(chunk)
+                  after = os.fstat(descriptor)
+              finally:
+                  os.close(descriptor)
+              current = os.lstat(path)
+              identity = lambda value: (
+                  value.st_dev,
+                  value.st_ino,
+                  value.st_uid,
+                  stat.S_IMODE(value.st_mode),
+                  value.st_nlink,
+                  value.st_size,
+                  value.st_mtime_ns,
+                  value.st_ctime_ns,
+              )
+              if identity(before) != identity(after) or identity(after) != identity(current):
+                  raise SystemExit("scanned-image handoff file changed while hashing")
+              return state.hexdigest()
+
+          evidence = {
+              name: {"sha256": digest(root / name, 128 * 1024 * 1024)}
+              for name in evidence_names
+          }
+          backend_archive_sha256 = digest(root / "backend-image.tar", 8 * 1024**3)
+          site_archive_sha256 = digest(root / "site-image.tar", 8 * 1024**3)
+          if (
+              backend_archive_sha256 != expected_backend_archive_sha256
+              or site_archive_sha256 != expected_site_archive_sha256
+          ):
+              raise SystemExit("a scanned image archive changed after its scans")
+          build_manifest_sha256 = evidence["untrusted-build-handoff.json"]["sha256"]
+          if build_manifest_sha256 != expected_build_manifest_sha256:
+              raise SystemExit("untrusted build manifest changed after fresh validation")
+          payload = {
+              "schema": 1,
+              "classification": "scanned release image publication handoff",
+              "environment": environment,
+              "source_revision": revision,
+              "build_handoff": {
+                  "artifact_id": build_artifact_id,
+                  "artifact_digest": build_artifact_digest,
+                  "manifest": "untrusted-build-handoff.json",
+                  "manifest_sha256": build_manifest_sha256,
+              },
+              "images": {
+                  "backend": {
+                      "archive": "backend-image.tar",
+                      "archive_sha256": backend_archive_sha256,
+                      "image_id": backend_image_id,
+                      "repository": backend_repository,
+                      "tag": backend_tag,
+                  },
+                  "site": {
+                      "archive": "site-image.tar",
+                      "archive_sha256": site_archive_sha256,
+                      "image_id": site_image_id,
+                      "repository": site_repository,
+                      "tag": site_tag,
+                  },
+              },
+              "evidence": evidence,
+          }
+          serialized = (
+              json.dumps(
+                  payload,
+                  allow_nan=False,
+                  ensure_ascii=True,
+                  separators=(",", ":"),
+                  sort_keys=True,
+              )
+              + "\n"
+          ).encode("ascii")
+          destination = root / "release-image-handoff.json"
+          flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+          if hasattr(os, "O_NOFOLLOW"):
+              flags |= os.O_NOFOLLOW
+          descriptor = os.open(destination, flags, 0o600)
+          try:
+              view = memoryview(serialized)
+              while view:
+                  written = os.write(descriptor, view)
+                  if written <= 0:
+                      raise SystemExit("scanned-image manifest write did not make progress")
+                  view = view[written:]
+              os.fsync(descriptor)
+          finally:
+              os.close(descriptor)
+          expected_after = expected_before | {"release-image-handoff.json"}
+          if {entry.name for entry in os.scandir(root)} != expected_after:
+              raise SystemExit("scanned-image handoff changed before upload")
+          for name in expected_after:
+              os.chmod(root / name, 0o400)
+          os.chmod(root, 0o500)
+          PY
+
+      - name: Upload immutable scanned-image handoff
+        id: handoff-upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-image-handoff-${{ inputs.environment }}-${{ needs.build.outputs.source_revision }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-image-handoff
+          if-no-files-found: error
+          compression-level: 0
+          include-hidden-files: false
+          retention-days: 1
+
+  publish:
+    needs: scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: ${{ inputs.environment }}
+    permissions:
+      packages: write
+    env:
+      PATH: /usr/bin:/bin
+      BASH_ENV: /dev/null
+      ENV: /dev/null
+    steps:
+      - name: Download exact immutable scanned-image handoff
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.scan.outputs.handoff_artifact_id }}
+          path: ${{ runner.temp }}/release-image-handoff
+          digest-mismatch: error
+
+      - name: Validate closed scanned-image handoff before loading
+        shell: bash
+        env:
+          HANDOFF_DIR: ${{ runner.temp }}/release-image-handoff
+          EXPECTED_ARTIFACT_ID: ${{ needs.scan.outputs.handoff_artifact_id }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ needs.scan.outputs.handoff_artifact_digest }}
+          EXPECTED_ENVIRONMENT: ${{ inputs.environment }}
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+          SCAN_SOURCE_REVISION: ${{ needs.scan.outputs.source_revision }}
+          EXPECTED_BUILD_ARTIFACT_ID: ${{ needs.scan.outputs.build_artifact_id }}
+          EXPECTED_BUILD_ARTIFACT_DIGEST: ${{ needs.scan.outputs.build_artifact_digest }}
+          EXPECTED_BUILD_MANIFEST_SHA256: ${{ needs.scan.outputs.build_manifest_sha256 }}
+          REGISTRY_OWNER: ${{ github.repository_owner }}
+        run: |
+          /usr/bin/python3 -I - \
+            "$HANDOFF_DIR" \
+            "$EXPECTED_ARTIFACT_ID" \
+            "$EXPECTED_ARTIFACT_DIGEST" \
+            "$EXPECTED_ENVIRONMENT" \
+            "$EXPECTED_SOURCE_REVISION" \
+            "$SCAN_SOURCE_REVISION" \
+            "$EXPECTED_BUILD_ARTIFACT_ID" \
+            "$EXPECTED_BUILD_ARTIFACT_DIGEST" \
+            "$EXPECTED_BUILD_MANIFEST_SHA256" \
+            "$REGISTRY_OWNER" <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import re
+          import stat
+          import sys
+
+          (
+              root_raw,
+              artifact_id,
+              artifact_digest,
+              environment,
+              revision,
+              scan_revision,
+              expected_build_artifact_id,
+              expected_build_artifact_digest,
+              expected_build_manifest_sha256,
+              owner_raw,
+          ) = sys.argv[1:]
+          root = pathlib.Path(root_raw)
+          if re.fullmatch(r"[1-9][0-9]{0,19}", artifact_id) is None:
+              raise SystemExit("immutable handoff artifact ID is invalid")
+          if re.fullmatch(r"[0-9a-f]{64}", artifact_digest) is None:
+              raise SystemExit("immutable handoff artifact digest is invalid")
+          if environment not in {"staging", "production"}:
+              raise SystemExit("publication environment is invalid")
+          if re.fullmatch(r"[0-9a-f]{40}", revision) is None or scan_revision != revision:
+              raise SystemExit("scan and publication revisions do not match")
+          if re.fullmatch(r"[1-9][0-9]{0,19}", expected_build_artifact_id) is None:
+              raise SystemExit("expected build artifact ID is invalid")
+          if re.fullmatch(r"[0-9a-f]{64}", expected_build_artifact_digest) is None:
+              raise SystemExit("expected build artifact digest is invalid")
+          if re.fullmatch(r"[0-9a-f]{64}", expected_build_manifest_sha256) is None:
+              raise SystemExit("expected build manifest digest is invalid")
+          owner = owner_raw.lower()
+          if re.fullmatch(r"[a-z0-9-]{1,64}", owner) is None:
+              raise SystemExit("registry owner is invalid")
+          expected_repositories = {
+              "backend": f"ghcr.io/{owner}/pakperk-backend",
+              "site": f"ghcr.io/{owner}/pakperk-site",
+          }
+          evidence_names = {
+              "backend-image.cdx.json",
+              "backend-trivy.sarif",
+              "flutter-toolchain.json",
+              "open-source-notices.txt",
+              "site-image.cdx.json",
+              "site-trivy.sarif",
+              "source-dependencies.cdx.json",
+              "untrusted-build-handoff.json",
+          }
+          expected_files = evidence_names | {
+              "backend-image.tar",
+              "site-image.tar",
+              "release-image-handoff.json",
+          }
+          directory_metadata = os.lstat(root)
+          if (
+              not stat.S_ISDIR(directory_metadata.st_mode)
+              or directory_metadata.st_uid != os.getuid()
+              or directory_metadata.st_mode & 0o022
+          ):
+              raise SystemExit("downloaded handoff directory is not runner-owned and closed")
+          if {entry.name for entry in os.scandir(root)} != expected_files:
+              raise SystemExit("downloaded handoff file surface is not closed")
+
+          def read_once(path, maximum):
+              flags = os.O_RDONLY
+              if hasattr(os, "O_NOFOLLOW"):
+                  flags |= os.O_NOFOLLOW
+              descriptor = os.open(path, flags)
+              try:
+                  before = os.fstat(descriptor)
+                  if (
+                      not stat.S_ISREG(before.st_mode)
+                      or before.st_uid != os.getuid()
+                      or before.st_mode & 0o022
+                      or before.st_nlink != 1
+                      or before.st_size <= 0
+                      or before.st_size > maximum
+                  ):
+                      raise SystemExit("downloaded handoff file is outside its bounds")
+                  chunks = []
+                  remaining = maximum + 1
+                  while remaining > 0:
+                      chunk = os.read(descriptor, min(1024 * 1024, remaining))
+                      if not chunk:
+                          break
+                      chunks.append(chunk)
+                      remaining -= len(chunk)
+                  after = os.fstat(descriptor)
+              finally:
+                  os.close(descriptor)
+              current = os.lstat(path)
+              identity = lambda value: (
+                  value.st_dev,
+                  value.st_ino,
+                  value.st_uid,
+                  stat.S_IMODE(value.st_mode),
+                  value.st_nlink,
+                  value.st_size,
+                  value.st_mtime_ns,
+                  value.st_ctime_ns,
+              )
+              data = b"".join(chunks)
+              if (
+                  identity(before) != identity(after)
+                  or identity(after) != identity(current)
+                  or len(data) != before.st_size
+              ):
+                  raise SystemExit("downloaded handoff file changed while reading")
+              return data
+
+          def digest_once(path, maximum):
+              flags = os.O_RDONLY
+              if hasattr(os, "O_NOFOLLOW"):
+                  flags |= os.O_NOFOLLOW
+              descriptor = os.open(path, flags)
+              try:
+                  before = os.fstat(descriptor)
+                  if (
+                      not stat.S_ISREG(before.st_mode)
+                      or before.st_uid != os.getuid()
+                      or before.st_mode & 0o022
+                      or before.st_nlink != 1
+                      or before.st_size <= 0
+                      or before.st_size > maximum
+                  ):
+                      raise SystemExit("downloaded handoff file is outside its bounds")
+                  state = hashlib.sha256()
+                  while True:
+                      chunk = os.read(descriptor, 1024 * 1024)
+                      if not chunk:
+                          break
+                      state.update(chunk)
+                  after = os.fstat(descriptor)
+              finally:
+                  os.close(descriptor)
+              current = os.lstat(path)
+              identity = lambda value: (
+                  value.st_dev,
+                  value.st_ino,
+                  value.st_uid,
+                  stat.S_IMODE(value.st_mode),
+                  value.st_nlink,
+                  value.st_size,
+                  value.st_mtime_ns,
+                  value.st_ctime_ns,
+              )
+              if identity(before) != identity(after) or identity(after) != identity(current):
+                  raise SystemExit("downloaded handoff file changed while hashing")
+              return state.hexdigest()
+
+          manifest_path = root / "release-image-handoff.json"
+          raw = read_once(manifest_path, 64 * 1024)
+
+          def reject_pairs(pairs):
+              value = {}
+              for key, child in pairs:
+                  if key in value:
+                      raise SystemExit("scanned-image manifest contains a duplicate key")
+                  value[key] = child
+              return value
+
+          def reject_constant(_value):
+              raise SystemExit("scanned-image manifest contains a non-finite number")
+
+          payload = json.loads(
+              raw.decode("utf-8"),
+              object_pairs_hook=reject_pairs,
+              parse_constant=reject_constant,
+          )
+          canonical = (
+              json.dumps(
+                  payload,
+                  allow_nan=False,
+                  ensure_ascii=True,
+                  separators=(",", ":"),
+                  sort_keys=True,
+              )
+              + "\n"
+          ).encode("ascii")
+          if raw != canonical or not isinstance(payload, dict):
+              raise SystemExit("scanned-image manifest is not canonical JSON")
+          if set(payload) != {
+              "schema",
+              "classification",
+              "environment",
+              "source_revision",
+              "build_handoff",
+              "images",
+              "evidence",
+          }:
+              raise SystemExit("scanned-image manifest root contract is not closed")
+          if type(payload["schema"]) is not int or payload["schema"] != 1:
+              raise SystemExit("scanned-image manifest schema is invalid")
+          if payload["classification"] != "scanned release image publication handoff":
+              raise SystemExit("scanned-image manifest classification is invalid")
+          if payload["environment"] != environment or payload["source_revision"] != revision:
+              raise SystemExit("scanned-image manifest target binding does not match")
+          build_handoff = payload["build_handoff"]
+          if not isinstance(build_handoff, dict) or set(build_handoff) != {
+              "artifact_id",
+              "artifact_digest",
+              "manifest",
+              "manifest_sha256",
+          }:
+              raise SystemExit("scanned-image build handoff contract is not closed")
+          if (
+              build_handoff["artifact_id"] != expected_build_artifact_id
+              or build_handoff["artifact_digest"] != expected_build_artifact_digest
+              or build_handoff["manifest"] != "untrusted-build-handoff.json"
+              or build_handoff["manifest_sha256"] != expected_build_manifest_sha256
+          ):
+              raise SystemExit("scanned-image build provenance binding does not match")
+          images = payload["images"]
+          if not isinstance(images, dict) or set(images) != {"backend", "site"}:
+              raise SystemExit("scanned-image manifest image contract is not closed")
+          observed_image_ids = set()
+          for role, archive_name in (
+              ("backend", "backend-image.tar"),
+              ("site", "site-image.tar"),
+          ):
+              image = images[role]
+              if not isinstance(image, dict) or set(image) != {
+                  "archive",
+                  "archive_sha256",
+                  "image_id",
+                  "repository",
+                  "tag",
+              }:
+                  raise SystemExit("scanned-image identity contract is not closed")
+              repository = expected_repositories[role]
+              if image["archive"] != archive_name or image["repository"] != repository:
+                  raise SystemExit("scanned-image repository/archive binding does not match")
+              if image["tag"] != f"{repository}:sha-{revision}":
+                  raise SystemExit("scanned-image tag binding does not match")
+              if re.fullmatch(r"sha256:[0-9a-f]{64}", image["image_id"]) is None:
+                  raise SystemExit("scanned-image ID is invalid")
+              if image["image_id"] in observed_image_ids:
+                  raise SystemExit("scanned-image IDs must be distinct")
+              observed_image_ids.add(image["image_id"])
+              archive_digest = digest_once(root / archive_name, 8 * 1024**3)
+              if archive_digest != image["archive_sha256"]:
+                  raise SystemExit("scanned-image archive digest does not match")
+          evidence = payload["evidence"]
+          if not isinstance(evidence, dict) or set(evidence) != evidence_names:
+              raise SystemExit("scanned-image evidence contract is not closed")
+          for name, binding in evidence.items():
+              if not isinstance(binding, dict) or set(binding) != {"sha256"}:
+                  raise SystemExit("scanned-image evidence digest contract is not closed")
+              data = read_once(root / name, 128 * 1024 * 1024)
+              if hashlib.sha256(data).hexdigest() != binding["sha256"]:
+                  raise SystemExit("scanned-image evidence digest does not match")
+          if (
+              evidence["untrusted-build-handoff.json"]["sha256"]
+              != build_handoff["manifest_sha256"]
+          ):
+              raise SystemExit("scanned-image build manifest evidence binding does not match")
+          for name in expected_files:
+              os.chmod(root / name, 0o400)
+          os.chmod(root, 0o500)
+          PY
+
+      - name: Load exact scanned images without executing candidate code
+        shell: bash
+        env:
+          HANDOFF_DIR: ${{ runner.temp }}/release-image-handoff
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+          REGISTRY_OWNER: ${{ github.repository_owner }}
+        run: |
+          registry_owner="$(printf '%s' "$REGISTRY_OWNER" | /usr/bin/tr '[:upper:]' '[:lower:]')"
+          backend_tag="ghcr.io/$registry_owner/pakperk-backend:sha-$EXPECTED_SOURCE_REVISION"
+          site_tag="ghcr.io/$registry_owner/pakperk-site:sha-$EXPECTED_SOURCE_REVISION"
+          /usr/bin/docker load --input "$HANDOFF_DIR/backend-image.tar" >/dev/null
+          /usr/bin/docker load --input "$HANDOFF_DIR/site-image.tar" >/dev/null
+          backend_image_id="$(/usr/bin/docker image inspect --format '{{.Id}}' "$backend_tag")"
+          site_image_id="$(/usr/bin/docker image inspect --format '{{.Id}}' "$site_tag")"
+          /usr/bin/python3 -I - \
+            "$HANDOFF_DIR/release-image-handoff.json" \
+            "$EXPECTED_SOURCE_REVISION" \
+            "$backend_tag" \
+            "$backend_image_id" \
+            "$site_tag" \
+            "$site_image_id" <<'PY'
+          import json
+          import pathlib
+          import re
+          import sys
+
+          manifest_path, revision, backend_tag, backend_id, site_tag, site_id = sys.argv[1:]
+          payload = json.loads(pathlib.Path(manifest_path).read_text(encoding="ascii"))
+          if re.fullmatch(r"[0-9a-f]{40}", revision) is None:
+              raise SystemExit("loaded image revision is invalid")
+          for role, tag, image_id in (
+              ("backend", backend_tag, backend_id),
+              ("site", site_tag, site_id),
+          ):
+              binding = payload["images"][role]
+              if binding["tag"] != tag or binding["image_id"] != image_id:
+                  raise SystemExit("loaded image does not match scanned handoff identity")
+          if backend_id == site_id:
+              raise SystemExit("loaded image identities must be distinct")
+          PY
+
+      - name: Publish only the loaded scanned images
         id: publish
         shell: bash
         env:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BACKEND_TAG: ${{ steps.release.outputs.backend_tag }}
-          SITE_TAG: ${{ steps.release.outputs.site_tag }}
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+          REGISTRY_OWNER: ${{ github.repository_owner }}
         run: |
-          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          registry_owner="$(printf '%s' "$REGISTRY_OWNER" | /usr/bin/tr '[:upper:]' '[:lower:]')"
+          backend_tag="ghcr.io/$registry_owner/pakperk-backend:sha-$EXPECTED_SOURCE_REVISION"
+          site_tag="ghcr.io/$registry_owner/pakperk-site:sha-$EXPECTED_SOURCE_REVISION"
+          printf '%s' "$REGISTRY_TOKEN" | /usr/bin/docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          trap '/usr/bin/docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
           backend_push_log="$RUNNER_TEMP/backend-push.log"
           site_push_log="$RUNNER_TEMP/site-push.log"
-          # Docker's push contract reports the registry manifest digest. Parse
-          # that output instead of depending on mutable local-daemon metadata.
-          docker push "$BACKEND_TAG" 2>&1 | tee "$backend_push_log"
-          docker push "$SITE_TAG" 2>&1 | tee "$site_push_log"
-          python3 - "$backend_push_log" "$site_push_log" >>"$GITHUB_OUTPUT" <<'PY'
+          umask 077
+          /usr/bin/docker push "$backend_tag" 2>&1 | /usr/bin/tee "$backend_push_log"
+          /usr/bin/docker push "$site_tag" 2>&1 | /usr/bin/tee "$site_push_log"
+          /usr/bin/python3 -I - "$backend_push_log" "$site_push_log" "$GITHUB_OUTPUT" <<'PY'
+          import os
           import pathlib
           import re
+          import stat
           import sys
 
           digest_line = re.compile(
               r"(?m)^[^:\s]+: digest: (sha256:[0-9a-f]{64}) size: [1-9][0-9]*\s*$"
           )
-          for output_name, raw_path in zip(
-              ("backend_digest", "site_digest"), sys.argv[1:], strict=True
-          ):
-              matches = digest_line.findall(
-                  pathlib.Path(raw_path).read_text(encoding="utf-8", errors="strict")
-              )
+          digests = []
+          for raw_path in sys.argv[1:3]:
+              path = pathlib.Path(raw_path)
+              metadata = os.lstat(path)
+              if (
+                  not stat.S_ISREG(metadata.st_mode)
+                  or metadata.st_uid != os.getuid()
+                  or metadata.st_mode & 0o077
+                  or metadata.st_nlink != 1
+                  or metadata.st_size <= 0
+                  or metadata.st_size > 8 * 1024 * 1024
+              ):
+                  raise SystemExit("docker push log is not one bounded private file")
+              matches = digest_line.findall(path.read_text(encoding="utf-8", errors="strict"))
               if len(matches) != 1:
-                  raise SystemExit(
-                      f"docker push did not report exactly one registry digest for {output_name}"
-                  )
-              print(f"{output_name}={matches[0]}")
+                  raise SystemExit("docker push did not report exactly one registry digest")
+              digests.append(matches[0])
+          output = pathlib.Path(sys.argv[3])
+          with output.open("a", encoding="ascii") as destination:
+              destination.write(f"backend_digest={digests[0]}\n")
+              destination.write(f"site_digest={digests[1]}\n")
           PY
-          docker logout ghcr.io
+          /usr/bin/docker logout ghcr.io
           trap - EXIT
 
-      - name: Resolve published digests and create Helm promotion handoff
+      - name: Create digest-only Helm promotion handoff and publication evidence
         shell: bash
         env:
+          HANDOFF_DIR: ${{ runner.temp }}/release-image-handoff
           RELEASE_ENVIRONMENT: ${{ inputs.environment }}
-          SOURCE_REVISION: ${{ steps.release.outputs.source_revision }}
-          BACKEND_REPOSITORY: ${{ steps.release.outputs.backend_repository }}
-          SITE_REPOSITORY: ${{ steps.release.outputs.site_repository }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          HANDOFF_ARTIFACT_ID: ${{ needs.scan.outputs.handoff_artifact_id }}
+          HANDOFF_ARTIFACT_DIGEST: ${{ needs.scan.outputs.handoff_artifact_digest }}
           BACKEND_DIGEST: ${{ steps.publish.outputs.backend_digest }}
           SITE_DIGEST: ${{ steps.publish.outputs.site_digest }}
+          REGISTRY_OWNER: ${{ github.repository_owner }}
         run: |
-          if ! [[ "$BACKEND_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || \
-             ! [[ "$SITE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "Published registry digests were not captured exactly." >&2
+          publication_dir="$RUNNER_TEMP/release-image-publication"
+          if [[ -e "$publication_dir" || -L "$publication_dir" ]]; then
+            echo "Image publication evidence path must be fresh." >&2
             exit 1
           fi
-          python3 - "$RELEASE_ENVIRONMENT" "$SOURCE_REVISION" \
-            "$BACKEND_REPOSITORY" "$BACKEND_DIGEST" "$SITE_REPOSITORY" "$SITE_DIGEST" <<'PY'
+          umask 077
+          mkdir "$publication_dir"
+          cp "$HANDOFF_DIR/backend-trivy.sarif" "$publication_dir/backend-trivy.sarif"
+          cp "$HANDOFF_DIR/site-trivy.sarif" "$publication_dir/site-trivy.sarif"
+          cp "$HANDOFF_DIR/backend-image.cdx.json" "$publication_dir/backend-image.cdx.json"
+          cp "$HANDOFF_DIR/site-image.cdx.json" "$publication_dir/site-image.cdx.json"
+          cp "$HANDOFF_DIR/source-dependencies.cdx.json" "$publication_dir/source-dependencies.cdx.json"
+          cp "$HANDOFF_DIR/open-source-notices.txt" "$publication_dir/open-source-notices.txt"
+          cp "$HANDOFF_DIR/flutter-toolchain.json" "$publication_dir/flutter-toolchain.json"
+          cp "$HANDOFF_DIR/untrusted-build-handoff.json" "$publication_dir/untrusted-build-handoff.json"
+          cp "$HANDOFF_DIR/release-image-handoff.json" "$publication_dir/scanned-image-handoff.json"
+          /usr/bin/python3 -I - \
+            "$publication_dir/promotion-handoff.json" \
+            "$RELEASE_ENVIRONMENT" \
+            "$SOURCE_REVISION" \
+            "$HANDOFF_ARTIFACT_ID" \
+            "$HANDOFF_ARTIFACT_DIGEST" \
+            "$publication_dir/scanned-image-handoff.json" \
+            "$REGISTRY_OWNER" \
+            "$BACKEND_DIGEST" \
+            "$SITE_DIGEST" <<'PY'
+          import hashlib
           import json
+          import os
           import pathlib
+          import re
           import sys
 
-          environment, revision, backend_repository, backend_digest, site_repository, site_digest = sys.argv[1:]
+          (
+              destination_raw,
+              environment,
+              revision,
+              artifact_id,
+              artifact_digest,
+              scanned_manifest_raw,
+              owner_raw,
+              backend_digest,
+              site_digest,
+          ) = sys.argv[1:]
+          if environment not in {"staging", "production"}:
+              raise SystemExit("promotion environment is invalid")
+          if re.fullmatch(r"[0-9a-f]{40}", revision) is None:
+              raise SystemExit("promotion source revision is invalid")
+          if re.fullmatch(r"[1-9][0-9]{0,19}", artifact_id) is None:
+              raise SystemExit("promotion handoff artifact ID is invalid")
+          if re.fullmatch(r"[0-9a-f]{64}", artifact_digest) is None:
+              raise SystemExit("promotion handoff artifact digest is invalid")
+          if any(re.fullmatch(r"sha256:[0-9a-f]{64}", value) is None for value in (backend_digest, site_digest)):
+              raise SystemExit("published registry digest is invalid")
+          owner = owner_raw.lower()
+          if re.fullmatch(r"[a-z0-9-]{1,64}", owner) is None:
+              raise SystemExit("promotion registry owner is invalid")
+          scanned_manifest = pathlib.Path(scanned_manifest_raw).read_bytes()
           payload = {
               "schema": 1,
               "environment": environment,
               "source_revision": revision,
+              "scan_handoff": {
+                  "artifact_id": artifact_id,
+                  "artifact_digest": artifact_digest,
+                  "manifest_sha256": hashlib.sha256(scanned_manifest).hexdigest(),
+              },
               "helm_values": {
-                  "image": {"repository": backend_repository, "digest": backend_digest},
-                  "siteImage": {"repository": site_repository, "digest": site_digest},
+                  "image": {
+                      "repository": f"ghcr.io/{owner}/pakperk-backend",
+                      "digest": backend_digest,
+                  },
+                  "siteImage": {
+                      "repository": f"ghcr.io/{owner}/pakperk-site",
+                      "digest": site_digest,
+                  },
               },
           }
-          destination = pathlib.Path("release/image-publication/promotion-handoff.json")
-          destination.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          serialized = (
+              json.dumps(
+                  payload,
+                  allow_nan=False,
+                  ensure_ascii=True,
+                  separators=(",", ":"),
+                  sort_keys=True,
+              )
+              + "\n"
+          ).encode("ascii")
+          destination = pathlib.Path(destination_raw)
+          flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+          if hasattr(os, "O_NOFOLLOW"):
+              flags |= os.O_NOFOLLOW
+          descriptor = os.open(destination, flags, 0o600)
+          try:
+              view = memoryview(serialized)
+              while view:
+                  written = os.write(descriptor, view)
+                  if written <= 0:
+                      raise SystemExit("promotion handoff write did not make progress")
+                  view = view[written:]
+              os.fsync(descriptor)
+          finally:
+              os.close(descriptor)
           PY
-          cp release/metadata/dependencies.cdx.json release/image-publication/source-dependencies.cdx.json
-          cp release/metadata/open-source-notices.txt release/image-publication/open-source-notices.txt
-          cp release/metadata/flutter-toolchain.json release/image-publication/flutter-toolchain.json
-          (cd release/image-publication && sha256sum -- * >SHA256SUMS)
+          (cd "$publication_dir" && /usr/bin/sha256sum -- * >SHA256SUMS)
 
       - name: Upload immutable image publication evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: release-images-${{ inputs.environment }}-${{ steps.release.outputs.source_revision }}
-          path: release/image-publication
+          name: release-images-${{ inputs.environment }}-${{ inputs.source_revision }}
+          path: ${{ runner.temp }}/release-image-publication
           if-no-files-found: error
           retention-days: 90

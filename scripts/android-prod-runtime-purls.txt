@@ -1,3 +1,4 @@
+# Non-Python evidence kept outside the Dependabot-managed pip requirements directory.
 # Exact reviewed prodReleaseRuntimeClasspath inventory generated with Flutter
 # 3.44.8 and scripts/cyclonedx-gradle.init.gradle.kts. The contract digest
 # binds this inventory to the checked-in Pub/Gradle inputs and Gradle checksum

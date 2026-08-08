@@ -23,11 +23,18 @@ events to the in-cluster Collector.
   service-account token, a read-only root filesystem, dropped capabilities,
   bounded memory/batch queues, and only DNS/upstream telemetry egress.
 - `filelog` starts at the beginning so a newly scheduled agent does not miss
-  existing container output. File offsets are in-memory for this release:
-  agent/node restart can replay bounded retained log files. The sink must
-  deduplicate where needed and alerts must tolerate replay; do not infer unique
-  user/session counts from logs. Verify rotation bounds prevent unbounded
-  replay before deployment.
+  existing container output. Its offsets use the `file_storage` extension on a
+  128 MiB Pod-scoped `emptyDir`. The OTLP exporter's retry queue uses a separate
+  `file_storage` instance and 128 MiB `emptyDir`, so an accepted, checkpointed
+  record remains queued across a Collector container restart in the same Pod.
+  Retry has no elapsed-time expiry; bounded queue or volume saturation instead
+  fails visibly through the Collector failure/drop alerts. Pod replacement,
+  rescheduling, or node loss discards both stores and can replay bounded
+  retained log files. The sink must deduplicate where needed and
+  alerts must tolerate replay; do not infer unique user/session counts from
+  logs. Verify rotation and exporter-queue bounds before deployment. These
+  `emptyDir` volumes provide continuity for an in-place container restart, not
+  durable state or evidence of delivery to the external sink.
 - If the cluster's restricted profile forbids the hostPath, deploy an
   equivalent platform-owned node logging agent and disable neither redaction
   nor the backend stdout collection contract. Record the exception/owner.
@@ -37,16 +44,32 @@ events to the in-cluster Collector.
 The Collector deletes authorization/cookie/API-key fields, request/response
 bodies, query strings, raw URL/path parameters, user/account/provider IDs,
 network addresses, device/session identifiers, comment/paper content, exception
-messages/stacks, and source file paths before export. Application diagnostics
-use bounded error kinds, operation classes/outcomes, aggregate counters, and
-request IDs only. Request IDs are operationally random and must not become a
-user/session identity.
+messages/stacks, and source file paths before export. OTLP log bodies use a
+separate fail-closed transform: only an exact mobile-gateway event name with the
+expected `pakperk-mobile` service, deployment environment, and
+`app.pakperk.mobile` scope remains; every other scalar or structured OTLP body
+is replaced by the static `otlp_log_body_redacted` marker. Node stdout is a
+separate pipeline: every parsed message becomes the constant
+`pakperk_backend_log` marker except the exact content-free
+`external deletion ledger failed verification` alert message, which remains
+only for `ERROR` records from the exact `account_deletion::worker` Rust target.
+The pipeline upserts its fixed service/environment identity and retains only
+body, severity, and Rust namespace. Application diagnostics use bounded error
+kinds, operation classes/outcomes, aggregate counters, and request IDs only.
+Request IDs are operationally random and must not become a user/session
+identity.
 
 Production operational telemetry retention is exactly 30 days unless a newer
 published privacy schedule and protected values are approved together. Enforce
 expiry at the upstream sink; the Collector cannot prove sink deletion. Access
 is least privilege and audited. Never copy raw production events into issue
 trackers or long-lived test fixtures.
+
+The bounded exporter-queue `emptyDir` contains only batches after the redaction
+processors above and is deleted with the Collector Pod. It is transient
+delivery state, not an additional retention tier; inspect its node-storage and
+access controls during the platform review and never mount it into another
+workload.
 
 ## Verification and alerts
 
@@ -78,9 +101,17 @@ Before release:
 1. Run `scripts/test_backend_log_export.sh` with the chart-pinned Collector. It
    injects a backend container log plus direct OTLP log, trace, and metric
    fixtures. Every configured protected key is exercised as both a signal and
-   resource attribute; safe sentinels must export and protected sentinels must
-   not. This local E2E is pipeline evidence, not proof of the live sink or
-   retention job.
+   resource attribute; hostile scalar and structured OTLP log bodies must be
+   replaced, the exact mobile event identity, constant backend marker, and
+   exact ledger-alert body/severity/namespace must remain, hostile interpolated
+   and structured stdout messages plus spoofed resource identities must not,
+   safe sentinels must export, and protected sentinels must not. The harness
+   also requires the Collector body allowlist to match the gateway event
+   vocabulary exactly. It then holds the sink unavailable, checkpoints and
+   queues the exact ledger-alert record, restarts the Collector with the same
+   Pod-scoped stores, brings the sink up, and requires that queued record to
+   arrive without being reread from the source log. This local E2E is pipeline
+   and same-Pod restart evidence, not proof of the live sink or retention job.
 2. Send valid and hostile mobile telemetry payloads through staging. Require
    valid events to export and unknown fields, identifiers, oversized payloads,
    redirects, and wrong content types to fail closed. Confirm no auth/cookie

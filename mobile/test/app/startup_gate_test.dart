@@ -198,11 +198,7 @@ void main() {
             launchMode: StartupLaunchMode.cold,
             attempt: 1,
             openingCompleted: false,
-            failure: StartupFailure(
-              error: StateError('migration failed'),
-              stackTrace: StackTrace.current,
-              timedOut: false,
-            ),
+            failure: StartupFailure(kind: StartupFailureKind.local),
           ),
           openingMotionEnabled: true,
           onRetry: () => retries += 1,
@@ -237,9 +233,7 @@ void main() {
             attempt: 1,
             openingCompleted: true,
             failure: StartupFailure(
-              error: StateError('secure store unavailable'),
-              stackTrace: StackTrace.current,
-              timedOut: false,
+              kind: StartupFailureKind.local,
               localStateUsable: true,
             ),
           ),
