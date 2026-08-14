@@ -134,6 +134,16 @@ python3 "$project_dir/scripts/test_public_edge_evidence.py"
 python3 "$project_dir/scripts/test_verify_public_edge.py"
 python3 "$project_dir/scripts/test_validate_public_edge_workflow.py"
 python3 "$project_dir/scripts/validate_public_edge_workflow.py"
+python3 "$project_dir/scripts/test_production_approval_evidence.py"
+python3 "$project_dir/scripts/production_approval_evidence.py" --help >/dev/null
+python3 "$project_dir/scripts/test_deployment_binding_evidence.py"
+python3 "$project_dir/scripts/deployment_binding_evidence.py" --help >/dev/null
+python3 "$project_dir/scripts/test_protected_service_exercise_evidence.py"
+python3 "$project_dir/scripts/protected_service_exercise_evidence.py" --help >/dev/null
+python3 "$project_dir/scripts/test_validate_protected_service_exercise_workflow.py"
+python3 "$project_dir/scripts/validate_protected_service_exercise_workflow.py"
+python3 "$project_dir/scripts/test_operational_gate_evidence.py"
+python3 "$project_dir/scripts/operational_gate_evidence.py" --help >/dev/null
 python3 "$project_dir/scripts/test_validate_alert_policy.py"
 python3 "$project_dir/scripts/validate_alert_policy.py"
 

@@ -4,7 +4,7 @@ Pakperk is a phone-first arXiv reader built around one interaction: read an
 abstract, swipe left into a parsed Introduction with paper-grounded chat, then
 swipe left again into understandable links to important references.
 
-The currently released demo behavior deliberately stays narrow:
+The current demo baseline deliberately stays narrow:
 
 - Flutter client for iOS and Android.
 - Rust/Axum API and Tokio worker.
@@ -19,10 +19,14 @@ The active production migration is governed by the authoritative
 [`Production v0.0 implementation plan`](pakperk_production_v0_0_implementation_plan.md)
 and its [documentation entrypoint](docs/production-v0.0-plan.md).
 
+For day-to-day work, start with the [developer guide](docs/developer-guide.md).
+For product behavior, privacy, safety, deletion, and troubleshooting, use the
+[user guide](docs/user-guide.md).
+
 ## Production migration status
 
 Phases 0–5 are complete and accepted. The Phase 6 repository implementation is
-present as a dark-launched release candidate; live restore, deployment,
+present as a dark-launch candidate; live restore, deployment,
 physical-device, signing/store, performance, crash-window, and legal approvals
 remain external release blockers. Phase 3 OIDC account integration is
 [accepted](docs/phase-reports/phase-3.md), and Phase 4 To Read synchronization
@@ -168,12 +172,13 @@ directory outside the repository.
 
 ## Run the mobile app
 
-Requirements: a current stable Flutter SDK and an iOS/Android development
-toolchain.
+Requirements: Flutter 3.44.8 with bundled Dart 3.12.2 for current release
+evidence, plus an iOS/Android development toolchain. Another compatible SDK is
+development-only evidence.
 
 ```bash
 cd mobile
-flutter pub get
+flutter pub get --enforce-lockfile
 flutter run \
   --flavor dev \
   --dart-define=PAKPERK_ENV=development \
@@ -236,12 +241,13 @@ The reading model is fixed:
 
 ```text
 vertical: next/previous paper
-horizontal: Abstract <-> Introduction + Chat <-> Connections
+horizontal: Abstract <-> Introduction <-> Connections
 ```
 
 Visible stage labels and buttons are equivalents for every swipe. Preparation is
 triggered only by the horizontal pager's committed transition to Introduction,
-never by prebuilding that widget.
+never by prebuilding that widget. Chat opens separately from the persistent
+composer on the Introduction view; it is not a fourth pager stage.
 
 ## Prepare the real demo corpus
 
@@ -492,15 +498,22 @@ use the Compose PostgreSQL service and a separate opt-in test URL:
 
 ```bash
 docker compose up -d postgres
-TEST_DATABASE_URL=postgres://pakperk:pakperk@localhost:5432/pakperk \
-  cargo test --manifest-path backend/Cargo.toml --workspace --all-features
+# Change the suffix for every run; this database must not already exist.
+docker compose exec -T postgres \
+  createdb -U pakperk pakperk_test_local_run_01
+TEST_DATABASE_URL=postgres://pakperk:pakperk@localhost:5432/pakperk_test_local_run_01 \
+  cargo test --manifest-path backend/Cargo.toml --locked --workspace --all-features
+docker compose exec -T postgres \
+  dropdb -U pakperk pakperk_test_local_run_01
 ```
 
 Without `TEST_DATABASE_URL`, the PostgreSQL behavior test returns early; all
 pure unit, fixture, HTTP-boundary, and widget tests still run. The URL must
-always name a disposable test database. Account-deletion binaries serialize
-their global queue claims and reject unfinished residue; provision a fresh
-database after an interrupted run rather than letting a later test claim an
+always name a separate disposable test database, never the persistent
+development database named `pakperk`. Choose a new `pakperk_test_local_*` name
+for every run. If a run is interrupted before cleanup, leave that target alone
+and use another fresh name. Account-deletion binaries serialize their global
+queue claims and reject unfinished residue; never let a later test claim an
 abandoned job.
 
 The repository architecture, generation rules, and trust boundaries are

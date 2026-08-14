@@ -54,6 +54,16 @@ verified production universal links. Before a signed release, operations must:
 7. Confirm malformed and hostile-origin URLs stay in the browser or fail closed
    to Read, and that a valid public link opens Abstract.
 
+The protected physical mobile acceptance schema v3 closes steps 6 and 7 with
+one ordered Android/iOS scenario: both `/p/*` and `/arxiv/*` are dispatched from
+cold, warm, and already-running state on each platform (12 valid dispatches),
+and hostile origins must produce zero paper requests while failing closed to
+Read. The exact allowed staging origin is read from the reviewed mobile config,
+carried through the canonical schema-2 source binding and driver request, and
+required again in retained evidence; it cannot be selected at dispatch time.
+Passing markers remain protected execution evidence, not a substitute for the
+platform owner reviewing the deployed association and signed identities.
+
 The manual `public edge verification` workflow automates the credential-free
 technical part of steps 1 through 5 for the exact named environment: it
 requires direct HTTPS 200 JSON, validates the closed association documents

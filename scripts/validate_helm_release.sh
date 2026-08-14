@@ -296,9 +296,12 @@ for exact_edge_setting in \
   'hsts: "true"' \
   'hsts-include-subdomains: "true"' \
   'hsts-max-age: "63072000"' \
-  'hsts-preload: "true"'; do
+  'hsts-preload: "true"' \
+  'use-gzip: "true"' \
+  'gzip-min-length: "256"' \
+  'gzip-types: "application/json"'; do
   if [[ "$(grep -Fxc "    $exact_edge_setting" "$ingress_controller_values")" -ne 1 ]]; then
-    echo "Ingress controller HSTS overlay is missing exact setting: $exact_edge_setting" >&2
+    echo "Ingress controller edge overlay is missing exact setting: $exact_edge_setting" >&2
     exit 1
   fi
 done

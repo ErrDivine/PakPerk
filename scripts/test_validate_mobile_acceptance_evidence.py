@@ -22,6 +22,7 @@ DRIVER_SHA256 = "b" * 64
 APP_VERSION = "0.2.0"
 BUILD_NUMBER = "2"
 API_ORIGIN = "https://api.staging.pakperk.app"
+APP_LINK_ORIGIN = "https://staging.pakperk.app"
 OIDC_ISSUER = "https://identity.staging.pakperk.app/realms/pakperk"
 OIDC_CLIENT_ID = "pakperk-mobile-staging"
 ANDROID_APPLICATION_ID = "app.pakperk.pakperk.staging"
@@ -43,12 +44,13 @@ RUNNER_HOST_IDENTITY = "8" * 64
 
 def valid_source_binding_payload() -> dict[str, object]:
     return {
-        "schema": 1,
+        "schema": validator.SOURCE_BINDING_SCHEMA_VERSION,
         "source_revision": SOURCE_REVISION,
         "environment": "staging",
         "app_version": APP_VERSION,
         "build_number": BUILD_NUMBER,
         "api_origin": API_ORIGIN,
+        "app_link_origin": APP_LINK_ORIGIN,
         "oidc_issuer": OIDC_ISSUER,
         "oidc_client_id": OIDC_CLIENT_ID,
     }
@@ -340,7 +342,7 @@ def valid_payload() -> dict[str, object]:
         for scenario_id in validator.SCENARIO_IDS
     ]
     return {
-        "schema": 2,
+        "schema": validator.EVIDENCE_SCHEMA_VERSION,
         "classification": "protected staging physical-device acceptance",
         "source_revision": SOURCE_REVISION,
         "candidate_id": CANDIDATE_ID,
@@ -349,6 +351,7 @@ def valid_payload() -> dict[str, object]:
         "environment": "staging",
         "coordinates": {
             "api_origin": API_ORIGIN,
+            "app_link_origin": APP_LINK_ORIGIN,
             "oidc_issuer": OIDC_ISSUER,
             "oidc_client_id": OIDC_CLIENT_ID,
         },
@@ -388,6 +391,7 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
         payload: object,
         *,
         api_origin: str = API_ORIGIN,
+        app_link_origin: str = APP_LINK_ORIGIN,
         oidc_issuer: str = OIDC_ISSUER,
         oidc_client_id: str = OIDC_CLIENT_ID,
     ) -> None:
@@ -401,6 +405,7 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
             app_version=APP_VERSION,
             build_number=BUILD_NUMBER,
             api_origin=api_origin,
+            app_link_origin=app_link_origin,
             oidc_issuer=oidc_issuer,
             oidc_client_id=oidc_client_id,
             run_id=RUN_ID,
@@ -412,6 +417,13 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
 
     def test_complete_evidence_passes(self) -> None:
         self.validate(valid_payload())
+
+    def test_schema_v3_contract_totals_are_closed(self) -> None:
+        self.assertEqual(validator.EVIDENCE_SCHEMA_VERSION, 3)
+        self.assertEqual(validator.SCENARIO_COUNT, 22)
+        self.assertEqual(validator.ASSERTION_COUNT, 141)
+        self.assertEqual(validator.METRIC_COUNT, 78)
+        self.assertRegex(validator.SCENARIO_CONTRACT_SHA256, r"^[0-9a-f]{64}$")
 
     def test_owner_only_canonical_source_binding_passes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -429,10 +441,28 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
                 ),
                 {
                     "api_origin": API_ORIGIN,
+                    "app_link_origin": APP_LINK_ORIGIN,
                     "oidc_issuer": OIDC_ISSUER,
                     "oidc_client_id": OIDC_CLIENT_ID,
                 },
             )
+
+    def test_source_binding_rejects_legacy_schema_without_app_link_contract(
+        self,
+    ) -> None:
+        payload = valid_source_binding_payload()
+        payload["schema"] = 1
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "source-binding.json"
+            path.write_bytes(validator.canonical_json_bytes(payload))
+            path.chmod(0o600)
+            with self.assertRaisesRegex(validator.EvidenceError, "exact integer"):
+                validator.load_source_binding(
+                    path,
+                    source_revision=SOURCE_REVISION,
+                    app_version=APP_VERSION,
+                    build_number=BUILD_NUMBER,
+                )
 
     def test_source_binding_rejects_environment_file_control_injection(self) -> None:
         for control in ("\r", "\n", "\t"):
@@ -580,7 +610,7 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
             self.validate(payload)
 
     def test_evidence_schema_requires_exact_integer(self) -> None:
-        for invalid_schema in (True, 2.0):
+        for invalid_schema in (2, True, 3.0):
             with self.subTest(schema=invalid_schema):
                 payload = valid_payload()
                 payload["schema"] = invalid_schema
@@ -602,6 +632,14 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
         coordinates["api_origin"] = "https://127.0.0.1"
         with self.assertRaisesRegex(validator.EvidenceError, "staging.json"):
             self.validate(payload, api_origin="https://127.0.0.1")
+
+    def test_app_link_origin_must_match_reviewed_staging_config(self) -> None:
+        payload = valid_payload()
+        coordinates = payload["coordinates"]
+        assert isinstance(coordinates, dict)
+        coordinates["app_link_origin"] = "https://hostile.example"
+        with self.assertRaisesRegex(validator.EvidenceError, "staging.json"):
+            self.validate(payload, app_link_origin="https://hostile.example")
 
     def test_candidate_binding_mismatch_fails(self) -> None:
         payload = valid_payload()
@@ -642,6 +680,7 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
                 app_version=APP_VERSION,
                 build_number=BUILD_NUMBER,
                 api_origin=API_ORIGIN,
+                app_link_origin=APP_LINK_ORIGIN,
                 oidc_issuer=OIDC_ISSUER,
                 oidc_client_id=OIDC_CLIENT_ID,
                 run_id=RUN_ID,
@@ -668,12 +707,133 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(validator.EvidenceError, "required minimum"):
             self.validate(payload)
 
+    def test_launch_performance_threshold_boundaries_pass(self) -> None:
+        payload = valid_payload()
+        metrics = scenario(payload, "cold_cache_launch")["metrics"]
+        assert isinstance(metrics, dict)
+        metrics["cached_first_readable_frame_p95_ms"] = 1_500
+        metrics["opening_transition_ms"] = 700
+        self.validate(payload)
+
+    def test_cached_first_readable_frame_p95_above_limit_fails_closed(self) -> None:
+        payload = valid_payload()
+        metrics = scenario(payload, "cold_cache_launch")["metrics"]
+        assert isinstance(metrics, dict)
+        metrics["cached_first_readable_frame_p95_ms"] = 1_501
+        with self.assertRaisesRegex(validator.EvidenceError, "required range"):
+            self.validate(payload)
+
+    def test_opening_transition_above_limit_fails_closed(self) -> None:
+        payload = valid_payload()
+        metrics = scenario(payload, "cold_cache_launch")["metrics"]
+        assert isinstance(metrics, dict)
+        metrics["opening_transition_ms"] = 701
+        with self.assertRaisesRegex(validator.EvidenceError, "required range"):
+            self.validate(payload)
+
+    def test_legacy_first_readable_frame_metric_fails_closed(self) -> None:
+        payload = valid_payload()
+        metrics = scenario(payload, "cold_cache_launch")["metrics"]
+        assert isinstance(metrics, dict)
+        metrics["first_readable_frame_ms"] = metrics.pop(
+            "cached_first_readable_frame_p95_ms"
+        )
+        with self.assertRaisesRegex(validator.EvidenceError, "closed key contract"):
+            self.validate(payload)
+
     def test_refresh_must_happen_exactly_once(self) -> None:
         payload = valid_payload()
         metrics = scenario(payload, "expired_token_refresh")["metrics"]
         assert isinstance(metrics, dict)
         metrics["refresh_attempts"] = 2
         with self.assertRaisesRegex(validator.EvidenceError, "required value"):
+            self.validate(payload)
+
+    def test_schema_v3_contract_family_boundaries_fail_closed(self) -> None:
+        cases = (
+            (
+                "two-device removal convergence",
+                "two_device_library_sync",
+                "visible_saved_items_after_convergence",
+                1,
+            ),
+            (
+                "invalid refresh detachment",
+                "invalid_refresh_to_guest",
+                "accessible_account_owned_rows",
+                1,
+            ),
+            (
+                "fresh signed installations",
+                "fresh_install_guest_reader",
+                "fresh_installations",
+                1,
+            ),
+            (
+                "offline relaunch before reconnect",
+                "offline_outbox_process_death_recovery",
+                "network_reconnects_before_cached_read",
+                1,
+            ),
+            (
+                "comment public disappearance",
+                "comment_create_edit_delete",
+                "visible_public_comments_after_delete",
+                1,
+            ),
+            (
+                "duplicate report idempotence",
+                "report_and_block",
+                "durable_reports_after_replay",
+                2,
+            ),
+            (
+                "physical app-link fail-closed",
+                "physical_app_link_dispatch",
+                "unsafe_paper_requests",
+                1,
+            ),
+            (
+                "signed-device token attributes",
+                "signed_device_data_protection",
+                "insecure_credential_attribute_findings",
+                1,
+            ),
+            (
+                "cache record bound",
+                "signed_device_cache_bounds",
+                "cached_paper_records",
+                validator.MAX_CACHED_PAPER_RECORDS + 1,
+            ),
+            (
+                "cache physical-byte bound",
+                "signed_device_cache_bounds",
+                "cache_physical_bytes",
+                validator.MAX_CACHE_PHYSICAL_BYTES + 1,
+            ),
+            (
+                "light/dark platform matrix",
+                "light_dark_appearance",
+                "theme_platform_combinations",
+                3,
+            ),
+        )
+        for label, scenario_id, metric_name, invalid_value in cases:
+            with self.subTest(boundary=label):
+                payload = valid_payload()
+                metrics = scenario(payload, scenario_id)["metrics"]
+                assert isinstance(metrics, dict)
+                metrics[metric_name] = invalid_value
+                with self.assertRaises(validator.EvidenceError):
+                    self.validate(payload)
+
+    def test_comment_onboarding_assertions_are_mandatory(self) -> None:
+        payload = valid_payload()
+        target = scenario(payload, "comment_create_edit_delete")
+        assertions = target["assertions"]
+        assert isinstance(assertions, list)
+        assertions.remove("incomplete_profile_handle_chosen")
+        with self.assertRaisesRegex(validator.EvidenceError, "assertion evidence"):
             self.validate(payload)
 
     def test_system_back_assertions_are_mandatory(self) -> None:
@@ -797,6 +957,7 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
                 app_version=APP_VERSION,
                 build_number=BUILD_NUMBER,
                 api_origin=API_ORIGIN,
+                app_link_origin=APP_LINK_ORIGIN,
                 oidc_issuer=OIDC_ISSUER,
                 oidc_client_id=OIDC_CLIENT_ID,
                 android_signer_sha256=ANDROID_SIGNER_SHA256,
@@ -880,6 +1041,7 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
                     app_version=APP_VERSION,
                     build_number=BUILD_NUMBER,
                     api_origin=API_ORIGIN,
+                    app_link_origin=APP_LINK_ORIGIN,
                     oidc_issuer=OIDC_ISSUER,
                     oidc_client_id=OIDC_CLIENT_ID,
                     android_signer_sha256=ANDROID_SIGNER_SHA256,

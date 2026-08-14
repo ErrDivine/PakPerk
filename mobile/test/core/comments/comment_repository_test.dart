@@ -112,6 +112,10 @@ void main() {
     'creation kill keeps draft and accepted retry reuses then clears it',
     () async {
       final requests = <String>[];
+      final bodies = <String>[];
+      const rawBody = '  Ａ useful point\r\n\r\n\r\nnext\tline  ';
+      const equivalentRetryBody = 'A useful point\n\nnext line   ';
+      const canonicalBody = 'A useful point\n\nnext line';
       var disabled = true;
       final remote = _Remote(
         page: const CommentPage(items: [], nextCursor: null),
@@ -123,6 +127,7 @@ void main() {
               required expectedAuthEpoch,
             }) async {
               requests.add(clientRequestId);
+              bodies.add(body);
               if (disabled) {
                 throw const ApiException(
                   code: 'FEATURE_DISABLED',
@@ -145,7 +150,7 @@ void main() {
           accountId: accountA,
           authEpoch: 1,
           paperId: samplePaper.paperId,
-          body: 'Keep this deliberate draft.',
+          body: rawBody,
         ),
         throwsA(
           isA<ApiException>().having(
@@ -156,19 +161,148 @@ void main() {
         ),
       );
       final kept = await fixture.local.loadDraft(accountA, samplePaper.paperId);
-      expect(kept?.body, 'Keep this deliberate draft.');
-      expect(kept?.lastAttemptedBody, 'Keep this deliberate draft.');
+      expect(kept?.body, canonicalBody);
+      expect(kept?.lastAttemptedBody, canonicalBody);
+      expect(bodies, [canonicalBody]);
 
+      // Autosaving a cosmetically different but canonically identical draft
+      // must not turn an ambiguous first attempt into a second create intent.
+      await fixture.repository.saveDraft(
+        accountId: accountA,
+        authEpoch: 1,
+        paperId: samplePaper.paperId,
+        body: equivalentRetryBody,
+      );
       disabled = false;
       final accepted = await fixture.repository.create(
         accountId: accountA,
         authEpoch: 1,
         paperId: samplePaper.paperId,
-        body: 'Keep this deliberate draft.',
+        body: equivalentRetryBody,
       );
       expect(accepted.status, CommentStatus.pendingReview);
       expect(requests, hasLength(2));
       expect(requests.first, requests.last);
+      expect(bodies, [canonicalBody, canonicalBody]);
+      expect(
+        await fixture.local.loadDraft(accountA, samplePaper.paperId),
+        isNull,
+      );
+    },
+  );
+
+  test('edit sends the exact NFKC canonical body', () async {
+    String? sentBody;
+    const rawBody = '  \u212b edit\r\n\u1100\u1161\tline  ';
+    const canonicalBody = '\u00c5 edit\n\uac00 line';
+    final remote = _Remote(
+      page: const CommentPage(items: [], nextCursor: null),
+      editHandler:
+          ({
+            required commentId,
+            required body,
+            required expectedVersion,
+            required expectedAuthEpoch,
+          }) async {
+            sentBody = body;
+            return _comment(authorId: accountA, pending: false, body: body);
+          },
+    );
+    final fixture = await _fixture(
+      viewerAccountId: accountA,
+      page: const CommentPage(items: [], nextCursor: null),
+      remote: remote,
+    );
+    addTearDown(fixture.database.close);
+
+    final updated = await fixture.repository.edit(
+      accountId: accountA,
+      authEpoch: 1,
+      comment: _comment(authorId: accountA, pending: false),
+      body: rawBody,
+    );
+
+    expect(sentBody, canonicalBody);
+    expect(updated.body, canonicalBody);
+    expect(remote.editCalls, 1);
+  });
+
+  test(
+    'raw oversized and malformed drafts never persist or reach create/edit',
+    () async {
+      final remote = _Remote(
+        page: const CommentPage(items: [], nextCursor: null),
+        createHandler:
+            ({
+              required paperId,
+              required clientRequestId,
+              required body,
+              required expectedAuthEpoch,
+            }) async => throw StateError('create must not be called'),
+        editHandler:
+            ({
+              required commentId,
+              required body,
+              required expectedVersion,
+              required expectedAuthEpoch,
+            }) async => throw StateError('edit must not be called'),
+      );
+      final fixture = await _fixture(
+        viewerAccountId: accountA,
+        page: const CommentPage(items: [], nextCursor: null),
+        remote: remote,
+      );
+      addTearDown(fixture.database.close);
+      final invalidBodies = <String>[
+        _repeat('x', commentMaximumRawCodeUnits + 1),
+        'before${String.fromCharCode(0xd800)}',
+        _repeat('\u0301', commentMaximumRawClusterScalars + 1),
+      ];
+
+      for (final body in invalidBodies) {
+        await expectLater(
+          fixture.repository.saveDraft(
+            accountId: accountA,
+            authEpoch: 1,
+            paperId: samplePaper.paperId,
+            body: body,
+          ),
+          throwsArgumentError,
+        );
+        await expectLater(
+          fixture.repository.create(
+            accountId: accountA,
+            authEpoch: 1,
+            paperId: samplePaper.paperId,
+            body: body,
+          ),
+          throwsA(
+            isA<ApiException>().having(
+              (error) => error.code,
+              'code',
+              'INVALID_COMMENT',
+            ),
+          ),
+        );
+        await expectLater(
+          fixture.repository.edit(
+            accountId: accountA,
+            authEpoch: 1,
+            comment: _comment(authorId: accountA, pending: false),
+            body: body,
+          ),
+          throwsA(
+            isA<ApiException>().having(
+              (error) => error.code,
+              'code',
+              'INVALID_COMMENT',
+            ),
+          ),
+        );
+      }
+
+      expect(remote.createCalls, 0);
+      expect(remote.editCalls, 0);
       expect(
         await fixture.local.loadDraft(accountA, samplePaper.paperId),
         isNull,
@@ -571,20 +705,31 @@ typedef _CreateHandler =
       required int expectedAuthEpoch,
     });
 
+typedef _EditHandler =
+    Future<PaperComment> Function({
+      required String commentId,
+      required String body,
+      required int expectedVersion,
+      required int expectedAuthEpoch,
+    });
+
 final class _Remote implements CommentsRemoteDataSource {
   _Remote({
     required this.page,
     this.createHandler,
+    this.editHandler,
     this.listEntered,
     this.listRelease,
   });
 
   CommentPage page;
   final _CreateHandler? createHandler;
+  final _EditHandler? editHandler;
   final Completer<void>? listEntered;
   final Completer<void>? listRelease;
   final List<int?> listAuthEpochs = [];
   int createCalls = 0;
+  int editCalls = 0;
 
   @override
   Future<CommentPage> listPaper({
@@ -614,6 +759,22 @@ final class _Remote implements CommentsRemoteDataSource {
       paperId: paperId,
       clientRequestId: clientRequestId,
       body: body,
+      expectedAuthEpoch: expectedAuthEpoch,
+    );
+  }
+
+  @override
+  Future<PaperComment> edit({
+    required String commentId,
+    required String body,
+    required int expectedVersion,
+    required int expectedAuthEpoch,
+  }) {
+    editCalls += 1;
+    return editHandler!(
+      commentId: commentId,
+      body: body,
+      expectedVersion: expectedVersion,
       expectedAuthEpoch: expectedAuthEpoch,
     );
   }
@@ -663,3 +824,5 @@ PaperComment _comment({
   updatedAt: DateTime.utc(2026, 8, 1),
   editedAt: null,
 );
+
+String _repeat(String value, int count) => List.filled(count, value).join();

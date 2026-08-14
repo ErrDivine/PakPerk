@@ -22,7 +22,7 @@ from typing import Any, Mapping
 import urllib.parse
 
 
-EVIDENCE_SCHEMA_VERSION = 1
+EVIDENCE_SCHEMA_VERSION = 3
 MAX_EVIDENCE_BYTES = 64 * 1024
 MAX_JSON_NESTING = 16
 
@@ -58,6 +58,7 @@ SCENARIO_IDS = (
     "api_http_redirects_exactly_to_https",
     "telemetry_http_redirects_exactly_to_https",
     "site_root_direct_https_headers_and_cache",
+    "guide_route_direct_https_headers_and_cache",
     "privacy_route_direct_https_headers_and_cache",
     "terms_route_direct_https_headers_and_cache",
     "community_guidelines_route_direct_https_headers_and_cache",
@@ -67,6 +68,7 @@ SCENARIO_IDS = (
     "site_notices_source_revision_matches",
     "android_association_matches_release_identity",
     "apple_association_matches_release_identity",
+    "api_feed_is_gzip_compressed_at_public_edge",
     "api_readiness_contract_direct_https",
     "telemetry_process_readiness_direct_https",
 )
@@ -141,7 +143,7 @@ SCOPE = {
     "telemetry_readiness_scope": "gateway_process_only_not_collector_sink_or_export_delivery",
 }
 SANITIZATION = {
-    "artifact_contract": "closed_allowlist_v1",
+    "artifact_contract": "closed_allowlist_v3",
     "response_bodies": "excluded_digest_only",
     "response_headers": "excluded_digest_only",
     "transport_errors": "excluded_category_only",

@@ -2,7 +2,7 @@
 
 **Status:** repository implementation present; public/store release not accepted
 **Report date:** 2026-08-02
-**Last revalidated:** 2026-08-08
+**Last revalidated:** 2026-08-09
 **Companion:** [mobile evidence](phase-6-mobile.md)
 
 ## Delivered repository boundaries
@@ -93,24 +93,44 @@
 - A manual, environment-gated public-edge workflow that always runs its trust
   gate, rejects any dispatch outside the exact selected `main` tip, accepts
   only named protected public coordinates, and performs proxy-free requests
-  pinned to publicly resolved addresses. Its 16-scenario closed contract checks
+  pinned to publicly resolved addresses. Its 18-scenario closed contract checks
   redirects, TLS/HSTS/security/cache headers, exact runtime configuration,
-  distinct legal/support/deletion/license route markers, the site notices
-  source marker, protected association identities, the API readiness
-  response, and telemetry-gateway process readiness. It retains only owner-only
-  sanitized outcomes/digests in an exact-source artifact and fails after upload
+  distinct guide/legal/support/deletion/license route markers, the site notices
+  source marker, protected association identities, bounded gzip feed content,
+  the API readiness response, and telemetry-gateway process readiness. It
+  retains only owner-only sanitized outcomes/digests in an exact-source
+  artifact and fails after upload
   when any observation fails. The domain-separated `public-edge-sha256:` ID
   cannot be substituted for a Helm approval manifest, and the requested image-
   handoff digest remains release-record context rather than observed deployment
   provenance.
+- Closed schema-1 production approval manifests now cover the five Helm gates
+  other than restore: legal/publication, reviewer flow, strict-content review,
+  moderation readiness, and provider-backed deletion E2E. Their
+  domain-separated IDs bind one normalized release configuration without a
+  circular dependency on the IDs themselves. A pre-deploy bundle then reopens
+  all five manifests, checks cross-gate reviewer references, parses the final
+  rendered release ConfigMap, requires its approval mirrors and image/chart/
+  restore identities, and binds the complete rendered-manifest and release-
+  binding digests. Seven focused regressions pass. This is a source contract;
+  no protected exercise or human approval is inferred.
+- A separate credential-free dark-deployment validator consumes the canonical
+  promotion handoff, live immutable release ConfigMap, settled PodList, and a
+  closed platform observation. It matches backend/site promotion digests,
+  re-derives the Helm binding, requires Ready exact-replica Pods with reviewed
+  spec digests, correct ReplicaSet/DaemonSet ownership and runtime image IDs,
+  binds ingress and auth/database/NetworkPolicy/retention/secret controls, and
+  carries exact-candidate staging-smoke and platform-approval references while
+  retaining no raw cluster objects or names. Nine focused regressions pass;
+  real cluster capture and approval remain protected gates.
 - A manual, `main`-only staging backend load gate for an exact reviewed commit.
   Its bounded runner validates a 200-record guest preflight, guest feed/metadata
   latency, optional authenticated library/comments reads, explicitly capped
   serialized library mutations and cleanup, deterministic client fault
   profiles, and redacted owner-only aggregate evidence.
-- Checked-in release-candidate Privacy, Terms, Community Guidelines, Support,
-  open-source notices route, association documents, disclosures worksheet, and
-  account-deletion route.
+- Checked-in release-candidate user guide, Privacy, Terms, Community
+  Guidelines, Support, open-source notices route, association documents,
+  disclosures worksheet, and account-deletion route.
 - Release, incident, moderation, deletion, observability, and backup/PITR/
   restore-replay runbooks plus an executable, fail-closed two-phase drill
   harness bound to a canonical protected restore attestation, exact database
@@ -182,15 +202,22 @@ that exact expected schema version.
   paper as applicable; revokes mutation authority during account rebinding and
   authoritative suspended/deletion-pending responses; preserves only bound
   cache/draft access while authentication is offline-unknown; and permits
-  read-only accounts to fetch published comments anonymously. On the final
-  source tree, Flutter analysis and all 610 locked tests passed, including cold
-  restored-identity rebinding, same-epoch account isolation, terminal deletion
-  latching, async comment-intent guards, and fail-closed cache purging.
+  read-only accounts to fetch published comments anonymously. At the last full
+  canonical checkpoint (`d83ee84`), Flutter analysis and all 610 then-locked
+  tests passed, including cold restored-identity rebinding, same-epoch account
+  isolation, terminal deletion latching, async comment-intent guards, and
+  fail-closed cache purging. The six modified current-tree comment suites now
+  pass all 49 focused tests; the expanded full Flutter suite has not been
+  replayed.
 - The public deletion page now retains signed deletion authority through both
   the 400-day minimum and the no-recoverable-backup condition. The environment-
   relative bundled moderation support link resolves to the staging or
-  production site origin. All 31 static and browser site tests passed against
-  a staging Helm render.
+  production site origin. At checkpoint `d83ee84`, all 31 static and browser
+  site tests passed against a staging Helm render. The current tree additionally
+  packages and publishes the user guide from the public homepage; all seven
+  static contract cases pass against a fresh staging Helm render, while the
+  24 Chromium cases remain a current-source runner gate in this restricted
+  sandbox.
 - CI and `scripts/check.sh` now invoke a tested validator that runs `bash -n`
   independently for all 28 top-level shell scripts and rejects an empty,
   symlinked, or syntactically invalid input set. The validator's four
@@ -263,7 +290,8 @@ that exact expected schema version.
   use exact resolved SDK version/revision metadata, and both checked-in SwiftPM
   lockfiles must agree on AppAuth-iOS 2.0.0 at its reviewed full revision with
   a checked-in license. Two same-input metadata generations were byte-identical
-  and the generated inventory contained 494 components.
+  and the current generated inventory contains 496 components, including the
+  pinned pure-Dart Unicode normalizer.
 - The checked-in Gradle verification inventory covers every resolved artifact
   with one SHA-256 and no trust exception, including both hosted-runner AAPT2
   variants. Its structural/tamper checks passed. The frozen Fastlane 2.235.0 /
@@ -302,13 +330,42 @@ that exact expected schema version.
   still required to prevent dispatching historical refs that contain an older
   copy of either workflow.
 - The repository contract for the protected physical-mobile acceptance lane
-  passed 42 closed-evidence and 63 workflow-tamper regressions. The lane requires
+  passed 51 closed-evidence and 71 workflow-tamper regressions. The lane requires
   exact staging coordinates from the
   reviewed config, content-addressed signed-release provenance, a short-lived
   root-owned dedicated/ephemeral runner attestation, four distinct
-  challenge-keyed physical identities, direct exclusive archive publication,
-  pre-upload verification, and a digest-bound upload. No protected runner,
-  staging account, or physical device was exercised locally.
+  challenge-keyed physical identities, closed launch thresholds of 1,500 ms for
+  cached first-readable-frame p95 and 700 ms for the opening transition, direct
+  exclusive archive publication, pre-upload verification, and a digest-bound
+  upload. No protected runner, staging account, or physical device was exercised
+  locally.
+- The protected service-exercise contract passed nine closed-evidence and seven
+  workflow-tamper regressions. Its domain-separated schema-1 content and
+  approval-subject IDs bind exact-main source, a freshly validated root-owned
+  content-addressed dedicated/ephemeral runner session, deployment, the exact
+  driver-request contract, issuer/JWKS rotation/removal with a still-valid old-
+  key token, expiry/refresh, library/comment replay, one bucket-bound two-replica
+  shared quota, all six switches, six invalid dependency combinations, cleanup,
+  and six owner approvals. The protected workflow accepts only a data request
+  from the candidate checkout and invokes a pinned root-owned driver and
+  validator in an empty environment. No release IdP key, protected write,
+  serving replica, quota, feature switch, or owner approval was exercised locally.
+- The shared operational-gate contract passed 14 focused regressions. It
+  domain-separates and self-addresses migration/expand-contract,
+  production telemetry/retention/alerts, and signed-mobile performance/crash
+  manifests; enforces exact expected source/deployment/candidate/configuration/
+  tool bindings and exact bounded post-run approval-subject bindings; requires
+  the additive 9-to-10 code rollback rather than accepting a forward fix as its
+  substitute; and produces a common-source
+  `pakperk-operational-gates-v1:sha256:` bundle. Its pinned repository constants
+  cover schema 9 to 10, the current six-input/17-rule alert policy, 30-day
+  retention with production initial/day-29/post-day-30 canary reconciliation,
+  distinct reviewed production/staging telemetry identities plus production
+  sink delivery and complete owned page/ticket routing, 1,500/700 ms mobile
+  limits, 20-sample performance floors, 95%
+  cache hits, and a 24-hour/200-session 99.5% crash-free window. No migration,
+  live sink/retention/alert route, signed device, store
+  diagnostic query, observation window, or owner approval was executed locally.
 - The restore harness passed 20 hermetic adversarial regressions for canonical
   schema-2 attestation and guard bindings, exact ledger counts and inventory
   digests, exact local ledger/job binding continuity, same-count substitution,
@@ -381,11 +438,12 @@ that exact expected schema version.
   was also invoked with its exact ignored-test selector and passed. These are
   local disposable-database results; a current exact-source green CI lane and
   protected target-environment execution remain separate release evidence.
-- On the final current-tree canonical run, direct Dart formatting, Flutter
-  analysis, all 610 locked tests, every Android debug flavor, every iOS
-  simulator flavor, and strict staging/production artifact inspection passed.
-  The physical-device matrix remains unexecuted, as detailed in the companion
-  report.
+- At checkpoint `d83ee84`, direct Dart formatting, Flutter analysis, all 610
+  then-locked tests, every Android debug flavor, every iOS simulator flavor,
+  and strict staging/production artifact inspection passed. Current-tree Dart
+  formatting, analysis, and focused comment-boundary checks pass; the expanded
+  full Flutter suite and physical-device matrix remain unexecuted, as detailed
+  in the companion report.
 - Curated-site static and browser security tests passed all 31 cases against an
   actual staging Helm render, including the CSP/runtime-config assertion and
   distinct report-user/report-comment/block copy. The opt-in Collector
@@ -414,13 +472,20 @@ pass from the repository validators.
   staging-load harness; security/source/native SBOM automation; exact-SHA image
   publication and signed-candidate workflows; disposable comments/moderation
   workflow and sanitized evidence contract; source-bound public-edge workflow
-  and sanitized evidence contract; disclosure/runbook artifacts.
+  and sanitized evidence contract; exact-main protected auth/replay/shared-
+  limit/six-switch workflow and closed evidence contract; canonical migration,
+  telemetry, and mobile-performance operational manifests and common-source
+  bundle; disclosure/runbook artifacts.
 - **Not yet proved externally:** protected staging deletion against the target
   provider with its real secret manager, ledger, alert route, and backup
   inventory; a real backup/PITR restore and deletion replay; live migration/
   rollback exercise; live OTLP retention, adapter, receivers, and canary pages;
   an actual protected staging load result; complete protected staging
   moderation readiness for the target operator/adapter/alerts/staffing matrix;
+  exact-candidate protected issuer rotation/removal, write replays, cross-
+  replica quota/reset, six-switch exercise, cleanup, and owner approvals;
+  canonical protected migration, live telemetry/retention/alert, and signed-
+  mobile performance/crash manifests plus their reconciled operational bundle;
   a successful protected public-edge run for the exact dark-deployed candidate;
   current advisory/container scans;
   protected image publication/digest promotion and production mobile signing;

@@ -35,6 +35,21 @@ the resolved local user UUID in a bounded deployment allowlist, and derives
 that UUID as the audited actor; callers cannot choose an actor label and an
 ordinary active account has no moderation permission.
 
+**2026-08-09 current-tree hardening addendum:** the mobile comment boundary now
+adds a 6,000-UTF-16-code-unit pre-normalization resource ceiling and a
+64-code-unit/64-scalar extended-grapheme-cluster ceiling, rejects lone
+surrogates and unsafe controls before persistence/transport, uses Unicode 17
+NFKC parity vectors with the Rust authority, and counts larger accepted drafts
+in one debounced background isolate. Send and Save remain disabled while
+validation is pending or invalid; stale validation and draft-hydration results
+cannot enable or send a different visible body. Explicit-send preparation is
+atomic and retains the request ID for canonically equivalent retry intent while
+rotating it for a genuinely different canonical body. Dart formatting, full
+Flutter analysis, 49 focused model/repository/API/DAO/controller/widget tests,
+the Rust domain regression, and the Android native-SBOM contract checks passed
+on the current tree. This addendum does not retroactively change the 358-test
+2026-07-31 acceptance snapshot below.
+
 ## Implementation ledger
 
 - [x] PostgreSQL comments, comment reports, user reports, blocks, community acceptance, moderation
@@ -47,9 +62,11 @@ ordinary active account has no moderation permission.
   content-free report age metrics.
 - [x] Drift v5 personalized comment pages, account drafts, persisted blocks,
   cleanup, and bounded eviction.
-- [x] Guest thread, gated composer, create/edit/delete/comment-report/user-report/block, My
-  Comments, Blocked Users, pending-review, offline, accessibility, and keyboard
-  states.
+- [x] Guest thread, gated composer, raw-paste/draft ceiling, lone-surrogate
+  rejection, debounced background normalized-scalar counter with server-parity
+  Unicode 17 NFKC/control/blank-line/length validation, visible invalid-edit
+  feedback, create/edit/delete/comment-report/user-report/block, My Comments,
+  Blocked Users, pending-review, offline, accessibility, and keyboard states.
 - [x] Terms, Community Guidelines, Privacy, support contract, moderation
   ownership/runbook, and store UGC review checklist.
 

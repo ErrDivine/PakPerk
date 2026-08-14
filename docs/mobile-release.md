@@ -93,7 +93,7 @@ monochrome declarations and a complete opaque iOS AppIcon catalog.
 Run from `mobile/` with the repository-locked dependency graph:
 
 ```sh
-flutter pub get
+flutter pub get --enforce-lockfile
 flutter analyze
 flutter test
 
@@ -566,9 +566,10 @@ Coordinates are read as data from the reviewed `mobile/config/staging.json`;
 mutable coordinate and package/bundle-ID variables are not accepted. The source
 step rejects duplicate/non-finite JSON, control characters, non-round-tripping
 or unsafe HTTPS coordinates, symlink/race changes, and an invalid strict flavor
-or release version. It writes one exclusive, owner-only canonical schema-1
+or release version. It writes one exclusive, owner-only canonical schema-2
 source binding under `RUNNER_TEMP`, containing only the exact source revision,
-environment, app version/build, API origin, OIDC issuer, and OIDC client ID.
+environment, app version/build, API origin, app-link origin, OIDC issuer, and
+OIDC client ID.
 Only the bounded ASCII version/build and binding path become step outputs; none
 becomes a shell startup setting. The credentialed request builder reopens that
 binding and uses its coordinates for the driver request. The root-owned
@@ -617,40 +618,84 @@ the request or evidence.
 The driver must automate every path below against disposable staging accounts
 and emit the closed `mobile-acceptance-evidence.json` contract:
 
-1. Cold launch from populated local cache and collect first-readable-frame and
+1. Fresh-install the reviewed signed APK and IPA with prior app data absent,
+   remain a guest, reach cached Read without login, read published comments, and
+   open the exact canonical arXiv URL through the OS browser rather than an
+   embedded web view.
+2. Cold launch from populated local cache and collect the cached first-readable-
+   frame p95, healthy-local-initialization opening-transition duration, and
    native-launch continuity measurements.
-2. Vertically swipe through at least 20 papers under controlled latency and
+3. Vertically swipe through at least 20 papers under controlled latency and
    packet loss; record blank cards and sequential cache hits.
-3. Confirm Introduction preparation begins only after explicit horizontal
+4. Confirm Introduction preparation begins only after explicit horizontal
    intent.
-4. Switch Read -> You -> Read and restore the exact paper, stage, and offsets.
-5. Complete system-browser OIDC with PKCE against the release tenant.
-6. Save, terminate/relaunch the installed app, reconnect, and verify sync.
-7. Verify the same save on a second independently installed test device.
-8. Post, edit, and delete a comment against staging.
-9. Report and block another dedicated test account, confirming immediate and
-   server-persisted hiding.
-10. Expire the real access token, verify one refresh, and continue the action.
-11. Reauthenticate for account deletion and verify immediate deactivation,
+5. Switch Read -> You -> Read and restore the exact paper, stage, and offsets.
+6. Complete system-browser OIDC with PKCE against the release tenant.
+7. Save, terminate/relaunch the installed app, reconnect, and verify sync.
+8. On Device A save, take A offline, converge the save to an independently
+   installed Device B, remove it on B, reconnect A, require A to receive the
+   removal tombstone, and require both projections to converge absent.
+9. From a guest post intent, complete release-tenant sign-in, choose a handle on
+   an incomplete profile, accept the current Terms and Community Guidelines,
+   create with one stable client request ID, replay to the same comment, edit,
+   reject one stale edit, delete, and verify public-list absence.
+10. Submit the same comment report twice with one idempotency identity, require
+    one canonical durable report, then block the author and confirm immediate
+    and server-persisted hiding.
+11. Expire a real access token, verify one successful refresh, and continue the
+    original action.
+12. In a separate disposable session, invalidate the real refresh credential at
+    the release IdP, force refresh, require guest transition, make the refresh
+    record unreadable and account-owned rows inaccessible, while preserving the
+    public cache and exact paper/stage/offset state.
+13. Reauthenticate for account deletion and verify immediate deactivation,
     session revocation, provider cleanup, and the deletion status path.
-12. Read and save offline, terminate/relaunch if part of the test matrix, then
-    verify same-UUID outbox recovery after connectivity returns.
-13. Repeat cold/warm startup with reduced motion and verify stationary bounded
+14. Read and save offline, terminate the process, relaunch while the network is
+    still disabled, read the cached abstract before any reconnect, then verify
+    same-UUID outbox recovery and one server mutation after connectivity returns.
+15. Repeat cold/warm startup with reduced motion and verify stationary bounded
     transitions.
-14. Use the strict signed flavor and verify metadata/save/comments/original
+16. Use the strict signed flavor and verify metadata/save/comments/original
     arXiv links remain while every cached derived fallback stays masked.
+17. On Android and iOS, exercise the exact source-bound staging app-link origin's
+    deployed `/p/*` and `/arxiv/*` app/universal links from cold, warm, and
+    already-running states, require Abstract to open, and prove hostile origins
+    fail closed to Read without a paper request.
+18. On signed installed devices, prove Android backup is disabled and an
+    extraction restores no app data; prove iOS backup exclusions and
+    `completeUntilFirstUserAuthentication` protection; and verify device-bound,
+    non-synchronizable secure-credential attributes with no persisted access
+    credential.
+19. Measure a populated signed-device database plus WAL/SHM files and require at
+    most 500 cached paper records and at most 64 MiB of physical cache storage,
+    while at least one saved-paper pin remains intact.
+20. Exercise light and dark appearance on Android and iOS, preserving reader
+    state and finding no unreadable, clipped, or invisible critical action.
+21. Exercise root-navigation safe areas and system Back across Android gesture,
+    Android three-button, and iPhone home-indicator modes.
+22. Exercise physical-keyboard Tab, Shift-Tab, Enter, and Escape paths on Android
+    and iPad, including 200% text and minimum target coverage.
 
 The root-owned validator requires exact source, app version/build, candidate,
 validator, and driver digests; the signed-release provenance, canonical source
-binding, and ephemeral runner-session bindings; the staging API/OIDC/client
-coordinates; the four ordered physical-device roles; distinct installation and
-physical-identity hashes; sanitized hardware model and OS versions; and all 16
-ordered scenarios. Those are the 14 paths above plus root-navigation safe-area/
-system-back coverage across the required navigation modes and physical-keyboard
-Tab/Shift-Tab/Enter/Escape coverage. A scenario passes only with its exact
-device-role assignment, exact ordered assertion-ID list (70 markers in total),
-and closed integer threshold/equality metrics (37 rules in total); a generic
-positive count is not accepted. Every Android role must identify an installation
+binding, and ephemeral runner-session bindings; the staging API/app-link/OIDC/
+client coordinates; the four ordered physical-device roles; distinct installation and
+physical-identity hashes; sanitized hardware model and OS versions; and all 22
+ordered schema-v3 scenarios above. A scenario passes only with its exact
+device-role assignment, exact ordered assertion-ID list (141 markers in total),
+and closed integer threshold/equality metrics (78 rules in total); a generic
+positive count is not accepted. The driver request carries schema `3`, the exact
+scenario count, assertion count, metric count, and SHA-256 of the canonical
+ordered role/assertion/metric-rule contract. The pinned driver must reject a
+different contract rather than translating or accepting an older schema.
+In particular, `cold_cache_launch.metrics` must
+contain the exact integer keys `populated_cache_records`,
+`cached_first_readable_frame_p95_ms`, and `opening_transition_ms`. The latter two
+must be positive and no greater than 1,500 ms and 700 ms respectively; the
+legacy single-sample `first_readable_frame_ms` key is rejected. The protected
+driver request carries those same two exact range rules so the digest-pinned
+producer and validator share one fail-closed contract. Every Android role must
+identify an installation
 of the provenance-bound APK; every iOS role must identify the provenance-bound
 IPA. Each device must also echo the exact staging application, signer, and Apple
 team binding for its platform.
@@ -669,9 +714,11 @@ direct serial-number oracle. Evidence still intentionally identifies the
 runner session and can therefore be correlated when one attestation is reused.
 All four hashes and all four installation hashes must be distinct. Raw device
 identifiers stay only in protected process environment and must not appear in
-request, evidence, logs, or artifacts.
+request, evidence, logs, or artifacts. Passing these markers is not a substitute
+for the separate accountable visual, accessibility, mobile-platform, identity,
+privacy, and release approvals.
 
-Evidence schema v2 is also bound to a fresh cryptographic challenge, GitHub run
+Evidence schema v3 is also bound to a fresh cryptographic challenge, GitHub run
 ID and attempt, and whole-second UTC not-before time. Validation limits the run
 to six hours, rejects stale/replayed completion, duplicate or noncanonical JSON,
 non-finite numbers, extra fields, credential-shaped strings, symlinks,
@@ -725,11 +772,13 @@ before release.
 
 Do not declare a release candidate passed until the evidence bundle contains:
 
-- cached first-readable-frame p95 at or below 1.5 seconds on named reference
-  devices and staging;
-- opening transition at or below 700 ms when local initialization is healthy;
-- no blank card in the warm cached next-paper test and at least 95% sequential
-  next-paper cache hits;
+- at least 20 cached first-readable-frame samples, with p95 at or below 1.5
+  seconds on named reference devices and staging;
+- at least 20 opening-transition samples, with the measured transition at or
+  below 700 ms when local initialization is healthy;
+- no blank card across at least 20 warm sequential next-paper requests and at
+  least 95% cache hits;
+- at least 20 frame samples and a recorded sample window;
 - at least 99.5% crash-free sessions for the exact signed candidate;
 - the measured sample/window, collector query or store report, build number,
   device/OS matrix, and approver.
@@ -737,8 +786,12 @@ Do not declare a release candidate passed until the evidence bundle contains:
 Use an aggregate, privacy-reviewed crash denominator supplied by the staged
 distribution/diagnostics system. Do not add a persistent device, account, or
 session identifier to mobile telemetry to manufacture this metric. Until a
-signed TestFlight/closed-Play candidate has a representative observation
-window approved by the release owner, the crash gate is **not passed**.
+signed TestFlight/closed-Play candidate has at least a 24-hour observation
+window and 200 aggregate exact-candidate sessions across the two bound store
+diagnostic sources, and that window is approved as representative by the
+release owner, the crash gate is **not passed**. These are the Production v0.0
+minimums; an owner may require a longer window or larger denominator but may not
+waive them in the manifest.
 
 ## External release blockers
 

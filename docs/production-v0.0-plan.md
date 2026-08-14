@@ -2,7 +2,7 @@
 
 **Status:** authoritative implementation plan and repository status entrypoint
 **Milestone:** Production v0.0
-**Last synchronized:** 2026-08-08
+**Last synchronized:** 2026-08-09
 
 This document is the documentation entrypoint for the Production v0.0 plan.
 The complete normative plan is maintained at the repository root in
@@ -15,6 +15,9 @@ plan.
 
 The current repository-versus-release evidence status is maintained in the
 [Production v0.0 completion audit](production-v0.0-completion-audit.md).
+Day-to-day commands and release sequencing are in the
+[developer guide](developer-guide.md); the behavior exposed to readers is in
+the [user guide](user-guide.md).
 
 ## What the plan governs
 
@@ -118,7 +121,7 @@ provider-outage evidence is recorded in the
 public enablement also requires the target environment's moderation, deletion,
 legal, monitoring, and store-policy evidence.
 
-Phase 6's **repository implementation is present as a dark-launched release
+Phase 6's **repository implementation is present as a dark-launch release
 candidate**. It includes the recent-auth mobile/API/web deletion flow, bounded
 Keycloak administration, leased deletion worker, independent signed restore
 ledger and replay, retention cleanup/purge controls, a production Helm topology,
@@ -157,13 +160,16 @@ complete, and bound policy acceptance to the exact documents in each signed
 build. CI now parses every shell script independently rather than relying on
 Bash's multi-argument behavior, and the OpenAPI compatibility gate rejects
 directional schema, response, callback, webhook, and serialization regressions.
-The final current-tree canonical run passed Flutter analysis and all 610 locked
-tests, every Android debug flavor, every iOS simulator flavor, strict artifact
-inspection, the fresh-database Rust workspace, 31 browser/site tests, Helm,
-SBOM and release-contract validators, and the opt-in Collector export E2E. The
-locked suite includes account-rebind, deletion-latch, async-intent, and cache-
-purge isolation regressions. These are local repository checks; they do not
-alter the external release-gate status below.
+At checkpoint `d83ee84`, the full canonical run passed Flutter analysis and all
+610 then-locked tests, every Android debug flavor, every iOS simulator flavor,
+strict artifact inspection, the fresh-database Rust workspace, 31 browser/site
+tests, Helm, SBOM and release-contract validators, and the opt-in Collector
+export E2E. The locked suite includes account-rebind, deletion-latch,
+async-intent, and cache-purge isolation regressions. Subsequent current-tree
+mobile changes pass formatting, analysis, and all 49 tests in the six modified
+comment suites, but the expanded full Flutter suite has not been replayed.
+These are local repository checks; they do not alter the external release-gate
+status below.
 Fresh isolated reference-stack runs also passed the real Keycloak/PostgreSQL
 account-deletion worker/ledger/reconciliation path and the two-user plus
 operator comments/moderation/IdP-outage matrix, with redaction and cleanup.

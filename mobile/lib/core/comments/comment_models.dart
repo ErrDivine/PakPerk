@@ -1,5 +1,38 @@
 import 'dart:convert';
 
+import 'package:characters/characters.dart';
+import 'package:unorm_dart/unorm_dart.dart' as unicode;
+
+const commentMaximumScalars = 2000;
+const commentMaximumBytes = 8000;
+const commentMaximumUrls = 3;
+// This admits the widest valid boundary cases: 2,000 supplementary scalars
+// need 4,000 UTF-16 units, while 2,000 decomposed Hangul syllables need 6,000.
+// Anything larger cannot be a useful mobile comment without spending
+// disproportionate work before the authoritative normalized limits are known.
+const commentMaximumRawCodeUnits = commentMaximumScalars * 3;
+const commentMaximumRawClusterCodeUnits = 64;
+const commentMaximumRawClusterScalars = 64;
+const commentRawInputTooLargeMessage = 'Comment input is too large.';
+const commentComplexTextMessage =
+    'Simplify unusually complex character sequences.';
+const commentUnsupportedCharactersMessage =
+    'Remove unsupported control characters.';
+
+typedef CommentBodyMeasurement = ({int normalizedScalars, String? issue});
+
+final class CommentBodyAnalysis {
+  const CommentBodyAnalysis({
+    required this.canonicalBody,
+    required this.normalizedScalars,
+    required this.issue,
+  });
+
+  final String? canonicalBody;
+  final int normalizedScalars;
+  final String? issue;
+}
+
 enum CommentStatus { pendingReview, published, hidden, deleted }
 
 enum CommentAccountStatus { active, suspended, deletionPending, deleted }
@@ -95,8 +128,9 @@ final class PaperComment {
     if (rawAuthor is! Map) {
       throw const FormatException('Invalid comment author.');
     }
-    final body = _requiredText(json, 'body', maximumBytes: 8000);
-    if (body.runes.length > 2000 || body.trim().isEmpty) {
+    final body = _requiredText(json, 'body', maximumBytes: commentMaximumBytes);
+    final bodyAnalysis = analyzeCommentBody(body);
+    if (bodyAnalysis.issue != null || bodyAnalysis.canonicalBody != body) {
       throw const FormatException('Invalid comment body.');
     }
     final createdAt = _requiredDate(json, 'created_at');
@@ -338,30 +372,138 @@ final class UserReportReceipt {
   final DateTime createdAt;
 }
 
-String normalizeCommentDraft(String input) => input
-    .replaceAll('\r\n', '\n')
-    .replaceAll('\r', '\n')
-    .replaceAll('\t', ' ')
-    .trim();
+bool commentDraftWithinRawLimit(String input) =>
+    input.length <= commentMaximumRawCodeUnits;
 
-String? validateCommentBody(String input) {
-  final value = normalizeCommentDraft(input);
-  if (value.isEmpty) return 'Write a comment before sending.';
-  if (value.runes.any(
-    (rune) => (rune < 0x20 && rune != 0x0a) || (rune >= 0x7f && rune <= 0x9f),
-  )) {
-    return 'Remove unsupported control characters.';
+String? validateCommentDraftInput(String input) {
+  if (!commentDraftWithinRawLimit(input)) {
+    return commentRawInputTooLargeMessage;
   }
-  if (value.runes.length > 2000 || utf8.encode(value).length > 8000) {
-    return 'Comments are limited to 2,000 characters.';
+  if (_containsUnsupportedRawCommentInput(input)) {
+    return commentUnsupportedCharactersMessage;
   }
-  final urls = RegExp(
-    r'https?://',
-    caseSensitive: false,
-  ).allMatches(value).length;
-  if (urls > 3) return 'Comments may contain at most three links.';
+  for (final cluster in input.characters) {
+    if (cluster.length > commentMaximumRawClusterCodeUnits) {
+      return commentComplexTextMessage;
+    }
+    var scalarCount = 0;
+    for (final _ in cluster.runes) {
+      scalarCount += 1;
+      if (scalarCount > commentMaximumRawClusterScalars) {
+        return commentComplexTextMessage;
+      }
+    }
+  }
   return null;
 }
+
+String normalizeCommentDraft(String input) {
+  final issue = validateCommentDraftInput(input);
+  if (issue != null) {
+    throw ArgumentError.value(input.length, 'input', issue);
+  }
+  return _normalizeCommentDraftUnchecked(input);
+}
+
+String _normalizeCommentDraftUnchecked(String input) {
+  final normalized = unicode
+      .nfkc(input.replaceAll('\r\n', '\n').replaceAll('\r', '\n'))
+      .replaceAll('\t', ' ')
+      .trim();
+  final lines = <String>[];
+  var previousWasBlank = false;
+  for (final rawLine in normalized.split('\n')) {
+    final line = rawLine.trimRight();
+    if (line.trim().isEmpty) {
+      if (!previousWasBlank) lines.add('');
+      previousWasBlank = true;
+    } else {
+      lines.add(line);
+      previousWasBlank = false;
+    }
+  }
+  return lines.join('\n');
+}
+
+int normalizedCommentScalarCount(String input) {
+  final analysis = analyzeCommentBody(input);
+  if (analysis.canonicalBody == null) {
+    throw ArgumentError.value(input.length, 'input', analysis.issue);
+  }
+  return analysis.normalizedScalars;
+}
+
+CommentBodyAnalysis analyzeCommentBody(String input) {
+  final draftIssue = validateCommentDraftInput(input);
+  if (draftIssue != null) {
+    return CommentBodyAnalysis(
+      canonicalBody: null,
+      normalizedScalars: 0,
+      issue: draftIssue,
+    );
+  }
+  final value = _normalizeCommentDraftUnchecked(input);
+  final normalizedScalars = value.runes.length;
+  String? issue;
+  if (value.isEmpty) {
+    issue = 'Write a comment before sending.';
+  }
+  if (value.runes.any((rune) => _isUnsafeCommentRune(rune) && rune != 0x0a)) {
+    issue = commentUnsupportedCharactersMessage;
+  } else if (normalizedScalars > commentMaximumScalars ||
+      utf8.encode(value).length > commentMaximumBytes) {
+    issue = 'Comments are limited to $commentMaximumScalars characters.';
+  } else {
+    final urls = RegExp(
+      r'https?://',
+      caseSensitive: false,
+    ).allMatches(value).length;
+    if (urls > commentMaximumUrls) {
+      issue = 'Comments may contain at most three links.';
+    }
+  }
+  return CommentBodyAnalysis(
+    canonicalBody: value,
+    normalizedScalars: normalizedScalars,
+    issue: issue,
+  );
+}
+
+String? validateCommentBody(String input) => analyzeCommentBody(input).issue;
+
+CommentBodyMeasurement measureCommentBody(String input) {
+  final analysis = analyzeCommentBody(input);
+  return (normalizedScalars: analysis.normalizedScalars, issue: analysis.issue);
+}
+
+bool _containsUnsupportedRawCommentInput(String input) {
+  for (var index = 0; index < input.length; index += 1) {
+    final codeUnit = input.codeUnitAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      if (index + 1 >= input.length) return true;
+      final next = input.codeUnitAt(index + 1);
+      if (next < 0xdc00 || next > 0xdfff) return true;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return true;
+    } else if (_isUnsafeCommentRune(codeUnit) &&
+        codeUnit != 0x0a &&
+        codeUnit != 0x0d &&
+        codeUnit != 0x09) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool _isUnsafeCommentRune(int rune) =>
+    rune < 0x20 ||
+    (rune >= 0x7f && rune <= 0x9f) ||
+    rune == 0x061c ||
+    (rune >= 0x200b && rune <= 0x200f) ||
+    (rune >= 0x202a && rune <= 0x202e) ||
+    (rune >= 0x2060 && rune <= 0x2069) ||
+    rune == 0xfeff;
 
 void _expectKeys(Map<String, dynamic> json, Set<String> expected) {
   if (json.length != expected.length ||

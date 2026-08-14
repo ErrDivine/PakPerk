@@ -19,9 +19,9 @@ The production migration is specified in
 Phase 6's account-lifecycle, deployment, telemetry, supply-chain, signed-build,
 and runbook implementation is present, while external production/store/restore
 evidence remains release-blocking in the [Phase 6 report](phase-reports/phase-6.md).
-the complete comment/moderation implementation and its live two-user evidence
-are recorded in the [Phase 5 report](phase-reports/phase-5.md):
-the Flutter client now has the Read/You shell and a bounded relational
+The complete comment/moderation implementation and its live two-user evidence
+are recorded in the [Phase 5 report](phase-reports/phase-5.md). The Flutter
+client now has the Read/You shell and a bounded relational
 Drift/SQLite public-content cache, while the existing Rust modular monolith and
 paper pipeline remain intact. Phase 3 account integration is accepted with its
 live-provider, database, native-build, and repository-gate evidence in the

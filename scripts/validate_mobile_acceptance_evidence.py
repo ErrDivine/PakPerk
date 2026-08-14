@@ -30,8 +30,26 @@ STAGING_IOS_APPLICATION_ID = "app.pakperk.pakperk.staging"
 EVIDENCE_ARCHIVE_NAME = "mobile-acceptance-evidence.json"
 TOOLING_ARCHIVE_NAME = "mobile-acceptance-tooling.json"
 CHECKSUM_ARCHIVE_NAME = "SHA256SUMS"
+CACHED_FIRST_READABLE_FRAME_P95_MAX_MS = 1_500
+OPENING_TRANSITION_MAX_MS = 700
+SOURCE_BINDING_SCHEMA_VERSION = 2
+EVIDENCE_SCHEMA_VERSION = 3
+MAX_CACHED_PAPER_RECORDS = 500
+MAX_CACHE_PHYSICAL_BYTES = 64 * 1024 * 1024
 
 SCENARIO_ASSERTIONS = {
+    "fresh_install_guest_reader": (
+        "fresh_signed_android_install_verified",
+        "fresh_signed_ios_install_verified",
+        "prior_app_data_absent_on_both_installations",
+        "guest_state_verified_before_authentication",
+        "cached_read_feed_reached_without_login",
+        "guest_published_comments_readable",
+        "canonical_arxiv_action_selected",
+        "arxiv_opened_in_system_browser",
+        "exact_canonical_arxiv_url_handed_off",
+        "embedded_webview_not_used_for_arxiv",
+    ),
     "cold_cache_launch": (
         "populated_local_cache_seeded",
         "first_readable_frame_measured",
@@ -70,14 +88,33 @@ SCENARIO_ASSERTIONS = {
         "same_test_account_used",
         "independent_installations_verified",
         "remote_save_converged",
+        "device_a_offline_before_remote_remove",
+        "device_b_remove_acknowledged",
+        "device_a_reconnected_after_remote_remove",
+        "device_a_received_removal_tombstone",
+        "device_a_projection_absent_after_reconnect",
+        "device_b_projection_absent_after_remove",
+        "both_device_projections_converged_absent",
     ),
     "comment_create_edit_delete": (
+        "guest_comment_thread_opened",
+        "guest_post_intent_retained_through_authentication",
+        "release_tenant_sign_in_completed",
+        "incomplete_profile_handle_chosen",
+        "current_terms_accepted",
+        "current_community_guidelines_accepted",
+        "stable_client_request_id_used",
         "comment_created_on_staging",
+        "duplicate_create_returned_same_comment",
         "comment_version_advanced_on_edit",
+        "stale_edit_conflicted_cleanly",
         "comment_deleted_on_staging",
+        "comment_absent_from_public_list",
     ),
     "report_and_block": (
         "report_acknowledged_by_staging",
+        "duplicate_report_returned_same_canonical_result",
+        "single_durable_report_verified",
         "blocked_content_hidden_immediately",
         "blocked_content_hidden_after_relaunch",
     ),
@@ -85,6 +122,17 @@ SCENARIO_ASSERTIONS = {
         "real_access_token_expired",
         "exactly_one_refresh_completed",
         "original_action_continued",
+    ),
+    "invalid_refresh_to_guest": (
+        "real_refresh_credential_invalidated_by_release_idp",
+        "expired_access_token_forced_refresh",
+        "invalid_refresh_rejected_by_release_tenant",
+        "app_moved_to_guest",
+        "secure_refresh_credential_unreadable",
+        "account_owned_data_inaccessible",
+        "public_cache_preserved",
+        "exact_reader_state_preserved",
+        "guest_public_read_continued",
     ),
     "account_deletion_reauthentication": (
         "recent_authentication_completed",
@@ -97,6 +145,9 @@ SCENARIO_ASSERTIONS = {
         "cached_paper_read_offline",
         "save_queued_offline",
         "os_process_terminated_with_pending_outbox",
+        "installed_app_relaunched_while_network_disabled",
+        "cached_abstract_readable_after_offline_relaunch",
+        "network_remained_disabled_until_cached_read",
         "same_uuid_recovered_after_relaunch",
         "single_server_mutation_after_reconnect",
     ),
@@ -111,6 +162,44 @@ SCENARIO_ASSERTIONS = {
         "original_arxiv_link_available",
         "derived_fallback_masked_online",
         "derived_fallback_masked_offline_cache",
+    ),
+    "physical_app_link_dispatch": (
+        "android_p_links_cold_warm_running_verified",
+        "android_arxiv_links_cold_warm_running_verified",
+        "ios_p_links_cold_warm_running_verified",
+        "ios_arxiv_links_cold_warm_running_verified",
+        "valid_links_opened_abstract",
+        "hostile_android_origin_failed_closed_to_read",
+        "hostile_ios_origin_failed_closed_to_read",
+        "hostile_origins_issued_no_paper_request",
+    ),
+    "signed_device_data_protection": (
+        "android_backup_disabled_in_installed_manifest",
+        "android_backup_extraction_produced_no_app_data",
+        "ios_documents_preferences_support_excluded_from_backup",
+        "ios_sqlite_sidecars_and_descendants_excluded_from_backup",
+        "ios_complete_until_first_user_authentication_verified",
+        "android_secure_refresh_storage_device_bound",
+        "ios_keychain_first_unlock_this_device_verified",
+        "ios_keychain_non_synchronizable_verified",
+        "access_tokens_absent_from_persistent_storage",
+    ),
+    "signed_device_cache_bounds": (
+        "populated_cache_profile_exercised",
+        "cached_paper_record_count_measured",
+        "database_wal_shm_physical_bytes_measured",
+        "paper_record_bound_respected",
+        "physical_byte_bound_respected",
+        "saved_papers_remained_pinned",
+    ),
+    "light_dark_appearance": (
+        "android_light_theme_path_exercised",
+        "android_dark_theme_path_exercised",
+        "ios_light_theme_path_exercised",
+        "ios_dark_theme_path_exercised",
+        "system_theme_transition_preserved_reader_state",
+        "critical_content_and_controls_readable_each_theme",
+        "no_clipped_or_invisible_critical_actions",
     ),
     "root_navigation_safe_area": (
         "android_gesture_safe_area_verified",
@@ -143,11 +232,31 @@ SCENARIO_DEVICE_ROLES = {
 }
 SCENARIO_DEVICE_ROLES.update(
     {
+        "fresh_install_guest_reader": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
         "two_device_library_sync": (
             "android_gesture",
             "ipad_keyboard_secondary_sync",
         ),
         "strict_full_text_policy": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "physical_app_link_dispatch": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "signed_device_data_protection": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "signed_device_cache_bounds": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "light_dark_appearance": (
             "android_gesture",
             "ios_home_indicator",
         ),
@@ -165,9 +274,25 @@ SCENARIO_DEVICE_ROLES.update(
 
 # Rules are (operator, lower/equal, optional upper). Values are closed integers.
 SCENARIO_METRIC_RULES = {
+    "fresh_install_guest_reader": {
+        "fresh_installations": ("eq", 2, None),
+        "guest_feed_platform_checks": ("eq", 2, None),
+        "guest_comment_read_checks": ("min", 1, None),
+        "arxiv_system_browser_handoffs": ("eq", 2, None),
+        "arxiv_embedded_webview_handoffs": ("eq", 0, None),
+    },
     "cold_cache_launch": {
         "populated_cache_records": ("min", 1, None),
-        "first_readable_frame_ms": ("range", 1, 10_000),
+        "cached_first_readable_frame_p95_ms": (
+            "range",
+            1,
+            CACHED_FIRST_READABLE_FRAME_P95_MAX_MS,
+        ),
+        "opening_transition_ms": (
+            "range",
+            1,
+            OPENING_TRANSITION_MAX_MS,
+        ),
     },
     "vertical_20_papers_latency": {
         "papers_swiped": ("min", 20, None),
@@ -193,12 +318,23 @@ SCENARIO_METRIC_RULES = {
     },
     "two_device_library_sync": {
         "independent_installations": ("eq", 2, None),
-        "convergence_checks": ("min", 1, None),
+        "save_convergence_checks": ("min", 1, None),
+        "remove_convergence_checks": ("min", 2, None),
+        "tombstones_received_by_offline_device": ("eq", 1, None),
+        "visible_saved_items_after_convergence": ("eq", 0, None),
     },
     "comment_create_edit_delete": {
-        "lifecycle_operations": ("eq", 3, None),
+        "guest_to_post_flows": ("eq", 1, None),
+        "public_name_assignments": ("eq", 1, None),
+        "policy_acceptances": ("eq", 2, None),
+        "create_attempts_with_same_request_id": ("eq", 2, None),
+        "canonical_comments_after_replay": ("eq", 1, None),
+        "stale_edit_conflicts": ("eq", 1, None),
+        "visible_public_comments_after_delete": ("eq", 0, None),
     },
     "report_and_block": {
+        "report_requests_with_same_identity": ("eq", 2, None),
+        "durable_reports_after_replay": ("eq", 1, None),
         "persistence_checks": ("min", 1, None),
         "visible_blocked_items": ("eq", 0, None),
     },
@@ -206,12 +342,21 @@ SCENARIO_METRIC_RULES = {
         "refresh_attempts": ("eq", 1, None),
         "continued_actions": ("eq", 1, None),
     },
+    "invalid_refresh_to_guest": {
+        "refresh_attempts": ("eq", 1, None),
+        "guest_transitions": ("eq", 1, None),
+        "accessible_account_owned_rows": ("eq", 0, None),
+        "public_cache_records_after_invalidation": ("min", 1, None),
+        "exact_reader_state_fields_preserved": ("eq", 4, None),
+    },
     "account_deletion_reauthentication": {
         "reauthentication_prompts": ("eq", 1, None),
         "cleanup_checks": ("min", 4, None),
     },
     "offline_outbox_process_death_recovery": {
         "process_relaunches": ("min", 1, None),
+        "post_relaunch_offline_cached_abstract_reads": ("min", 1, None),
+        "network_reconnects_before_cached_read": ("eq", 0, None),
         "recovered_same_uuid_operations": ("min", 1, None),
         "duplicate_server_mutations": ("eq", 0, None),
     },
@@ -222,6 +367,31 @@ SCENARIO_METRIC_RULES = {
     "strict_full_text_policy": {
         "allowed_surface_checks": ("min", 4, None),
         "derived_fallback_exposures": ("eq", 0, None),
+    },
+    "physical_app_link_dispatch": {
+        "platforms_tested": ("eq", 2, None),
+        "lifecycle_states_per_platform": ("eq", 3, None),
+        "valid_link_dispatches": ("eq", 12, None),
+        "hostile_origin_attempts": ("min", 2, None),
+        "unsafe_paper_requests": ("eq", 0, None),
+    },
+    "signed_device_data_protection": {
+        "android_backup_extraction_attempts": ("min", 1, None),
+        "android_restored_app_records": ("eq", 0, None),
+        "ios_backup_paths_checked": ("min", 5, None),
+        "ios_backup_included_paths": ("eq", 0, None),
+        "secure_credential_platforms_checked": ("eq", 2, None),
+        "insecure_credential_attribute_findings": ("eq", 0, None),
+    },
+    "signed_device_cache_bounds": {
+        "cached_paper_records": ("range", 1, MAX_CACHED_PAPER_RECORDS),
+        "cache_physical_bytes": ("range", 1, MAX_CACHE_PHYSICAL_BYTES),
+        "saved_paper_pins_verified": ("min", 1, None),
+    },
+    "light_dark_appearance": {
+        "theme_platform_combinations": ("eq", 4, None),
+        "reader_state_preservation_checks": ("min", 2, None),
+        "unreadable_or_clipped_critical_actions": ("eq", 0, None),
     },
     "root_navigation_safe_area": {
         "navigation_modes_tested": ("eq", 3, None),
@@ -235,6 +405,44 @@ SCENARIO_METRIC_RULES = {
         "clipped_action_labels": ("eq", 0, None),
     },
 }
+
+SCENARIO_COUNT = len(SCENARIO_IDS)
+ASSERTION_COUNT = sum(len(assertions) for assertions in SCENARIO_ASSERTIONS.values())
+METRIC_COUNT = sum(len(rules) for rules in SCENARIO_METRIC_RULES.values())
+
+
+def scenario_contract_payload() -> dict[str, Any]:
+    """Return the canonical producer/validator contract carried by schema v3."""
+
+    return {
+        "schema": EVIDENCE_SCHEMA_VERSION,
+        "scenarios": [
+            {
+                "id": scenario_id,
+                "device_roles": list(SCENARIO_DEVICE_ROLES[scenario_id]),
+                "assertions": list(SCENARIO_ASSERTIONS[scenario_id]),
+                "metric_rules": {
+                    name: list(rule)
+                    for name, rule in SCENARIO_METRIC_RULES[scenario_id].items()
+                },
+            }
+            for scenario_id in SCENARIO_IDS
+        ],
+    }
+
+
+SCENARIO_CONTRACT_SHA256 = hashlib.sha256(
+    (
+        json.dumps(
+            scenario_contract_payload(),
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        + "\n"
+    ).encode("ascii")
+).hexdigest()
 
 DEVICE_CONTRACT = {
     "android_gesture": ("android", "gesture", "phone", True),
@@ -322,6 +530,7 @@ RUNNER_SESSION_BINDING_KEYS = {
 RUNNER_SESSION_VALIDATED_KEYS = RUNNER_SESSION_BINDING_KEYS | {"physical_identities"}
 SOURCE_BINDING_KEYS = {
     "api_origin",
+    "app_link_origin",
     "app_version",
     "build_number",
     "environment",
@@ -551,10 +760,14 @@ def load_staging_contract(path: pathlib.Path = STAGING_CONFIG) -> dict[str, str]
         raise EvidenceError("staging mobile config must be an object")
     expected = {
         "api_origin": payload.get("PAKPERK_API_BASE_URL"),
+        "app_link_origin": payload.get("PAKPERK_APP_LINK_ORIGIN"),
         "oidc_issuer": payload.get("PAKPERK_OIDC_ISSUER_URL"),
         "oidc_client_id": payload.get("PAKPERK_OIDC_CLIENT_ID"),
     }
     _https_coordinate(expected["api_origin"], "staging API origin", allow_path=False)
+    _https_coordinate(
+        expected["app_link_origin"], "staging app-link origin", allow_path=False
+    )
     _https_coordinate(expected["oidc_issuer"], "staging OIDC issuer", allow_path=True)
     _string(expected["oidc_client_id"], "staging OIDC client ID", CLIENT_ID)
     if payload.get("PAKPERK_ENV") != "staging":
@@ -592,7 +805,9 @@ def load_source_binding(
     if not isinstance(payload, dict):
         raise EvidenceError("source binding must be an object")
     _exact_keys(payload, SOURCE_BINDING_KEYS, "source binding")
-    _exact_integer(payload["schema"], 1, "source binding schema")
+    _exact_integer(
+        payload["schema"], SOURCE_BINDING_SCHEMA_VERSION, "source binding schema"
+    )
     if payload["source_revision"] != source_revision:
         raise EvidenceError("source binding revision does not match")
     if payload["environment"] != "staging":
@@ -604,6 +819,11 @@ def load_source_binding(
     api_origin = _https_coordinate(
         payload["api_origin"], "source binding API origin", allow_path=False
     )
+    app_link_origin = _https_coordinate(
+        payload["app_link_origin"],
+        "source binding app-link origin",
+        allow_path=False,
+    )
     oidc_issuer = _https_coordinate(
         payload["oidc_issuer"], "source binding OIDC issuer", allow_path=True
     )
@@ -612,6 +832,7 @@ def load_source_binding(
     )
     return {
         "api_origin": api_origin,
+        "app_link_origin": app_link_origin,
         "oidc_issuer": oidc_issuer,
         "oidc_client_id": oidc_client_id,
     }
@@ -1048,6 +1269,7 @@ def validate_payload(
     app_version: str,
     build_number: str,
     api_origin: str,
+    app_link_origin: str,
     oidc_issuer: str,
     oidc_client_id: str,
     run_id: str,
@@ -1062,6 +1284,9 @@ def validate_payload(
     _string(app_version, "expected app version", APP_VERSION)
     _string(build_number, "expected build number", BUILD_NUMBER)
     _https_coordinate(api_origin, "expected API origin", allow_path=False)
+    _https_coordinate(
+        app_link_origin, "expected app-link origin", allow_path=False
+    )
     _https_coordinate(oidc_issuer, "expected OIDC issuer", allow_path=True)
     _string(oidc_client_id, "expected OIDC client ID", CLIENT_ID)
     _string(run_id, "expected workflow run ID", POSITIVE_INTEGER)
@@ -1070,6 +1295,7 @@ def validate_payload(
     staging_contract = load_staging_contract()
     if {
         "api_origin": api_origin,
+        "app_link_origin": app_link_origin,
         "oidc_issuer": oidc_issuer,
         "oidc_client_id": oidc_client_id,
     } != staging_contract:
@@ -1126,7 +1352,7 @@ def validate_payload(
     _exact_keys(payload, TOP_LEVEL_KEYS, "evidence")
     _reject_sensitive_data(payload)
 
-    _exact_integer(payload["schema"], 2, "evidence schema")
+    _exact_integer(payload["schema"], EVIDENCE_SCHEMA_VERSION, "evidence schema")
     if payload["classification"] != "protected staging physical-device acceptance":
         raise EvidenceError(
             "evidence classification is not protected staging acceptance"
@@ -1150,10 +1376,17 @@ def validate_payload(
     if not isinstance(coordinates, dict):
         raise EvidenceError("deployment coordinates must be an object")
     _exact_keys(
-        coordinates, {"api_origin", "oidc_issuer", "oidc_client_id"}, "coordinates"
+        coordinates,
+        {"api_origin", "app_link_origin", "oidc_issuer", "oidc_client_id"},
+        "coordinates",
     )
     _https_coordinate(
         coordinates["api_origin"], "evidence API origin", allow_path=False
+    )
+    _https_coordinate(
+        coordinates["app_link_origin"],
+        "evidence app-link origin",
+        allow_path=False,
     )
     _https_coordinate(
         coordinates["oidc_issuer"], "evidence OIDC issuer", allow_path=True
@@ -1161,6 +1394,7 @@ def validate_payload(
     _string(coordinates["oidc_client_id"], "evidence OIDC client ID", CLIENT_ID)
     if coordinates != {
         "api_origin": api_origin,
+        "app_link_origin": app_link_origin,
         "oidc_issuer": oidc_issuer,
         "oidc_client_id": oidc_client_id,
     }:
@@ -1629,6 +1863,7 @@ def validate_and_package(
     app_version: str,
     build_number: str,
     api_origin: str,
+    app_link_origin: str,
     oidc_issuer: str,
     oidc_client_id: str,
     android_signer_sha256: str,
@@ -1677,6 +1912,7 @@ def validate_and_package(
         app_version=app_version,
         build_number=build_number,
         api_origin=api_origin,
+        app_link_origin=app_link_origin,
         oidc_issuer=oidc_issuer,
         oidc_client_id=oidc_client_id,
         run_id=run_id,
@@ -1829,6 +2065,7 @@ def main() -> int:
             app_version=arguments.app_version,
             build_number=arguments.build_number,
             api_origin=source_binding["api_origin"],
+            app_link_origin=source_binding["app_link_origin"],
             oidc_issuer=source_binding["oidc_issuer"],
             oidc_client_id=source_binding["oidc_client_id"],
             android_signer_sha256=arguments.android_signer_sha256,

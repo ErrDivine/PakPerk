@@ -263,6 +263,11 @@ final class CommentRepository {
     required String body,
   }) async {
     final guard = localAccountGuard(accountId, authEpoch);
+    if (!guard()) throw const CommentScopeChanged();
+    final issue = validateCommentDraftInput(body);
+    if (issue != null) {
+      throw ArgumentError.value(body.length, 'body', issue);
+    }
     final written = await _accountWrite(
       accountId: accountId,
       authEpoch: authEpoch,
@@ -285,36 +290,29 @@ final class CommentRepository {
   }) async {
     final guard = mutationGuard(accountId, authEpoch);
     if (!guard()) throw const CommentScopeChanged();
-    final normalized = normalizeCommentDraft(body);
-    final issue = validateCommentBody(normalized);
-    if (issue != null) {
+    final analysis = analyzeCommentBody(body);
+    if (analysis.issue case final issue?) {
       throw ApiException(code: 'INVALID_COMMENT', message: issue);
     }
-    await saveDraft(
-      accountId: accountId,
-      authEpoch: authEpoch,
-      paperId: paperId,
-      body: normalized,
-    );
-    final draft = await loadDraft(
-      accountId: accountId,
-      authEpoch: authEpoch,
-      paperId: paperId,
-    );
-    final requestId = draft?.clientRequestId;
-    if (requestId == null || !guard()) throw const CommentScopeChanged();
+    final normalized = analysis.canonicalBody!;
+    CommentDraftValue? preparedDraft;
     if (!await _accountWrite(
       accountId: accountId,
       authEpoch: authEpoch,
       guard: guard,
-      write: () => _local.markDraftAttempted(
-        accountId: accountId,
-        paperId: paperId,
-        body: normalized,
-      ),
+      write: () async {
+        preparedDraft = await _local.prepareDraftAttempt(
+          accountId: accountId,
+          paperId: paperId,
+          canonicalBody: normalized,
+          nextClientRequestId: const Uuid().v7(),
+        );
+      },
     )) {
       throw const CommentScopeChanged();
     }
+    final requestId = preparedDraft?.clientRequestId;
+    if (requestId == null || !guard()) throw const CommentScopeChanged();
     final comment = await _remote.create(
       paperId: paperId,
       clientRequestId: requestId,
@@ -351,11 +349,11 @@ final class CommentRepository {
     if (!guard() || comment.author.id != accountId) {
       throw const CommentScopeChanged();
     }
-    final normalized = normalizeCommentDraft(body);
-    final issue = validateCommentBody(normalized);
-    if (issue != null) {
+    final analysis = analyzeCommentBody(body);
+    if (analysis.issue case final issue?) {
       throw ApiException(code: 'INVALID_COMMENT', message: issue);
     }
+    final normalized = analysis.canonicalBody!;
     final updated = await _remote.edit(
       commentId: comment.id,
       body: normalized,

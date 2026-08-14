@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import gzip
 import json
 from pathlib import Path
 import socket
@@ -26,6 +27,7 @@ from verify_public_edge import (
     EXPECTED_HSTS,
     EXPECTED_STATIC_SECURITY_HEADERS,
     HttpObservation,
+    MAX_DECOMPRESSED_FEED_BYTES,
     SITE_HTML_ROUTES,
     SocketDeadlineGuard,
     VerificationError,
@@ -144,7 +146,8 @@ def valid_responses(
         ),
     }
     html_routes = (
-        ("/", EXPECTED_DEFAULT_CACHE, "Pakperk — Policies and support"),
+        ("/", EXPECTED_DEFAULT_CACHE, "Pakperk — Guide, policies, and support"),
+        ("/guide/", EXPECTED_DEFAULT_CACHE, "User guide — Pakperk"),
         ("/privacy/", EXPECTED_DEFAULT_CACHE, "Privacy notice — Pakperk"),
         ("/terms/", EXPECTED_DEFAULT_CACHE, "Terms of use — Pakperk"),
         (
@@ -231,6 +234,21 @@ def valid_responses(
         ],
         b'{"status":"ready"}',
     )
+    values[(True, candidate.api_origin, "/v1/feed?limit=100")] = response(
+        200,
+        [
+            ("strict-transport-security", EXPECTED_HSTS),
+            ("cache-control", "public, max-age=60, stale-while-revalidate=300"),
+            ("content-type", "application/json"),
+            ("content-encoding", "gzip"),
+            ("vary", "Accept-Encoding"),
+        ],
+        gzip.compress(
+            b'{"items":['
+            + b",".join(b'{"paper_id":"fixture"}' for _ in range(64))
+            + b'],"next_cursor":null}'
+        ),
+    )
     values[(True, candidate.telemetry_origin, "/health/ready")] = response(
         200,
         [
@@ -254,7 +272,7 @@ class VerifyPublicEdgeTest(unittest.TestCase):
         validate_evidence(
             evidence, expected_binding=candidate, expected_outcome="passed"
         )
-        self.assertEqual(len(transport.calls), 16)
+        self.assertEqual(len(transport.calls), len(SCENARIO_IDS))
         for _secure, _origin, _path, maximum, headers in transport.calls:
             self.assertGreater(maximum, 0)
             self.assertFalse(
@@ -267,6 +285,10 @@ class VerifyPublicEdgeTest(unittest.TestCase):
             if call[2] == "/open-source-licenses/notices.txt"
         )
         self.assertEqual(inventory_call[4], {"Range": "bytes=0-16383"})
+        feed_call = next(
+            call for call in transport.calls if call[2] == "/v1/feed?limit=100"
+        )
+        self.assertEqual(feed_call[4], {"Accept-Encoding": "gzip"})
 
     def test_failures_are_one_safe_category_and_leave_suffix_not_run(self) -> None:
         candidate = binding()
@@ -353,6 +375,64 @@ class VerifyPublicEdgeTest(unittest.TestCase):
                 ),
                 lambda value: replace(
                     value, body=value.body.replace(b"PKPRK2026A", b"WRONG2026A")
+                ),
+            ),
+            "feed compression missing": (
+                (True, candidate.api_origin, "/v1/feed?limit=100"),
+                lambda value: replace(
+                    value,
+                    headers=tuple(
+                        item for item in value.headers if item[0] != "content-encoding"
+                    ),
+                ),
+            ),
+            "feed vary missing": (
+                (True, candidate.api_origin, "/v1/feed?limit=100"),
+                lambda value: replace(
+                    value,
+                    headers=tuple(item for item in value.headers if item[0] != "vary"),
+                ),
+            ),
+            "feed body not gzip": (
+                (True, candidate.api_origin, "/v1/feed?limit=100"),
+                lambda value: replace(value, body=b'{"items":[]}'),
+            ),
+            "feed body is only gzip-shaped bytes": (
+                (True, candidate.api_origin, "/v1/feed?limit=100"),
+                lambda value: replace(value, body=b"\x1f\x8b" + (b"\x00" * 16)),
+            ),
+            "feed body truncated gzip": (
+                (True, candidate.api_origin, "/v1/feed?limit=100"),
+                lambda value: replace(value, body=value.body[:-8]),
+            ),
+            "feed body corrupt gzip": (
+                (True, candidate.api_origin, "/v1/feed?limit=100"),
+                lambda value: replace(
+                    value,
+                    body=value.body[:-1] + bytes([value.body[-1] ^ 0xFF]),
+                ),
+            ),
+            "feed body invalid json": (
+                (True, candidate.api_origin, "/v1/feed?limit=100"),
+                lambda value: replace(
+                    value,
+                    body=gzip.compress(b'{"items":[],"next_cursor":null'),
+                ),
+            ),
+            "feed body wrong envelope": (
+                (True, candidate.api_origin, "/v1/feed?limit=100"),
+                lambda value: replace(
+                    value,
+                    body=gzip.compress(
+                        b'{"items":[],"next_cursor":null,"extra":true}'
+                    ),
+                ),
+            ),
+            "feed decompressed body exceeds boundary": (
+                (True, candidate.api_origin, "/v1/feed?limit=100"),
+                lambda value: replace(
+                    value,
+                    body=gzip.compress(b" " * (MAX_DECOMPRESSED_FEED_BYTES + 1)),
                 ),
             ),
             "api cache": (

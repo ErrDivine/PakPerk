@@ -16,6 +16,8 @@ final class CommentThreadState {
     this.creationDisabled = false,
     this.showingCached = false,
     this.initialLoadSettled = false,
+    this.draftValidationPending = false,
+    this.draftInputIssue,
     this.errorMessage,
   });
 
@@ -29,6 +31,8 @@ final class CommentThreadState {
   final bool creationDisabled;
   final bool showingCached;
   final bool initialLoadSettled;
+  final bool draftValidationPending;
+  final String? draftInputIssue;
   final String? errorMessage;
 
   CommentThreadState copyWith({
@@ -42,6 +46,8 @@ final class CommentThreadState {
     bool? creationDisabled,
     bool? showingCached,
     bool? initialLoadSettled,
+    bool? draftValidationPending,
+    Object? draftInputIssue = _unset,
     Object? errorMessage = _unset,
   }) => CommentThreadState(
     items: items ?? this.items,
@@ -56,6 +62,11 @@ final class CommentThreadState {
     creationDisabled: creationDisabled ?? this.creationDisabled,
     showingCached: showingCached ?? this.showingCached,
     initialLoadSettled: initialLoadSettled ?? this.initialLoadSettled,
+    draftValidationPending:
+        draftValidationPending ?? this.draftValidationPending,
+    draftInputIssue: identical(draftInputIssue, _unset)
+        ? this.draftInputIssue
+        : draftInputIssue as String?,
     errorMessage: identical(errorMessage, _unset)
         ? this.errorMessage
         : errorMessage as String?,
@@ -76,6 +87,7 @@ final class CommentThreadController extends StateNotifier<CommentThreadState> {
   final String _paperId;
   final CommentViewerScope _viewer;
   int _generation = 0;
+  int _draftInputRevision = 0;
   Future<void>? _draftWrite;
   String? _queuedDraft;
 
@@ -106,7 +118,21 @@ final class CommentThreadController extends StateNotifier<CommentThreadState> {
           paperId: _paperId,
         );
         if (!_current(generation)) return;
-        state = state.copyWith(draft: draft?.body ?? '');
+        // A database read started during initial hydration must never replace
+        // text the user has already entered. The screen intentionally keeps a
+        // non-empty visible composer when state changes, so applying a stale
+        // database value here could otherwise make Send submit text different
+        // from what is visible.
+        if (_draftInputRevision == 0) {
+          final draftBody = draft?.body ?? '';
+          final draftInputIssue = validateCommentDraftInput(draftBody);
+          state = state.copyWith(
+            draft: draftBody,
+            draftValidationPending:
+                draftBody.isNotEmpty && draftInputIssue == null,
+            draftInputIssue: draftInputIssue,
+          );
+        }
       } on CommentScopeChanged {
         return;
       } on Object {
@@ -231,12 +257,50 @@ final class CommentThreadController extends StateNotifier<CommentThreadState> {
 
   Future<void> saveDraft(String body) async {
     if (!mounted) return;
-    state = state.copyWith(draft: body);
+    _draftInputRevision += 1;
+    final issue = validateCommentDraftInput(body);
+    if (issue != null) {
+      state = state.copyWith(
+        draftValidationPending: false,
+        draftInputIssue: issue,
+      );
+      return;
+    }
+    final previousIssue = state.draftInputIssue;
+    state = previousIssue != null && state.errorMessage == previousIssue
+        ? state.copyWith(
+            draft: body,
+            draftValidationPending: body.isNotEmpty,
+            draftInputIssue: null,
+            errorMessage: null,
+          )
+        : state.copyWith(
+            draft: body,
+            draftValidationPending: body.isNotEmpty,
+            draftInputIssue: null,
+          );
     final accountId = _viewer.accountId;
     final authEpoch = _viewer.authEpoch;
     if (accountId == null || authEpoch == null) return;
-    _queuedDraft = body;
-    await (_draftWrite ??= _drainDraftWrites(accountId, authEpoch));
+    await _persistDraft(accountId, authEpoch, body);
+  }
+
+  void completeDraftValidation({required String body, required String? issue}) {
+    if (!mounted || state.draft != body) return;
+    final rawIssue = validateCommentDraftInput(body);
+    if (rawIssue != null) return;
+    final effectiveIssue = body.isEmpty ? null : issue;
+    final previousIssue = state.draftInputIssue;
+    state = previousIssue != null && state.errorMessage == previousIssue
+        ? state.copyWith(
+            draftValidationPending: false,
+            draftInputIssue: effectiveIssue,
+            errorMessage: null,
+          )
+        : state.copyWith(
+            draftValidationPending: false,
+            draftInputIssue: effectiveIssue,
+          );
   }
 
   Future<PaperComment?> send() async {
@@ -244,16 +308,39 @@ final class CommentThreadController extends StateNotifier<CommentThreadState> {
     final accountId = _viewer.accountId;
     final authEpoch = _viewer.authEpoch;
     if (accountId == null || authEpoch == null || state.sending) return null;
-    final issue = validateCommentBody(state.draft);
-    if (issue != null) {
-      state = state.copyWith(errorMessage: issue);
+    final draftInputIssue = state.draftInputIssue;
+    if (draftInputIssue != null) {
+      state = state.copyWith(errorMessage: draftInputIssue);
+      return null;
+    }
+    final analysis = analyzeCommentBody(state.draft);
+    if (analysis.issue case final issue?) {
+      state = state.copyWith(
+        draftValidationPending: false,
+        draftInputIssue: issue,
+        errorMessage: issue,
+      );
       return null;
     }
     final submittedBody = state.draft;
-    state = state.copyWith(sending: true, errorMessage: null);
+    final submittedRevision = _draftInputRevision;
+    state = state.copyWith(
+      sending: true,
+      draftValidationPending: false,
+      draftInputIssue: null,
+      errorMessage: null,
+    );
     try {
       await _draftWrite;
       if (!mounted) return null;
+      final currentDraftInputIssue = state.draftInputIssue;
+      if (currentDraftInputIssue != null) {
+        state = state.copyWith(
+          sending: false,
+          errorMessage: currentDraftInputIssue,
+        );
+        return null;
+      }
       final comment = await _repository.create(
         accountId: accountId,
         authEpoch: authEpoch,
@@ -261,15 +348,23 @@ final class CommentThreadController extends StateNotifier<CommentThreadState> {
         body: submittedBody,
       );
       if (!mounted) return null;
-      final newerDraft = state.draft == submittedBody ? '' : state.draft;
+      final inputUnchanged = _draftInputRevision == submittedRevision;
+      final newerDraft = inputUnchanged ? '' : state.draft;
       final items = [
         comment,
         ...state.items.where((item) => item.id != comment.id),
       ];
-      state = state.copyWith(items: items, draft: newerDraft, sending: false);
+      state = state.copyWith(
+        items: items,
+        draft: newerDraft,
+        sending: false,
+        draftValidationPending: inputUnchanged
+            ? false
+            : state.draftValidationPending,
+        draftInputIssue: inputUnchanged ? null : state.draftInputIssue,
+      );
       if (newerDraft.isNotEmpty) {
-        await _draftWrite;
-        await saveDraft(newerDraft);
+        await _persistDraft(accountId, authEpoch, newerDraft);
       }
       await _cacheCurrentSafely(items);
       return comment;
@@ -506,6 +601,15 @@ final class CommentThreadController extends StateNotifier<CommentThreadState> {
   }
 
   bool _current(int generation) => mounted && generation == _generation;
+
+  Future<void> _persistDraft(
+    String accountId,
+    int authEpoch,
+    String body,
+  ) async {
+    _queuedDraft = body;
+    await (_draftWrite ??= _drainDraftWrites(accountId, authEpoch));
+  }
 
   Future<void> _drainDraftWrites(String accountId, int authEpoch) async {
     while (_queuedDraft != null) {

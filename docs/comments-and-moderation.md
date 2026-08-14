@@ -93,6 +93,27 @@ a strict UTF-8 byte bound. Stored content is normalized raw text, never HTML or
 rendered Markdown. Attachments are not supported. URL count and deterministic
 spam/risk checks are bounded.
 
+The mobile composer mirrors that canonicalization with the pinned MIT-licensed
+`unorm_dart` NFKC implementation and pinned `characters` grapheme segmenter
+before it validates or counts text. Its visible counter therefore reports
+normalized Unicode scalar values, not UTF-16 code units or the raw
+pre-normalization input. A 6,000-UTF-16-code-unit raw ceiling plus a 64-code-unit
+and 64-scalar extended-grapheme-cluster ceiling rejects pathological pastes in
+linear time before normalization or draft persistence, while still accepting
+2,000 supplementary scalars and 2,000 decomposed Hangul syllables. Lone
+surrogate code units fail before JSON transport. Small counters update directly;
+larger accepted drafts are debounced and normalized by at most one background
+isolate at a time, with stale results discarded. Send and Save stay disabled
+while validation is pending or invalid, and invalid edits stay open with an
+explicit error. Explicit-send preparation atomically compares canonical body
+intent with the canonical last-attempted body, preserving the request ID for
+NFKC- or whitespace-equivalent retries and rotating it only for a genuinely
+different canonical body. Unsafe bidi/format controls, Unicode 17 NFKC sanity
+vectors, expansion, repeated blank lines, scalar/byte boundaries, URL limits,
+pathological clusters, and idempotent retry intent have Rust or Dart
+regressions. The server remains authoritative and repeats canonicalization plus
+the semantic safety, length, and link checks on create and edit.
+
 The synchronous pipeline is:
 
 1. Normalize and validate.

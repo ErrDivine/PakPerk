@@ -130,6 +130,16 @@ jobs:
           python3 scripts/test_verify_public_edge.py
           python3 scripts/test_validate_public_edge_workflow.py
           python3 scripts/validate_public_edge_workflow.py
+          python3 scripts/test_production_approval_evidence.py
+          python3 scripts/production_approval_evidence.py --help
+          python3 scripts/test_deployment_binding_evidence.py
+          python3 scripts/deployment_binding_evidence.py --help
+          python3 scripts/test_protected_service_exercise_evidence.py
+          python3 scripts/protected_service_exercise_evidence.py --help
+          python3 scripts/test_validate_protected_service_exercise_workflow.py
+          python3 scripts/validate_protected_service_exercise_workflow.py
+          python3 scripts/test_operational_gate_evidence.py
+          python3 scripts/operational_gate_evidence.py --help
       - name: Verify Docker context excludes local credentials
         run: python3 scripts/validate_dockerignore.py
       - name: Verify Android artifact-gate regressions

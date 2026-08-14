@@ -20,15 +20,36 @@ chat.
 - Feature state: `accounts=[on/off], library=[on/off], comments=[on/off]`
 
 Reviewer credentials are stored only in the portal's protected review fields.
-The disposable account must have a verified email, a current Terms acceptance,
-no real-user data, and no staff/moderator privileges. Record its expiry and
-rotation owner in the protected release evidence.
+For the first exact walkthrough, the disposable account must have a verified
+email but no public handle or current Terms/Community Guidelines acceptance, so
+the candidate's posting onboarding is exercised. It has no real-user data and no
+staff/moderator privileges. Record its reset procedure, expiry, and rotation
+owner in protected release evidence; do not weaken the flow by reusing an
+already-onboarded account without recording that limitation.
+
+### Disposable account lifecycle
+
+Before review, create a new account with a verified email, no handle, no policy
+acceptance, no real-user data, and no staff or moderator role. In protected
+release records, capture only its keyed account-reference hash, creation and
+expiry timestamps, reset procedure hash, and responsible owner; credentials and
+provider subject identifiers stay in the store portal or secret manager.
+
+After the walkthrough or expiry, submit and observe the documented deletion
+flow, confirm the application account and provider identity are absent, revoke
+or rotate every associated credential, and remove review fixtures that are not
+part of the reusable sanitized environment. Retain the deletion evidence
+reference, lifecycle/result hashes, UTC completion time, and owner approval. A
+failed cleanup, an expired account left usable, or an account that bypasses the
+onboarding steps blocks `reviewerFlowId` and store submission.
 
 ## Exact review walkthrough
 
 1. Launch the app without signing in. The **Read** tab opens a metadata-first
    paper feed. Swipe vertically to change papers and horizontally to move among
    Abstract, Introduction, and Connections when those capabilities are ready.
+   Use the arXiv action and verify the exact canonical record opens in the OS
+   browser, not an embedded web view.
 2. Open **You**. Privacy, Terms, Community Guidelines, Support, Settings,
    version, licenses, appearance, and cache controls are available without an
    account.
@@ -39,9 +60,14 @@ rotation owner in the protected release evidence.
 4. After sign-in, the pending Save completes. Open **You > To Read**, choose the
    saved paper, and verify it opens in **Read** on Abstract. Back returns to the
    To Read list. Removing and undoing a save update every visible Save control.
-5. Open a paper's **Comments** action. Post the exact harmless text
-   `Store review test comment`; then edit it to `Store review test comment
-   edited` and delete it. Draft text remains local until Send is selected.
+   Sign out; account-owned local state detaches while public reading remains, so
+   the next comment step begins from a genuine guest intent.
+5. Open a paper's **Comments** action. The retained guest intent must resume
+   after sign-in, ask this incomplete account to choose its one-time handle, and
+   require acceptance of the current Terms and Community Guidelines. Post the
+   exact harmless text `Store review test comment`; then edit it to `Store review
+   test comment edited` and delete it. Draft text remains local until Send is
+   selected, and the deleted comment must disappear from the public list.
 6. On the seeded review-only comment from `[review fixture handle]`, open the
    context menu and select **Report comment**. Choose a listed reason and
    submit. Reopen the menu and select **Report user**; verify the confirmation
@@ -86,9 +112,16 @@ rotation owner in the protected release evidence.
   release owner]`
 - Reviewer / UTC date: `[name or controlled identifier + timestamp]`
 - Signed artifact digest and SBOM digest: `[release evidence references]`
-- Physical-device acceptance evidence: `[controlled evidence reference]`
+- Physical-device acceptance evidence: `[schema-v3 controlled evidence
+  reference covering all 22 ordered scenarios / 141 assertions / 78 metrics,
+  the exact source-bound app-link origin, two-device removal, invalid refresh,
+  links, protection, cache bounds, and light/dark; not a statement or
+  repository-only result]`
 - Deletion completion/reference: `[controlled evidence reference; no token,
   email, comment body, or provider subject]`
+- Reviewer-account lifecycle/reference: `[controlled creation, expiry,
+  deletion, credential-rotation, and owner-approval reference; no credential,
+  email, or provider subject]`
 
 Leaving a field blank or writing “pending” is release-blocking. This template
 does not prove that a candidate, account, endpoint, or store submission exists.

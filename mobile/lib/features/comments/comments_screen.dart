@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -91,7 +92,10 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       next,
     ) {
       if (_composerScopeIdentity != composerScopeIdentity) return;
-      if (next.draft.isEmpty && _composer.text.isNotEmpty && !next.sending) {
+      if (next.draftInputIssue == null &&
+          next.draft.isEmpty &&
+          _composer.text.isNotEmpty &&
+          !next.sending) {
         _composer.clear();
       } else if (_composer.text.isEmpty && next.draft.isNotEmpty) {
         _composer.value = TextEditingValue(
@@ -290,6 +294,9 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   }) {
     final disabled =
         state.sending ||
+        state.draftValidationPending ||
+        state.draftInputIssue != null ||
+        state.draft.isEmpty ||
         state.creationDisabled ||
         offline ||
         draftOnlyMessage != null;
@@ -313,32 +320,57 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Expanded(
-                  child: TextField(
-                    key: const ValueKey('comment-composer'),
-                    controller: _composer,
-                    focusNode: _composerFocus,
-                    enabled: !state.sending,
-                    minLines: 1,
-                    maxLines: 5,
-                    maxLength: 2000,
-                    keyboardType: TextInputType.multiline,
-                    textCapitalization: TextCapitalization.sentences,
-                    textInputAction: TextInputAction.newline,
-                    decoration: const InputDecoration(
-                      labelText: 'Add a public comment',
-                      hintText: 'Discuss the paper…',
-                    ),
-                    onChanged: (value) => unawaited(
-                      ref
-                          .read(commentThreadProvider(widget.paperId).notifier)
-                          .saveDraft(value),
-                    ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        key: const ValueKey('comment-composer'),
+                        controller: _composer,
+                        focusNode: _composerFocus,
+                        enabled: !state.sending,
+                        minLines: 1,
+                        maxLines: 5,
+                        keyboardType: TextInputType.multiline,
+                        textCapitalization: TextCapitalization.sentences,
+                        textInputAction: TextInputAction.newline,
+                        decoration: const InputDecoration(
+                          labelText: 'Add a public comment',
+                          hintText: 'Discuss the paper…',
+                        ),
+                        onChanged: (value) => unawaited(
+                          ref
+                              .read(
+                                commentThreadProvider(widget.paperId).notifier,
+                              )
+                              .saveDraft(value),
+                        ),
+                      ),
+                      _CommentLengthCounter(
+                        controller: _composer,
+                        onValidation: (input, issue) {
+                          if (!mounted || _composer.text != input) return;
+                          ref
+                              .read(
+                                commentThreadProvider(widget.paperId).notifier,
+                              )
+                              .completeDraftValidation(
+                                body: input,
+                                issue: issue,
+                              );
+                        },
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 8),
                 IconButton.filled(
                   key: const ValueKey('comment-send'),
-                  tooltip: offline
+                  tooltip: state.draftInputIssue != null
+                      ? 'Fix comment text before sending'
+                      : state.draftValidationPending
+                      ? 'Checking comment text'
+                      : offline
                       ? 'Reconnect to send comment'
                       : draftOnlyMessage != null
                       ? 'Wait for account verification to send comment'
@@ -438,37 +470,11 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
   Future<void> _edit(PaperComment comment) async {
     final actionScope = _verifiedActionScope();
     if (actionScope == null) return;
-    final controller = TextEditingController(text: comment.body);
     final body = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Edit comment'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          minLines: 3,
-          maxLines: 8,
-          maxLength: 2000,
-          decoration: const InputDecoration(labelText: 'Public comment'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+      builder: (_) => _EditCommentDialog(initialBody: comment.body),
     );
-    controller.dispose();
-    if (!_actionScopeIsCurrent(actionScope) ||
-        body == null ||
-        validateCommentBody(body) != null) {
-      return;
-    }
+    if (!_actionScopeIsCurrent(actionScope) || body == null) return;
     await ref
         .read(commentThreadProvider(widget.paperId).notifier)
         .edit(comment, body);
@@ -973,6 +979,277 @@ final class _CommentCard extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _EditCommentDialog extends StatefulWidget {
+  const _EditCommentDialog({required this.initialBody});
+
+  final String initialBody;
+
+  @override
+  State<_EditCommentDialog> createState() => _EditCommentDialogState();
+}
+
+class _EditCommentDialogState extends State<_EditCommentDialog> {
+  late final TextEditingController _controller;
+  String? _validationError;
+  var _validationPending = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialBody);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final analysis = analyzeCommentBody(_controller.text);
+    if (analysis.issue case final issue?) {
+      setState(() => _validationError = issue);
+      return;
+    }
+    Navigator.pop(context, analysis.canonicalBody);
+  }
+
+  void _changed(String value) {
+    final rawIssue = validateCommentDraftInput(value);
+    setState(() {
+      _validationError = rawIssue;
+      _validationPending = value.isNotEmpty && rawIssue == null;
+    });
+  }
+
+  void _validated(String input, String? issue) {
+    if (!mounted || _controller.text != input) return;
+    setState(() {
+      _validationPending = false;
+      _validationError = issue;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: const Text('Edit comment'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _controller,
+          autofocus: true,
+          minLines: 3,
+          maxLines: 8,
+          decoration: InputDecoration(
+            labelText: 'Public comment',
+            errorText: _validationError,
+          ),
+          onChanged: _changed,
+        ),
+        _CommentLengthCounter(
+          controller: _controller,
+          onValidation: _validated,
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: _validationPending || _validationError != null
+            ? null
+            : _save,
+        child: const Text('Save'),
+      ),
+    ],
+  );
+}
+
+final class _CommentLengthCounter extends StatefulWidget {
+  const _CommentLengthCounter({
+    required this.controller,
+    required this.onValidation,
+  });
+
+  final TextEditingController controller;
+  final void Function(String input, String? issue) onValidation;
+
+  @override
+  State<_CommentLengthCounter> createState() => _CommentLengthCounterState();
+}
+
+class _CommentLengthCounterState extends State<_CommentLengthCounter> {
+  static const _backgroundThresholdCodeUnits = 256;
+  static const _debounceDuration = Duration(milliseconds: 120);
+
+  Timer? _debounce;
+  var _generation = 0;
+  var _count = 0;
+  String? _inputIssue;
+  var _measuring = false;
+  var _measurementInFlight = false;
+  String? _queuedInput;
+  int? _queuedGeneration;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_scheduleMeasurement);
+    _scheduleMeasurement();
+  }
+
+  @override
+  void didUpdateWidget(_CommentLengthCounter oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller == widget.controller) return;
+    oldWidget.controller.removeListener(_scheduleMeasurement);
+    widget.controller.addListener(_scheduleMeasurement);
+    _scheduleMeasurement();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    widget.controller.removeListener(_scheduleMeasurement);
+    super.dispose();
+  }
+
+  void _scheduleMeasurement() {
+    _debounce?.cancel();
+    final generation = ++_generation;
+    final input = widget.controller.text;
+    final inputIssue = validateCommentDraftInput(input);
+    if (inputIssue != null) {
+      _queuedInput = null;
+      _queuedGeneration = null;
+      setState(() {
+        _inputIssue = inputIssue;
+        _measuring = false;
+      });
+      _notifyValidation(input, inputIssue, generation);
+      return;
+    }
+    if (input.length <= _backgroundThresholdCodeUnits) {
+      final measurement = measureCommentBody(input);
+      _queuedInput = null;
+      _queuedGeneration = null;
+      setState(() {
+        _count = measurement.normalizedScalars;
+        _inputIssue = input.isEmpty ? null : measurement.issue;
+        _measuring = false;
+      });
+      _notifyValidation(input, measurement.issue, generation);
+      return;
+    }
+    setState(() {
+      _inputIssue = null;
+      _measuring = true;
+    });
+    _debounce = Timer(
+      _debounceDuration,
+      () => _measureInBackground(input, generation),
+    );
+  }
+
+  Future<void> _measureInBackground(String input, int generation) async {
+    if (_measurementInFlight) {
+      _queuedInput = input;
+      _queuedGeneration = generation;
+      return;
+    }
+    _measurementInFlight = true;
+    try {
+      final measurement = await compute(measureCommentBody, input);
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _count = measurement.normalizedScalars;
+        _inputIssue = measurement.issue;
+        _measuring = false;
+      });
+      _notifyValidation(input, measurement.issue, generation);
+    } on Object {
+      if (!mounted || generation != _generation) return;
+      const issue = 'This text cannot be counted safely.';
+      setState(() {
+        _inputIssue = issue;
+        _measuring = false;
+      });
+      _notifyValidation(input, issue, generation);
+    } finally {
+      _measurementInFlight = false;
+      if (mounted) {
+        final queuedInput = _queuedInput;
+        final queuedGeneration = _queuedGeneration;
+        _queuedInput = null;
+        _queuedGeneration = null;
+        if (queuedInput != null &&
+            queuedGeneration != null &&
+            queuedGeneration == _generation) {
+          unawaited(_measureInBackground(queuedInput, queuedGeneration));
+        }
+      }
+    }
+  }
+
+  void _notifyValidation(String input, String? issue, int generation) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          generation != _generation ||
+          widget.controller.text != input) {
+        return;
+      }
+      widget.onValidation(input, issue);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final overLimit = _inputIssue != null || _count > commentMaximumScalars;
+    final color = overLimit
+        ? Theme.of(context).colorScheme.error
+        : Theme.of(context).colorScheme.onSurfaceVariant;
+    final visibleText = _inputIssue != null
+        ? _inputIssue == commentRawInputTooLargeMessage
+              ? 'Too much text · $commentMaximumScalars max'
+              : _inputIssue == commentComplexTextMessage
+              ? 'Text is too complex · simplify it'
+              : _inputIssue ==
+                    'Comments are limited to $commentMaximumScalars characters.'
+              ? 'Too much text · $commentMaximumScalars max'
+              : _inputIssue == 'Comments may contain at most three links.'
+              ? 'Too many links · three max'
+              : 'Unsupported text · $commentMaximumScalars max'
+        : _measuring
+        ? 'Counting… / $commentMaximumScalars'
+        : '$_count / $commentMaximumScalars';
+    final semanticLabel = _inputIssue != null
+        ? _inputIssue!
+        : _measuring
+        ? 'Counting normalized comment characters'
+        : '$_count of $commentMaximumScalars normalized comment characters';
+    return Align(
+      alignment: AlignmentDirectional.centerEnd,
+      child: Semantics(
+        liveRegion: true,
+        label: semanticLabel,
+        child: ExcludeSemantics(
+          child: Text(
+            visibleText,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: color),
           ),
         ),
       ),

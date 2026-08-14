@@ -657,6 +657,36 @@ void main() {
       semantics.dispose();
       expect(find.text('Under review · only you can see this'), findsOneWidget);
 
+      final ownMenu = find.byKey(
+        const ValueKey('comment-actions-018f47a6-4b56-7f4c-8c7a-e2656e820012'),
+      );
+      await tester.scrollUntilVisible(
+        ownMenu,
+        160,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(ownMenu);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Public comment'),
+        'direction\u202eoverride',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pump();
+      expect(find.widgetWithText(AlertDialog, 'Edit comment'), findsOneWidget);
+      expect(
+        find.text('Remove unsupported control characters.'),
+        findsOneWidget,
+      );
+      expect(
+        fixture.controller.state.items.first.body,
+        '<b>Private plain text</b>',
+      );
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
       final otherMenu = find.byKey(
         const ValueKey('comment-actions-018f47a6-4b56-7f4c-8c7a-e2656e820011'),
       );
@@ -665,6 +695,9 @@ void main() {
         160,
         scrollable: find.byType(Scrollable).first,
       );
+      await Scrollable.ensureVisible(tester.element(otherMenu), alignment: 0.5);
+      await tester.pumpAndSettle();
+      expect(otherMenu.hitTestable(), findsOneWidget);
       await tester.tap(otherMenu);
       await tester.pumpAndSettle();
       expect(find.text('Report comment'), findsOneWidget);
@@ -679,6 +712,17 @@ void main() {
         tester.getRect(composer).bottom,
         lessThanOrEqualTo(tester.getRect(find.byType(NavigationBar)).top),
       );
+      await tester.enterText(composer, '\ufb00');
+      await tester.pump();
+      expect(find.text('2 / 2000'), findsOneWidget);
+      final oversizedDraft = List.filled(
+        commentMaximumRawCodeUnits + 1,
+        'x',
+      ).join();
+      await tester.enterText(composer, oversizedDraft);
+      await tester.pump();
+      expect(find.text('Too much text · 2000 max'), findsOneWidget);
+      expect(fixture.controller.state.draft, isNot(oversizedDraft));
       await tester.enterText(composer, 'A deliberate public comment');
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('comment-send')));
@@ -699,6 +743,79 @@ void main() {
             .onPressed,
         isNull,
       );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'composer disables send while normalized validation is pending or invalid',
+    (tester) async {
+      final fixture = await _fixture(
+        viewerAccountId: accountA,
+        page: const CommentPage(items: [], nextCursor: null),
+      );
+      addTearDown(fixture.database.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            commentViewerScopeProvider.overrideWithValue(
+              const CommentViewerScope.authenticated(
+                accountId: accountA,
+                authEpoch: 1,
+              ),
+            ),
+            commentComposerEligibleProvider.overrideWithValue(true),
+            verifiedCommentScopeProvider.overrideWithValue(const (
+              accountId: accountA,
+              authEpoch: 1,
+            )),
+            commentThreadProvider.overrideWith(
+              (ref, paperId) => fixture.controller,
+            ),
+            networkOfflineProvider.overrideWith((ref) => Stream.value(false)),
+          ],
+          child: MaterialApp(
+            home: CommentsScreen(
+              paperId: samplePaper.paperId,
+              paperTitle: samplePaper.title,
+              onClose: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final composer = find.byKey(const ValueKey('comment-composer'));
+      final send = find.byKey(const ValueKey('comment-send'));
+
+      await tester.enterText(composer, 'x' * 300);
+      await tester.pump();
+      expect(fixture.controller.state.draftValidationPending, isTrue);
+      expect(tester.widget<IconButton>(send).onPressed, isNull);
+      expect(find.text('Counting… / 2000'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 121));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(fixture.controller.state.draftValidationPending, isFalse);
+      expect(fixture.controller.state.draftInputIssue, isNull);
+      expect(tester.widget<IconButton>(send).onPressed, isNotNull);
+
+      await tester.enterText(
+        composer,
+        '\u0301' * (commentMaximumRawClusterScalars + 1),
+      );
+      await tester.pump();
+      expect(fixture.controller.state.draftValidationPending, isFalse);
+      expect(
+        fixture.controller.state.draftInputIssue,
+        commentComplexTextMessage,
+      );
+      expect(tester.widget<IconButton>(send).onPressed, isNull);
+      expect(find.text('Text is too complex · simplify it'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

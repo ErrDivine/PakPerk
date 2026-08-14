@@ -4,7 +4,10 @@
 # binds this inventory to the checked-in Pub/Gradle inputs and Gradle checksum
 # policy. Regenerate the production SBOM and review the complete purl delta
 # whenever the digest changes.
-contract-sha256:84823fe68bd5ae4be4aff903381170ca424af3a2b734de03747dd54940b04598
+# The pinned unorm_dart 0.3.2 and characters 1.4.1 additions are pure Dart and
+# therefore produce no change to prodReleaseRuntimeClasspath; the complete
+# reviewed Maven purl set remains unchanged.
+contract-sha256:cd2078c10bf44238a381996af84f9b920c160c01d4b83ff40af7b261149f1653
 pkg:maven/androidx.activity/activity-ktx@1.9.0?type=aar
 pkg:maven/androidx.activity/activity@1.9.0?type=aar
 pkg:maven/androidx.annotation/annotation-experimental@1.4.1?type=aar

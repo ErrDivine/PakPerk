@@ -85,16 +85,20 @@ alert engine and is not evidence that paging works.
 The platform adapter must import every rule without weakening it, supply the
 declared external synthetic/database/Kubernetes/Collector inputs, and retain
 immutable evidence of the imported policy digest, enabled rule IDs, receiver
-ownership, and successful staging page/ticket canaries. Collector failure
-signals must be observed outside the Collector's own failing export path. Do
-not enable production feature gates merely because repository validation or a
-Helm render passed.
+ownership, all 17 rules routed across owned `page` and `ticket` receiver
+classes in both environments, and successful staging page/ticket canaries.
+Collector failure signals must be observed outside the Collector's own failing
+export path. Do not enable production feature gates merely because repository
+validation or a Helm render passed.
 
 The packaged policy is deliberately production-only: its exact filters select
 production resource and service identities. Staging canaries must use a
 separately imported copy whose resource filters select staging, and that
-staging policy needs its own immutable adapter evidence. The chart rejects
-mounting the packaged production policy in a staging release.
+staging policy needs its own immutable adapter evidence. Bind a reviewed
+production-versus-staging parity diff: the canary copy may change the exact
+environment filters and staging receivers, but it may not weaken the six
+inputs, 17 rules, redaction, ownership, or 30-day retention policy. The chart
+rejects mounting the packaged production policy in a staging release.
 
 Before release:
 
@@ -116,9 +120,19 @@ Before release:
    valid events to export and unknown fields, identifiers, oversized payloads,
    redirects, and wrong content types to fail closed. Confirm no auth/cookie
    header is sent by the app.
-3. Inspect the live sink using canary values that are not personal/content data;
-   verify redacted fields are absent and expiry is configured/tested at 30 days.
-4. Restart one agent in staging and record replay volume/duplicates and recovery
+3. Inspect the staging sink using canary values that are not personal/content
+   data and verify the redacted fields are absent. Separately send a privacy-safe
+   canary through the exact dark production Collector/gateway/adapter images and
+   require the same bound commitment in the production sink. Process readiness
+   and a staging delivery do not replace this production-path observation.
+4. Bind the production and staging receiver/retention-policy identities
+   separately and verify both are configured at exactly 30 days. For the
+   production retention behavior test, seed a bounded commitment inventory,
+   observe every canary initially, observe the same set once between day 29 and
+   day 30, and observe none of them between day 30 and day 31. Record canonical
+   UTC seed/query timestamps and exact ages/counts so a canary that was never
+   ingested cannot pass as expired.
+5. Restart one agent in staging and record replay volume/duplicates and recovery
    time. Verify node coverage and that log rotation cannot outgrow storage.
 
 The immutable policy alerts on API readiness/error/latency and database

@@ -62,13 +62,13 @@ EXPECTED_STEP_NAMES = (
 # either digest requires reviewing the corresponding workflow block and tamper tests.
 EXPECTED_RUN_SHA256 = {
     "Verify exact reviewed main source and protected coordinates": (
-        "7335f399c6af2abb512ab24f506049098e44a290b95a09ee8fc44f04203904fb"
+        "8e0fa1fc1909878573561111b7810c600a49fda2c404ae155384d5672c25135d"
     ),
     "Verify protected macOS runner, pinned tools, and signed candidate manifest": (
         "68882b133588798cf62ff1a05ff8bb5198b9e8f191493f49a2e9af060f786ee0"
     ),
     "Run complete protected physical-device acceptance": (
-        "a2eaf5c826006e5941bd6c565b4e14ec0110bae7f0f889b6c2f7f874d59906c4"
+        "4d97f7e4cb8dc5ef499d3f5cf05c53850a489709565766936d17c7ea75cd7e89"
     ),
     "Validate and atomically package sanitized acceptance evidence": (
         "89f990f5eee2e0f796bde6b3e0f9d43b428899464c6e1ee0eb4820cdb1d7976d"
@@ -83,13 +83,13 @@ EXPECTED_RUN_SHA256 = {
 EXPECTED_STEP_SHA256 = {
     "checkout": "6bc05ec1a7fbb3a14b447485291230172fdfe398392d701d6fc4ec2a09b4ca50",
     "Verify exact reviewed main source and protected coordinates": (
-        "ba8bc9bd057d813a1c0c2e8823629ddc9ed8aeb41cae9a3098864e5891e4bf10"
+        "a0e153d5ddd7146825c5e27e1d6acdeb6080edd54a033269e417c13b098132be"
     ),
     "Verify protected macOS runner, pinned tools, and signed candidate manifest": (
         "9a12a6bdff51bf16c4e5658f91dac84f23d72320c71f93f1bee4b34b1b058465"
     ),
     "Run complete protected physical-device acceptance": (
-        "1c1fac1bf6bd08a6cdf4417e1a0303d26b44c769d13f643f570080ce16823870"
+        "827f863df6d15018a967a5eb4e335e271ca1daef790ae0ffc73c7438f03b3ba0"
     ),
     "Validate and atomically package sanitized acceptance evidence": (
         "bd51391cbdcec15dfc633d4068bacd6033ebd71be631021fe12277976c3818f7"
@@ -445,11 +445,14 @@ def _validate_semantic_contract(source: str) -> None:
         "object_pairs_hook=reject_duplicate_pairs",
         "parse_constant=reject_nonfinite_constant",
         'config.get("PAKPERK_API_BASE_URL")',
+        'config.get("PAKPERK_APP_LINK_ORIGIN")',
         'config.get("PAKPERK_OIDC_ISSUER_URL")',
         'config.get("PAKPERK_OIDC_CLIENT_ID")',
         'config.get("PAKPERK_FULLTEXT_POLICY") != "strict"',
         "any(ord(character) < 0x20 or ord(character) == 0x7f",
         "parsed.geturl() != value",
+        '"app_link_origin": app_link_origin',
+        f'"schema": {evidence.SOURCE_BINDING_SCHEMA_VERSION}',
         "os.O_WRONLY | os.O_CREAT | os.O_EXCL",
         'f"app_version={match.group(1)}\\n"',
         'f"build_number={match.group(2)}\\n"',
@@ -497,6 +500,27 @@ def _validate_semantic_contract(source: str) -> None:
         _require(candidate, fragment, "protected candidate and run binding")
 
     acceptance = _named_step(source, EXPECTED_STEP_NAMES[2])
+    request_schema = (
+        '          request = {\n'
+        f'              "schema": {evidence.EVIDENCE_SCHEMA_VERSION},\n'
+    )
+    if acceptance.count(request_schema) != 1:
+        raise RuntimeError(
+            "protected acceptance request lacks the exact schema version"
+        )
+    acceptance_contract = (
+        '              "acceptance_contract": {\n'
+        f'                  "schema": {evidence.EVIDENCE_SCHEMA_VERSION},\n'
+        f'                  "scenario_count": {evidence.SCENARIO_COUNT},\n'
+        f'                  "assertion_count": {evidence.ASSERTION_COUNT},\n'
+        f'                  "metric_count": {evidence.METRIC_COUNT},\n'
+        f'                  "sha256": "{evidence.SCENARIO_CONTRACT_SHA256}",\n'
+        "              },"
+    )
+    if acceptance.count(acceptance_contract) != 1:
+        raise RuntimeError(
+            "protected acceptance request lacks the exact scenario contract"
+        )
     scenario_match = re.search(
         r'(?ms)^              "scenarios": \[\n(?P<body>.*?)^              \],$',
         acceptance,
@@ -533,6 +557,20 @@ def _validate_semantic_contract(source: str) -> None:
         raise RuntimeError(
             "protected acceptance device roles differ from evidence contract"
         )
+    performance_contract = (
+        '              "performance_metric_rules": {\n'
+        '                  "cold_cache_launch": {\n'
+        '                      "cached_first_readable_frame_p95_ms": '
+        f'["range", 1, {evidence.CACHED_FIRST_READABLE_FRAME_P95_MAX_MS}],\n'
+        '                      "opening_transition_ms": '
+        f'["range", 1, {evidence.OPENING_TRANSITION_MAX_MS}],\n'
+        "                  },\n"
+        "              },"
+    )
+    if acceptance.count(performance_contract) != 1:
+        raise RuntimeError(
+            "protected acceptance request lacks the exact performance metric rules"
+        )
     for fragment in (
         "CANDIDATE_MANIFEST: ${{ steps.candidate.outputs.manifest }}",
         "PROVENANCE_MANIFEST: ${{ steps.candidate.outputs.provenance_manifest }}",
@@ -548,6 +586,8 @@ def _validate_semantic_contract(source: str) -> None:
         "BASH_ENV: /dev/null",
         "ENV: /dev/null",
         '"runner_session": runner_session_binding',
+        '"acceptance_contract": {',
+        '"performance_metric_rules": {',
         '"device_identity_hash_contract": {',
         '"algorithm": "HMAC-SHA256"',
         '"key_source": "root-owned-runner-device-identity-key"',
@@ -555,7 +595,9 @@ def _validate_semantic_contract(source: str) -> None:
         '"distinct_across_roles": True',
         '"retain_raw_device_identifiers": False',
         "source_binding = load(sys.argv[4], 32 * 1024, \"source binding\")",
+        f'source_binding["schema"] != {evidence.SOURCE_BINDING_SCHEMA_VERSION}',
         '"api_origin": source_binding["api_origin"]',
+        '"app_link_origin": source_binding["app_link_origin"]',
         "os.O_WRONLY | os.O_CREAT | os.O_EXCL",
         '--candidate-manifest "$CANDIDATE_MANIFEST"',
         '--provenance-manifest "$PROVENANCE_MANIFEST"',

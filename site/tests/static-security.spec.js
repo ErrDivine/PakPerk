@@ -86,6 +86,7 @@ test("the production image publishes only the curated public document tree", asy
     "site/assets/account-deletion.js",
     "site/account-deletion/index.html",
     "site/community-guidelines/index.html",
+    "site/guide/index.html",
     "site/open-source-licenses/index.html",
     "site/privacy/index.html",
     "site/support/index.html",
@@ -96,6 +97,17 @@ test("the production image publishes only the curated public document tree", asy
   expect(releaseScript).not.toMatch(/(?:cp|install)[^\n]*site\/\s/);
   expect(releaseScript).not.toContain("site/config.js");
   expect(releaseScript).not.toContain("site/.well-known");
+
+  const home = await readFile(path.join(SITE_ROOT, "index.html"), "utf8");
+  const guide = await readFile(path.join(SITE_ROOT, "guide", "index.html"), "utf8");
+  expect(home).toContain('href="/guide/"');
+  for (const userAction of [
+    "Clear reading cache",
+    "Clear all data",
+    "Delete account",
+  ]) {
+    expect(guide).toContain(userAction);
+  }
 });
 
 test("published safety documents keep reporting and blocking distinct", async () => {

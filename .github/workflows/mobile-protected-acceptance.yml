@@ -184,10 +184,12 @@ jobs:
           if config.get("PAKPERK_FULLTEXT_POLICY") != "strict":
               raise SystemExit("staging mobile config must use strict full-text policy")
           api_origin = config.get("PAKPERK_API_BASE_URL")
+          app_link_origin = config.get("PAKPERK_APP_LINK_ORIGIN")
           issuer = config.get("PAKPERK_OIDC_ISSUER_URL")
           client_id = config.get("PAKPERK_OIDC_CLIENT_ID")
           for label, value, allow_path in (
               ("staging API origin", api_origin, False),
+              ("staging app-link origin", app_link_origin, False),
               ("staging OIDC issuer", issuer, True),
           ):
               if not isinstance(value, str):
@@ -231,12 +233,13 @@ jobs:
           assert match is not None
           binding = {
               "api_origin": api_origin,
+              "app_link_origin": app_link_origin,
               "app_version": match.group(1),
               "build_number": match.group(2),
               "environment": "staging",
               "oidc_client_id": client_id,
               "oidc_issuer": issuer,
-              "schema": 1,
+              "schema": 2,
               "source_revision": os.environ["REQUESTED_REVISION"],
           }
           serialized = (
@@ -586,6 +589,7 @@ jobs:
           source_binding = load(sys.argv[4], 32 * 1024, "source binding")
           if set(source_binding) != {
               "api_origin",
+              "app_link_origin",
               "app_version",
               "build_number",
               "environment",
@@ -596,7 +600,7 @@ jobs:
           }:
               raise SystemExit("source binding does not match its closed key contract")
           if (
-              source_binding["schema"] != 1
+              source_binding["schema"] != 2
               or isinstance(source_binding["schema"], bool)
               or source_binding["source_revision"] != os.environ["REQUESTED_REVISION"]
               or source_binding["environment"] != "staging"
@@ -605,7 +609,7 @@ jobs:
           ):
               raise SystemExit("source binding identity does not match the protected run")
           request = {
-              "schema": 2,
+              "schema": 3,
               "source_revision": os.environ["REQUESTED_REVISION"],
               "candidate_id": os.environ["CANDIDATE_ID"],
               "candidate": candidate_binding,
@@ -614,6 +618,7 @@ jobs:
               "build_number": source_binding["build_number"],
               "environment": "staging",
               "api_origin": source_binding["api_origin"],
+              "app_link_origin": source_binding["app_link_origin"],
               "oidc_issuer": source_binding["oidc_issuer"],
               "oidc_client_id": source_binding["oidc_client_id"],
               "run": {
@@ -621,6 +626,19 @@ jobs:
                   "github_run_attempt": os.environ["RUN_ATTEMPT_BINDING"],
                   "challenge": os.environ["RUN_CHALLENGE"],
                   "not_before": os.environ["RUN_NOT_BEFORE"],
+              },
+              "acceptance_contract": {
+                  "schema": 3,
+                  "scenario_count": 22,
+                  "assertion_count": 141,
+                  "metric_count": 78,
+                  "sha256": "f1a01b2ce342530d1a867fbe8c643ea3082d711bedbb725868171d76ee4198c4",
+              },
+              "performance_metric_rules": {
+                  "cold_cache_launch": {
+                      "cached_first_readable_frame_p95_ms": ["range", 1, 1500],
+                      "opening_transition_ms": ["range", 1, 700],
+                  },
               },
               "device_identity_hash_contract": {
                   "algorithm": "HMAC-SHA256",
@@ -637,6 +655,7 @@ jobs:
                   "ipad_keyboard_secondary_sync",
               ],
               "scenarios": [
+                  "fresh_install_guest_reader",
                   "cold_cache_launch",
                   "vertical_20_papers_latency",
                   "introduction_intent_only",
@@ -647,10 +666,15 @@ jobs:
                   "comment_create_edit_delete",
                   "report_and_block",
                   "expired_token_refresh",
+                  "invalid_refresh_to_guest",
                   "account_deletion_reauthentication",
                   "offline_outbox_process_death_recovery",
                   "reduced_motion_startup",
                   "strict_full_text_policy",
+                  "physical_app_link_dispatch",
+                  "signed_device_data_protection",
+                  "signed_device_cache_bounds",
+                  "light_dark_appearance",
                   "root_navigation_safe_area",
                   "hardware_keyboard_navigation",
               ],

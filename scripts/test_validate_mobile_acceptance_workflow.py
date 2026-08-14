@@ -170,6 +170,20 @@ class MobileAcceptanceWorkflowTests(unittest.TestCase):
             "            /tmp/staging.json \\\n",
         )
 
+    def test_source_binding_schema_cannot_drop_app_link_contract(self) -> None:
+        original = '              "schema": 2,\n'
+        self.assertIn(original, SOURCE)
+        tampered = SOURCE.replace(original, '              "schema": 1,\n', 1)
+        with self.assertRaisesRegex(RuntimeError, "exact staging source contract"):
+            validator._validate_semantic_contract(tampered)
+
+    def test_app_link_origin_cannot_be_removed_from_driver_request(self) -> None:
+        original = '              "app_link_origin": source_binding["app_link_origin"],\n'
+        self.assertIn(original, SOURCE)
+        tampered = SOURCE.replace(original, "", 1)
+        with self.assertRaisesRegex(RuntimeError, "private protected driver invocation"):
+            validator._validate_semantic_contract(tampered)
+
     def test_staging_config_no_follow_read_cannot_be_weakened(self) -> None:
         self.assert_tamper_rejected(
             '          if hasattr(os, "O_NOFOLLOW"):\n'
@@ -353,6 +367,49 @@ class MobileAcceptanceWorkflowTests(unittest.TestCase):
 
     def test_required_scenario_removal_is_rejected(self) -> None:
         self.assert_tamper_rejected('                  "expired_token_refresh",\n', "")
+
+    def test_schema_v3_request_cannot_be_downgraded(self) -> None:
+        self.assert_tamper_rejected(
+            '          request = {\n              "schema": 3,\n',
+            '          request = {\n              "schema": 2,\n',
+        )
+
+    def test_schema_v3_contract_count_cannot_be_changed(self) -> None:
+        self.assert_tamper_rejected(
+            '                  "assertion_count": 141,\n',
+            '                  "assertion_count": 140,\n',
+        )
+
+    def test_schema_v3_contract_digest_cannot_be_changed(self) -> None:
+        self.assert_tamper_rejected(
+            '                  "sha256": "f1a01b2ce342530d1a867fbe8c643ea3082d711bedbb725868171d76ee4198c4",\n',
+            '                  "sha256": "01a01b2ce342530d1a867fbe8c643ea3082d711bedbb725868171d76ee4198c4",\n',
+        )
+
+    def test_new_schema_v3_scenario_removal_is_rejected(self) -> None:
+        self.assert_tamper_rejected(
+            '                  "physical_app_link_dispatch",\n', ""
+        )
+
+    def test_cached_first_readable_p95_limit_cannot_be_weakened(self) -> None:
+        original = (
+            '                      "cached_first_readable_frame_p95_ms": '
+            '["range", 1, 1500],\n'
+        )
+        self.assertIn(original, SOURCE)
+        tampered = SOURCE.replace(original, original.replace("1500", "1501"), 1)
+        with self.assertRaisesRegex(RuntimeError, "exact performance metric rules"):
+            validator._validate_semantic_contract(tampered)
+
+    def test_opening_transition_limit_cannot_be_weakened(self) -> None:
+        original = (
+            '                      "opening_transition_ms": '
+            '["range", 1, 700],\n'
+        )
+        self.assertIn(original, SOURCE)
+        tampered = SOURCE.replace(original, original.replace("700", "701"), 1)
+        with self.assertRaisesRegex(RuntimeError, "exact performance metric rules"):
+            validator._validate_semantic_contract(tampered)
 
     def test_challenge_keyed_device_identity_contract_cannot_be_removed(self) -> None:
         self.assert_tamper_rejected(

@@ -18,13 +18,15 @@ fi
 temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/pakperk-release-site.XXXXXX")"
 trap 'rm -rf "$temporary_dir"' EXIT
 install -d "$temporary_dir/assets" "$temporary_dir/account-deletion" \
-  "$temporary_dir/community-guidelines" "$temporary_dir/open-source-licenses" \
+  "$temporary_dir/community-guidelines" "$temporary_dir/guide" \
+  "$temporary_dir/open-source-licenses" \
   "$temporary_dir/privacy" "$temporary_dir/support" "$temporary_dir/terms"
 install -m 0644 "$project_dir/site/index.html" "$project_dir/site/404.html" "$temporary_dir/"
 install -m 0644 "$project_dir/site/assets/site.css" "$project_dir/site/assets/site.js" \
   "$project_dir/site/assets/account-deletion.js" "$temporary_dir/assets/"
 install -m 0644 "$project_dir/site/account-deletion/index.html" "$temporary_dir/account-deletion/"
 install -m 0644 "$project_dir/site/community-guidelines/index.html" "$temporary_dir/community-guidelines/"
+install -m 0644 "$project_dir/site/guide/index.html" "$temporary_dir/guide/"
 install -m 0644 "$project_dir/site/open-source-licenses/index.html" "$temporary_dir/open-source-licenses/"
 install -m 0644 "$notices" "$temporary_dir/open-source-licenses/notices.txt"
 install -m 0644 "$project_dir/site/privacy/index.html" "$temporary_dir/privacy/"

@@ -463,6 +463,11 @@ mod tests {
     fn comment_body_is_normalized_bounded_and_debug_redacted() {
         let body = CommentBody::parse("  Ａ useful point\r\n\r\n\r\nnext\tline  ").unwrap();
         assert_eq!(body.as_str(), "A useful point\n\nnext line");
+        assert_eq!(CommentBody::parse("\u{212b}").unwrap().as_str(), "\u{00c5}");
+        assert_eq!(
+            CommentBody::parse("\u{1100}\u{1161}").unwrap().as_str(),
+            "\u{ac00}"
+        );
         assert_eq!(format!("{body:?}"), "CommentBody([redacted])");
         assert!(CommentBody::parse("\u{0007}").is_err());
         assert!(CommentBody::parse("direction\u{202e}override").is_err());
@@ -471,7 +476,14 @@ mod tests {
             CommentBody::parse("one\n \n\t\n\n two").unwrap().as_str(),
             "one\n\n two"
         );
+        let compatibility_ligatures = "\u{fb00}".repeat(1_500);
+        assert_eq!(compatibility_ligatures.chars().count(), 1_500);
+        assert!(CommentBody::parse(&compatibility_ligatures).is_err());
+        assert!(CommentBody::parse(&"x".repeat(COMMENT_MAX_SCALARS)).is_ok());
         assert!(CommentBody::parse(&"x".repeat(COMMENT_MAX_SCALARS + 1)).is_err());
+        let maximum_width_utf8 = "😀".repeat(COMMENT_MAX_SCALARS);
+        assert_eq!(maximum_width_utf8.len(), COMMENT_MAX_BYTES);
+        assert!(CommentBody::parse(&maximum_width_utf8).is_ok());
         assert!(
             CommentBody::parse("https://a.test https://b.test https://c.test https://d.test")
                 .is_err()

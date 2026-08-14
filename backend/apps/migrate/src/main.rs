@@ -415,9 +415,45 @@ mod tests {
             version_one
                 .apply(super::MIGRATOR.iter().next().unwrap())
                 .await?;
-            sqlx::query(
-                r#"
+            seed_version_one_fixture(&mut version_one).await?;
+            let applied_version: Option<i64> = sqlx::query_scalar(
+                "SELECT max(version) FROM _sqlx_migrations WHERE success = TRUE",
+            )
+            .fetch_one(&mut version_one)
+            .await?;
+            anyhow::ensure!(applied_version == Some(1));
+            drop(version_one);
+
+            let config = test_config(&scoped_url, "integration-backup-v1-20260801");
+            run(&config).await?;
+            let mut upgraded = PgConnection::connect(scoped_url.as_str()).await?;
+            assert_version_one_fixture(&mut upgraded).await?;
+            drop(upgraded);
+            // The upgraded schema is also a supported input. Re-running must
+            // be a no-op verification and must preserve version-one data.
+            run(&config).await?;
+            let mut upgraded = PgConnection::connect(scoped_url.as_str()).await?;
+            assert_version_one_fixture(&mut upgraded).await?;
+            Ok::<_, anyhow::Error>(())
+        }
+        .await;
+        let cleanup = drop_test_database(admin, &database).await;
+        outcome?;
+        cleanup
+    }
+
+    async fn seed_version_one_fixture(connection: &mut PgConnection) -> anyhow::Result<()> {
+        seed_version_one_paper(connection).await?;
+        seed_version_one_thread(connection).await?;
+        seed_version_one_messages(connection).await?;
+        seed_version_one_rate_limit(connection).await
+    }
+
+    async fn seed_version_one_paper(connection: &mut PgConnection) -> anyhow::Result<()> {
+        sqlx::query(
+            r#"
             INSERT INTO papers (
+                id,
                 arxiv_base_id,
                 arxiv_version,
                 title,
@@ -431,6 +467,7 @@ mod tests {
                 pdf_url,
                 metadata_fetched_at
             ) VALUES (
+                '10000000-0000-4000-8000-000000000001'::uuid,
                 'phase6-migration-fixture',
                 1,
                 'Phase 6 migration fixture',
@@ -445,35 +482,287 @@ mod tests {
                 '2024-01-01T00:00:00Z'::timestamptz
             )
             "#,
-            )
-            .execute(&mut version_one)
-            .await?;
-            let applied_version: Option<i64> = sqlx::query_scalar(
-                "SELECT max(version) FROM _sqlx_migrations WHERE success = TRUE",
-            )
-            .fetch_one(&mut version_one)
-            .await?;
-            anyhow::ensure!(applied_version == Some(1));
-            drop(version_one);
+        )
+        .execute(&mut *connection)
+        .await?;
+        sqlx::query(
+            r"
+            UPDATE paper_processing
+            SET generation = 3,
+                stage = 'introduction_ready',
+                introduction_ready = TRUE,
+                parser_version = 'phase6-parser-v1'
+            WHERE paper_id = '10000000-0000-4000-8000-000000000001'::uuid
+            ",
+        )
+        .execute(&mut *connection)
+        .await?;
+        Ok(())
+    }
 
-            let config = test_config(&scoped_url, "integration-backup-v1-20260801");
-            run(&config).await?;
-            // The upgraded schema is also a supported input. Re-running must
-            // be a no-op verification and must preserve version-one data.
-            run(&config).await?;
-            let mut upgraded = PgConnection::connect(scoped_url.as_str()).await?;
-            let fixture_title: String = sqlx::query_scalar(
-                "SELECT title FROM public.papers WHERE arxiv_base_id = 'phase6-migration-fixture'",
+    async fn seed_version_one_thread(connection: &mut PgConnection) -> anyhow::Result<()> {
+        sqlx::query(
+            r"
+            INSERT INTO chat_threads (
+                id,
+                anonymous_session_id,
+                paper_id,
+                generation,
+                created_at,
+                updated_at
+            ) VALUES (
+                '20000000-0000-4000-8000-000000000001'::uuid,
+                '30000000-0000-4000-8000-000000000001'::uuid,
+                '10000000-0000-4000-8000-000000000001'::uuid,
+                3,
+                '2024-01-02T03:04:05Z'::timestamptz,
+                '2024-01-02T03:05:06Z'::timestamptz
             )
-            .fetch_one(&mut upgraded)
-            .await?;
-            anyhow::ensure!(fixture_title == "Phase 6 migration fixture");
-            Ok::<_, anyhow::Error>(())
-        }
-        .await;
-        let cleanup = drop_test_database(admin, &database).await;
-        outcome?;
-        cleanup
+            ",
+        )
+        .execute(connection)
+        .await?;
+        Ok(())
+    }
+
+    async fn seed_version_one_messages(connection: &mut PgConnection) -> anyhow::Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO chat_messages (
+                id,
+                thread_id,
+                role,
+                content,
+                source_metadata,
+                provider_request_id,
+                model_id,
+                created_at
+            ) VALUES
+                (
+                    '40000000-0000-4000-8000-000000000001'::uuid,
+                    '20000000-0000-4000-8000-000000000001'::uuid,
+                    'user',
+                    'What is the representative result?',
+                    '[]'::jsonb,
+                    NULL,
+                    NULL,
+                    '2024-01-02T03:06:07Z'::timestamptz
+                ),
+                (
+                    '40000000-0000-4000-8000-000000000002'::uuid,
+                    '20000000-0000-4000-8000-000000000001'::uuid,
+                    'assistant',
+                    'The representative result survives the upgrade.',
+                    '[{"section":"introduction"}]'::jsonb,
+                    'phase6-provider-request-v1',
+                    'phase6-model-v1',
+                    '2024-01-02T03:07:08Z'::timestamptz
+                )
+            "#,
+        )
+        .execute(connection)
+        .await?;
+        Ok(())
+    }
+
+    async fn seed_version_one_rate_limit(connection: &mut PgConnection) -> anyhow::Result<()> {
+        sqlx::query(
+            r"
+            UPDATE external_rate_limits
+            SET last_started_at = '2024-01-02T03:08:09Z'::timestamptz
+            WHERE service = 'arxiv'
+            ",
+        )
+        .execute(connection)
+        .await?;
+        Ok(())
+    }
+
+    async fn assert_version_one_fixture(connection: &mut PgConnection) -> anyhow::Result<()> {
+        assert_version_one_paper(connection).await?;
+        assert_version_one_thread(connection).await?;
+        assert_version_one_user_message(connection).await?;
+        assert_version_one_assistant_message(connection).await?;
+        assert_version_one_rate_limit(connection).await
+    }
+
+    async fn assert_version_one_paper(connection: &mut PgConnection) -> anyhow::Result<()> {
+        let paper: (String, i32, String, String) = sqlx::query_as(
+            r"
+            SELECT id::text, arxiv_version, title, abstract
+            FROM public.papers
+            WHERE arxiv_base_id = 'phase6-migration-fixture'
+            ",
+        )
+        .fetch_one(&mut *connection)
+        .await?;
+        anyhow::ensure!(
+            paper
+                == (
+                    "10000000-0000-4000-8000-000000000001".to_owned(),
+                    1,
+                    "Phase 6 migration fixture".to_owned(),
+                    "A representative row created by schema version one.".to_owned(),
+                )
+        );
+
+        let processing: (String, i32, String, bool, bool, Option<String>) = sqlx::query_as(
+            r"
+            SELECT
+                paper_id::text,
+                generation,
+                stage,
+                metadata_ready,
+                introduction_ready,
+                parser_version
+            FROM public.paper_processing
+            WHERE paper_id = '10000000-0000-4000-8000-000000000001'::uuid
+            ",
+        )
+        .fetch_one(&mut *connection)
+        .await?;
+        anyhow::ensure!(
+            processing
+                == (
+                    "10000000-0000-4000-8000-000000000001".to_owned(),
+                    3,
+                    "introduction_ready".to_owned(),
+                    true,
+                    true,
+                    Some("phase6-parser-v1".to_owned()),
+                )
+        );
+        Ok(())
+    }
+
+    async fn assert_version_one_thread(connection: &mut PgConnection) -> anyhow::Result<()> {
+        let thread: (String, String, String, i32, bool, bool) = sqlx::query_as(
+            r"
+            SELECT
+                id::text,
+                anonymous_session_id::text,
+                paper_id::text,
+                generation,
+                created_at = '2024-01-02T03:04:05Z'::timestamptz,
+                updated_at = '2024-01-02T03:05:06Z'::timestamptz
+            FROM public.chat_threads
+            WHERE id = '20000000-0000-4000-8000-000000000001'::uuid
+            ",
+        )
+        .fetch_one(&mut *connection)
+        .await?;
+        anyhow::ensure!(
+            thread
+                == (
+                    "20000000-0000-4000-8000-000000000001".to_owned(),
+                    "30000000-0000-4000-8000-000000000001".to_owned(),
+                    "10000000-0000-4000-8000-000000000001".to_owned(),
+                    3,
+                    true,
+                    true,
+                )
+        );
+        Ok(())
+    }
+
+    async fn assert_version_one_user_message(connection: &mut PgConnection) -> anyhow::Result<()> {
+        let user_message: (
+            String,
+            String,
+            String,
+            bool,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ) = sqlx::query_as(
+            r"
+            SELECT
+                id::text,
+                role,
+                content,
+                source_metadata = '[]'::jsonb,
+                provider_request_id,
+                model_id,
+                prompt_version
+            FROM public.chat_messages
+            WHERE id = '40000000-0000-4000-8000-000000000001'::uuid
+            ",
+        )
+        .fetch_one(&mut *connection)
+        .await?;
+        anyhow::ensure!(
+            user_message
+                == (
+                    "40000000-0000-4000-8000-000000000001".to_owned(),
+                    "user".to_owned(),
+                    "What is the representative result?".to_owned(),
+                    true,
+                    None,
+                    None,
+                    None,
+                )
+        );
+        Ok(())
+    }
+
+    async fn assert_version_one_assistant_message(
+        connection: &mut PgConnection,
+    ) -> anyhow::Result<()> {
+        let assistant_message: (
+            String,
+            String,
+            String,
+            bool,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ) = sqlx::query_as(
+            r#"
+            SELECT
+                id::text,
+                role,
+                content,
+                source_metadata = '[{"section":"introduction"}]'::jsonb,
+                provider_request_id,
+                model_id,
+                prompt_version
+            FROM public.chat_messages
+            WHERE id = '40000000-0000-4000-8000-000000000002'::uuid
+            "#,
+        )
+        .fetch_one(&mut *connection)
+        .await?;
+        anyhow::ensure!(
+            assistant_message
+                == (
+                    "40000000-0000-4000-8000-000000000002".to_owned(),
+                    "assistant".to_owned(),
+                    "The representative result survives the upgrade.".to_owned(),
+                    true,
+                    Some("phase6-provider-request-v1".to_owned()),
+                    Some("phase6-model-v1".to_owned()),
+                    None,
+                )
+        );
+        Ok(())
+    }
+
+    async fn assert_version_one_rate_limit(connection: &mut PgConnection) -> anyhow::Result<()> {
+        let arxiv_rate_limit: (String, bool, bool) = sqlx::query_as(
+            r"
+            SELECT
+                service,
+                last_started_at = '2024-01-02T03:08:09Z'::timestamptz,
+                blocked_until = '1970-01-01T00:00:00Z'::timestamptz
+            FROM public.external_rate_limits
+            WHERE service = 'arxiv'
+            ",
+        )
+        .fetch_one(&mut *connection)
+        .await?;
+        anyhow::ensure!(arxiv_rate_limit == ("arxiv".to_owned(), true, true));
+
+        Ok(())
     }
 
     #[tokio::test]

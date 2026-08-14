@@ -221,13 +221,16 @@ key through a spoofed forwarding header.
 
 The cluster-scoped ingress-nginx release must also apply
 `deploy/helm/ingress-nginx-production-values.yaml`: HSTS is enabled for two
-years with `includeSubDomains` and `preload`. The site, API, and telemetry
-origins repeat the exact header as defense in depth, but that does not replace
-TLS-edge enforcement. After every controller or public-ingress change, run
+years with `includeSubDomains` and `preload`, and gzip is enabled for public
+JSON responses of at least 256 bytes. The site, API, and telemetry origins
+repeat the exact header as defense in depth, while the API origin also retains
+compression negotiation for direct deployments; neither fallback replaces the
+TLS-edge contract. After every controller or public-ingress change, run
 `scripts/verify_public_edge.sh SITE_ORIGIN API_ORIGIN TELEMETRY_ORIGIN`; any
-redirect, duplicate/missing header, or value mismatch blocks rollout. Pin and
-review the ingress-nginx chart/image separately; this application chart does
-not take ownership of the shared controller.
+redirect, duplicate/missing header, value mismatch, corrupt/truncated gzip,
+unbounded decoded feed, or invalid feed envelope blocks rollout. Pin and review
+the ingress-nginx chart/image separately; this application chart does not take
+ownership of the shared controller.
 
 `networkPolicy.ingressController.namespaceSelector` and `podSelector` must
 each contain at least one non-empty exact-match label. Empty selectors would

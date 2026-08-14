@@ -142,6 +142,28 @@ The signed deletion authority contains a keyed fingerprint and encrypted
 provider recovery coordinates, not profile or comment content. Restore is
 fail-closed until deletion authority is reapplied.
 
+## Monitored support-contact canary
+
+Run this bounded canary against the exact published release surfaces before
+approving `legalReviewId`:
+
+1. Create one unique, non-sensitive canary label. Do not include credentials,
+   account identifiers, user-generated content, or production incident data.
+2. Submit the label once through the published `/support/` path and once through
+   the configured support email route shown to users. Do not retry either path
+   until its result is classified.
+3. Confirm both messages reach the monitored queue, are acknowledged within the
+   published support target, and can be correlated to the two attempts without
+   exposing message bodies in release evidence.
+4. Remove or close the canary records under the normal support retention policy.
+   Retain only the UTC window, attempt/success counts, route/version hashes,
+   queue or ticket reference hashes, cleanup result, and support-owner approval
+   in the protected manifest.
+
+A missing route, late or absent receipt, duplicate delivery, failed cleanup, or
+unmonitored destination is release-blocking. The repository validator checks
+the closed result shape; it cannot create the live delivery or human approval.
+
 ## Submission evidence (must be completed externally)
 
 - Release owner / review date: **pending**

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/core/account/account_data_write_barrier.dart';
@@ -126,6 +127,189 @@ void main() {
       );
     },
   );
+
+  test(
+    'invalid visible input cannot replace, persist, or send the prior draft',
+    () async {
+      final remote = _Remote(
+        page: const CommentPage(items: [], nextCursor: null),
+      );
+      final fixture = await _fixture(remote: remote);
+      addTearDown(fixture.database.close);
+      final controller = CommentThreadController(
+        repository: fixture.repository,
+        paperId: samplePaper.paperId,
+        viewer: const CommentViewerScope.authenticated(
+          accountId: accountA,
+          authEpoch: 1,
+        ),
+      );
+      addTearDown(controller.dispose);
+      await controller.load();
+      await controller.saveDraft('Prior valid draft');
+
+      for (final invalidBody in <String>[
+        _repeat('x', commentMaximumRawCodeUnits + 1),
+        'before${String.fromCharCode(0xd800)}',
+        _repeat('\u0301', commentMaximumRawClusterScalars + 1),
+      ]) {
+        await controller.saveDraft(invalidBody);
+        expect(controller.state.draft, 'Prior valid draft');
+        expect(controller.state.draftInputIssue, isNotNull);
+        expect(
+          (await fixture.local.loadDraft(accountA, samplePaper.paperId))?.body,
+          'Prior valid draft',
+        );
+        expect(await controller.send(), isNull);
+        expect(remote.createCalls, 0);
+      }
+
+      await controller.saveDraft('Recovered valid draft');
+      expect(controller.state.draftInputIssue, isNull);
+      expect(controller.state.errorMessage, isNull);
+      expect(await controller.send(), isNotNull);
+      expect(remote.createCalls, 1);
+    },
+  );
+
+  test(
+    'only the current completed normalized validation enables send',
+    () async {
+      final remote = _Remote(
+        page: const CommentPage(items: [], nextCursor: null),
+      );
+      final fixture = await _fixture(remote: remote);
+      addTearDown(fixture.database.close);
+      final controller = CommentThreadController(
+        repository: fixture.repository,
+        paperId: samplePaper.paperId,
+        viewer: const CommentViewerScope.authenticated(
+          accountId: accountA,
+          authEpoch: 1,
+        ),
+      );
+      addTearDown(controller.dispose);
+      await controller.load();
+      final body = _repeat('x', 300);
+      await controller.saveDraft(body);
+
+      expect(controller.state.draftValidationPending, isTrue);
+      controller.completeDraftValidation(body: 'stale body', issue: null);
+      expect(controller.state.draftValidationPending, isTrue);
+      controller.completeDraftValidation(
+        body: body,
+        issue: 'Comments may contain at most three links.',
+      );
+      expect(controller.state.draftValidationPending, isFalse);
+      expect(
+        controller.state.draftInputIssue,
+        'Comments may contain at most three links.',
+      );
+      expect(await controller.send(), isNull);
+      expect(remote.createCalls, 0);
+
+      await controller.saveDraft('Recovered valid draft');
+      expect(controller.state.draftValidationPending, isTrue);
+      controller.completeDraftValidation(
+        body: 'Recovered valid draft',
+        issue: null,
+      );
+      expect(controller.state.draftValidationPending, isFalse);
+      expect(await controller.send(), isNotNull);
+      expect(remote.createCalls, 1);
+    },
+  );
+
+  test(
+    'late draft hydration cannot clear a newer invalid input issue',
+    () async {
+      final remote = _Remote(
+        page: const CommentPage(items: [], nextCursor: null),
+      );
+      final fixture = await _fixture(remote: remote);
+      addTearDown(fixture.database.close);
+      await fixture.local.saveDraft(
+        accountId: accountA,
+        paperId: samplePaper.paperId,
+        body: 'Saved database draft',
+        clientRequestId: '018f47a6-4b56-7f4c-8c7a-e2656e820099',
+      );
+      final controller = CommentThreadController(
+        repository: fixture.repository,
+        paperId: samplePaper.paperId,
+        viewer: const CommentViewerScope.authenticated(
+          accountId: accountA,
+          authEpoch: 1,
+        ),
+      );
+      addTearDown(controller.dispose);
+
+      final transactionStarted = Completer<void>();
+      final releaseTransaction = Completer<void>();
+      final blockingTransaction = fixture.database.transaction(() async {
+        transactionStarted.complete();
+        await releaseTransaction.future;
+      });
+      addTearDown(() async {
+        if (!releaseTransaction.isCompleted) releaseTransaction.complete();
+        await blockingTransaction;
+      });
+      await transactionStarted.future;
+
+      final load = controller.load();
+      await Future<void>.delayed(Duration.zero);
+      final invalidVisibleInput = _repeat('x', commentMaximumRawCodeUnits + 1);
+      await controller.saveDraft(invalidVisibleInput);
+      expect(controller.state.draftInputIssue, commentRawInputTooLargeMessage);
+
+      releaseTransaction.complete();
+      await blockingTransaction;
+      await load;
+
+      expect(controller.state.draft, isEmpty);
+      expect(controller.state.draftInputIssue, commentRawInputTooLargeMessage);
+      expect(await controller.send(), isNull);
+      expect(remote.createCalls, 0);
+    },
+  );
+
+  test('legacy invalid draft hydrates with an issue and cannot send', () async {
+    final remote = _Remote(
+      page: const CommentPage(items: [], nextCursor: null),
+    );
+    final fixture = await _fixture(remote: remote);
+    addTearDown(fixture.database.close);
+    final legacyDraft = _repeat('x', commentMaximumRawCodeUnits + 1);
+    final timestamp = DateTime.utc(2026, 8, 1);
+    await fixture.database
+        .into(fixture.database.commentDrafts)
+        .insert(
+          CommentDraftsCompanion.insert(
+            draftId: '$accountA:${samplePaper.paperId}',
+            accountId: const Value(accountA),
+            paperId: samplePaper.paperId,
+            body: legacyDraft,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          ),
+        );
+    final controller = CommentThreadController(
+      repository: fixture.repository,
+      paperId: samplePaper.paperId,
+      viewer: const CommentViewerScope.authenticated(
+        accountId: accountA,
+        authEpoch: 1,
+      ),
+    );
+    addTearDown(controller.dispose);
+
+    await controller.load();
+
+    expect(controller.state.draft, legacyDraft);
+    expect(controller.state.draftInputIssue, commentRawInputTooLargeMessage);
+    expect(await controller.send(), isNull);
+    expect(remote.createCalls, 0);
+  });
 }
 
 Future<
@@ -189,6 +373,7 @@ final class _Remote implements CommentsRemoteDataSource {
   final Completer<void>? createStarted;
   final Completer<void>? createRelease;
   int blockCalls = 0;
+  int createCalls = 0;
 
   @override
   Future<CommentPage> listPaper({
@@ -239,6 +424,7 @@ final class _Remote implements CommentsRemoteDataSource {
     required String body,
     required int expectedAuthEpoch,
   }) async {
+    createCalls += 1;
     createStarted?.complete();
     await createRelease?.future;
     return _comment(authorId: accountA, pending: true, body: body);
@@ -259,6 +445,8 @@ final class _Remote implements CommentsRemoteDataSource {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
+
+String _repeat(String value, int count) => List.filled(count, value).join();
 
 CommentAuthor _author(String id) => CommentAuthor(
   id: id,

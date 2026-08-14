@@ -117,11 +117,11 @@ final class CommentsApi implements CommentsRemoteDataSource {
     _validateUuid(paperId, 'paperId');
     _validateUuid(clientRequestId, 'clientRequestId');
     _validateEpoch(expectedAuthEpoch);
-    _validateBody(body);
+    final normalizedBody = _validateBody(body);
     try {
       final response = await _dio.post<Object?>(
         '/v1/papers/${Uri.encodeComponent(paperId)}/comments',
-        data: {'client_request_id': clientRequestId, 'body': body},
+        data: {'client_request_id': clientRequestId, 'body': normalizedBody},
         options: pakPerkRequestOptions(
           auth: RequestAuthPolicy.required,
           retry: AuthRetryPolicy.idempotencyProtected,
@@ -150,12 +150,12 @@ final class CommentsApi implements CommentsRemoteDataSource {
   }) async {
     _validateUuid(commentId, 'commentId');
     _validateEpoch(expectedAuthEpoch);
-    _validateBody(body);
+    final normalizedBody = _validateBody(body);
     if (expectedVersion < 1) throw ArgumentError.value(expectedVersion);
     try {
       final response = await _dio.patch<Object?>(
         '/v1/comments/${Uri.encodeComponent(commentId)}',
-        data: {'body': body, 'expected_version': expectedVersion},
+        data: {'body': normalizedBody, 'expected_version': expectedVersion},
         options: pakPerkRequestOptions(
           auth: RequestAuthPolicy.required,
           retry: AuthRetryPolicy.idempotencyProtected,
@@ -395,9 +395,12 @@ void _expectKeys(Map<String, dynamic> json, Set<String> keys) {
   }
 }
 
-void _validateBody(String body) {
-  final issue = validateCommentBody(body);
-  if (issue != null) throw ArgumentError.value(body.length, 'body', issue);
+String _validateBody(String body) {
+  final analysis = analyzeCommentBody(body);
+  if (analysis.issue case final issue?) {
+    throw ArgumentError.value(body.length, 'body', issue);
+  }
+  return analysis.canonicalBody!;
 }
 
 String? _normalizeReportDetail(String? detail) {

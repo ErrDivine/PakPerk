@@ -1,8 +1,9 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pakperk/core/comments/comment_models.dart';
+import 'package:pakperk/core/database/app_database.dart';
 import 'package:pakperk/core/database/comment_cache_dao.dart';
 import 'package:pakperk/core/database/comments_dao.dart';
-import 'package:pakperk/core/database/app_database.dart';
 import 'package:pakperk/core/database/paper_cache_dao.dart';
 
 import '../../support/fakes.dart';
@@ -13,54 +14,95 @@ void main() {
   const requestOne = '018f47a6-4b56-7f4c-8c7a-e2656e820011';
   const requestTwo = '018f47a6-4b56-7f4c-8c7a-e2656e820012';
 
-  test('draft request ID is stable until an attempted body changes', () async {
-    final database = PakPerkDatabase(NativeDatabase.memory());
-    addTearDown(database.close);
-    await PaperCacheDao(database).save(samplePaper);
-    final dao = CommentsDao(database);
+  test(
+    'explicit send rotates only for a different canonical attempted body',
+    () async {
+      final database = PakPerkDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      await PaperCacheDao(database).save(samplePaper);
+      final dao = CommentsDao(database);
 
-    await dao.saveDraft(
-      accountId: accountId,
-      paperId: samplePaper.paperId,
-      body: 'first body',
-      clientRequestId: requestOne,
-    );
-    await dao.saveDraft(
-      accountId: accountId,
-      paperId: samplePaper.paperId,
-      body: 'edited before send',
-      clientRequestId: requestTwo,
-    );
-    expect(
-      (await dao.loadDraft(accountId, samplePaper.paperId))?.clientRequestId,
-      requestOne,
-    );
-
-    await dao.markDraftAttempted(
-      accountId: accountId,
-      paperId: samplePaper.paperId,
-      body: 'edited before send',
-    );
-    await dao.saveDraft(
-      accountId: accountId,
-      paperId: samplePaper.paperId,
-      body: 'new explicit intent',
-      clientRequestId: requestTwo,
-    );
-    final rotated = await dao.loadDraft(accountId, samplePaper.paperId);
-    expect(rotated?.clientRequestId, requestTwo);
-    expect(rotated?.lastAttemptedBody, isNull);
-
-    await expectLater(
-      dao.saveDraft(
+      await dao.saveDraft(
         accountId: accountId,
         paperId: samplePaper.paperId,
-        body: 'x' * 2001,
+        body: 'first body',
+        clientRequestId: requestOne,
+      );
+      await dao.saveDraft(
+        accountId: accountId,
+        paperId: samplePaper.paperId,
+        body: 'edited before send',
         clientRequestId: requestTwo,
-      ),
-      throwsArgumentError,
-    );
-  });
+      );
+      expect(
+        (await dao.loadDraft(accountId, samplePaper.paperId))?.clientRequestId,
+        requestOne,
+      );
+
+      final firstAttempt = await dao.prepareDraftAttempt(
+        accountId: accountId,
+        paperId: samplePaper.paperId,
+        canonicalBody: 'edited before send',
+        nextClientRequestId: requestTwo,
+      );
+      expect(firstAttempt.clientRequestId, requestOne);
+      expect(firstAttempt.lastAttemptedBody, 'edited before send');
+      await dao.saveDraft(
+        accountId: accountId,
+        paperId: samplePaper.paperId,
+        body: '  edited before send\r\n ',
+        clientRequestId: requestTwo,
+      );
+      final equivalentAttempt = await dao.prepareDraftAttempt(
+        accountId: accountId,
+        paperId: samplePaper.paperId,
+        canonicalBody: 'edited before send',
+        nextClientRequestId: requestTwo,
+      );
+      expect(equivalentAttempt.clientRequestId, requestOne);
+      expect(equivalentAttempt.lastAttemptedBody, 'edited before send');
+
+      await dao.saveDraft(
+        accountId: accountId,
+        paperId: samplePaper.paperId,
+        body: 'new explicit intent',
+        clientRequestId: requestTwo,
+      );
+      final beforeExplicitSend = await dao.loadDraft(
+        accountId,
+        samplePaper.paperId,
+      );
+      expect(beforeExplicitSend?.clientRequestId, requestOne);
+      expect(beforeExplicitSend?.lastAttemptedBody, 'edited before send');
+      final rotated = await dao.prepareDraftAttempt(
+        accountId: accountId,
+        paperId: samplePaper.paperId,
+        canonicalBody: 'new explicit intent',
+        nextClientRequestId: requestTwo,
+      );
+      expect(rotated.clientRequestId, requestTwo);
+      expect(rotated.lastAttemptedBody, 'new explicit intent');
+
+      await expectLater(
+        dao.saveDraft(
+          accountId: accountId,
+          paperId: samplePaper.paperId,
+          body: 'x' * (commentMaximumRawCodeUnits + 1),
+          clientRequestId: requestTwo,
+        ),
+        throwsArgumentError,
+      );
+      await expectLater(
+        dao.prepareDraftAttempt(
+          accountId: accountId,
+          paperId: samplePaper.paperId,
+          canonicalBody: String.fromCharCode(0xd800),
+          nextClientRequestId: requestTwo,
+        ),
+        throwsArgumentError,
+      );
+    },
+  );
 
   test('comment cache is bounded per paper and viewer', () async {
     final database = PakPerkDatabase(NativeDatabase.memory());

@@ -3,6 +3,10 @@
 Flutter client for Pakperk, with native Android and iOS hosts. The API base URL
 is configured at build time:
 
+Reader-facing behavior, account/library/comment availability, privacy,
+deletion, and troubleshooting are summarized in the repository
+[`user guide`](../docs/user-guide.md).
+
 ```sh
 flutter run \
   --flavor dev \
@@ -51,11 +55,14 @@ before any network client is created. The complete release commands use the
 checked-in files under `config/` and are documented in
 [`../docs/mobile-release.md`](../docs/mobile-release.md).
 
-Checked-in staging and production configs keep accounts, library, and comments
-off. Signed candidates may enable them only through the protected environment
-variables `PAKPERK_ACCOUNTS_ENABLED`, `PAKPERK_LIBRARY_ENABLED`, and
-`PAKPERK_COMMENTS_ENABLED`; missing values stay false and the workflow records
-the resolved booleans. See the
+The checked-in production config keeps accounts, library, and comments off.
+The checked-in development and staging fixtures enable all three so ordinary
+debug builds exercise the complete feature composition. A staging or
+production signed candidate never trusts those fixture booleans: its protected
+workflow materializes a temporary config from environment variables
+`PAKPERK_ACCOUNTS_ENABLED`, `PAKPERK_LIBRARY_ENABLED`, and
+`PAKPERK_COMMENTS_ENABLED`; missing values resolve to false and the workflow
+records the resolved booleans. See the
 [protected feature-flag contract](../docs/mobile-release.md#protected-mobile-feature-flags).
 
 The login uses the system browser and PKCE. Access tokens stay in memory;
@@ -155,11 +162,14 @@ ephemeral runner-session attestation. It takes staging coordinates from
 `config/staging.json`, requires the exact staging Android/iOS application ID,
 and covers four distinct physical installations: Android gesture, Android
 three-button, iPhone home-indicator, and physical-keyboard iPad/second sync. Its
-canonical schema-v2 artifact binds the run challenge, actual APK/IPA hashes,
+canonical schema-v3 artifact binds the run challenge, actual APK/IPA hashes,
 release-workflow identity, runner session, and challenge-keyed physical-device
-identity hashes recomputed from root-attested commitments to 16 ordered
-scenarios, exact assertion IDs, and closed integer metrics without retaining raw
-device serials or stable commitments. Packaging creates the final tar
+identity hashes recomputed from root-attested commitments to 22 ordered
+scenarios, 141 exact assertion IDs, and 78 closed integer metrics—including
+cached first-readable-frame p95 and opening-transition limits—without retaining
+raw device serials or stable commitments. Its schema-2 source binding also
+binds the exact staging API, app-link origin, OIDC issuer, and client identities.
+Packaging creates the final tar
 exclusively, binds its digest, and verifies it again immediately before upload.
 Its actual protected run, root-side manifest/session provisioning, staging
 tenant, test accounts, devices, and approval remain external release evidence.

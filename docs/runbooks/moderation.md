@@ -106,9 +106,11 @@ revision and deployed image digests to all of the following:
 - the target issuer's dedicated operator audience, recent-auth policy, current
   allowlist, mobile/API-audience rejection, non-allowlisted operator rejection,
   and attributable audit UUID;
-- live comment and user-report queues, explicit inspection, hide/restore,
-  report resolution, suspend/reinstate, creation kill switch, high-risk hold,
-  provider outage fallback, and guest-read availability;
+- live comment and user-report queues; one same-identity duplicate comment-report
+  submission returning the canonical result with exactly one durable report;
+  explicit inspection, hide/restore, report resolution, suspend/reinstate,
+  creation kill switch, high-risk hold, provider outage fallback, and guest-read
+  availability;
 - target moderation adapter/credentials, queue-age and failure alerts routed to
   the staffed on-call, the response targets above, and an exercised escalation;
 - target support, legal, deletion, retention, backup/restore, and incident

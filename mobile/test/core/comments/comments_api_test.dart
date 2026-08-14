@@ -81,6 +81,145 @@ void main() {
       expect(adapter.bodies.last, adapter.bodies.first);
     },
   );
+
+  test('create and edit serialize exact NFKC canonical bodies', () async {
+    const paperId = '018f47a6-4b56-7f4c-8c7a-e2656e820021';
+    const commentId = '018f47a6-4b56-7f4c-8c7a-e2656e820011';
+    const requestId = '018f47a6-4b56-7f4c-8c7a-e2656e820041';
+    final adapter = _CommentMutationAdapter(
+      paperId: paperId,
+      commentId: commentId,
+    );
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.pakperk.app'))
+      ..httpClientAdapter = adapter;
+    final api = CommentsApi(dio);
+
+    final created = await api.create(
+      paperId: paperId,
+      clientRequestId: requestId,
+      body: '  Ａ create\r\n\r\n\r\nnext\tline  ',
+      expectedAuthEpoch: 7,
+    );
+    final edited = await api.edit(
+      commentId: commentId,
+      body: '  \u212b edit\r\n\u1100\u1161\tline  ',
+      expectedVersion: 1,
+      expectedAuthEpoch: 7,
+    );
+
+    expect(created.body, 'A create\n\nnext line');
+    expect(edited.body, '\u00c5 edit\n\uac00 line');
+    expect(adapter.bodies, [
+      {'client_request_id': requestId, 'body': 'A create\n\nnext line'},
+      {'body': '\u00c5 edit\n\uac00 line', 'expected_version': 1},
+    ]);
+  });
+
+  test('comment mutations reject invalid raw input before a request', () async {
+    const paperId = '018f47a6-4b56-7f4c-8c7a-e2656e820021';
+    const commentId = '018f47a6-4b56-7f4c-8c7a-e2656e820011';
+    const requestId = '018f47a6-4b56-7f4c-8c7a-e2656e820041';
+    final adapter = _CommentMutationAdapter(
+      paperId: paperId,
+      commentId: commentId,
+    );
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.pakperk.app'))
+      ..httpClientAdapter = adapter;
+    final api = CommentsApi(dio);
+    final invalidBodies = <String>[
+      _repeat('x', commentMaximumRawCodeUnits + 1),
+      'before${String.fromCharCode(0xd800)}',
+      _repeat('\u0301', commentMaximumRawClusterScalars + 1),
+    ];
+
+    for (final body in invalidBodies) {
+      await expectLater(
+        api.create(
+          paperId: paperId,
+          clientRequestId: requestId,
+          body: body,
+          expectedAuthEpoch: 7,
+        ),
+        throwsArgumentError,
+      );
+      await expectLater(
+        api.edit(
+          commentId: commentId,
+          body: body,
+          expectedVersion: 1,
+          expectedAuthEpoch: 7,
+        ),
+        throwsArgumentError,
+      );
+    }
+
+    expect(adapter.calls, 0);
+  });
+}
+
+final class _CommentMutationAdapter implements HttpClientAdapter {
+  _CommentMutationAdapter({required this.paperId, required this.commentId});
+
+  final String paperId;
+  final String commentId;
+  final List<Map<String, dynamic>> bodies = [];
+  int calls = 0;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    final bytes = <int>[];
+    if (requestStream != null) {
+      await for (final chunk in requestStream) {
+        bytes.addAll(chunk);
+      }
+    }
+    final decoded = Map<String, dynamic>.from(
+      jsonDecode(utf8.decode(bytes)) as Map,
+    );
+    bodies.add(decoded);
+    calls += 1;
+    final isCreate = options.method == 'POST';
+    if (isCreate) {
+      expect(options.path, '/v1/papers/$paperId/comments');
+    } else {
+      expect(options.method, 'PATCH');
+      expect(options.path, '/v1/comments/$commentId');
+    }
+    final updatedAt = isCreate
+        ? '2026-07-30T10:00:00Z'
+        : '2026-07-30T10:01:00Z';
+    return ResponseBody.fromString(
+      jsonEncode({
+        'comment': {
+          'id': commentId,
+          'paper_id': paperId,
+          'author': {
+            'id': '018f47a6-4b56-7f4c-8c7a-e2656e820001',
+            'handle': 'reader_one',
+            'display_name': null,
+            'status': 'active',
+          },
+          'body': decoded['body'],
+          'status': 'published',
+          'version': isCreate ? 1 : 2,
+          'created_at': '2026-07-30T10:00:00Z',
+          'updated_at': updatedAt,
+          'edited_at': isCreate ? null : updatedAt,
+        },
+      }),
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
 
 final class _TokenSource implements AuthTokenSource {
@@ -219,3 +358,5 @@ final class _UserReportAdapter implements HttpClientAdapter {
   @override
   void close({bool force = false}) {}
 }
+
+String _repeat(String value, int count) => List.filled(count, value).join();

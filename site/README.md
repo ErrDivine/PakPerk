@@ -1,10 +1,12 @@
 # Pakperk public policy and deletion site
 
-This static, JavaScript-free-by-default document set exposes the stable routes
-required by the release plan. Only `/account-deletion/` needs JavaScript. Its
-small local module implements browser Authorization Code + S256 PKCE without a
-client secret, keeps access/refresh tokens out of persistent storage, scrubs
-the callback query before the request is submitted, and calls `DELETE /v1/me`.
+This static, JavaScript-free-by-default document set exposes the user guide and
+stable public routes required by the release plan. Every document renders
+without client JavaScript. Only `/account-deletion/` depends on route-specific
+JavaScript: its small local module implements browser Authorization Code + S256
+PKCE without a client secret, keeps access/refresh tokens out of persistent
+storage, scrubs the callback query before the request is submitted, and calls
+`DELETE /v1/me`.
 
 `config.js` intentionally fails closed. The Helm chart mounts a validated
 environment-specific replacement containing public values only. A real

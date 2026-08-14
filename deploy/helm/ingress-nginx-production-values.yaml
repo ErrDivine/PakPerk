@@ -8,3 +8,10 @@ controller:
     hsts-include-subdomains: "true"
     hsts-max-age: "63072000"
     hsts-preload: "true"
+    # Feed metadata is the only bulk public API response in v0.0. Keep
+    # compression at the shared TLS edge explicit instead of depending on an
+    # application-origin implementation detail. The protected public-edge
+    # verifier requests gzip and checks both the encoded body and Vary header.
+    use-gzip: "true"
+    gzip-min-length: "256"
+    gzip-types: "application/json"

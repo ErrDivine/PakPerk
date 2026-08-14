@@ -1,7 +1,6 @@
-import 'dart:convert';
-
 import 'package:drift/drift.dart';
 
+import '../comments/comment_models.dart';
 import 'app_database.dart';
 
 final class CommentDraftValue {
@@ -77,9 +76,7 @@ final class CommentsDao {
     _requireUuid(accountId, 'accountId');
     _requireUuid(paperId, 'paperId');
     _requireUuid(clientRequestId, 'clientRequestId');
-    if (body.runes.length > 2000 || utf8.encode(body).length > 8000) {
-      throw ArgumentError.value(body.length, 'body', 'Draft is too large.');
-    }
+    _requireValidDraftBody(body);
     final normalizedAccountId = accountId.toLowerCase();
     final normalizedPaperId = paperId.toLowerCase();
     if (body.isEmpty) {
@@ -88,8 +85,6 @@ final class CommentsDao {
     }
     final timestamp = (now ?? DateTime.now()).toUtc();
     final existing = await loadDraft(normalizedAccountId, normalizedPaperId);
-    final rotateRequest =
-        existing?.lastAttemptedBody != null && existing?.body != body;
     await database
         .into(database.commentDrafts)
         .insertOnConflictUpdate(
@@ -99,31 +94,78 @@ final class CommentsDao {
             paperId: normalizedPaperId,
             body: body,
             clientRequestId: Value(
-              rotateRequest
-                  ? clientRequestId.toLowerCase()
-                  : existing?.clientRequestId ?? clientRequestId.toLowerCase(),
+              existing?.clientRequestId ?? clientRequestId.toLowerCase(),
             ),
-            lastAttemptedBody: Value(
-              rotateRequest ? null : existing?.lastAttemptedBody,
-            ),
+            // Editing a local draft does not itself create a new remote
+            // mutation intent. Explicit send preparation below compares the
+            // canonical payload and rotates atomically only when necessary.
+            lastAttemptedBody: Value(existing?.lastAttemptedBody),
             createdAt: existing?.createdAt ?? timestamp,
             updatedAt: timestamp,
           ),
         );
   }
 
-  Future<void> markDraftAttempted({
+  Future<CommentDraftValue> prepareDraftAttempt({
     required String accountId,
     required String paperId,
-    required String body,
-  }) {
+    required String canonicalBody,
+    required String nextClientRequestId,
+    DateTime? now,
+  }) async {
     _requireUuid(accountId, 'accountId');
     _requireUuid(paperId, 'paperId');
-    return (database.update(database.commentDrafts)..where(
-          (table) =>
-              table.accountId.equals(accountId) & table.paperId.equals(paperId),
-        ))
-        .write(CommentDraftsCompanion(lastAttemptedBody: Value(body)));
+    _requireUuid(nextClientRequestId, 'nextClientRequestId');
+    final analysis = analyzeCommentBody(canonicalBody);
+    if (analysis.issue != null || analysis.canonicalBody != canonicalBody) {
+      throw ArgumentError.value(
+        canonicalBody.length,
+        'canonicalBody',
+        analysis.issue ?? 'Comment body must already be canonical.',
+      );
+    }
+    final normalizedAccountId = accountId.toLowerCase();
+    final normalizedPaperId = paperId.toLowerCase();
+    final normalizedNextRequestId = nextClientRequestId.toLowerCase();
+    final timestamp = (now ?? DateTime.now()).toUtc();
+    return database.transaction(() async {
+      final existing = await loadDraft(normalizedAccountId, normalizedPaperId);
+      final canonicalLastAttempt = _canonicalValidCommentBody(
+        existing?.lastAttemptedBody,
+      );
+      final existingRequestId = existing?.clientRequestId;
+      final reusesExistingIntent =
+          existingRequestId != null &&
+          (existing?.lastAttemptedBody == null ||
+              canonicalLastAttempt == canonicalBody);
+      final requestId = reusesExistingIntent
+          ? existingRequestId
+          : normalizedNextRequestId;
+      final createdAt = existing?.createdAt ?? timestamp;
+      await database
+          .into(database.commentDrafts)
+          .insertOnConflictUpdate(
+            CommentDraftsCompanion.insert(
+              draftId: '$normalizedAccountId:$normalizedPaperId',
+              accountId: Value(normalizedAccountId),
+              paperId: normalizedPaperId,
+              body: canonicalBody,
+              clientRequestId: Value(requestId),
+              lastAttemptedBody: Value(canonicalBody),
+              createdAt: createdAt,
+              updatedAt: timestamp,
+            ),
+          );
+      return CommentDraftValue(
+        accountId: normalizedAccountId,
+        paperId: normalizedPaperId,
+        body: canonicalBody,
+        createdAt: createdAt,
+        updatedAt: timestamp,
+        clientRequestId: requestId,
+        lastAttemptedBody: canonicalBody,
+      );
+    });
   }
 
   Future<void> clearDraft(String accountId, String paperId) {
@@ -268,6 +310,19 @@ final class CommentsDao {
         )
         .toList(growable: false);
   }
+}
+
+void _requireValidDraftBody(String body) {
+  final issue = validateCommentDraftInput(body);
+  if (issue != null) {
+    throw ArgumentError.value(body.length, 'body', issue);
+  }
+}
+
+String? _canonicalValidCommentBody(String? body) {
+  if (body == null) return null;
+  final analysis = analyzeCommentBody(body);
+  return analysis.issue == null ? analysis.canonicalBody : null;
 }
 
 void _requireUuid(String value, String name) {

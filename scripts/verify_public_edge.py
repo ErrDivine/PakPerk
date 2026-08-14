@@ -20,6 +20,7 @@ import threading
 import time
 from typing import Mapping, Protocol, Sequence
 import urllib.parse
+import zlib
 
 from public_edge_evidence import (
     ENVIRONMENTS,
@@ -38,6 +39,7 @@ EXPECTED_HSTS = "max-age=63072000; includeSubDomains; preload"
 EXPECTED_DEFAULT_CACHE = "no-cache, max-age=0, must-revalidate"
 EXPECTED_CONFIG_CACHE = "no-store, max-age=0"
 EXPECTED_DELETION_CACHE = "private, no-store, max-age=0"
+EXPECTED_FEED_CACHE = "public, max-age=60, stale-while-revalidate=300"
 EXPECTED_STATIC_SECURITY_HEADERS = {
     "cross-origin-opener-policy": "same-origin",
     "cross-origin-resource-policy": "same-origin",
@@ -56,6 +58,8 @@ MAX_HTML_BYTES = 256 * 1024
 MAX_CONFIG_BYTES = 64 * 1024
 MAX_ASSOCIATION_BYTES = 64 * 1024
 MAX_HEALTH_BYTES = 16 * 1024
+MAX_COMPRESSED_FEED_BYTES = 1024 * 1024
+MAX_DECOMPRESSED_FEED_BYTES = 4 * 1024 * 1024
 MAX_REDIRECT_BODY_BYTES = 16 * 1024
 NOTICES_PREFIX_BYTES = 16 * 1024
 
@@ -64,7 +68,13 @@ SITE_HTML_ROUTES = (
         "site_root_direct_https_headers_and_cache",
         "/",
         EXPECTED_DEFAULT_CACHE,
-        "<title>Pakperk — Policies and support</title>",
+        "<title>Pakperk — Guide, policies, and support</title>",
+    ),
+    (
+        "guide_route_direct_https_headers_and_cache",
+        "/guide/",
+        EXPECTED_DEFAULT_CACHE,
+        "<title>User guide — Pakperk</title>",
     ),
     (
         "privacy_route_direct_https_headers_and_cache",
@@ -531,6 +541,16 @@ def _media_type(response: HttpObservation, expected: str) -> None:
         raise VerificationError("invalid_content_type_header")
 
 
+def _header_tokens(response: HttpObservation, name: str) -> list[str]:
+    tokens: list[str] = []
+    for value in _header_values(response, name):
+        parts = [part.strip().lower() for part in value.split(",")]
+        if not parts or any(not part for part in parts):
+            raise VerificationError(f"invalid_{name.replace('-', '_')}_header")
+        tokens.extend(parts)
+    return tokens
+
+
 def _common_direct_https(response: HttpObservation) -> None:
     if response.tls_version not in {"TLSv1.2", "TLSv1.3"}:
         raise VerificationError("tls_boundary_not_verified")
@@ -933,6 +953,96 @@ def _verify_api_readiness(transport: Transport, binding: PublicEdgeBinding) -> s
     )
 
 
+def _verify_api_feed_compression(
+    transport: Transport, binding: PublicEdgeBinding
+) -> str:
+    scenario_id = "api_feed_is_gzip_compressed_at_public_edge"
+    path = "/v1/feed?limit=100"
+    response = transport.request(
+        binding.api_origin,
+        path,
+        secure=True,
+        maximum_body_bytes=MAX_COMPRESSED_FEED_BYTES,
+        request_headers={"Accept-Encoding": "gzip"},
+    )
+    if response.status != 200:
+        raise VerificationError("api_feed_not_direct_200")
+    if response.tls_version not in {"TLSv1.2", "TLSv1.3"}:
+        raise VerificationError("tls_boundary_not_verified")
+    _exact_header(response, "strict-transport-security", EXPECTED_HSTS)
+    _absent_header(response, "location")
+    _absent_header(response, "set-cookie")
+    _exact_header(response, "cache-control", EXPECTED_FEED_CACHE)
+    _media_type(response, "application/json")
+    _exact_header(response, "content-encoding", "gzip")
+    if "accept-encoding" not in _header_tokens(response, "vary"):
+        raise VerificationError("api_feed_vary_header_missing_accept_encoding")
+    decoded = _decompress_feed_gzip(response.body)
+    document = _load_json_object(decoded, "api_feed_invalid_json")
+    if not isinstance(document, dict) or set(document) != {"items", "next_cursor"}:
+        raise VerificationError("api_feed_schema_invalid")
+    items = document.get("items")
+    next_cursor = document.get("next_cursor")
+    if (
+        not isinstance(items, list)
+        or len(items) > 100
+        or any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("paper_id"), str)
+            or not item["paper_id"]
+            for item in items
+        )
+        or (
+            next_cursor is not None
+            and (
+                not isinstance(next_cursor, str)
+                or not next_cursor
+                or len(next_cursor) > 512
+            )
+        )
+    ):
+        raise VerificationError("api_feed_schema_invalid")
+    return _observation(
+        scenario_id,
+        path,
+        response,
+        (
+            "strict-transport-security",
+            "cache-control",
+            "content-type",
+            "content-encoding",
+            "vary",
+        ),
+    )
+
+
+def _decompress_feed_gzip(body: bytes) -> bytes:
+    if len(body) < 18 or not body.startswith(b"\x1f\x8b"):
+        raise VerificationError("api_feed_gzip_body_invalid")
+    decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    try:
+        decoded = bytearray(
+            decoder.decompress(body, MAX_DECOMPRESSED_FEED_BYTES + 1)
+        )
+        if (
+            len(decoded) > MAX_DECOMPRESSED_FEED_BYTES
+            or decoder.unconsumed_tail
+        ):
+            raise VerificationError("api_feed_decompressed_body_too_large")
+        decoded.extend(
+            decoder.flush(MAX_DECOMPRESSED_FEED_BYTES + 1 - len(decoded))
+        )
+    except VerificationError:
+        raise
+    except zlib.error as error:
+        raise VerificationError("api_feed_gzip_body_invalid") from error
+    if len(decoded) > MAX_DECOMPRESSED_FEED_BYTES:
+        raise VerificationError("api_feed_decompressed_body_too_large")
+    if not decoder.eof or decoder.unused_data or decoder.unconsumed_tail:
+        raise VerificationError("api_feed_gzip_body_invalid")
+    return bytes(decoded)
+
+
 def _verify_telemetry_readiness(
     transport: Transport, binding: PublicEdgeBinding
 ) -> str:
@@ -1023,6 +1133,10 @@ def run_verification(
             (
                 "apple_association_matches_release_identity",
                 lambda: _verify_apple_association(transport, binding),
+            ),
+            (
+                "api_feed_is_gzip_compressed_at_public_edge",
+                lambda: _verify_api_feed_compression(transport, binding),
             ),
             (
                 "api_readiness_contract_direct_https",

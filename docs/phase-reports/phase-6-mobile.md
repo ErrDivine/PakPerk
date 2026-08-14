@@ -2,7 +2,7 @@
 
 **Code version:** `0.2.0+2`
 **Evidence date:** 2026-08-02
-**Last revalidated:** 2026-08-08
+**Last revalidated:** 2026-08-09
 **Scope:** Flutter client and native Android/iOS hosts
 
 ## Implemented
@@ -81,11 +81,14 @@ count completeness, shared save-control state, environment-relative moderation
 support links, build-bound Terms/Community Guidelines acceptance, post-`401`
 response provenance, and bounded safety-intent recovery after authenticated
 thread rehydration. Legal-document futures are cached by loader, kind, and
-policy version instead of being recreated during rebuilds. On the final source
-tree, Flutter analysis and all 610 locked tests passed, including cold restored-
-identity rebinding, same-epoch account isolation, terminal deletion latching,
-and generation-guarded comment-cache purging. No physical-device or protected
-signed-artifact run was executed at this checkpoint.
+policy version instead of being recreated during rebuilds. At the last full
+canonical checkpoint (`d83ee84`), Flutter analysis and all 610 then-locked tests
+passed, including cold restored-identity rebinding, same-epoch account
+isolation, terminal deletion latching, and generation-guarded comment-cache
+purging. The subsequent comment-boundary changes pass current-tree Dart
+formatting and analysis plus all 49 tests in the six modified comment suites;
+the expanded full Flutter suite has not been replayed. No physical-device or
+protected signed-artifact run was executed at this checkpoint.
 
 At the Phase 6 implementation checkpoint, the full Flutter analyzer and 437
 tests, the focused account-deletion/auth/error-mapper/telemetry/config suites,
@@ -147,11 +150,14 @@ backup, packaged Apple privacy manifest, and no strict derived-content asset.
 Negative gates were also exercised: Android release fails immediately without
 all `PAKPERK_ANDROID_*` values; iOS production IPA resolution is manual Apple
 Distribution signing and produces no IPA without a protected team/profile.
-On the final current-tree canonical run, the check passed Dart formatting,
-Flutter analysis, all 610 locked tests, all three Android debug flavors, all
-three iOS simulator flavors, and strict inspection of staging/production
-Android archives and the production iOS simulator app. None of these results is
-physical-device or distribution-signing evidence.
+At checkpoint `d83ee84`, the canonical check passed Dart formatting, Flutter
+analysis, all 610 then-locked tests, all three Android debug flavors, all three
+iOS simulator flavors, and strict inspection of staging/production Android
+archives and the production iOS simulator app. Current-tree comment additions
+have separately passed formatting, analysis, and all 49 tests in the six
+modified comment suites, but the expanded full Flutter suite has not been
+replayed. None of these results is physical-device or distribution-signing
+evidence.
 
 The exact eight-job signed-mobile contract separates credential-free
 preparation, Android/iOS signing, credential-free assembly, uncredentialed
@@ -160,17 +166,25 @@ It binds the iOS leaf certificate to the provisioning profile and retains three
 distinct immutable candidate, store-handoff, and signed-release-outcome
 artifacts. Its workflow validator's 36 regressions, assembler's 8 tests,
 finalizer's 15 tests, authenticated-run verifier's 13 tests, and candidate
-validator's 43 tests passed. The protected acceptance contract's 42 evidence
-tests and 63 workflow-tamper tests also passed; they bind exact staging
-coordinates, an ephemeral root-owned runner session, four challenge-keyed
-physical identities, 16 ordered scenarios, 70 assertions, and 37 integer
-metrics without claiming that a live run occurred.
+   validator's 43 tests passed. The protected acceptance contract's 51 evidence
+   tests and 71 workflow-tamper tests also passed; schema v3 binds the exact
+   staging API, app-link, OIDC, and client coordinates through a schema-2 source
+   binding, an ephemeral root-owned runner session, four challenge-keyed
+   physical identities, 22 ordered scenarios, 141 assertions, and 78 integer
+   metrics—including the 1,500 ms cached first-readable-frame p95 and 700 ms
+   opening-transition limits. The added contract closes fresh-install guest/
+   arXiv handoff, post-death offline reading, cross-device tombstone, complete
+   comment/replay/report, invalid-refresh, app-link, signed-device protection,
+   cache-bound, and light/dark evidence gaps without claiming that a live run
+   occurred.
 
 ## Current-tree external verification still required
 
-- Exercise cold/warm/deep-link startup, timeout/retry/repair, runtime reduced-
-  motion changes, 200% text, settled haptics, and canonical arXiv actions on
-  representative physical devices.
+- Exercise every schema-v3 marker, including fresh-install guest reading,
+  canonical arXiv browser handoff, post-death offline cache, two-device removal,
+  invalid refresh, cold/warm/running app links, signed-device data protection,
+  cache bounds, light/dark, runtime reduced motion, and 200% text on the required
+  physical roles.
 - Run the protected signed-candidate workflow and protected four-device
   acceptance lane for the exact reviewed source and imported provenance.
 

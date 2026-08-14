@@ -28,11 +28,12 @@ separate from identifier-free mobile telemetry.
 
 Account deletion disables access immediately. The app clears local credentials
 and account-scoped data, including comment drafts. The deletion worker removes
-the provider identity, including its verified email, library, blocks, and
-authored comments. Narrow security and moderation records are retained in
-anonymized form for 90 days. Recoverable database/identity backups and PITR
-history expire within 35 days. Content-free operational telemetry and
-application/platform logs expire after 30 days.
+the provider identity, including its verified email, Pakperk profile, library,
+authored comments, blocks, reports, and pending account-owned operations.
+Narrow security and moderation records are retained in anonymized form for 90
+days. Recoverable database/identity backups and PITR history expire within 35
+days. Content-free operational telemetry and application/platform logs expire
+after 30 days.
 
 A separately backed-up signed deletion-authority record is kept for at least
 400 days, and longer only until evidence proves no recoverable backup can

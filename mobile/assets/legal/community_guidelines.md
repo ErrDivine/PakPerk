@@ -34,4 +34,4 @@ comment ID—not the full harmful comment body—when possible.
 Moderators may reject, hold, hide, restore, or delete comments and may suspend
 or reinstate accounts. Actions are audited. Repeated or severe violations can
 lead to account suspension. Open the published page for the current guidelines
-and appeal path.
+and deployment-configured support contact.
