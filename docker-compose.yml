@@ -25,7 +25,7 @@ services:
 
   keycloak-postgres:
     profiles: ["accounts"]
-    image: postgres:16.14-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55
+    image: postgres:18.6-bookworm@sha256:7d2695c3aa88e792e8b3b233e7e4adb296a20412c6c0ca361e3edaaacfada108
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
