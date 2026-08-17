@@ -1,6 +1,6 @@
 source "https://rubygems.org"
 
-gem "fastlane", "2.235.0"
+gem "fastlane", "2.238.0"
 # Fastlane's Google API action path loads this at runtime without a complete
 # transitive declaration. Keep it explicit so `bundle exec fastlane` works.
 gem "multi_json", "1.21.1"
