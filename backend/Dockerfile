@@ -1,6 +1,6 @@
 # Update only through a reviewed dependency PR that records the upstream tag,
 # index digest, SBOM delta, and vulnerability scan result.
-FROM rust:1.91.1-bookworm@sha256:c1e5f19e773b7878c3f7a805dd00a495e747acbdc76fb2337a4ebf0418896b33 AS builder
+FROM rust:1.98.0-bookworm@sha256:e70e2eec3d495fd5c8e0be74adda86507dfac7f51a724fbf9813ff59b2b247c7 AS builder
 
 WORKDIR /build
 COPY backend ./backend
