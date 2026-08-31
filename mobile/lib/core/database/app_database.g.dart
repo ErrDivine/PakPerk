@@ -3894,6 +3894,61 @@ class $LibraryItemsTable extends LibraryItems
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _privateNoteMeta = const VerificationMeta(
+    'privateNote',
+  );
+  @override
+  late final GeneratedColumn<String> privateNote = GeneratedColumn<String>(
+    'private_note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _saveSourceKindMeta = const VerificationMeta(
+    'saveSourceKind',
+  );
+  @override
+  late final GeneratedColumn<String> saveSourceKind = GeneratedColumn<String>(
+    'save_source_kind',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reminderAtMeta = const VerificationMeta(
+    'reminderAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> reminderAt = GeneratedColumn<DateTime>(
+    'reminder_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reviewedAtMeta = const VerificationMeta(
+    'reviewedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> reviewedAt = GeneratedColumn<DateTime>(
+    'reviewed_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _archivedAtMeta = const VerificationMeta(
+    'archivedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> archivedAt = GeneratedColumn<DateTime>(
+    'archived_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _canonicalDeletedMeta = const VerificationMeta(
     'canonicalDeleted',
   );
@@ -3931,6 +3986,72 @@ class $LibraryItemsTable extends LibraryItems
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _canonicalListStateMeta =
+      const VerificationMeta('canonicalListState');
+  @override
+  late final GeneratedColumn<String> canonicalListState =
+      GeneratedColumn<String>(
+        'canonical_list_state',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _canonicalPrivateNoteMeta =
+      const VerificationMeta('canonicalPrivateNote');
+  @override
+  late final GeneratedColumn<String> canonicalPrivateNote =
+      GeneratedColumn<String>(
+        'canonical_private_note',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _canonicalSaveSourceKindMeta =
+      const VerificationMeta('canonicalSaveSourceKind');
+  @override
+  late final GeneratedColumn<String> canonicalSaveSourceKind =
+      GeneratedColumn<String>(
+        'canonical_save_source_kind',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _canonicalReminderAtMeta =
+      const VerificationMeta('canonicalReminderAt');
+  @override
+  late final GeneratedColumn<DateTime> canonicalReminderAt =
+      GeneratedColumn<DateTime>(
+        'canonical_reminder_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _canonicalReviewedAtMeta =
+      const VerificationMeta('canonicalReviewedAt');
+  @override
+  late final GeneratedColumn<DateTime> canonicalReviewedAt =
+      GeneratedColumn<DateTime>(
+        'canonical_reviewed_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _canonicalArchivedAtMeta =
+      const VerificationMeta('canonicalArchivedAt');
+  @override
+  late final GeneratedColumn<DateTime> canonicalArchivedAt =
+      GeneratedColumn<DateTime>(
+        'canonical_archived_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     accountId,
@@ -3943,9 +4064,20 @@ class $LibraryItemsTable extends LibraryItems
     removedAt,
     revision,
     lastOperationId,
+    privateNote,
+    saveSourceKind,
+    reminderAt,
+    reviewedAt,
+    archivedAt,
     canonicalDeleted,
     canonicalSavedAt,
     canonicalRemovedAt,
+    canonicalListState,
+    canonicalPrivateNote,
+    canonicalSaveSourceKind,
+    canonicalReminderAt,
+    canonicalReviewedAt,
+    canonicalArchivedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -4034,6 +4166,42 @@ class $LibraryItemsTable extends LibraryItems
         ),
       );
     }
+    if (data.containsKey('private_note')) {
+      context.handle(
+        _privateNoteMeta,
+        privateNote.isAcceptableOrUnknown(
+          data['private_note']!,
+          _privateNoteMeta,
+        ),
+      );
+    }
+    if (data.containsKey('save_source_kind')) {
+      context.handle(
+        _saveSourceKindMeta,
+        saveSourceKind.isAcceptableOrUnknown(
+          data['save_source_kind']!,
+          _saveSourceKindMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reminder_at')) {
+      context.handle(
+        _reminderAtMeta,
+        reminderAt.isAcceptableOrUnknown(data['reminder_at']!, _reminderAtMeta),
+      );
+    }
+    if (data.containsKey('reviewed_at')) {
+      context.handle(
+        _reviewedAtMeta,
+        reviewedAt.isAcceptableOrUnknown(data['reviewed_at']!, _reviewedAtMeta),
+      );
+    }
+    if (data.containsKey('archived_at')) {
+      context.handle(
+        _archivedAtMeta,
+        archivedAt.isAcceptableOrUnknown(data['archived_at']!, _archivedAtMeta),
+      );
+    }
     if (data.containsKey('canonical_deleted')) {
       context.handle(
         _canonicalDeletedMeta,
@@ -4058,6 +4226,60 @@ class $LibraryItemsTable extends LibraryItems
         canonicalRemovedAt.isAcceptableOrUnknown(
           data['canonical_removed_at']!,
           _canonicalRemovedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('canonical_list_state')) {
+      context.handle(
+        _canonicalListStateMeta,
+        canonicalListState.isAcceptableOrUnknown(
+          data['canonical_list_state']!,
+          _canonicalListStateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('canonical_private_note')) {
+      context.handle(
+        _canonicalPrivateNoteMeta,
+        canonicalPrivateNote.isAcceptableOrUnknown(
+          data['canonical_private_note']!,
+          _canonicalPrivateNoteMeta,
+        ),
+      );
+    }
+    if (data.containsKey('canonical_save_source_kind')) {
+      context.handle(
+        _canonicalSaveSourceKindMeta,
+        canonicalSaveSourceKind.isAcceptableOrUnknown(
+          data['canonical_save_source_kind']!,
+          _canonicalSaveSourceKindMeta,
+        ),
+      );
+    }
+    if (data.containsKey('canonical_reminder_at')) {
+      context.handle(
+        _canonicalReminderAtMeta,
+        canonicalReminderAt.isAcceptableOrUnknown(
+          data['canonical_reminder_at']!,
+          _canonicalReminderAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('canonical_reviewed_at')) {
+      context.handle(
+        _canonicalReviewedAtMeta,
+        canonicalReviewedAt.isAcceptableOrUnknown(
+          data['canonical_reviewed_at']!,
+          _canonicalReviewedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('canonical_archived_at')) {
+      context.handle(
+        _canonicalArchivedAtMeta,
+        canonicalArchivedAt.isAcceptableOrUnknown(
+          data['canonical_archived_at']!,
+          _canonicalArchivedAtMeta,
         ),
       );
     }
@@ -4110,6 +4332,26 @@ class $LibraryItemsTable extends LibraryItems
         DriftSqlType.string,
         data['${effectivePrefix}last_operation_id'],
       ),
+      privateNote: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}private_note'],
+      ),
+      saveSourceKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}save_source_kind'],
+      ),
+      reminderAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}reminder_at'],
+      ),
+      reviewedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}reviewed_at'],
+      ),
+      archivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}archived_at'],
+      ),
       canonicalDeleted: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}canonical_deleted'],
@@ -4121,6 +4363,30 @@ class $LibraryItemsTable extends LibraryItems
       canonicalRemovedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}canonical_removed_at'],
+      ),
+      canonicalListState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}canonical_list_state'],
+      ),
+      canonicalPrivateNote: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}canonical_private_note'],
+      ),
+      canonicalSaveSourceKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}canonical_save_source_kind'],
+      ),
+      canonicalReminderAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}canonical_reminder_at'],
+      ),
+      canonicalReviewedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}canonical_reviewed_at'],
+      ),
+      canonicalArchivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}canonical_archived_at'],
       ),
     );
   }
@@ -4142,9 +4408,20 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
   final DateTime? removedAt;
   final int? revision;
   final String? lastOperationId;
+  final String? privateNote;
+  final String? saveSourceKind;
+  final DateTime? reminderAt;
+  final DateTime? reviewedAt;
+  final DateTime? archivedAt;
   final bool? canonicalDeleted;
   final DateTime? canonicalSavedAt;
   final DateTime? canonicalRemovedAt;
+  final String? canonicalListState;
+  final String? canonicalPrivateNote;
+  final String? canonicalSaveSourceKind;
+  final DateTime? canonicalReminderAt;
+  final DateTime? canonicalReviewedAt;
+  final DateTime? canonicalArchivedAt;
   const LibraryItemRow({
     required this.accountId,
     required this.paperId,
@@ -4156,9 +4433,20 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
     this.removedAt,
     this.revision,
     this.lastOperationId,
+    this.privateNote,
+    this.saveSourceKind,
+    this.reminderAt,
+    this.reviewedAt,
+    this.archivedAt,
     this.canonicalDeleted,
     this.canonicalSavedAt,
     this.canonicalRemovedAt,
+    this.canonicalListState,
+    this.canonicalPrivateNote,
+    this.canonicalSaveSourceKind,
+    this.canonicalReminderAt,
+    this.canonicalReviewedAt,
+    this.canonicalArchivedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4183,6 +4471,21 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
     if (!nullToAbsent || lastOperationId != null) {
       map['last_operation_id'] = Variable<String>(lastOperationId);
     }
+    if (!nullToAbsent || privateNote != null) {
+      map['private_note'] = Variable<String>(privateNote);
+    }
+    if (!nullToAbsent || saveSourceKind != null) {
+      map['save_source_kind'] = Variable<String>(saveSourceKind);
+    }
+    if (!nullToAbsent || reminderAt != null) {
+      map['reminder_at'] = Variable<DateTime>(reminderAt);
+    }
+    if (!nullToAbsent || reviewedAt != null) {
+      map['reviewed_at'] = Variable<DateTime>(reviewedAt);
+    }
+    if (!nullToAbsent || archivedAt != null) {
+      map['archived_at'] = Variable<DateTime>(archivedAt);
+    }
     if (!nullToAbsent || canonicalDeleted != null) {
       map['canonical_deleted'] = Variable<bool>(canonicalDeleted);
     }
@@ -4191,6 +4494,26 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
     }
     if (!nullToAbsent || canonicalRemovedAt != null) {
       map['canonical_removed_at'] = Variable<DateTime>(canonicalRemovedAt);
+    }
+    if (!nullToAbsent || canonicalListState != null) {
+      map['canonical_list_state'] = Variable<String>(canonicalListState);
+    }
+    if (!nullToAbsent || canonicalPrivateNote != null) {
+      map['canonical_private_note'] = Variable<String>(canonicalPrivateNote);
+    }
+    if (!nullToAbsent || canonicalSaveSourceKind != null) {
+      map['canonical_save_source_kind'] = Variable<String>(
+        canonicalSaveSourceKind,
+      );
+    }
+    if (!nullToAbsent || canonicalReminderAt != null) {
+      map['canonical_reminder_at'] = Variable<DateTime>(canonicalReminderAt);
+    }
+    if (!nullToAbsent || canonicalReviewedAt != null) {
+      map['canonical_reviewed_at'] = Variable<DateTime>(canonicalReviewedAt);
+    }
+    if (!nullToAbsent || canonicalArchivedAt != null) {
+      map['canonical_archived_at'] = Variable<DateTime>(canonicalArchivedAt);
     }
     return map;
   }
@@ -4217,6 +4540,21 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
       lastOperationId: lastOperationId == null && nullToAbsent
           ? const Value.absent()
           : Value(lastOperationId),
+      privateNote: privateNote == null && nullToAbsent
+          ? const Value.absent()
+          : Value(privateNote),
+      saveSourceKind: saveSourceKind == null && nullToAbsent
+          ? const Value.absent()
+          : Value(saveSourceKind),
+      reminderAt: reminderAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reminderAt),
+      reviewedAt: reviewedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reviewedAt),
+      archivedAt: archivedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(archivedAt),
       canonicalDeleted: canonicalDeleted == null && nullToAbsent
           ? const Value.absent()
           : Value(canonicalDeleted),
@@ -4226,6 +4564,24 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
       canonicalRemovedAt: canonicalRemovedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(canonicalRemovedAt),
+      canonicalListState: canonicalListState == null && nullToAbsent
+          ? const Value.absent()
+          : Value(canonicalListState),
+      canonicalPrivateNote: canonicalPrivateNote == null && nullToAbsent
+          ? const Value.absent()
+          : Value(canonicalPrivateNote),
+      canonicalSaveSourceKind: canonicalSaveSourceKind == null && nullToAbsent
+          ? const Value.absent()
+          : Value(canonicalSaveSourceKind),
+      canonicalReminderAt: canonicalReminderAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(canonicalReminderAt),
+      canonicalReviewedAt: canonicalReviewedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(canonicalReviewedAt),
+      canonicalArchivedAt: canonicalArchivedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(canonicalArchivedAt),
     );
   }
 
@@ -4245,12 +4601,35 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
       removedAt: serializer.fromJson<DateTime?>(json['removedAt']),
       revision: serializer.fromJson<int?>(json['revision']),
       lastOperationId: serializer.fromJson<String?>(json['lastOperationId']),
+      privateNote: serializer.fromJson<String?>(json['privateNote']),
+      saveSourceKind: serializer.fromJson<String?>(json['saveSourceKind']),
+      reminderAt: serializer.fromJson<DateTime?>(json['reminderAt']),
+      reviewedAt: serializer.fromJson<DateTime?>(json['reviewedAt']),
+      archivedAt: serializer.fromJson<DateTime?>(json['archivedAt']),
       canonicalDeleted: serializer.fromJson<bool?>(json['canonicalDeleted']),
       canonicalSavedAt: serializer.fromJson<DateTime?>(
         json['canonicalSavedAt'],
       ),
       canonicalRemovedAt: serializer.fromJson<DateTime?>(
         json['canonicalRemovedAt'],
+      ),
+      canonicalListState: serializer.fromJson<String?>(
+        json['canonicalListState'],
+      ),
+      canonicalPrivateNote: serializer.fromJson<String?>(
+        json['canonicalPrivateNote'],
+      ),
+      canonicalSaveSourceKind: serializer.fromJson<String?>(
+        json['canonicalSaveSourceKind'],
+      ),
+      canonicalReminderAt: serializer.fromJson<DateTime?>(
+        json['canonicalReminderAt'],
+      ),
+      canonicalReviewedAt: serializer.fromJson<DateTime?>(
+        json['canonicalReviewedAt'],
+      ),
+      canonicalArchivedAt: serializer.fromJson<DateTime?>(
+        json['canonicalArchivedAt'],
       ),
     );
   }
@@ -4268,9 +4647,22 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
       'removedAt': serializer.toJson<DateTime?>(removedAt),
       'revision': serializer.toJson<int?>(revision),
       'lastOperationId': serializer.toJson<String?>(lastOperationId),
+      'privateNote': serializer.toJson<String?>(privateNote),
+      'saveSourceKind': serializer.toJson<String?>(saveSourceKind),
+      'reminderAt': serializer.toJson<DateTime?>(reminderAt),
+      'reviewedAt': serializer.toJson<DateTime?>(reviewedAt),
+      'archivedAt': serializer.toJson<DateTime?>(archivedAt),
       'canonicalDeleted': serializer.toJson<bool?>(canonicalDeleted),
       'canonicalSavedAt': serializer.toJson<DateTime?>(canonicalSavedAt),
       'canonicalRemovedAt': serializer.toJson<DateTime?>(canonicalRemovedAt),
+      'canonicalListState': serializer.toJson<String?>(canonicalListState),
+      'canonicalPrivateNote': serializer.toJson<String?>(canonicalPrivateNote),
+      'canonicalSaveSourceKind': serializer.toJson<String?>(
+        canonicalSaveSourceKind,
+      ),
+      'canonicalReminderAt': serializer.toJson<DateTime?>(canonicalReminderAt),
+      'canonicalReviewedAt': serializer.toJson<DateTime?>(canonicalReviewedAt),
+      'canonicalArchivedAt': serializer.toJson<DateTime?>(canonicalArchivedAt),
     };
   }
 
@@ -4285,9 +4677,20 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
     Value<DateTime?> removedAt = const Value.absent(),
     Value<int?> revision = const Value.absent(),
     Value<String?> lastOperationId = const Value.absent(),
+    Value<String?> privateNote = const Value.absent(),
+    Value<String?> saveSourceKind = const Value.absent(),
+    Value<DateTime?> reminderAt = const Value.absent(),
+    Value<DateTime?> reviewedAt = const Value.absent(),
+    Value<DateTime?> archivedAt = const Value.absent(),
     Value<bool?> canonicalDeleted = const Value.absent(),
     Value<DateTime?> canonicalSavedAt = const Value.absent(),
     Value<DateTime?> canonicalRemovedAt = const Value.absent(),
+    Value<String?> canonicalListState = const Value.absent(),
+    Value<String?> canonicalPrivateNote = const Value.absent(),
+    Value<String?> canonicalSaveSourceKind = const Value.absent(),
+    Value<DateTime?> canonicalReminderAt = const Value.absent(),
+    Value<DateTime?> canonicalReviewedAt = const Value.absent(),
+    Value<DateTime?> canonicalArchivedAt = const Value.absent(),
   }) => LibraryItemRow(
     accountId: accountId ?? this.accountId,
     paperId: paperId ?? this.paperId,
@@ -4303,6 +4706,13 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
     lastOperationId: lastOperationId.present
         ? lastOperationId.value
         : this.lastOperationId,
+    privateNote: privateNote.present ? privateNote.value : this.privateNote,
+    saveSourceKind: saveSourceKind.present
+        ? saveSourceKind.value
+        : this.saveSourceKind,
+    reminderAt: reminderAt.present ? reminderAt.value : this.reminderAt,
+    reviewedAt: reviewedAt.present ? reviewedAt.value : this.reviewedAt,
+    archivedAt: archivedAt.present ? archivedAt.value : this.archivedAt,
     canonicalDeleted: canonicalDeleted.present
         ? canonicalDeleted.value
         : this.canonicalDeleted,
@@ -4312,6 +4722,24 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
     canonicalRemovedAt: canonicalRemovedAt.present
         ? canonicalRemovedAt.value
         : this.canonicalRemovedAt,
+    canonicalListState: canonicalListState.present
+        ? canonicalListState.value
+        : this.canonicalListState,
+    canonicalPrivateNote: canonicalPrivateNote.present
+        ? canonicalPrivateNote.value
+        : this.canonicalPrivateNote,
+    canonicalSaveSourceKind: canonicalSaveSourceKind.present
+        ? canonicalSaveSourceKind.value
+        : this.canonicalSaveSourceKind,
+    canonicalReminderAt: canonicalReminderAt.present
+        ? canonicalReminderAt.value
+        : this.canonicalReminderAt,
+    canonicalReviewedAt: canonicalReviewedAt.present
+        ? canonicalReviewedAt.value
+        : this.canonicalReviewedAt,
+    canonicalArchivedAt: canonicalArchivedAt.present
+        ? canonicalArchivedAt.value
+        : this.canonicalArchivedAt,
   );
   LibraryItemRow copyWithCompanion(LibraryItemsCompanion data) {
     return LibraryItemRow(
@@ -4331,6 +4759,21 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
       lastOperationId: data.lastOperationId.present
           ? data.lastOperationId.value
           : this.lastOperationId,
+      privateNote: data.privateNote.present
+          ? data.privateNote.value
+          : this.privateNote,
+      saveSourceKind: data.saveSourceKind.present
+          ? data.saveSourceKind.value
+          : this.saveSourceKind,
+      reminderAt: data.reminderAt.present
+          ? data.reminderAt.value
+          : this.reminderAt,
+      reviewedAt: data.reviewedAt.present
+          ? data.reviewedAt.value
+          : this.reviewedAt,
+      archivedAt: data.archivedAt.present
+          ? data.archivedAt.value
+          : this.archivedAt,
       canonicalDeleted: data.canonicalDeleted.present
           ? data.canonicalDeleted.value
           : this.canonicalDeleted,
@@ -4340,6 +4783,24 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
       canonicalRemovedAt: data.canonicalRemovedAt.present
           ? data.canonicalRemovedAt.value
           : this.canonicalRemovedAt,
+      canonicalListState: data.canonicalListState.present
+          ? data.canonicalListState.value
+          : this.canonicalListState,
+      canonicalPrivateNote: data.canonicalPrivateNote.present
+          ? data.canonicalPrivateNote.value
+          : this.canonicalPrivateNote,
+      canonicalSaveSourceKind: data.canonicalSaveSourceKind.present
+          ? data.canonicalSaveSourceKind.value
+          : this.canonicalSaveSourceKind,
+      canonicalReminderAt: data.canonicalReminderAt.present
+          ? data.canonicalReminderAt.value
+          : this.canonicalReminderAt,
+      canonicalReviewedAt: data.canonicalReviewedAt.present
+          ? data.canonicalReviewedAt.value
+          : this.canonicalReviewedAt,
+      canonicalArchivedAt: data.canonicalArchivedAt.present
+          ? data.canonicalArchivedAt.value
+          : this.canonicalArchivedAt,
     );
   }
 
@@ -4356,15 +4817,26 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
           ..write('removedAt: $removedAt, ')
           ..write('revision: $revision, ')
           ..write('lastOperationId: $lastOperationId, ')
+          ..write('privateNote: $privateNote, ')
+          ..write('saveSourceKind: $saveSourceKind, ')
+          ..write('reminderAt: $reminderAt, ')
+          ..write('reviewedAt: $reviewedAt, ')
+          ..write('archivedAt: $archivedAt, ')
           ..write('canonicalDeleted: $canonicalDeleted, ')
           ..write('canonicalSavedAt: $canonicalSavedAt, ')
-          ..write('canonicalRemovedAt: $canonicalRemovedAt')
+          ..write('canonicalRemovedAt: $canonicalRemovedAt, ')
+          ..write('canonicalListState: $canonicalListState, ')
+          ..write('canonicalPrivateNote: $canonicalPrivateNote, ')
+          ..write('canonicalSaveSourceKind: $canonicalSaveSourceKind, ')
+          ..write('canonicalReminderAt: $canonicalReminderAt, ')
+          ..write('canonicalReviewedAt: $canonicalReviewedAt, ')
+          ..write('canonicalArchivedAt: $canonicalArchivedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     accountId,
     paperId,
     listState,
@@ -4375,10 +4847,21 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
     removedAt,
     revision,
     lastOperationId,
+    privateNote,
+    saveSourceKind,
+    reminderAt,
+    reviewedAt,
+    archivedAt,
     canonicalDeleted,
     canonicalSavedAt,
     canonicalRemovedAt,
-  );
+    canonicalListState,
+    canonicalPrivateNote,
+    canonicalSaveSourceKind,
+    canonicalReminderAt,
+    canonicalReviewedAt,
+    canonicalArchivedAt,
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -4393,9 +4876,20 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
           other.removedAt == this.removedAt &&
           other.revision == this.revision &&
           other.lastOperationId == this.lastOperationId &&
+          other.privateNote == this.privateNote &&
+          other.saveSourceKind == this.saveSourceKind &&
+          other.reminderAt == this.reminderAt &&
+          other.reviewedAt == this.reviewedAt &&
+          other.archivedAt == this.archivedAt &&
           other.canonicalDeleted == this.canonicalDeleted &&
           other.canonicalSavedAt == this.canonicalSavedAt &&
-          other.canonicalRemovedAt == this.canonicalRemovedAt);
+          other.canonicalRemovedAt == this.canonicalRemovedAt &&
+          other.canonicalListState == this.canonicalListState &&
+          other.canonicalPrivateNote == this.canonicalPrivateNote &&
+          other.canonicalSaveSourceKind == this.canonicalSaveSourceKind &&
+          other.canonicalReminderAt == this.canonicalReminderAt &&
+          other.canonicalReviewedAt == this.canonicalReviewedAt &&
+          other.canonicalArchivedAt == this.canonicalArchivedAt);
 }
 
 class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
@@ -4409,9 +4903,20 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
   final Value<DateTime?> removedAt;
   final Value<int?> revision;
   final Value<String?> lastOperationId;
+  final Value<String?> privateNote;
+  final Value<String?> saveSourceKind;
+  final Value<DateTime?> reminderAt;
+  final Value<DateTime?> reviewedAt;
+  final Value<DateTime?> archivedAt;
   final Value<bool?> canonicalDeleted;
   final Value<DateTime?> canonicalSavedAt;
   final Value<DateTime?> canonicalRemovedAt;
+  final Value<String?> canonicalListState;
+  final Value<String?> canonicalPrivateNote;
+  final Value<String?> canonicalSaveSourceKind;
+  final Value<DateTime?> canonicalReminderAt;
+  final Value<DateTime?> canonicalReviewedAt;
+  final Value<DateTime?> canonicalArchivedAt;
   final Value<int> rowid;
   const LibraryItemsCompanion({
     this.accountId = const Value.absent(),
@@ -4424,9 +4929,20 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     this.removedAt = const Value.absent(),
     this.revision = const Value.absent(),
     this.lastOperationId = const Value.absent(),
+    this.privateNote = const Value.absent(),
+    this.saveSourceKind = const Value.absent(),
+    this.reminderAt = const Value.absent(),
+    this.reviewedAt = const Value.absent(),
+    this.archivedAt = const Value.absent(),
     this.canonicalDeleted = const Value.absent(),
     this.canonicalSavedAt = const Value.absent(),
     this.canonicalRemovedAt = const Value.absent(),
+    this.canonicalListState = const Value.absent(),
+    this.canonicalPrivateNote = const Value.absent(),
+    this.canonicalSaveSourceKind = const Value.absent(),
+    this.canonicalReminderAt = const Value.absent(),
+    this.canonicalReviewedAt = const Value.absent(),
+    this.canonicalArchivedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LibraryItemsCompanion.insert({
@@ -4440,9 +4956,20 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     this.removedAt = const Value.absent(),
     this.revision = const Value.absent(),
     this.lastOperationId = const Value.absent(),
+    this.privateNote = const Value.absent(),
+    this.saveSourceKind = const Value.absent(),
+    this.reminderAt = const Value.absent(),
+    this.reviewedAt = const Value.absent(),
+    this.archivedAt = const Value.absent(),
     this.canonicalDeleted = const Value.absent(),
     this.canonicalSavedAt = const Value.absent(),
     this.canonicalRemovedAt = const Value.absent(),
+    this.canonicalListState = const Value.absent(),
+    this.canonicalPrivateNote = const Value.absent(),
+    this.canonicalSaveSourceKind = const Value.absent(),
+    this.canonicalReminderAt = const Value.absent(),
+    this.canonicalReviewedAt = const Value.absent(),
+    this.canonicalArchivedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : accountId = Value(accountId),
        paperId = Value(paperId),
@@ -4458,9 +4985,20 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     Expression<DateTime>? removedAt,
     Expression<int>? revision,
     Expression<String>? lastOperationId,
+    Expression<String>? privateNote,
+    Expression<String>? saveSourceKind,
+    Expression<DateTime>? reminderAt,
+    Expression<DateTime>? reviewedAt,
+    Expression<DateTime>? archivedAt,
     Expression<bool>? canonicalDeleted,
     Expression<DateTime>? canonicalSavedAt,
     Expression<DateTime>? canonicalRemovedAt,
+    Expression<String>? canonicalListState,
+    Expression<String>? canonicalPrivateNote,
+    Expression<String>? canonicalSaveSourceKind,
+    Expression<DateTime>? canonicalReminderAt,
+    Expression<DateTime>? canonicalReviewedAt,
+    Expression<DateTime>? canonicalArchivedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -4474,10 +5012,27 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
       if (removedAt != null) 'removed_at': removedAt,
       if (revision != null) 'revision': revision,
       if (lastOperationId != null) 'last_operation_id': lastOperationId,
+      if (privateNote != null) 'private_note': privateNote,
+      if (saveSourceKind != null) 'save_source_kind': saveSourceKind,
+      if (reminderAt != null) 'reminder_at': reminderAt,
+      if (reviewedAt != null) 'reviewed_at': reviewedAt,
+      if (archivedAt != null) 'archived_at': archivedAt,
       if (canonicalDeleted != null) 'canonical_deleted': canonicalDeleted,
       if (canonicalSavedAt != null) 'canonical_saved_at': canonicalSavedAt,
       if (canonicalRemovedAt != null)
         'canonical_removed_at': canonicalRemovedAt,
+      if (canonicalListState != null)
+        'canonical_list_state': canonicalListState,
+      if (canonicalPrivateNote != null)
+        'canonical_private_note': canonicalPrivateNote,
+      if (canonicalSaveSourceKind != null)
+        'canonical_save_source_kind': canonicalSaveSourceKind,
+      if (canonicalReminderAt != null)
+        'canonical_reminder_at': canonicalReminderAt,
+      if (canonicalReviewedAt != null)
+        'canonical_reviewed_at': canonicalReviewedAt,
+      if (canonicalArchivedAt != null)
+        'canonical_archived_at': canonicalArchivedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -4493,9 +5048,20 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     Value<DateTime?>? removedAt,
     Value<int?>? revision,
     Value<String?>? lastOperationId,
+    Value<String?>? privateNote,
+    Value<String?>? saveSourceKind,
+    Value<DateTime?>? reminderAt,
+    Value<DateTime?>? reviewedAt,
+    Value<DateTime?>? archivedAt,
     Value<bool?>? canonicalDeleted,
     Value<DateTime?>? canonicalSavedAt,
     Value<DateTime?>? canonicalRemovedAt,
+    Value<String?>? canonicalListState,
+    Value<String?>? canonicalPrivateNote,
+    Value<String?>? canonicalSaveSourceKind,
+    Value<DateTime?>? canonicalReminderAt,
+    Value<DateTime?>? canonicalReviewedAt,
+    Value<DateTime?>? canonicalArchivedAt,
     Value<int>? rowid,
   }) {
     return LibraryItemsCompanion(
@@ -4509,9 +5075,21 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
       removedAt: removedAt ?? this.removedAt,
       revision: revision ?? this.revision,
       lastOperationId: lastOperationId ?? this.lastOperationId,
+      privateNote: privateNote ?? this.privateNote,
+      saveSourceKind: saveSourceKind ?? this.saveSourceKind,
+      reminderAt: reminderAt ?? this.reminderAt,
+      reviewedAt: reviewedAt ?? this.reviewedAt,
+      archivedAt: archivedAt ?? this.archivedAt,
       canonicalDeleted: canonicalDeleted ?? this.canonicalDeleted,
       canonicalSavedAt: canonicalSavedAt ?? this.canonicalSavedAt,
       canonicalRemovedAt: canonicalRemovedAt ?? this.canonicalRemovedAt,
+      canonicalListState: canonicalListState ?? this.canonicalListState,
+      canonicalPrivateNote: canonicalPrivateNote ?? this.canonicalPrivateNote,
+      canonicalSaveSourceKind:
+          canonicalSaveSourceKind ?? this.canonicalSaveSourceKind,
+      canonicalReminderAt: canonicalReminderAt ?? this.canonicalReminderAt,
+      canonicalReviewedAt: canonicalReviewedAt ?? this.canonicalReviewedAt,
+      canonicalArchivedAt: canonicalArchivedAt ?? this.canonicalArchivedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4549,6 +5127,21 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     if (lastOperationId.present) {
       map['last_operation_id'] = Variable<String>(lastOperationId.value);
     }
+    if (privateNote.present) {
+      map['private_note'] = Variable<String>(privateNote.value);
+    }
+    if (saveSourceKind.present) {
+      map['save_source_kind'] = Variable<String>(saveSourceKind.value);
+    }
+    if (reminderAt.present) {
+      map['reminder_at'] = Variable<DateTime>(reminderAt.value);
+    }
+    if (reviewedAt.present) {
+      map['reviewed_at'] = Variable<DateTime>(reviewedAt.value);
+    }
+    if (archivedAt.present) {
+      map['archived_at'] = Variable<DateTime>(archivedAt.value);
+    }
     if (canonicalDeleted.present) {
       map['canonical_deleted'] = Variable<bool>(canonicalDeleted.value);
     }
@@ -4558,6 +5151,34 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     if (canonicalRemovedAt.present) {
       map['canonical_removed_at'] = Variable<DateTime>(
         canonicalRemovedAt.value,
+      );
+    }
+    if (canonicalListState.present) {
+      map['canonical_list_state'] = Variable<String>(canonicalListState.value);
+    }
+    if (canonicalPrivateNote.present) {
+      map['canonical_private_note'] = Variable<String>(
+        canonicalPrivateNote.value,
+      );
+    }
+    if (canonicalSaveSourceKind.present) {
+      map['canonical_save_source_kind'] = Variable<String>(
+        canonicalSaveSourceKind.value,
+      );
+    }
+    if (canonicalReminderAt.present) {
+      map['canonical_reminder_at'] = Variable<DateTime>(
+        canonicalReminderAt.value,
+      );
+    }
+    if (canonicalReviewedAt.present) {
+      map['canonical_reviewed_at'] = Variable<DateTime>(
+        canonicalReviewedAt.value,
+      );
+    }
+    if (canonicalArchivedAt.present) {
+      map['canonical_archived_at'] = Variable<DateTime>(
+        canonicalArchivedAt.value,
       );
     }
     if (rowid.present) {
@@ -4579,9 +5200,2552 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
           ..write('removedAt: $removedAt, ')
           ..write('revision: $revision, ')
           ..write('lastOperationId: $lastOperationId, ')
+          ..write('privateNote: $privateNote, ')
+          ..write('saveSourceKind: $saveSourceKind, ')
+          ..write('reminderAt: $reminderAt, ')
+          ..write('reviewedAt: $reviewedAt, ')
+          ..write('archivedAt: $archivedAt, ')
           ..write('canonicalDeleted: $canonicalDeleted, ')
           ..write('canonicalSavedAt: $canonicalSavedAt, ')
           ..write('canonicalRemovedAt: $canonicalRemovedAt, ')
+          ..write('canonicalListState: $canonicalListState, ')
+          ..write('canonicalPrivateNote: $canonicalPrivateNote, ')
+          ..write('canonicalSaveSourceKind: $canonicalSaveSourceKind, ')
+          ..write('canonicalReminderAt: $canonicalReminderAt, ')
+          ..write('canonicalReviewedAt: $canonicalReviewedAt, ')
+          ..write('canonicalArchivedAt: $canonicalArchivedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LibraryCustomListsTable extends LibraryCustomLists
+    with TableInfo<$LibraryCustomListsTable, LibraryCustomListRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LibraryCustomListsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+    'account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _listIdMeta = const VerificationMeta('listId');
+  @override
+  late final GeneratedColumn<String> listId = GeneratedColumn<String>(
+    'list_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deletedMeta = const VerificationMeta(
+    'deleted',
+  );
+  @override
+  late final GeneratedColumn<bool> deleted = GeneratedColumn<bool>(
+    'deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lastOperationIdMeta = const VerificationMeta(
+    'lastOperationId',
+  );
+  @override
+  late final GeneratedColumn<String> lastOperationId = GeneratedColumn<String>(
+    'last_operation_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _canonicalJsonMeta = const VerificationMeta(
+    'canonicalJson',
+  );
+  @override
+  late final GeneratedColumn<String> canonicalJson = GeneratedColumn<String>(
+    'canonical_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountId,
+    listId,
+    name,
+    description,
+    sortOrder,
+    revision,
+    deleted,
+    createdAt,
+    updatedAt,
+    lastOperationId,
+    canonicalJson,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'library_custom_lists';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LibraryCustomListRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('list_id')) {
+      context.handle(
+        _listIdMeta,
+        listId.isAcceptableOrUnknown(data['list_id']!, _listIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_listIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('deleted')) {
+      context.handle(
+        _deletedMeta,
+        deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('last_operation_id')) {
+      context.handle(
+        _lastOperationIdMeta,
+        lastOperationId.isAcceptableOrUnknown(
+          data['last_operation_id']!,
+          _lastOperationIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('canonical_json')) {
+      context.handle(
+        _canonicalJsonMeta,
+        canonicalJson.isAcceptableOrUnknown(
+          data['canonical_json']!,
+          _canonicalJsonMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountId, listId};
+  @override
+  LibraryCustomListRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LibraryCustomListRow(
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}account_id'],
+      )!,
+      listId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}list_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      ),
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      ),
+      deleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}deleted'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      lastOperationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_operation_id'],
+      ),
+      canonicalJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}canonical_json'],
+      ),
+    );
+  }
+
+  @override
+  $LibraryCustomListsTable createAlias(String alias) {
+    return $LibraryCustomListsTable(attachedDatabase, alias);
+  }
+}
+
+class LibraryCustomListRow extends DataClass
+    implements Insertable<LibraryCustomListRow> {
+  final String accountId;
+  final String listId;
+  final String name;
+  final String? description;
+  final int sortOrder;
+  final int? revision;
+  final bool deleted;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String? lastOperationId;
+  final String? canonicalJson;
+  const LibraryCustomListRow({
+    required this.accountId,
+    required this.listId,
+    required this.name,
+    this.description,
+    required this.sortOrder,
+    this.revision,
+    required this.deleted,
+    required this.createdAt,
+    required this.updatedAt,
+    this.lastOperationId,
+    this.canonicalJson,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['account_id'] = Variable<String>(accountId);
+    map['list_id'] = Variable<String>(listId);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || description != null) {
+      map['description'] = Variable<String>(description);
+    }
+    map['sort_order'] = Variable<int>(sortOrder);
+    if (!nullToAbsent || revision != null) {
+      map['revision'] = Variable<int>(revision);
+    }
+    map['deleted'] = Variable<bool>(deleted);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || lastOperationId != null) {
+      map['last_operation_id'] = Variable<String>(lastOperationId);
+    }
+    if (!nullToAbsent || canonicalJson != null) {
+      map['canonical_json'] = Variable<String>(canonicalJson);
+    }
+    return map;
+  }
+
+  LibraryCustomListsCompanion toCompanion(bool nullToAbsent) {
+    return LibraryCustomListsCompanion(
+      accountId: Value(accountId),
+      listId: Value(listId),
+      name: Value(name),
+      description: description == null && nullToAbsent
+          ? const Value.absent()
+          : Value(description),
+      sortOrder: Value(sortOrder),
+      revision: revision == null && nullToAbsent
+          ? const Value.absent()
+          : Value(revision),
+      deleted: Value(deleted),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      lastOperationId: lastOperationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastOperationId),
+      canonicalJson: canonicalJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(canonicalJson),
+    );
+  }
+
+  factory LibraryCustomListRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LibraryCustomListRow(
+      accountId: serializer.fromJson<String>(json['accountId']),
+      listId: serializer.fromJson<String>(json['listId']),
+      name: serializer.fromJson<String>(json['name']),
+      description: serializer.fromJson<String?>(json['description']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      revision: serializer.fromJson<int?>(json['revision']),
+      deleted: serializer.fromJson<bool>(json['deleted']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      lastOperationId: serializer.fromJson<String?>(json['lastOperationId']),
+      canonicalJson: serializer.fromJson<String?>(json['canonicalJson']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountId': serializer.toJson<String>(accountId),
+      'listId': serializer.toJson<String>(listId),
+      'name': serializer.toJson<String>(name),
+      'description': serializer.toJson<String?>(description),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'revision': serializer.toJson<int?>(revision),
+      'deleted': serializer.toJson<bool>(deleted),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'lastOperationId': serializer.toJson<String?>(lastOperationId),
+      'canonicalJson': serializer.toJson<String?>(canonicalJson),
+    };
+  }
+
+  LibraryCustomListRow copyWith({
+    String? accountId,
+    String? listId,
+    String? name,
+    Value<String?> description = const Value.absent(),
+    int? sortOrder,
+    Value<int?> revision = const Value.absent(),
+    bool? deleted,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    Value<String?> lastOperationId = const Value.absent(),
+    Value<String?> canonicalJson = const Value.absent(),
+  }) => LibraryCustomListRow(
+    accountId: accountId ?? this.accountId,
+    listId: listId ?? this.listId,
+    name: name ?? this.name,
+    description: description.present ? description.value : this.description,
+    sortOrder: sortOrder ?? this.sortOrder,
+    revision: revision.present ? revision.value : this.revision,
+    deleted: deleted ?? this.deleted,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    lastOperationId: lastOperationId.present
+        ? lastOperationId.value
+        : this.lastOperationId,
+    canonicalJson: canonicalJson.present
+        ? canonicalJson.value
+        : this.canonicalJson,
+  );
+  LibraryCustomListRow copyWithCompanion(LibraryCustomListsCompanion data) {
+    return LibraryCustomListRow(
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      listId: data.listId.present ? data.listId.value : this.listId,
+      name: data.name.present ? data.name.value : this.name,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      deleted: data.deleted.present ? data.deleted.value : this.deleted,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      lastOperationId: data.lastOperationId.present
+          ? data.lastOperationId.value
+          : this.lastOperationId,
+      canonicalJson: data.canonicalJson.present
+          ? data.canonicalJson.value
+          : this.canonicalJson,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LibraryCustomListRow(')
+          ..write('accountId: $accountId, ')
+          ..write('listId: $listId, ')
+          ..write('name: $name, ')
+          ..write('description: $description, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('revision: $revision, ')
+          ..write('deleted: $deleted, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('lastOperationId: $lastOperationId, ')
+          ..write('canonicalJson: $canonicalJson')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    accountId,
+    listId,
+    name,
+    description,
+    sortOrder,
+    revision,
+    deleted,
+    createdAt,
+    updatedAt,
+    lastOperationId,
+    canonicalJson,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LibraryCustomListRow &&
+          other.accountId == this.accountId &&
+          other.listId == this.listId &&
+          other.name == this.name &&
+          other.description == this.description &&
+          other.sortOrder == this.sortOrder &&
+          other.revision == this.revision &&
+          other.deleted == this.deleted &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.lastOperationId == this.lastOperationId &&
+          other.canonicalJson == this.canonicalJson);
+}
+
+class LibraryCustomListsCompanion
+    extends UpdateCompanion<LibraryCustomListRow> {
+  final Value<String> accountId;
+  final Value<String> listId;
+  final Value<String> name;
+  final Value<String?> description;
+  final Value<int> sortOrder;
+  final Value<int?> revision;
+  final Value<bool> deleted;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<String?> lastOperationId;
+  final Value<String?> canonicalJson;
+  final Value<int> rowid;
+  const LibraryCustomListsCompanion({
+    this.accountId = const Value.absent(),
+    this.listId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.description = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.deleted = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.lastOperationId = const Value.absent(),
+    this.canonicalJson = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LibraryCustomListsCompanion.insert({
+    required String accountId,
+    required String listId,
+    required String name,
+    this.description = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.deleted = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.lastOperationId = const Value.absent(),
+    this.canonicalJson = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : accountId = Value(accountId),
+       listId = Value(listId),
+       name = Value(name),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<LibraryCustomListRow> custom({
+    Expression<String>? accountId,
+    Expression<String>? listId,
+    Expression<String>? name,
+    Expression<String>? description,
+    Expression<int>? sortOrder,
+    Expression<int>? revision,
+    Expression<bool>? deleted,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<String>? lastOperationId,
+    Expression<String>? canonicalJson,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (accountId != null) 'account_id': accountId,
+      if (listId != null) 'list_id': listId,
+      if (name != null) 'name': name,
+      if (description != null) 'description': description,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (revision != null) 'revision': revision,
+      if (deleted != null) 'deleted': deleted,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (lastOperationId != null) 'last_operation_id': lastOperationId,
+      if (canonicalJson != null) 'canonical_json': canonicalJson,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LibraryCustomListsCompanion copyWith({
+    Value<String>? accountId,
+    Value<String>? listId,
+    Value<String>? name,
+    Value<String?>? description,
+    Value<int>? sortOrder,
+    Value<int?>? revision,
+    Value<bool>? deleted,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<String?>? lastOperationId,
+    Value<String?>? canonicalJson,
+    Value<int>? rowid,
+  }) {
+    return LibraryCustomListsCompanion(
+      accountId: accountId ?? this.accountId,
+      listId: listId ?? this.listId,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      sortOrder: sortOrder ?? this.sortOrder,
+      revision: revision ?? this.revision,
+      deleted: deleted ?? this.deleted,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      lastOperationId: lastOperationId ?? this.lastOperationId,
+      canonicalJson: canonicalJson ?? this.canonicalJson,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (listId.present) {
+      map['list_id'] = Variable<String>(listId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (deleted.present) {
+      map['deleted'] = Variable<bool>(deleted.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (lastOperationId.present) {
+      map['last_operation_id'] = Variable<String>(lastOperationId.value);
+    }
+    if (canonicalJson.present) {
+      map['canonical_json'] = Variable<String>(canonicalJson.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LibraryCustomListsCompanion(')
+          ..write('accountId: $accountId, ')
+          ..write('listId: $listId, ')
+          ..write('name: $name, ')
+          ..write('description: $description, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('revision: $revision, ')
+          ..write('deleted: $deleted, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('lastOperationId: $lastOperationId, ')
+          ..write('canonicalJson: $canonicalJson, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LibraryTagsTable extends LibraryTags
+    with TableInfo<$LibraryTagsTable, LibraryTagRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LibraryTagsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+    'account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _tagIdMeta = const VerificationMeta('tagId');
+  @override
+  late final GeneratedColumn<String> tagId = GeneratedColumn<String>(
+    'tag_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deletedMeta = const VerificationMeta(
+    'deleted',
+  );
+  @override
+  late final GeneratedColumn<bool> deleted = GeneratedColumn<bool>(
+    'deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lastOperationIdMeta = const VerificationMeta(
+    'lastOperationId',
+  );
+  @override
+  late final GeneratedColumn<String> lastOperationId = GeneratedColumn<String>(
+    'last_operation_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _canonicalJsonMeta = const VerificationMeta(
+    'canonicalJson',
+  );
+  @override
+  late final GeneratedColumn<String> canonicalJson = GeneratedColumn<String>(
+    'canonical_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountId,
+    tagId,
+    name,
+    revision,
+    deleted,
+    createdAt,
+    updatedAt,
+    lastOperationId,
+    canonicalJson,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'library_tags';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LibraryTagRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('tag_id')) {
+      context.handle(
+        _tagIdMeta,
+        tagId.isAcceptableOrUnknown(data['tag_id']!, _tagIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_tagIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('deleted')) {
+      context.handle(
+        _deletedMeta,
+        deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('last_operation_id')) {
+      context.handle(
+        _lastOperationIdMeta,
+        lastOperationId.isAcceptableOrUnknown(
+          data['last_operation_id']!,
+          _lastOperationIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('canonical_json')) {
+      context.handle(
+        _canonicalJsonMeta,
+        canonicalJson.isAcceptableOrUnknown(
+          data['canonical_json']!,
+          _canonicalJsonMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountId, tagId};
+  @override
+  LibraryTagRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LibraryTagRow(
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}account_id'],
+      )!,
+      tagId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tag_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      ),
+      deleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}deleted'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      lastOperationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_operation_id'],
+      ),
+      canonicalJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}canonical_json'],
+      ),
+    );
+  }
+
+  @override
+  $LibraryTagsTable createAlias(String alias) {
+    return $LibraryTagsTable(attachedDatabase, alias);
+  }
+}
+
+class LibraryTagRow extends DataClass implements Insertable<LibraryTagRow> {
+  final String accountId;
+  final String tagId;
+  final String name;
+  final int? revision;
+  final bool deleted;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String? lastOperationId;
+  final String? canonicalJson;
+  const LibraryTagRow({
+    required this.accountId,
+    required this.tagId,
+    required this.name,
+    this.revision,
+    required this.deleted,
+    required this.createdAt,
+    required this.updatedAt,
+    this.lastOperationId,
+    this.canonicalJson,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['account_id'] = Variable<String>(accountId);
+    map['tag_id'] = Variable<String>(tagId);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || revision != null) {
+      map['revision'] = Variable<int>(revision);
+    }
+    map['deleted'] = Variable<bool>(deleted);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || lastOperationId != null) {
+      map['last_operation_id'] = Variable<String>(lastOperationId);
+    }
+    if (!nullToAbsent || canonicalJson != null) {
+      map['canonical_json'] = Variable<String>(canonicalJson);
+    }
+    return map;
+  }
+
+  LibraryTagsCompanion toCompanion(bool nullToAbsent) {
+    return LibraryTagsCompanion(
+      accountId: Value(accountId),
+      tagId: Value(tagId),
+      name: Value(name),
+      revision: revision == null && nullToAbsent
+          ? const Value.absent()
+          : Value(revision),
+      deleted: Value(deleted),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      lastOperationId: lastOperationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastOperationId),
+      canonicalJson: canonicalJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(canonicalJson),
+    );
+  }
+
+  factory LibraryTagRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LibraryTagRow(
+      accountId: serializer.fromJson<String>(json['accountId']),
+      tagId: serializer.fromJson<String>(json['tagId']),
+      name: serializer.fromJson<String>(json['name']),
+      revision: serializer.fromJson<int?>(json['revision']),
+      deleted: serializer.fromJson<bool>(json['deleted']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      lastOperationId: serializer.fromJson<String?>(json['lastOperationId']),
+      canonicalJson: serializer.fromJson<String?>(json['canonicalJson']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountId': serializer.toJson<String>(accountId),
+      'tagId': serializer.toJson<String>(tagId),
+      'name': serializer.toJson<String>(name),
+      'revision': serializer.toJson<int?>(revision),
+      'deleted': serializer.toJson<bool>(deleted),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'lastOperationId': serializer.toJson<String?>(lastOperationId),
+      'canonicalJson': serializer.toJson<String?>(canonicalJson),
+    };
+  }
+
+  LibraryTagRow copyWith({
+    String? accountId,
+    String? tagId,
+    String? name,
+    Value<int?> revision = const Value.absent(),
+    bool? deleted,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    Value<String?> lastOperationId = const Value.absent(),
+    Value<String?> canonicalJson = const Value.absent(),
+  }) => LibraryTagRow(
+    accountId: accountId ?? this.accountId,
+    tagId: tagId ?? this.tagId,
+    name: name ?? this.name,
+    revision: revision.present ? revision.value : this.revision,
+    deleted: deleted ?? this.deleted,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    lastOperationId: lastOperationId.present
+        ? lastOperationId.value
+        : this.lastOperationId,
+    canonicalJson: canonicalJson.present
+        ? canonicalJson.value
+        : this.canonicalJson,
+  );
+  LibraryTagRow copyWithCompanion(LibraryTagsCompanion data) {
+    return LibraryTagRow(
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      tagId: data.tagId.present ? data.tagId.value : this.tagId,
+      name: data.name.present ? data.name.value : this.name,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      deleted: data.deleted.present ? data.deleted.value : this.deleted,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      lastOperationId: data.lastOperationId.present
+          ? data.lastOperationId.value
+          : this.lastOperationId,
+      canonicalJson: data.canonicalJson.present
+          ? data.canonicalJson.value
+          : this.canonicalJson,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LibraryTagRow(')
+          ..write('accountId: $accountId, ')
+          ..write('tagId: $tagId, ')
+          ..write('name: $name, ')
+          ..write('revision: $revision, ')
+          ..write('deleted: $deleted, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('lastOperationId: $lastOperationId, ')
+          ..write('canonicalJson: $canonicalJson')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    accountId,
+    tagId,
+    name,
+    revision,
+    deleted,
+    createdAt,
+    updatedAt,
+    lastOperationId,
+    canonicalJson,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LibraryTagRow &&
+          other.accountId == this.accountId &&
+          other.tagId == this.tagId &&
+          other.name == this.name &&
+          other.revision == this.revision &&
+          other.deleted == this.deleted &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.lastOperationId == this.lastOperationId &&
+          other.canonicalJson == this.canonicalJson);
+}
+
+class LibraryTagsCompanion extends UpdateCompanion<LibraryTagRow> {
+  final Value<String> accountId;
+  final Value<String> tagId;
+  final Value<String> name;
+  final Value<int?> revision;
+  final Value<bool> deleted;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<String?> lastOperationId;
+  final Value<String?> canonicalJson;
+  final Value<int> rowid;
+  const LibraryTagsCompanion({
+    this.accountId = const Value.absent(),
+    this.tagId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.deleted = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.lastOperationId = const Value.absent(),
+    this.canonicalJson = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LibraryTagsCompanion.insert({
+    required String accountId,
+    required String tagId,
+    required String name,
+    this.revision = const Value.absent(),
+    this.deleted = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.lastOperationId = const Value.absent(),
+    this.canonicalJson = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : accountId = Value(accountId),
+       tagId = Value(tagId),
+       name = Value(name),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<LibraryTagRow> custom({
+    Expression<String>? accountId,
+    Expression<String>? tagId,
+    Expression<String>? name,
+    Expression<int>? revision,
+    Expression<bool>? deleted,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<String>? lastOperationId,
+    Expression<String>? canonicalJson,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (accountId != null) 'account_id': accountId,
+      if (tagId != null) 'tag_id': tagId,
+      if (name != null) 'name': name,
+      if (revision != null) 'revision': revision,
+      if (deleted != null) 'deleted': deleted,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (lastOperationId != null) 'last_operation_id': lastOperationId,
+      if (canonicalJson != null) 'canonical_json': canonicalJson,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LibraryTagsCompanion copyWith({
+    Value<String>? accountId,
+    Value<String>? tagId,
+    Value<String>? name,
+    Value<int?>? revision,
+    Value<bool>? deleted,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<String?>? lastOperationId,
+    Value<String?>? canonicalJson,
+    Value<int>? rowid,
+  }) {
+    return LibraryTagsCompanion(
+      accountId: accountId ?? this.accountId,
+      tagId: tagId ?? this.tagId,
+      name: name ?? this.name,
+      revision: revision ?? this.revision,
+      deleted: deleted ?? this.deleted,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      lastOperationId: lastOperationId ?? this.lastOperationId,
+      canonicalJson: canonicalJson ?? this.canonicalJson,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (tagId.present) {
+      map['tag_id'] = Variable<String>(tagId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (deleted.present) {
+      map['deleted'] = Variable<bool>(deleted.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (lastOperationId.present) {
+      map['last_operation_id'] = Variable<String>(lastOperationId.value);
+    }
+    if (canonicalJson.present) {
+      map['canonical_json'] = Variable<String>(canonicalJson.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LibraryTagsCompanion(')
+          ..write('accountId: $accountId, ')
+          ..write('tagId: $tagId, ')
+          ..write('name: $name, ')
+          ..write('revision: $revision, ')
+          ..write('deleted: $deleted, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('lastOperationId: $lastOperationId, ')
+          ..write('canonicalJson: $canonicalJson, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LibraryListMembershipsTable extends LibraryListMemberships
+    with TableInfo<$LibraryListMembershipsTable, LibraryListMembershipRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LibraryListMembershipsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+    'account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _listIdMeta = const VerificationMeta('listId');
+  @override
+  late final GeneratedColumn<String> listId = GeneratedColumn<String>(
+    'list_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _paperIdMeta = const VerificationMeta(
+    'paperId',
+  );
+  @override
+  late final GeneratedColumn<String> paperId = GeneratedColumn<String>(
+    'paper_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _positionRankMeta = const VerificationMeta(
+    'positionRank',
+  );
+  @override
+  late final GeneratedColumn<int> positionRank = GeneratedColumn<int>(
+    'position_rank',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deletedMeta = const VerificationMeta(
+    'deleted',
+  );
+  @override
+  late final GeneratedColumn<bool> deleted = GeneratedColumn<bool>(
+    'deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lastOperationIdMeta = const VerificationMeta(
+    'lastOperationId',
+  );
+  @override
+  late final GeneratedColumn<String> lastOperationId = GeneratedColumn<String>(
+    'last_operation_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _canonicalJsonMeta = const VerificationMeta(
+    'canonicalJson',
+  );
+  @override
+  late final GeneratedColumn<String> canonicalJson = GeneratedColumn<String>(
+    'canonical_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountId,
+    listId,
+    paperId,
+    positionRank,
+    note,
+    revision,
+    deleted,
+    createdAt,
+    updatedAt,
+    lastOperationId,
+    canonicalJson,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'library_list_memberships';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LibraryListMembershipRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('list_id')) {
+      context.handle(
+        _listIdMeta,
+        listId.isAcceptableOrUnknown(data['list_id']!, _listIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_listIdMeta);
+    }
+    if (data.containsKey('paper_id')) {
+      context.handle(
+        _paperIdMeta,
+        paperId.isAcceptableOrUnknown(data['paper_id']!, _paperIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_paperIdMeta);
+    }
+    if (data.containsKey('position_rank')) {
+      context.handle(
+        _positionRankMeta,
+        positionRank.isAcceptableOrUnknown(
+          data['position_rank']!,
+          _positionRankMeta,
+        ),
+      );
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('deleted')) {
+      context.handle(
+        _deletedMeta,
+        deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('last_operation_id')) {
+      context.handle(
+        _lastOperationIdMeta,
+        lastOperationId.isAcceptableOrUnknown(
+          data['last_operation_id']!,
+          _lastOperationIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('canonical_json')) {
+      context.handle(
+        _canonicalJsonMeta,
+        canonicalJson.isAcceptableOrUnknown(
+          data['canonical_json']!,
+          _canonicalJsonMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountId, listId, paperId};
+  @override
+  LibraryListMembershipRow map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LibraryListMembershipRow(
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}account_id'],
+      )!,
+      listId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}list_id'],
+      )!,
+      paperId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}paper_id'],
+      )!,
+      positionRank: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position_rank'],
+      )!,
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      ),
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      ),
+      deleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}deleted'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      lastOperationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_operation_id'],
+      ),
+      canonicalJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}canonical_json'],
+      ),
+    );
+  }
+
+  @override
+  $LibraryListMembershipsTable createAlias(String alias) {
+    return $LibraryListMembershipsTable(attachedDatabase, alias);
+  }
+}
+
+class LibraryListMembershipRow extends DataClass
+    implements Insertable<LibraryListMembershipRow> {
+  final String accountId;
+  final String listId;
+  final String paperId;
+  final int positionRank;
+  final String? note;
+  final int? revision;
+  final bool deleted;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String? lastOperationId;
+  final String? canonicalJson;
+  const LibraryListMembershipRow({
+    required this.accountId,
+    required this.listId,
+    required this.paperId,
+    required this.positionRank,
+    this.note,
+    this.revision,
+    required this.deleted,
+    required this.createdAt,
+    required this.updatedAt,
+    this.lastOperationId,
+    this.canonicalJson,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['account_id'] = Variable<String>(accountId);
+    map['list_id'] = Variable<String>(listId);
+    map['paper_id'] = Variable<String>(paperId);
+    map['position_rank'] = Variable<int>(positionRank);
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
+    }
+    if (!nullToAbsent || revision != null) {
+      map['revision'] = Variable<int>(revision);
+    }
+    map['deleted'] = Variable<bool>(deleted);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || lastOperationId != null) {
+      map['last_operation_id'] = Variable<String>(lastOperationId);
+    }
+    if (!nullToAbsent || canonicalJson != null) {
+      map['canonical_json'] = Variable<String>(canonicalJson);
+    }
+    return map;
+  }
+
+  LibraryListMembershipsCompanion toCompanion(bool nullToAbsent) {
+    return LibraryListMembershipsCompanion(
+      accountId: Value(accountId),
+      listId: Value(listId),
+      paperId: Value(paperId),
+      positionRank: Value(positionRank),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      revision: revision == null && nullToAbsent
+          ? const Value.absent()
+          : Value(revision),
+      deleted: Value(deleted),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      lastOperationId: lastOperationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastOperationId),
+      canonicalJson: canonicalJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(canonicalJson),
+    );
+  }
+
+  factory LibraryListMembershipRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LibraryListMembershipRow(
+      accountId: serializer.fromJson<String>(json['accountId']),
+      listId: serializer.fromJson<String>(json['listId']),
+      paperId: serializer.fromJson<String>(json['paperId']),
+      positionRank: serializer.fromJson<int>(json['positionRank']),
+      note: serializer.fromJson<String?>(json['note']),
+      revision: serializer.fromJson<int?>(json['revision']),
+      deleted: serializer.fromJson<bool>(json['deleted']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      lastOperationId: serializer.fromJson<String?>(json['lastOperationId']),
+      canonicalJson: serializer.fromJson<String?>(json['canonicalJson']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountId': serializer.toJson<String>(accountId),
+      'listId': serializer.toJson<String>(listId),
+      'paperId': serializer.toJson<String>(paperId),
+      'positionRank': serializer.toJson<int>(positionRank),
+      'note': serializer.toJson<String?>(note),
+      'revision': serializer.toJson<int?>(revision),
+      'deleted': serializer.toJson<bool>(deleted),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'lastOperationId': serializer.toJson<String?>(lastOperationId),
+      'canonicalJson': serializer.toJson<String?>(canonicalJson),
+    };
+  }
+
+  LibraryListMembershipRow copyWith({
+    String? accountId,
+    String? listId,
+    String? paperId,
+    int? positionRank,
+    Value<String?> note = const Value.absent(),
+    Value<int?> revision = const Value.absent(),
+    bool? deleted,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    Value<String?> lastOperationId = const Value.absent(),
+    Value<String?> canonicalJson = const Value.absent(),
+  }) => LibraryListMembershipRow(
+    accountId: accountId ?? this.accountId,
+    listId: listId ?? this.listId,
+    paperId: paperId ?? this.paperId,
+    positionRank: positionRank ?? this.positionRank,
+    note: note.present ? note.value : this.note,
+    revision: revision.present ? revision.value : this.revision,
+    deleted: deleted ?? this.deleted,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    lastOperationId: lastOperationId.present
+        ? lastOperationId.value
+        : this.lastOperationId,
+    canonicalJson: canonicalJson.present
+        ? canonicalJson.value
+        : this.canonicalJson,
+  );
+  LibraryListMembershipRow copyWithCompanion(
+    LibraryListMembershipsCompanion data,
+  ) {
+    return LibraryListMembershipRow(
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      listId: data.listId.present ? data.listId.value : this.listId,
+      paperId: data.paperId.present ? data.paperId.value : this.paperId,
+      positionRank: data.positionRank.present
+          ? data.positionRank.value
+          : this.positionRank,
+      note: data.note.present ? data.note.value : this.note,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      deleted: data.deleted.present ? data.deleted.value : this.deleted,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      lastOperationId: data.lastOperationId.present
+          ? data.lastOperationId.value
+          : this.lastOperationId,
+      canonicalJson: data.canonicalJson.present
+          ? data.canonicalJson.value
+          : this.canonicalJson,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LibraryListMembershipRow(')
+          ..write('accountId: $accountId, ')
+          ..write('listId: $listId, ')
+          ..write('paperId: $paperId, ')
+          ..write('positionRank: $positionRank, ')
+          ..write('note: $note, ')
+          ..write('revision: $revision, ')
+          ..write('deleted: $deleted, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('lastOperationId: $lastOperationId, ')
+          ..write('canonicalJson: $canonicalJson')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    accountId,
+    listId,
+    paperId,
+    positionRank,
+    note,
+    revision,
+    deleted,
+    createdAt,
+    updatedAt,
+    lastOperationId,
+    canonicalJson,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LibraryListMembershipRow &&
+          other.accountId == this.accountId &&
+          other.listId == this.listId &&
+          other.paperId == this.paperId &&
+          other.positionRank == this.positionRank &&
+          other.note == this.note &&
+          other.revision == this.revision &&
+          other.deleted == this.deleted &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.lastOperationId == this.lastOperationId &&
+          other.canonicalJson == this.canonicalJson);
+}
+
+class LibraryListMembershipsCompanion
+    extends UpdateCompanion<LibraryListMembershipRow> {
+  final Value<String> accountId;
+  final Value<String> listId;
+  final Value<String> paperId;
+  final Value<int> positionRank;
+  final Value<String?> note;
+  final Value<int?> revision;
+  final Value<bool> deleted;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<String?> lastOperationId;
+  final Value<String?> canonicalJson;
+  final Value<int> rowid;
+  const LibraryListMembershipsCompanion({
+    this.accountId = const Value.absent(),
+    this.listId = const Value.absent(),
+    this.paperId = const Value.absent(),
+    this.positionRank = const Value.absent(),
+    this.note = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.deleted = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.lastOperationId = const Value.absent(),
+    this.canonicalJson = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LibraryListMembershipsCompanion.insert({
+    required String accountId,
+    required String listId,
+    required String paperId,
+    this.positionRank = const Value.absent(),
+    this.note = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.deleted = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.lastOperationId = const Value.absent(),
+    this.canonicalJson = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : accountId = Value(accountId),
+       listId = Value(listId),
+       paperId = Value(paperId),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<LibraryListMembershipRow> custom({
+    Expression<String>? accountId,
+    Expression<String>? listId,
+    Expression<String>? paperId,
+    Expression<int>? positionRank,
+    Expression<String>? note,
+    Expression<int>? revision,
+    Expression<bool>? deleted,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<String>? lastOperationId,
+    Expression<String>? canonicalJson,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (accountId != null) 'account_id': accountId,
+      if (listId != null) 'list_id': listId,
+      if (paperId != null) 'paper_id': paperId,
+      if (positionRank != null) 'position_rank': positionRank,
+      if (note != null) 'note': note,
+      if (revision != null) 'revision': revision,
+      if (deleted != null) 'deleted': deleted,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (lastOperationId != null) 'last_operation_id': lastOperationId,
+      if (canonicalJson != null) 'canonical_json': canonicalJson,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LibraryListMembershipsCompanion copyWith({
+    Value<String>? accountId,
+    Value<String>? listId,
+    Value<String>? paperId,
+    Value<int>? positionRank,
+    Value<String?>? note,
+    Value<int?>? revision,
+    Value<bool>? deleted,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<String?>? lastOperationId,
+    Value<String?>? canonicalJson,
+    Value<int>? rowid,
+  }) {
+    return LibraryListMembershipsCompanion(
+      accountId: accountId ?? this.accountId,
+      listId: listId ?? this.listId,
+      paperId: paperId ?? this.paperId,
+      positionRank: positionRank ?? this.positionRank,
+      note: note ?? this.note,
+      revision: revision ?? this.revision,
+      deleted: deleted ?? this.deleted,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      lastOperationId: lastOperationId ?? this.lastOperationId,
+      canonicalJson: canonicalJson ?? this.canonicalJson,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (listId.present) {
+      map['list_id'] = Variable<String>(listId.value);
+    }
+    if (paperId.present) {
+      map['paper_id'] = Variable<String>(paperId.value);
+    }
+    if (positionRank.present) {
+      map['position_rank'] = Variable<int>(positionRank.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (deleted.present) {
+      map['deleted'] = Variable<bool>(deleted.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (lastOperationId.present) {
+      map['last_operation_id'] = Variable<String>(lastOperationId.value);
+    }
+    if (canonicalJson.present) {
+      map['canonical_json'] = Variable<String>(canonicalJson.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LibraryListMembershipsCompanion(')
+          ..write('accountId: $accountId, ')
+          ..write('listId: $listId, ')
+          ..write('paperId: $paperId, ')
+          ..write('positionRank: $positionRank, ')
+          ..write('note: $note, ')
+          ..write('revision: $revision, ')
+          ..write('deleted: $deleted, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('lastOperationId: $lastOperationId, ')
+          ..write('canonicalJson: $canonicalJson, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LibraryTagMembershipsTable extends LibraryTagMemberships
+    with TableInfo<$LibraryTagMembershipsTable, LibraryTagMembershipRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LibraryTagMembershipsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+    'account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _paperIdMeta = const VerificationMeta(
+    'paperId',
+  );
+  @override
+  late final GeneratedColumn<String> paperId = GeneratedColumn<String>(
+    'paper_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _tagIdMeta = const VerificationMeta('tagId');
+  @override
+  late final GeneratedColumn<String> tagId = GeneratedColumn<String>(
+    'tag_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deletedMeta = const VerificationMeta(
+    'deleted',
+  );
+  @override
+  late final GeneratedColumn<bool> deleted = GeneratedColumn<bool>(
+    'deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lastOperationIdMeta = const VerificationMeta(
+    'lastOperationId',
+  );
+  @override
+  late final GeneratedColumn<String> lastOperationId = GeneratedColumn<String>(
+    'last_operation_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _canonicalJsonMeta = const VerificationMeta(
+    'canonicalJson',
+  );
+  @override
+  late final GeneratedColumn<String> canonicalJson = GeneratedColumn<String>(
+    'canonical_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountId,
+    paperId,
+    tagId,
+    revision,
+    deleted,
+    createdAt,
+    updatedAt,
+    lastOperationId,
+    canonicalJson,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'library_tag_memberships';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LibraryTagMembershipRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('paper_id')) {
+      context.handle(
+        _paperIdMeta,
+        paperId.isAcceptableOrUnknown(data['paper_id']!, _paperIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_paperIdMeta);
+    }
+    if (data.containsKey('tag_id')) {
+      context.handle(
+        _tagIdMeta,
+        tagId.isAcceptableOrUnknown(data['tag_id']!, _tagIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_tagIdMeta);
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('deleted')) {
+      context.handle(
+        _deletedMeta,
+        deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('last_operation_id')) {
+      context.handle(
+        _lastOperationIdMeta,
+        lastOperationId.isAcceptableOrUnknown(
+          data['last_operation_id']!,
+          _lastOperationIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('canonical_json')) {
+      context.handle(
+        _canonicalJsonMeta,
+        canonicalJson.isAcceptableOrUnknown(
+          data['canonical_json']!,
+          _canonicalJsonMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountId, paperId, tagId};
+  @override
+  LibraryTagMembershipRow map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LibraryTagMembershipRow(
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}account_id'],
+      )!,
+      paperId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}paper_id'],
+      )!,
+      tagId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tag_id'],
+      )!,
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      ),
+      deleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}deleted'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      lastOperationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_operation_id'],
+      ),
+      canonicalJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}canonical_json'],
+      ),
+    );
+  }
+
+  @override
+  $LibraryTagMembershipsTable createAlias(String alias) {
+    return $LibraryTagMembershipsTable(attachedDatabase, alias);
+  }
+}
+
+class LibraryTagMembershipRow extends DataClass
+    implements Insertable<LibraryTagMembershipRow> {
+  final String accountId;
+  final String paperId;
+  final String tagId;
+  final int? revision;
+  final bool deleted;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String? lastOperationId;
+  final String? canonicalJson;
+  const LibraryTagMembershipRow({
+    required this.accountId,
+    required this.paperId,
+    required this.tagId,
+    this.revision,
+    required this.deleted,
+    required this.createdAt,
+    required this.updatedAt,
+    this.lastOperationId,
+    this.canonicalJson,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['account_id'] = Variable<String>(accountId);
+    map['paper_id'] = Variable<String>(paperId);
+    map['tag_id'] = Variable<String>(tagId);
+    if (!nullToAbsent || revision != null) {
+      map['revision'] = Variable<int>(revision);
+    }
+    map['deleted'] = Variable<bool>(deleted);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || lastOperationId != null) {
+      map['last_operation_id'] = Variable<String>(lastOperationId);
+    }
+    if (!nullToAbsent || canonicalJson != null) {
+      map['canonical_json'] = Variable<String>(canonicalJson);
+    }
+    return map;
+  }
+
+  LibraryTagMembershipsCompanion toCompanion(bool nullToAbsent) {
+    return LibraryTagMembershipsCompanion(
+      accountId: Value(accountId),
+      paperId: Value(paperId),
+      tagId: Value(tagId),
+      revision: revision == null && nullToAbsent
+          ? const Value.absent()
+          : Value(revision),
+      deleted: Value(deleted),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      lastOperationId: lastOperationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastOperationId),
+      canonicalJson: canonicalJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(canonicalJson),
+    );
+  }
+
+  factory LibraryTagMembershipRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LibraryTagMembershipRow(
+      accountId: serializer.fromJson<String>(json['accountId']),
+      paperId: serializer.fromJson<String>(json['paperId']),
+      tagId: serializer.fromJson<String>(json['tagId']),
+      revision: serializer.fromJson<int?>(json['revision']),
+      deleted: serializer.fromJson<bool>(json['deleted']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      lastOperationId: serializer.fromJson<String?>(json['lastOperationId']),
+      canonicalJson: serializer.fromJson<String?>(json['canonicalJson']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountId': serializer.toJson<String>(accountId),
+      'paperId': serializer.toJson<String>(paperId),
+      'tagId': serializer.toJson<String>(tagId),
+      'revision': serializer.toJson<int?>(revision),
+      'deleted': serializer.toJson<bool>(deleted),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'lastOperationId': serializer.toJson<String?>(lastOperationId),
+      'canonicalJson': serializer.toJson<String?>(canonicalJson),
+    };
+  }
+
+  LibraryTagMembershipRow copyWith({
+    String? accountId,
+    String? paperId,
+    String? tagId,
+    Value<int?> revision = const Value.absent(),
+    bool? deleted,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    Value<String?> lastOperationId = const Value.absent(),
+    Value<String?> canonicalJson = const Value.absent(),
+  }) => LibraryTagMembershipRow(
+    accountId: accountId ?? this.accountId,
+    paperId: paperId ?? this.paperId,
+    tagId: tagId ?? this.tagId,
+    revision: revision.present ? revision.value : this.revision,
+    deleted: deleted ?? this.deleted,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    lastOperationId: lastOperationId.present
+        ? lastOperationId.value
+        : this.lastOperationId,
+    canonicalJson: canonicalJson.present
+        ? canonicalJson.value
+        : this.canonicalJson,
+  );
+  LibraryTagMembershipRow copyWithCompanion(
+    LibraryTagMembershipsCompanion data,
+  ) {
+    return LibraryTagMembershipRow(
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      paperId: data.paperId.present ? data.paperId.value : this.paperId,
+      tagId: data.tagId.present ? data.tagId.value : this.tagId,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      deleted: data.deleted.present ? data.deleted.value : this.deleted,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      lastOperationId: data.lastOperationId.present
+          ? data.lastOperationId.value
+          : this.lastOperationId,
+      canonicalJson: data.canonicalJson.present
+          ? data.canonicalJson.value
+          : this.canonicalJson,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LibraryTagMembershipRow(')
+          ..write('accountId: $accountId, ')
+          ..write('paperId: $paperId, ')
+          ..write('tagId: $tagId, ')
+          ..write('revision: $revision, ')
+          ..write('deleted: $deleted, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('lastOperationId: $lastOperationId, ')
+          ..write('canonicalJson: $canonicalJson')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    accountId,
+    paperId,
+    tagId,
+    revision,
+    deleted,
+    createdAt,
+    updatedAt,
+    lastOperationId,
+    canonicalJson,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LibraryTagMembershipRow &&
+          other.accountId == this.accountId &&
+          other.paperId == this.paperId &&
+          other.tagId == this.tagId &&
+          other.revision == this.revision &&
+          other.deleted == this.deleted &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.lastOperationId == this.lastOperationId &&
+          other.canonicalJson == this.canonicalJson);
+}
+
+class LibraryTagMembershipsCompanion
+    extends UpdateCompanion<LibraryTagMembershipRow> {
+  final Value<String> accountId;
+  final Value<String> paperId;
+  final Value<String> tagId;
+  final Value<int?> revision;
+  final Value<bool> deleted;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<String?> lastOperationId;
+  final Value<String?> canonicalJson;
+  final Value<int> rowid;
+  const LibraryTagMembershipsCompanion({
+    this.accountId = const Value.absent(),
+    this.paperId = const Value.absent(),
+    this.tagId = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.deleted = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.lastOperationId = const Value.absent(),
+    this.canonicalJson = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LibraryTagMembershipsCompanion.insert({
+    required String accountId,
+    required String paperId,
+    required String tagId,
+    this.revision = const Value.absent(),
+    this.deleted = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.lastOperationId = const Value.absent(),
+    this.canonicalJson = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : accountId = Value(accountId),
+       paperId = Value(paperId),
+       tagId = Value(tagId),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<LibraryTagMembershipRow> custom({
+    Expression<String>? accountId,
+    Expression<String>? paperId,
+    Expression<String>? tagId,
+    Expression<int>? revision,
+    Expression<bool>? deleted,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<String>? lastOperationId,
+    Expression<String>? canonicalJson,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (accountId != null) 'account_id': accountId,
+      if (paperId != null) 'paper_id': paperId,
+      if (tagId != null) 'tag_id': tagId,
+      if (revision != null) 'revision': revision,
+      if (deleted != null) 'deleted': deleted,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (lastOperationId != null) 'last_operation_id': lastOperationId,
+      if (canonicalJson != null) 'canonical_json': canonicalJson,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LibraryTagMembershipsCompanion copyWith({
+    Value<String>? accountId,
+    Value<String>? paperId,
+    Value<String>? tagId,
+    Value<int?>? revision,
+    Value<bool>? deleted,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<String?>? lastOperationId,
+    Value<String?>? canonicalJson,
+    Value<int>? rowid,
+  }) {
+    return LibraryTagMembershipsCompanion(
+      accountId: accountId ?? this.accountId,
+      paperId: paperId ?? this.paperId,
+      tagId: tagId ?? this.tagId,
+      revision: revision ?? this.revision,
+      deleted: deleted ?? this.deleted,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      lastOperationId: lastOperationId ?? this.lastOperationId,
+      canonicalJson: canonicalJson ?? this.canonicalJson,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (paperId.present) {
+      map['paper_id'] = Variable<String>(paperId.value);
+    }
+    if (tagId.present) {
+      map['tag_id'] = Variable<String>(tagId.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (deleted.present) {
+      map['deleted'] = Variable<bool>(deleted.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (lastOperationId.present) {
+      map['last_operation_id'] = Variable<String>(lastOperationId.value);
+    }
+    if (canonicalJson.present) {
+      map['canonical_json'] = Variable<String>(canonicalJson.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LibraryTagMembershipsCompanion(')
+          ..write('accountId: $accountId, ')
+          ..write('paperId: $paperId, ')
+          ..write('tagId: $tagId, ')
+          ..write('revision: $revision, ')
+          ..write('deleted: $deleted, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('lastOperationId: $lastOperationId, ')
+          ..write('canonicalJson: $canonicalJson, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -6958,6 +10122,6566 @@ class CacheMetadataCompanion extends UpdateCompanion<CacheMetadataRow> {
   }
 }
 
+class $CachedDocumentArtifactsTable extends CachedDocumentArtifacts
+    with TableInfo<$CachedDocumentArtifactsTable, CachedDocumentArtifactRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedDocumentArtifactsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+    'account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _paperIdMeta = const VerificationMeta(
+    'paperId',
+  );
+  @override
+  late final GeneratedColumn<String> paperId = GeneratedColumn<String>(
+    'paper_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _versionKeyMeta = const VerificationMeta(
+    'versionKey',
+  );
+  @override
+  late final GeneratedColumn<String> versionKey = GeneratedColumn<String>(
+    'version_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _generationMeta = const VerificationMeta(
+    'generation',
+  );
+  @override
+  late final GeneratedColumn<int> generation = GeneratedColumn<int>(
+    'generation',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _artifactKindMeta = const VerificationMeta(
+    'artifactKind',
+  );
+  @override
+  late final GeneratedColumn<String> artifactKind = GeneratedColumn<String>(
+    'artifact_kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _payloadJsonMeta = const VerificationMeta(
+    'payloadJson',
+  );
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+    'payload_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _fetchedAtMeta = const VerificationMeta(
+    'fetchedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> fetchedAt = GeneratedColumn<DateTime>(
+    'fetched_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _expiresAtMeta = const VerificationMeta(
+    'expiresAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> expiresAt = GeneratedColumn<DateTime>(
+    'expires_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountId,
+    paperId,
+    versionKey,
+    generation,
+    artifactKind,
+    payloadJson,
+    fetchedAt,
+    expiresAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_document_artifacts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CachedDocumentArtifactRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('paper_id')) {
+      context.handle(
+        _paperIdMeta,
+        paperId.isAcceptableOrUnknown(data['paper_id']!, _paperIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_paperIdMeta);
+    }
+    if (data.containsKey('version_key')) {
+      context.handle(
+        _versionKeyMeta,
+        versionKey.isAcceptableOrUnknown(data['version_key']!, _versionKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_versionKeyMeta);
+    }
+    if (data.containsKey('generation')) {
+      context.handle(
+        _generationMeta,
+        generation.isAcceptableOrUnknown(data['generation']!, _generationMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_generationMeta);
+    }
+    if (data.containsKey('artifact_kind')) {
+      context.handle(
+        _artifactKindMeta,
+        artifactKind.isAcceptableOrUnknown(
+          data['artifact_kind']!,
+          _artifactKindMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_artifactKindMeta);
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+        _payloadJsonMeta,
+        payloadJson.isAcceptableOrUnknown(
+          data['payload_json']!,
+          _payloadJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadJsonMeta);
+    }
+    if (data.containsKey('fetched_at')) {
+      context.handle(
+        _fetchedAtMeta,
+        fetchedAt.isAcceptableOrUnknown(data['fetched_at']!, _fetchedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_fetchedAtMeta);
+    }
+    if (data.containsKey('expires_at')) {
+      context.handle(
+        _expiresAtMeta,
+        expiresAt.isAcceptableOrUnknown(data['expires_at']!, _expiresAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_expiresAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {
+    accountId,
+    paperId,
+    generation,
+    artifactKind,
+  };
+  @override
+  CachedDocumentArtifactRow map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedDocumentArtifactRow(
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}account_id'],
+      )!,
+      paperId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}paper_id'],
+      )!,
+      versionKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}version_key'],
+      )!,
+      generation: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}generation'],
+      )!,
+      artifactKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}artifact_kind'],
+      )!,
+      payloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_json'],
+      )!,
+      fetchedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}fetched_at'],
+      )!,
+      expiresAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}expires_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CachedDocumentArtifactsTable createAlias(String alias) {
+    return $CachedDocumentArtifactsTable(attachedDatabase, alias);
+  }
+}
+
+class CachedDocumentArtifactRow extends DataClass
+    implements Insertable<CachedDocumentArtifactRow> {
+  final String accountId;
+  final String paperId;
+  final String versionKey;
+  final int generation;
+  final String artifactKind;
+  final String payloadJson;
+  final DateTime fetchedAt;
+  final DateTime expiresAt;
+  const CachedDocumentArtifactRow({
+    required this.accountId,
+    required this.paperId,
+    required this.versionKey,
+    required this.generation,
+    required this.artifactKind,
+    required this.payloadJson,
+    required this.fetchedAt,
+    required this.expiresAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['account_id'] = Variable<String>(accountId);
+    map['paper_id'] = Variable<String>(paperId);
+    map['version_key'] = Variable<String>(versionKey);
+    map['generation'] = Variable<int>(generation);
+    map['artifact_kind'] = Variable<String>(artifactKind);
+    map['payload_json'] = Variable<String>(payloadJson);
+    map['fetched_at'] = Variable<DateTime>(fetchedAt);
+    map['expires_at'] = Variable<DateTime>(expiresAt);
+    return map;
+  }
+
+  CachedDocumentArtifactsCompanion toCompanion(bool nullToAbsent) {
+    return CachedDocumentArtifactsCompanion(
+      accountId: Value(accountId),
+      paperId: Value(paperId),
+      versionKey: Value(versionKey),
+      generation: Value(generation),
+      artifactKind: Value(artifactKind),
+      payloadJson: Value(payloadJson),
+      fetchedAt: Value(fetchedAt),
+      expiresAt: Value(expiresAt),
+    );
+  }
+
+  factory CachedDocumentArtifactRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedDocumentArtifactRow(
+      accountId: serializer.fromJson<String>(json['accountId']),
+      paperId: serializer.fromJson<String>(json['paperId']),
+      versionKey: serializer.fromJson<String>(json['versionKey']),
+      generation: serializer.fromJson<int>(json['generation']),
+      artifactKind: serializer.fromJson<String>(json['artifactKind']),
+      payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      fetchedAt: serializer.fromJson<DateTime>(json['fetchedAt']),
+      expiresAt: serializer.fromJson<DateTime>(json['expiresAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountId': serializer.toJson<String>(accountId),
+      'paperId': serializer.toJson<String>(paperId),
+      'versionKey': serializer.toJson<String>(versionKey),
+      'generation': serializer.toJson<int>(generation),
+      'artifactKind': serializer.toJson<String>(artifactKind),
+      'payloadJson': serializer.toJson<String>(payloadJson),
+      'fetchedAt': serializer.toJson<DateTime>(fetchedAt),
+      'expiresAt': serializer.toJson<DateTime>(expiresAt),
+    };
+  }
+
+  CachedDocumentArtifactRow copyWith({
+    String? accountId,
+    String? paperId,
+    String? versionKey,
+    int? generation,
+    String? artifactKind,
+    String? payloadJson,
+    DateTime? fetchedAt,
+    DateTime? expiresAt,
+  }) => CachedDocumentArtifactRow(
+    accountId: accountId ?? this.accountId,
+    paperId: paperId ?? this.paperId,
+    versionKey: versionKey ?? this.versionKey,
+    generation: generation ?? this.generation,
+    artifactKind: artifactKind ?? this.artifactKind,
+    payloadJson: payloadJson ?? this.payloadJson,
+    fetchedAt: fetchedAt ?? this.fetchedAt,
+    expiresAt: expiresAt ?? this.expiresAt,
+  );
+  CachedDocumentArtifactRow copyWithCompanion(
+    CachedDocumentArtifactsCompanion data,
+  ) {
+    return CachedDocumentArtifactRow(
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      paperId: data.paperId.present ? data.paperId.value : this.paperId,
+      versionKey: data.versionKey.present
+          ? data.versionKey.value
+          : this.versionKey,
+      generation: data.generation.present
+          ? data.generation.value
+          : this.generation,
+      artifactKind: data.artifactKind.present
+          ? data.artifactKind.value
+          : this.artifactKind,
+      payloadJson: data.payloadJson.present
+          ? data.payloadJson.value
+          : this.payloadJson,
+      fetchedAt: data.fetchedAt.present ? data.fetchedAt.value : this.fetchedAt,
+      expiresAt: data.expiresAt.present ? data.expiresAt.value : this.expiresAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedDocumentArtifactRow(')
+          ..write('accountId: $accountId, ')
+          ..write('paperId: $paperId, ')
+          ..write('versionKey: $versionKey, ')
+          ..write('generation: $generation, ')
+          ..write('artifactKind: $artifactKind, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('fetchedAt: $fetchedAt, ')
+          ..write('expiresAt: $expiresAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    accountId,
+    paperId,
+    versionKey,
+    generation,
+    artifactKind,
+    payloadJson,
+    fetchedAt,
+    expiresAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedDocumentArtifactRow &&
+          other.accountId == this.accountId &&
+          other.paperId == this.paperId &&
+          other.versionKey == this.versionKey &&
+          other.generation == this.generation &&
+          other.artifactKind == this.artifactKind &&
+          other.payloadJson == this.payloadJson &&
+          other.fetchedAt == this.fetchedAt &&
+          other.expiresAt == this.expiresAt);
+}
+
+class CachedDocumentArtifactsCompanion
+    extends UpdateCompanion<CachedDocumentArtifactRow> {
+  final Value<String> accountId;
+  final Value<String> paperId;
+  final Value<String> versionKey;
+  final Value<int> generation;
+  final Value<String> artifactKind;
+  final Value<String> payloadJson;
+  final Value<DateTime> fetchedAt;
+  final Value<DateTime> expiresAt;
+  final Value<int> rowid;
+  const CachedDocumentArtifactsCompanion({
+    this.accountId = const Value.absent(),
+    this.paperId = const Value.absent(),
+    this.versionKey = const Value.absent(),
+    this.generation = const Value.absent(),
+    this.artifactKind = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.fetchedAt = const Value.absent(),
+    this.expiresAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CachedDocumentArtifactsCompanion.insert({
+    required String accountId,
+    required String paperId,
+    required String versionKey,
+    required int generation,
+    required String artifactKind,
+    required String payloadJson,
+    required DateTime fetchedAt,
+    required DateTime expiresAt,
+    this.rowid = const Value.absent(),
+  }) : accountId = Value(accountId),
+       paperId = Value(paperId),
+       versionKey = Value(versionKey),
+       generation = Value(generation),
+       artifactKind = Value(artifactKind),
+       payloadJson = Value(payloadJson),
+       fetchedAt = Value(fetchedAt),
+       expiresAt = Value(expiresAt);
+  static Insertable<CachedDocumentArtifactRow> custom({
+    Expression<String>? accountId,
+    Expression<String>? paperId,
+    Expression<String>? versionKey,
+    Expression<int>? generation,
+    Expression<String>? artifactKind,
+    Expression<String>? payloadJson,
+    Expression<DateTime>? fetchedAt,
+    Expression<DateTime>? expiresAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (accountId != null) 'account_id': accountId,
+      if (paperId != null) 'paper_id': paperId,
+      if (versionKey != null) 'version_key': versionKey,
+      if (generation != null) 'generation': generation,
+      if (artifactKind != null) 'artifact_kind': artifactKind,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (fetchedAt != null) 'fetched_at': fetchedAt,
+      if (expiresAt != null) 'expires_at': expiresAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CachedDocumentArtifactsCompanion copyWith({
+    Value<String>? accountId,
+    Value<String>? paperId,
+    Value<String>? versionKey,
+    Value<int>? generation,
+    Value<String>? artifactKind,
+    Value<String>? payloadJson,
+    Value<DateTime>? fetchedAt,
+    Value<DateTime>? expiresAt,
+    Value<int>? rowid,
+  }) {
+    return CachedDocumentArtifactsCompanion(
+      accountId: accountId ?? this.accountId,
+      paperId: paperId ?? this.paperId,
+      versionKey: versionKey ?? this.versionKey,
+      generation: generation ?? this.generation,
+      artifactKind: artifactKind ?? this.artifactKind,
+      payloadJson: payloadJson ?? this.payloadJson,
+      fetchedAt: fetchedAt ?? this.fetchedAt,
+      expiresAt: expiresAt ?? this.expiresAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (paperId.present) {
+      map['paper_id'] = Variable<String>(paperId.value);
+    }
+    if (versionKey.present) {
+      map['version_key'] = Variable<String>(versionKey.value);
+    }
+    if (generation.present) {
+      map['generation'] = Variable<int>(generation.value);
+    }
+    if (artifactKind.present) {
+      map['artifact_kind'] = Variable<String>(artifactKind.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (fetchedAt.present) {
+      map['fetched_at'] = Variable<DateTime>(fetchedAt.value);
+    }
+    if (expiresAt.present) {
+      map['expires_at'] = Variable<DateTime>(expiresAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedDocumentArtifactsCompanion(')
+          ..write('accountId: $accountId, ')
+          ..write('paperId: $paperId, ')
+          ..write('versionKey: $versionKey, ')
+          ..write('generation: $generation, ')
+          ..write('artifactKind: $artifactKind, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('fetchedAt: $fetchedAt, ')
+          ..write('expiresAt: $expiresAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ReadingCheckpointsTable extends ReadingCheckpoints
+    with TableInfo<$ReadingCheckpointsTable, ReadingCheckpointRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ReadingCheckpointsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+    'account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _paperIdMeta = const VerificationMeta(
+    'paperId',
+  );
+  @override
+  late final GeneratedColumn<String> paperId = GeneratedColumn<String>(
+    'paper_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _generationMeta = const VerificationMeta(
+    'generation',
+  );
+  @override
+  late final GeneratedColumn<int> generation = GeneratedColumn<int>(
+    'generation',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _modeMeta = const VerificationMeta('mode');
+  @override
+  late final GeneratedColumn<String> mode = GeneratedColumn<String>(
+    'mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _stageMeta = const VerificationMeta('stage');
+  @override
+  late final GeneratedColumn<String> stage = GeneratedColumn<String>(
+    'stage',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _blockIdMeta = const VerificationMeta(
+    'blockId',
+  );
+  @override
+  late final GeneratedColumn<String> blockId = GeneratedColumn<String>(
+    'block_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _scrollFractionMeta = const VerificationMeta(
+    'scrollFraction',
+  );
+  @override
+  late final GeneratedColumn<double> scrollFraction = GeneratedColumn<double>(
+    'scroll_fraction',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastReadAtMeta = const VerificationMeta(
+    'lastReadAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastReadAt = GeneratedColumn<DateTime>(
+    'last_read_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _pendingSyncMeta = const VerificationMeta(
+    'pendingSync',
+  );
+  @override
+  late final GeneratedColumn<bool> pendingSync = GeneratedColumn<bool>(
+    'pending_sync',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("pending_sync" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _operationIdMeta = const VerificationMeta(
+    'operationId',
+  );
+  @override
+  late final GeneratedColumn<String> operationId = GeneratedColumn<String>(
+    'operation_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountId,
+    paperId,
+    generation,
+    mode,
+    stage,
+    blockId,
+    scrollFraction,
+    lastReadAt,
+    revision,
+    pendingSync,
+    operationId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'reading_checkpoints';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ReadingCheckpointRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('paper_id')) {
+      context.handle(
+        _paperIdMeta,
+        paperId.isAcceptableOrUnknown(data['paper_id']!, _paperIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_paperIdMeta);
+    }
+    if (data.containsKey('generation')) {
+      context.handle(
+        _generationMeta,
+        generation.isAcceptableOrUnknown(data['generation']!, _generationMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_generationMeta);
+    }
+    if (data.containsKey('mode')) {
+      context.handle(
+        _modeMeta,
+        mode.isAcceptableOrUnknown(data['mode']!, _modeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_modeMeta);
+    }
+    if (data.containsKey('stage')) {
+      context.handle(
+        _stageMeta,
+        stage.isAcceptableOrUnknown(data['stage']!, _stageMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_stageMeta);
+    }
+    if (data.containsKey('block_id')) {
+      context.handle(
+        _blockIdMeta,
+        blockId.isAcceptableOrUnknown(data['block_id']!, _blockIdMeta),
+      );
+    }
+    if (data.containsKey('scroll_fraction')) {
+      context.handle(
+        _scrollFractionMeta,
+        scrollFraction.isAcceptableOrUnknown(
+          data['scroll_fraction']!,
+          _scrollFractionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_read_at')) {
+      context.handle(
+        _lastReadAtMeta,
+        lastReadAt.isAcceptableOrUnknown(
+          data['last_read_at']!,
+          _lastReadAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_lastReadAtMeta);
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('pending_sync')) {
+      context.handle(
+        _pendingSyncMeta,
+        pendingSync.isAcceptableOrUnknown(
+          data['pending_sync']!,
+          _pendingSyncMeta,
+        ),
+      );
+    }
+    if (data.containsKey('operation_id')) {
+      context.handle(
+        _operationIdMeta,
+        operationId.isAcceptableOrUnknown(
+          data['operation_id']!,
+          _operationIdMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountId, paperId};
+  @override
+  ReadingCheckpointRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ReadingCheckpointRow(
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}account_id'],
+      )!,
+      paperId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}paper_id'],
+      )!,
+      generation: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}generation'],
+      )!,
+      mode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mode'],
+      )!,
+      stage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}stage'],
+      )!,
+      blockId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}block_id'],
+      ),
+      scrollFraction: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}scroll_fraction'],
+      ),
+      lastReadAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_read_at'],
+      )!,
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      )!,
+      pendingSync: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}pending_sync'],
+      )!,
+      operationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}operation_id'],
+      ),
+    );
+  }
+
+  @override
+  $ReadingCheckpointsTable createAlias(String alias) {
+    return $ReadingCheckpointsTable(attachedDatabase, alias);
+  }
+}
+
+class ReadingCheckpointRow extends DataClass
+    implements Insertable<ReadingCheckpointRow> {
+  final String accountId;
+  final String paperId;
+  final int generation;
+  final String mode;
+  final String stage;
+  final String? blockId;
+  final double? scrollFraction;
+  final DateTime lastReadAt;
+  final int revision;
+  final bool pendingSync;
+  final String? operationId;
+  const ReadingCheckpointRow({
+    required this.accountId,
+    required this.paperId,
+    required this.generation,
+    required this.mode,
+    required this.stage,
+    this.blockId,
+    this.scrollFraction,
+    required this.lastReadAt,
+    required this.revision,
+    required this.pendingSync,
+    this.operationId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['account_id'] = Variable<String>(accountId);
+    map['paper_id'] = Variable<String>(paperId);
+    map['generation'] = Variable<int>(generation);
+    map['mode'] = Variable<String>(mode);
+    map['stage'] = Variable<String>(stage);
+    if (!nullToAbsent || blockId != null) {
+      map['block_id'] = Variable<String>(blockId);
+    }
+    if (!nullToAbsent || scrollFraction != null) {
+      map['scroll_fraction'] = Variable<double>(scrollFraction);
+    }
+    map['last_read_at'] = Variable<DateTime>(lastReadAt);
+    map['revision'] = Variable<int>(revision);
+    map['pending_sync'] = Variable<bool>(pendingSync);
+    if (!nullToAbsent || operationId != null) {
+      map['operation_id'] = Variable<String>(operationId);
+    }
+    return map;
+  }
+
+  ReadingCheckpointsCompanion toCompanion(bool nullToAbsent) {
+    return ReadingCheckpointsCompanion(
+      accountId: Value(accountId),
+      paperId: Value(paperId),
+      generation: Value(generation),
+      mode: Value(mode),
+      stage: Value(stage),
+      blockId: blockId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(blockId),
+      scrollFraction: scrollFraction == null && nullToAbsent
+          ? const Value.absent()
+          : Value(scrollFraction),
+      lastReadAt: Value(lastReadAt),
+      revision: Value(revision),
+      pendingSync: Value(pendingSync),
+      operationId: operationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(operationId),
+    );
+  }
+
+  factory ReadingCheckpointRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ReadingCheckpointRow(
+      accountId: serializer.fromJson<String>(json['accountId']),
+      paperId: serializer.fromJson<String>(json['paperId']),
+      generation: serializer.fromJson<int>(json['generation']),
+      mode: serializer.fromJson<String>(json['mode']),
+      stage: serializer.fromJson<String>(json['stage']),
+      blockId: serializer.fromJson<String?>(json['blockId']),
+      scrollFraction: serializer.fromJson<double?>(json['scrollFraction']),
+      lastReadAt: serializer.fromJson<DateTime>(json['lastReadAt']),
+      revision: serializer.fromJson<int>(json['revision']),
+      pendingSync: serializer.fromJson<bool>(json['pendingSync']),
+      operationId: serializer.fromJson<String?>(json['operationId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountId': serializer.toJson<String>(accountId),
+      'paperId': serializer.toJson<String>(paperId),
+      'generation': serializer.toJson<int>(generation),
+      'mode': serializer.toJson<String>(mode),
+      'stage': serializer.toJson<String>(stage),
+      'blockId': serializer.toJson<String?>(blockId),
+      'scrollFraction': serializer.toJson<double?>(scrollFraction),
+      'lastReadAt': serializer.toJson<DateTime>(lastReadAt),
+      'revision': serializer.toJson<int>(revision),
+      'pendingSync': serializer.toJson<bool>(pendingSync),
+      'operationId': serializer.toJson<String?>(operationId),
+    };
+  }
+
+  ReadingCheckpointRow copyWith({
+    String? accountId,
+    String? paperId,
+    int? generation,
+    String? mode,
+    String? stage,
+    Value<String?> blockId = const Value.absent(),
+    Value<double?> scrollFraction = const Value.absent(),
+    DateTime? lastReadAt,
+    int? revision,
+    bool? pendingSync,
+    Value<String?> operationId = const Value.absent(),
+  }) => ReadingCheckpointRow(
+    accountId: accountId ?? this.accountId,
+    paperId: paperId ?? this.paperId,
+    generation: generation ?? this.generation,
+    mode: mode ?? this.mode,
+    stage: stage ?? this.stage,
+    blockId: blockId.present ? blockId.value : this.blockId,
+    scrollFraction: scrollFraction.present
+        ? scrollFraction.value
+        : this.scrollFraction,
+    lastReadAt: lastReadAt ?? this.lastReadAt,
+    revision: revision ?? this.revision,
+    pendingSync: pendingSync ?? this.pendingSync,
+    operationId: operationId.present ? operationId.value : this.operationId,
+  );
+  ReadingCheckpointRow copyWithCompanion(ReadingCheckpointsCompanion data) {
+    return ReadingCheckpointRow(
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      paperId: data.paperId.present ? data.paperId.value : this.paperId,
+      generation: data.generation.present
+          ? data.generation.value
+          : this.generation,
+      mode: data.mode.present ? data.mode.value : this.mode,
+      stage: data.stage.present ? data.stage.value : this.stage,
+      blockId: data.blockId.present ? data.blockId.value : this.blockId,
+      scrollFraction: data.scrollFraction.present
+          ? data.scrollFraction.value
+          : this.scrollFraction,
+      lastReadAt: data.lastReadAt.present
+          ? data.lastReadAt.value
+          : this.lastReadAt,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      pendingSync: data.pendingSync.present
+          ? data.pendingSync.value
+          : this.pendingSync,
+      operationId: data.operationId.present
+          ? data.operationId.value
+          : this.operationId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReadingCheckpointRow(')
+          ..write('accountId: $accountId, ')
+          ..write('paperId: $paperId, ')
+          ..write('generation: $generation, ')
+          ..write('mode: $mode, ')
+          ..write('stage: $stage, ')
+          ..write('blockId: $blockId, ')
+          ..write('scrollFraction: $scrollFraction, ')
+          ..write('lastReadAt: $lastReadAt, ')
+          ..write('revision: $revision, ')
+          ..write('pendingSync: $pendingSync, ')
+          ..write('operationId: $operationId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    accountId,
+    paperId,
+    generation,
+    mode,
+    stage,
+    blockId,
+    scrollFraction,
+    lastReadAt,
+    revision,
+    pendingSync,
+    operationId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ReadingCheckpointRow &&
+          other.accountId == this.accountId &&
+          other.paperId == this.paperId &&
+          other.generation == this.generation &&
+          other.mode == this.mode &&
+          other.stage == this.stage &&
+          other.blockId == this.blockId &&
+          other.scrollFraction == this.scrollFraction &&
+          other.lastReadAt == this.lastReadAt &&
+          other.revision == this.revision &&
+          other.pendingSync == this.pendingSync &&
+          other.operationId == this.operationId);
+}
+
+class ReadingCheckpointsCompanion
+    extends UpdateCompanion<ReadingCheckpointRow> {
+  final Value<String> accountId;
+  final Value<String> paperId;
+  final Value<int> generation;
+  final Value<String> mode;
+  final Value<String> stage;
+  final Value<String?> blockId;
+  final Value<double?> scrollFraction;
+  final Value<DateTime> lastReadAt;
+  final Value<int> revision;
+  final Value<bool> pendingSync;
+  final Value<String?> operationId;
+  final Value<int> rowid;
+  const ReadingCheckpointsCompanion({
+    this.accountId = const Value.absent(),
+    this.paperId = const Value.absent(),
+    this.generation = const Value.absent(),
+    this.mode = const Value.absent(),
+    this.stage = const Value.absent(),
+    this.blockId = const Value.absent(),
+    this.scrollFraction = const Value.absent(),
+    this.lastReadAt = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.pendingSync = const Value.absent(),
+    this.operationId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ReadingCheckpointsCompanion.insert({
+    required String accountId,
+    required String paperId,
+    required int generation,
+    required String mode,
+    required String stage,
+    this.blockId = const Value.absent(),
+    this.scrollFraction = const Value.absent(),
+    required DateTime lastReadAt,
+    this.revision = const Value.absent(),
+    this.pendingSync = const Value.absent(),
+    this.operationId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : accountId = Value(accountId),
+       paperId = Value(paperId),
+       generation = Value(generation),
+       mode = Value(mode),
+       stage = Value(stage),
+       lastReadAt = Value(lastReadAt);
+  static Insertable<ReadingCheckpointRow> custom({
+    Expression<String>? accountId,
+    Expression<String>? paperId,
+    Expression<int>? generation,
+    Expression<String>? mode,
+    Expression<String>? stage,
+    Expression<String>? blockId,
+    Expression<double>? scrollFraction,
+    Expression<DateTime>? lastReadAt,
+    Expression<int>? revision,
+    Expression<bool>? pendingSync,
+    Expression<String>? operationId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (accountId != null) 'account_id': accountId,
+      if (paperId != null) 'paper_id': paperId,
+      if (generation != null) 'generation': generation,
+      if (mode != null) 'mode': mode,
+      if (stage != null) 'stage': stage,
+      if (blockId != null) 'block_id': blockId,
+      if (scrollFraction != null) 'scroll_fraction': scrollFraction,
+      if (lastReadAt != null) 'last_read_at': lastReadAt,
+      if (revision != null) 'revision': revision,
+      if (pendingSync != null) 'pending_sync': pendingSync,
+      if (operationId != null) 'operation_id': operationId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ReadingCheckpointsCompanion copyWith({
+    Value<String>? accountId,
+    Value<String>? paperId,
+    Value<int>? generation,
+    Value<String>? mode,
+    Value<String>? stage,
+    Value<String?>? blockId,
+    Value<double?>? scrollFraction,
+    Value<DateTime>? lastReadAt,
+    Value<int>? revision,
+    Value<bool>? pendingSync,
+    Value<String?>? operationId,
+    Value<int>? rowid,
+  }) {
+    return ReadingCheckpointsCompanion(
+      accountId: accountId ?? this.accountId,
+      paperId: paperId ?? this.paperId,
+      generation: generation ?? this.generation,
+      mode: mode ?? this.mode,
+      stage: stage ?? this.stage,
+      blockId: blockId ?? this.blockId,
+      scrollFraction: scrollFraction ?? this.scrollFraction,
+      lastReadAt: lastReadAt ?? this.lastReadAt,
+      revision: revision ?? this.revision,
+      pendingSync: pendingSync ?? this.pendingSync,
+      operationId: operationId ?? this.operationId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (paperId.present) {
+      map['paper_id'] = Variable<String>(paperId.value);
+    }
+    if (generation.present) {
+      map['generation'] = Variable<int>(generation.value);
+    }
+    if (mode.present) {
+      map['mode'] = Variable<String>(mode.value);
+    }
+    if (stage.present) {
+      map['stage'] = Variable<String>(stage.value);
+    }
+    if (blockId.present) {
+      map['block_id'] = Variable<String>(blockId.value);
+    }
+    if (scrollFraction.present) {
+      map['scroll_fraction'] = Variable<double>(scrollFraction.value);
+    }
+    if (lastReadAt.present) {
+      map['last_read_at'] = Variable<DateTime>(lastReadAt.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (pendingSync.present) {
+      map['pending_sync'] = Variable<bool>(pendingSync.value);
+    }
+    if (operationId.present) {
+      map['operation_id'] = Variable<String>(operationId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReadingCheckpointsCompanion(')
+          ..write('accountId: $accountId, ')
+          ..write('paperId: $paperId, ')
+          ..write('generation: $generation, ')
+          ..write('mode: $mode, ')
+          ..write('stage: $stage, ')
+          ..write('blockId: $blockId, ')
+          ..write('scrollFraction: $scrollFraction, ')
+          ..write('lastReadAt: $lastReadAt, ')
+          ..write('revision: $revision, ')
+          ..write('pendingSync: $pendingSync, ')
+          ..write('operationId: $operationId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LocalAnnotationsTable extends LocalAnnotations
+    with TableInfo<$LocalAnnotationsTable, LocalAnnotationRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalAnnotationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+    'account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _annotationIdMeta = const VerificationMeta(
+    'annotationId',
+  );
+  @override
+  late final GeneratedColumn<String> annotationId = GeneratedColumn<String>(
+    'annotation_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _paperIdMeta = const VerificationMeta(
+    'paperId',
+  );
+  @override
+  late final GeneratedColumn<String> paperId = GeneratedColumn<String>(
+    'paper_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _generationMeta = const VerificationMeta(
+    'generation',
+  );
+  @override
+  late final GeneratedColumn<int> generation = GeneratedColumn<int>(
+    'generation',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _blockIdMeta = const VerificationMeta(
+    'blockId',
+  );
+  @override
+  late final GeneratedColumn<String> blockId = GeneratedColumn<String>(
+    'block_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bodyMeta = const VerificationMeta('body');
+  @override
+  late final GeneratedColumn<String> body = GeneratedColumn<String>(
+    'body',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _colorRoleMeta = const VerificationMeta(
+    'colorRole',
+  );
+  @override
+  late final GeneratedColumn<String> colorRole = GeneratedColumn<String>(
+    'color_role',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _selectorJsonMeta = const VerificationMeta(
+    'selectorJson',
+  );
+  @override
+  late final GeneratedColumn<String> selectorJson = GeneratedColumn<String>(
+    'selector_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sectionHintJsonMeta = const VerificationMeta(
+    'sectionHintJson',
+  );
+  @override
+  late final GeneratedColumn<String> sectionHintJson = GeneratedColumn<String>(
+    'section_hint_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _pageHintMeta = const VerificationMeta(
+    'pageHint',
+  );
+  @override
+  late final GeneratedColumn<int> pageHint = GeneratedColumn<int>(
+    'page_hint',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _anchorStatusMeta = const VerificationMeta(
+    'anchorStatus',
+  );
+  @override
+  late final GeneratedColumn<String> anchorStatus = GeneratedColumn<String>(
+    'anchor_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _syncStateMeta = const VerificationMeta(
+    'syncState',
+  );
+  @override
+  late final GeneratedColumn<String> syncState = GeneratedColumn<String>(
+    'sync_state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('clean'),
+  );
+  static const VerificationMeta _activeOperationIdMeta = const VerificationMeta(
+    'activeOperationId',
+  );
+  @override
+  late final GeneratedColumn<String> activeOperationId =
+      GeneratedColumn<String>(
+        'active_operation_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountId,
+    annotationId,
+    paperId,
+    generation,
+    blockId,
+    kind,
+    body,
+    colorRole,
+    selectorJson,
+    sectionHintJson,
+    pageHint,
+    anchorStatus,
+    revision,
+    deletedAt,
+    createdAt,
+    updatedAt,
+    syncState,
+    activeOperationId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_annotations';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LocalAnnotationRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('annotation_id')) {
+      context.handle(
+        _annotationIdMeta,
+        annotationId.isAcceptableOrUnknown(
+          data['annotation_id']!,
+          _annotationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_annotationIdMeta);
+    }
+    if (data.containsKey('paper_id')) {
+      context.handle(
+        _paperIdMeta,
+        paperId.isAcceptableOrUnknown(data['paper_id']!, _paperIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_paperIdMeta);
+    }
+    if (data.containsKey('generation')) {
+      context.handle(
+        _generationMeta,
+        generation.isAcceptableOrUnknown(data['generation']!, _generationMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_generationMeta);
+    }
+    if (data.containsKey('block_id')) {
+      context.handle(
+        _blockIdMeta,
+        blockId.isAcceptableOrUnknown(data['block_id']!, _blockIdMeta),
+      );
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('body')) {
+      context.handle(
+        _bodyMeta,
+        body.isAcceptableOrUnknown(data['body']!, _bodyMeta),
+      );
+    }
+    if (data.containsKey('color_role')) {
+      context.handle(
+        _colorRoleMeta,
+        colorRole.isAcceptableOrUnknown(data['color_role']!, _colorRoleMeta),
+      );
+    }
+    if (data.containsKey('selector_json')) {
+      context.handle(
+        _selectorJsonMeta,
+        selectorJson.isAcceptableOrUnknown(
+          data['selector_json']!,
+          _selectorJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('section_hint_json')) {
+      context.handle(
+        _sectionHintJsonMeta,
+        sectionHintJson.isAcceptableOrUnknown(
+          data['section_hint_json']!,
+          _sectionHintJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('page_hint')) {
+      context.handle(
+        _pageHintMeta,
+        pageHint.isAcceptableOrUnknown(data['page_hint']!, _pageHintMeta),
+      );
+    }
+    if (data.containsKey('anchor_status')) {
+      context.handle(
+        _anchorStatusMeta,
+        anchorStatus.isAcceptableOrUnknown(
+          data['anchor_status']!,
+          _anchorStatusMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_anchorStatusMeta);
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('sync_state')) {
+      context.handle(
+        _syncStateMeta,
+        syncState.isAcceptableOrUnknown(data['sync_state']!, _syncStateMeta),
+      );
+    }
+    if (data.containsKey('active_operation_id')) {
+      context.handle(
+        _activeOperationIdMeta,
+        activeOperationId.isAcceptableOrUnknown(
+          data['active_operation_id']!,
+          _activeOperationIdMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountId, annotationId};
+  @override
+  LocalAnnotationRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalAnnotationRow(
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}account_id'],
+      )!,
+      annotationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}annotation_id'],
+      )!,
+      paperId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}paper_id'],
+      )!,
+      generation: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}generation'],
+      )!,
+      blockId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}block_id'],
+      ),
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      body: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}body'],
+      ),
+      colorRole: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}color_role'],
+      ),
+      selectorJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}selector_json'],
+      ),
+      sectionHintJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}section_hint_json'],
+      )!,
+      pageHint: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}page_hint'],
+      ),
+      anchorStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}anchor_status'],
+      )!,
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      syncState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sync_state'],
+      )!,
+      activeOperationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}active_operation_id'],
+      ),
+    );
+  }
+
+  @override
+  $LocalAnnotationsTable createAlias(String alias) {
+    return $LocalAnnotationsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalAnnotationRow extends DataClass
+    implements Insertable<LocalAnnotationRow> {
+  final String accountId;
+  final String annotationId;
+  final String paperId;
+  final int generation;
+  final String? blockId;
+  final String kind;
+  final String? body;
+  final String? colorRole;
+  final String? selectorJson;
+  final String sectionHintJson;
+  final int? pageHint;
+  final String anchorStatus;
+  final int revision;
+  final DateTime? deletedAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String syncState;
+  final String? activeOperationId;
+  const LocalAnnotationRow({
+    required this.accountId,
+    required this.annotationId,
+    required this.paperId,
+    required this.generation,
+    this.blockId,
+    required this.kind,
+    this.body,
+    this.colorRole,
+    this.selectorJson,
+    required this.sectionHintJson,
+    this.pageHint,
+    required this.anchorStatus,
+    required this.revision,
+    this.deletedAt,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.syncState,
+    this.activeOperationId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['account_id'] = Variable<String>(accountId);
+    map['annotation_id'] = Variable<String>(annotationId);
+    map['paper_id'] = Variable<String>(paperId);
+    map['generation'] = Variable<int>(generation);
+    if (!nullToAbsent || blockId != null) {
+      map['block_id'] = Variable<String>(blockId);
+    }
+    map['kind'] = Variable<String>(kind);
+    if (!nullToAbsent || body != null) {
+      map['body'] = Variable<String>(body);
+    }
+    if (!nullToAbsent || colorRole != null) {
+      map['color_role'] = Variable<String>(colorRole);
+    }
+    if (!nullToAbsent || selectorJson != null) {
+      map['selector_json'] = Variable<String>(selectorJson);
+    }
+    map['section_hint_json'] = Variable<String>(sectionHintJson);
+    if (!nullToAbsent || pageHint != null) {
+      map['page_hint'] = Variable<int>(pageHint);
+    }
+    map['anchor_status'] = Variable<String>(anchorStatus);
+    map['revision'] = Variable<int>(revision);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['sync_state'] = Variable<String>(syncState);
+    if (!nullToAbsent || activeOperationId != null) {
+      map['active_operation_id'] = Variable<String>(activeOperationId);
+    }
+    return map;
+  }
+
+  LocalAnnotationsCompanion toCompanion(bool nullToAbsent) {
+    return LocalAnnotationsCompanion(
+      accountId: Value(accountId),
+      annotationId: Value(annotationId),
+      paperId: Value(paperId),
+      generation: Value(generation),
+      blockId: blockId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(blockId),
+      kind: Value(kind),
+      body: body == null && nullToAbsent ? const Value.absent() : Value(body),
+      colorRole: colorRole == null && nullToAbsent
+          ? const Value.absent()
+          : Value(colorRole),
+      selectorJson: selectorJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(selectorJson),
+      sectionHintJson: Value(sectionHintJson),
+      pageHint: pageHint == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pageHint),
+      anchorStatus: Value(anchorStatus),
+      revision: Value(revision),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      syncState: Value(syncState),
+      activeOperationId: activeOperationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(activeOperationId),
+    );
+  }
+
+  factory LocalAnnotationRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalAnnotationRow(
+      accountId: serializer.fromJson<String>(json['accountId']),
+      annotationId: serializer.fromJson<String>(json['annotationId']),
+      paperId: serializer.fromJson<String>(json['paperId']),
+      generation: serializer.fromJson<int>(json['generation']),
+      blockId: serializer.fromJson<String?>(json['blockId']),
+      kind: serializer.fromJson<String>(json['kind']),
+      body: serializer.fromJson<String?>(json['body']),
+      colorRole: serializer.fromJson<String?>(json['colorRole']),
+      selectorJson: serializer.fromJson<String?>(json['selectorJson']),
+      sectionHintJson: serializer.fromJson<String>(json['sectionHintJson']),
+      pageHint: serializer.fromJson<int?>(json['pageHint']),
+      anchorStatus: serializer.fromJson<String>(json['anchorStatus']),
+      revision: serializer.fromJson<int>(json['revision']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      syncState: serializer.fromJson<String>(json['syncState']),
+      activeOperationId: serializer.fromJson<String?>(
+        json['activeOperationId'],
+      ),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountId': serializer.toJson<String>(accountId),
+      'annotationId': serializer.toJson<String>(annotationId),
+      'paperId': serializer.toJson<String>(paperId),
+      'generation': serializer.toJson<int>(generation),
+      'blockId': serializer.toJson<String?>(blockId),
+      'kind': serializer.toJson<String>(kind),
+      'body': serializer.toJson<String?>(body),
+      'colorRole': serializer.toJson<String?>(colorRole),
+      'selectorJson': serializer.toJson<String?>(selectorJson),
+      'sectionHintJson': serializer.toJson<String>(sectionHintJson),
+      'pageHint': serializer.toJson<int?>(pageHint),
+      'anchorStatus': serializer.toJson<String>(anchorStatus),
+      'revision': serializer.toJson<int>(revision),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'syncState': serializer.toJson<String>(syncState),
+      'activeOperationId': serializer.toJson<String?>(activeOperationId),
+    };
+  }
+
+  LocalAnnotationRow copyWith({
+    String? accountId,
+    String? annotationId,
+    String? paperId,
+    int? generation,
+    Value<String?> blockId = const Value.absent(),
+    String? kind,
+    Value<String?> body = const Value.absent(),
+    Value<String?> colorRole = const Value.absent(),
+    Value<String?> selectorJson = const Value.absent(),
+    String? sectionHintJson,
+    Value<int?> pageHint = const Value.absent(),
+    String? anchorStatus,
+    int? revision,
+    Value<DateTime?> deletedAt = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    String? syncState,
+    Value<String?> activeOperationId = const Value.absent(),
+  }) => LocalAnnotationRow(
+    accountId: accountId ?? this.accountId,
+    annotationId: annotationId ?? this.annotationId,
+    paperId: paperId ?? this.paperId,
+    generation: generation ?? this.generation,
+    blockId: blockId.present ? blockId.value : this.blockId,
+    kind: kind ?? this.kind,
+    body: body.present ? body.value : this.body,
+    colorRole: colorRole.present ? colorRole.value : this.colorRole,
+    selectorJson: selectorJson.present ? selectorJson.value : this.selectorJson,
+    sectionHintJson: sectionHintJson ?? this.sectionHintJson,
+    pageHint: pageHint.present ? pageHint.value : this.pageHint,
+    anchorStatus: anchorStatus ?? this.anchorStatus,
+    revision: revision ?? this.revision,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    syncState: syncState ?? this.syncState,
+    activeOperationId: activeOperationId.present
+        ? activeOperationId.value
+        : this.activeOperationId,
+  );
+  LocalAnnotationRow copyWithCompanion(LocalAnnotationsCompanion data) {
+    return LocalAnnotationRow(
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      annotationId: data.annotationId.present
+          ? data.annotationId.value
+          : this.annotationId,
+      paperId: data.paperId.present ? data.paperId.value : this.paperId,
+      generation: data.generation.present
+          ? data.generation.value
+          : this.generation,
+      blockId: data.blockId.present ? data.blockId.value : this.blockId,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      body: data.body.present ? data.body.value : this.body,
+      colorRole: data.colorRole.present ? data.colorRole.value : this.colorRole,
+      selectorJson: data.selectorJson.present
+          ? data.selectorJson.value
+          : this.selectorJson,
+      sectionHintJson: data.sectionHintJson.present
+          ? data.sectionHintJson.value
+          : this.sectionHintJson,
+      pageHint: data.pageHint.present ? data.pageHint.value : this.pageHint,
+      anchorStatus: data.anchorStatus.present
+          ? data.anchorStatus.value
+          : this.anchorStatus,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      syncState: data.syncState.present ? data.syncState.value : this.syncState,
+      activeOperationId: data.activeOperationId.present
+          ? data.activeOperationId.value
+          : this.activeOperationId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalAnnotationRow(')
+          ..write('accountId: $accountId, ')
+          ..write('annotationId: $annotationId, ')
+          ..write('paperId: $paperId, ')
+          ..write('generation: $generation, ')
+          ..write('blockId: $blockId, ')
+          ..write('kind: $kind, ')
+          ..write('body: $body, ')
+          ..write('colorRole: $colorRole, ')
+          ..write('selectorJson: $selectorJson, ')
+          ..write('sectionHintJson: $sectionHintJson, ')
+          ..write('pageHint: $pageHint, ')
+          ..write('anchorStatus: $anchorStatus, ')
+          ..write('revision: $revision, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('syncState: $syncState, ')
+          ..write('activeOperationId: $activeOperationId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    accountId,
+    annotationId,
+    paperId,
+    generation,
+    blockId,
+    kind,
+    body,
+    colorRole,
+    selectorJson,
+    sectionHintJson,
+    pageHint,
+    anchorStatus,
+    revision,
+    deletedAt,
+    createdAt,
+    updatedAt,
+    syncState,
+    activeOperationId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalAnnotationRow &&
+          other.accountId == this.accountId &&
+          other.annotationId == this.annotationId &&
+          other.paperId == this.paperId &&
+          other.generation == this.generation &&
+          other.blockId == this.blockId &&
+          other.kind == this.kind &&
+          other.body == this.body &&
+          other.colorRole == this.colorRole &&
+          other.selectorJson == this.selectorJson &&
+          other.sectionHintJson == this.sectionHintJson &&
+          other.pageHint == this.pageHint &&
+          other.anchorStatus == this.anchorStatus &&
+          other.revision == this.revision &&
+          other.deletedAt == this.deletedAt &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.syncState == this.syncState &&
+          other.activeOperationId == this.activeOperationId);
+}
+
+class LocalAnnotationsCompanion extends UpdateCompanion<LocalAnnotationRow> {
+  final Value<String> accountId;
+  final Value<String> annotationId;
+  final Value<String> paperId;
+  final Value<int> generation;
+  final Value<String?> blockId;
+  final Value<String> kind;
+  final Value<String?> body;
+  final Value<String?> colorRole;
+  final Value<String?> selectorJson;
+  final Value<String> sectionHintJson;
+  final Value<int?> pageHint;
+  final Value<String> anchorStatus;
+  final Value<int> revision;
+  final Value<DateTime?> deletedAt;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<String> syncState;
+  final Value<String?> activeOperationId;
+  final Value<int> rowid;
+  const LocalAnnotationsCompanion({
+    this.accountId = const Value.absent(),
+    this.annotationId = const Value.absent(),
+    this.paperId = const Value.absent(),
+    this.generation = const Value.absent(),
+    this.blockId = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.body = const Value.absent(),
+    this.colorRole = const Value.absent(),
+    this.selectorJson = const Value.absent(),
+    this.sectionHintJson = const Value.absent(),
+    this.pageHint = const Value.absent(),
+    this.anchorStatus = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.syncState = const Value.absent(),
+    this.activeOperationId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalAnnotationsCompanion.insert({
+    required String accountId,
+    required String annotationId,
+    required String paperId,
+    required int generation,
+    this.blockId = const Value.absent(),
+    required String kind,
+    this.body = const Value.absent(),
+    this.colorRole = const Value.absent(),
+    this.selectorJson = const Value.absent(),
+    this.sectionHintJson = const Value.absent(),
+    this.pageHint = const Value.absent(),
+    required String anchorStatus,
+    this.revision = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.syncState = const Value.absent(),
+    this.activeOperationId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : accountId = Value(accountId),
+       annotationId = Value(annotationId),
+       paperId = Value(paperId),
+       generation = Value(generation),
+       kind = Value(kind),
+       anchorStatus = Value(anchorStatus),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<LocalAnnotationRow> custom({
+    Expression<String>? accountId,
+    Expression<String>? annotationId,
+    Expression<String>? paperId,
+    Expression<int>? generation,
+    Expression<String>? blockId,
+    Expression<String>? kind,
+    Expression<String>? body,
+    Expression<String>? colorRole,
+    Expression<String>? selectorJson,
+    Expression<String>? sectionHintJson,
+    Expression<int>? pageHint,
+    Expression<String>? anchorStatus,
+    Expression<int>? revision,
+    Expression<DateTime>? deletedAt,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<String>? syncState,
+    Expression<String>? activeOperationId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (accountId != null) 'account_id': accountId,
+      if (annotationId != null) 'annotation_id': annotationId,
+      if (paperId != null) 'paper_id': paperId,
+      if (generation != null) 'generation': generation,
+      if (blockId != null) 'block_id': blockId,
+      if (kind != null) 'kind': kind,
+      if (body != null) 'body': body,
+      if (colorRole != null) 'color_role': colorRole,
+      if (selectorJson != null) 'selector_json': selectorJson,
+      if (sectionHintJson != null) 'section_hint_json': sectionHintJson,
+      if (pageHint != null) 'page_hint': pageHint,
+      if (anchorStatus != null) 'anchor_status': anchorStatus,
+      if (revision != null) 'revision': revision,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (syncState != null) 'sync_state': syncState,
+      if (activeOperationId != null) 'active_operation_id': activeOperationId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalAnnotationsCompanion copyWith({
+    Value<String>? accountId,
+    Value<String>? annotationId,
+    Value<String>? paperId,
+    Value<int>? generation,
+    Value<String?>? blockId,
+    Value<String>? kind,
+    Value<String?>? body,
+    Value<String?>? colorRole,
+    Value<String?>? selectorJson,
+    Value<String>? sectionHintJson,
+    Value<int?>? pageHint,
+    Value<String>? anchorStatus,
+    Value<int>? revision,
+    Value<DateTime?>? deletedAt,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<String>? syncState,
+    Value<String?>? activeOperationId,
+    Value<int>? rowid,
+  }) {
+    return LocalAnnotationsCompanion(
+      accountId: accountId ?? this.accountId,
+      annotationId: annotationId ?? this.annotationId,
+      paperId: paperId ?? this.paperId,
+      generation: generation ?? this.generation,
+      blockId: blockId ?? this.blockId,
+      kind: kind ?? this.kind,
+      body: body ?? this.body,
+      colorRole: colorRole ?? this.colorRole,
+      selectorJson: selectorJson ?? this.selectorJson,
+      sectionHintJson: sectionHintJson ?? this.sectionHintJson,
+      pageHint: pageHint ?? this.pageHint,
+      anchorStatus: anchorStatus ?? this.anchorStatus,
+      revision: revision ?? this.revision,
+      deletedAt: deletedAt ?? this.deletedAt,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      syncState: syncState ?? this.syncState,
+      activeOperationId: activeOperationId ?? this.activeOperationId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (annotationId.present) {
+      map['annotation_id'] = Variable<String>(annotationId.value);
+    }
+    if (paperId.present) {
+      map['paper_id'] = Variable<String>(paperId.value);
+    }
+    if (generation.present) {
+      map['generation'] = Variable<int>(generation.value);
+    }
+    if (blockId.present) {
+      map['block_id'] = Variable<String>(blockId.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (body.present) {
+      map['body'] = Variable<String>(body.value);
+    }
+    if (colorRole.present) {
+      map['color_role'] = Variable<String>(colorRole.value);
+    }
+    if (selectorJson.present) {
+      map['selector_json'] = Variable<String>(selectorJson.value);
+    }
+    if (sectionHintJson.present) {
+      map['section_hint_json'] = Variable<String>(sectionHintJson.value);
+    }
+    if (pageHint.present) {
+      map['page_hint'] = Variable<int>(pageHint.value);
+    }
+    if (anchorStatus.present) {
+      map['anchor_status'] = Variable<String>(anchorStatus.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (syncState.present) {
+      map['sync_state'] = Variable<String>(syncState.value);
+    }
+    if (activeOperationId.present) {
+      map['active_operation_id'] = Variable<String>(activeOperationId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalAnnotationsCompanion(')
+          ..write('accountId: $accountId, ')
+          ..write('annotationId: $annotationId, ')
+          ..write('paperId: $paperId, ')
+          ..write('generation: $generation, ')
+          ..write('blockId: $blockId, ')
+          ..write('kind: $kind, ')
+          ..write('body: $body, ')
+          ..write('colorRole: $colorRole, ')
+          ..write('selectorJson: $selectorJson, ')
+          ..write('sectionHintJson: $sectionHintJson, ')
+          ..write('pageHint: $pageHint, ')
+          ..write('anchorStatus: $anchorStatus, ')
+          ..write('revision: $revision, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('syncState: $syncState, ')
+          ..write('activeOperationId: $activeOperationId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $AnnotationConflictsTable extends AnnotationConflicts
+    with TableInfo<$AnnotationConflictsTable, AnnotationConflictRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AnnotationConflictsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+    'account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _conflictIdMeta = const VerificationMeta(
+    'conflictId',
+  );
+  @override
+  late final GeneratedColumn<String> conflictId = GeneratedColumn<String>(
+    'conflict_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _annotationIdMeta = const VerificationMeta(
+    'annotationId',
+  );
+  @override
+  late final GeneratedColumn<String> annotationId = GeneratedColumn<String>(
+    'annotation_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _attemptedOperationIdMeta =
+      const VerificationMeta('attemptedOperationId');
+  @override
+  late final GeneratedColumn<String> attemptedOperationId =
+      GeneratedColumn<String>(
+        'attempted_operation_id',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _baseRevisionMeta = const VerificationMeta(
+    'baseRevision',
+  );
+  @override
+  late final GeneratedColumn<int> baseRevision = GeneratedColumn<int>(
+    'base_revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _serverRevisionMeta = const VerificationMeta(
+    'serverRevision',
+  );
+  @override
+  late final GeneratedColumn<int> serverRevision = GeneratedColumn<int>(
+    'server_revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _attemptedBodyMeta = const VerificationMeta(
+    'attemptedBody',
+  );
+  @override
+  late final GeneratedColumn<String> attemptedBody = GeneratedColumn<String>(
+    'attempted_body',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _serverBodyMeta = const VerificationMeta(
+    'serverBody',
+  );
+  @override
+  late final GeneratedColumn<String> serverBody = GeneratedColumn<String>(
+    'server_body',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _mergeStateMeta = const VerificationMeta(
+    'mergeState',
+  );
+  @override
+  late final GeneratedColumn<String> mergeState = GeneratedColumn<String>(
+    'merge_state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('unresolved'),
+  );
+  static const VerificationMeta _mergedBodyMeta = const VerificationMeta(
+    'mergedBody',
+  );
+  @override
+  late final GeneratedColumn<String> mergedBody = GeneratedColumn<String>(
+    'merged_body',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _resolvedAtMeta = const VerificationMeta(
+    'resolvedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> resolvedAt = GeneratedColumn<DateTime>(
+    'resolved_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountId,
+    conflictId,
+    annotationId,
+    attemptedOperationId,
+    baseRevision,
+    serverRevision,
+    attemptedBody,
+    serverBody,
+    mergeState,
+    mergedBody,
+    createdAt,
+    resolvedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'annotation_conflicts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AnnotationConflictRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('conflict_id')) {
+      context.handle(
+        _conflictIdMeta,
+        conflictId.isAcceptableOrUnknown(data['conflict_id']!, _conflictIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_conflictIdMeta);
+    }
+    if (data.containsKey('annotation_id')) {
+      context.handle(
+        _annotationIdMeta,
+        annotationId.isAcceptableOrUnknown(
+          data['annotation_id']!,
+          _annotationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_annotationIdMeta);
+    }
+    if (data.containsKey('attempted_operation_id')) {
+      context.handle(
+        _attemptedOperationIdMeta,
+        attemptedOperationId.isAcceptableOrUnknown(
+          data['attempted_operation_id']!,
+          _attemptedOperationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_attemptedOperationIdMeta);
+    }
+    if (data.containsKey('base_revision')) {
+      context.handle(
+        _baseRevisionMeta,
+        baseRevision.isAcceptableOrUnknown(
+          data['base_revision']!,
+          _baseRevisionMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_baseRevisionMeta);
+    }
+    if (data.containsKey('server_revision')) {
+      context.handle(
+        _serverRevisionMeta,
+        serverRevision.isAcceptableOrUnknown(
+          data['server_revision']!,
+          _serverRevisionMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_serverRevisionMeta);
+    }
+    if (data.containsKey('attempted_body')) {
+      context.handle(
+        _attemptedBodyMeta,
+        attemptedBody.isAcceptableOrUnknown(
+          data['attempted_body']!,
+          _attemptedBodyMeta,
+        ),
+      );
+    }
+    if (data.containsKey('server_body')) {
+      context.handle(
+        _serverBodyMeta,
+        serverBody.isAcceptableOrUnknown(data['server_body']!, _serverBodyMeta),
+      );
+    }
+    if (data.containsKey('merge_state')) {
+      context.handle(
+        _mergeStateMeta,
+        mergeState.isAcceptableOrUnknown(data['merge_state']!, _mergeStateMeta),
+      );
+    }
+    if (data.containsKey('merged_body')) {
+      context.handle(
+        _mergedBodyMeta,
+        mergedBody.isAcceptableOrUnknown(data['merged_body']!, _mergedBodyMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('resolved_at')) {
+      context.handle(
+        _resolvedAtMeta,
+        resolvedAt.isAcceptableOrUnknown(data['resolved_at']!, _resolvedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountId, conflictId};
+  @override
+  AnnotationConflictRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AnnotationConflictRow(
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}account_id'],
+      )!,
+      conflictId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}conflict_id'],
+      )!,
+      annotationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}annotation_id'],
+      )!,
+      attemptedOperationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}attempted_operation_id'],
+      )!,
+      baseRevision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}base_revision'],
+      )!,
+      serverRevision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}server_revision'],
+      )!,
+      attemptedBody: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}attempted_body'],
+      ),
+      serverBody: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}server_body'],
+      ),
+      mergeState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}merge_state'],
+      )!,
+      mergedBody: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}merged_body'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      resolvedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}resolved_at'],
+      ),
+    );
+  }
+
+  @override
+  $AnnotationConflictsTable createAlias(String alias) {
+    return $AnnotationConflictsTable(attachedDatabase, alias);
+  }
+}
+
+class AnnotationConflictRow extends DataClass
+    implements Insertable<AnnotationConflictRow> {
+  final String accountId;
+  final String conflictId;
+  final String annotationId;
+  final String attemptedOperationId;
+  final int baseRevision;
+  final int serverRevision;
+  final String? attemptedBody;
+  final String? serverBody;
+  final String mergeState;
+  final String? mergedBody;
+  final DateTime createdAt;
+  final DateTime? resolvedAt;
+  const AnnotationConflictRow({
+    required this.accountId,
+    required this.conflictId,
+    required this.annotationId,
+    required this.attemptedOperationId,
+    required this.baseRevision,
+    required this.serverRevision,
+    this.attemptedBody,
+    this.serverBody,
+    required this.mergeState,
+    this.mergedBody,
+    required this.createdAt,
+    this.resolvedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['account_id'] = Variable<String>(accountId);
+    map['conflict_id'] = Variable<String>(conflictId);
+    map['annotation_id'] = Variable<String>(annotationId);
+    map['attempted_operation_id'] = Variable<String>(attemptedOperationId);
+    map['base_revision'] = Variable<int>(baseRevision);
+    map['server_revision'] = Variable<int>(serverRevision);
+    if (!nullToAbsent || attemptedBody != null) {
+      map['attempted_body'] = Variable<String>(attemptedBody);
+    }
+    if (!nullToAbsent || serverBody != null) {
+      map['server_body'] = Variable<String>(serverBody);
+    }
+    map['merge_state'] = Variable<String>(mergeState);
+    if (!nullToAbsent || mergedBody != null) {
+      map['merged_body'] = Variable<String>(mergedBody);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || resolvedAt != null) {
+      map['resolved_at'] = Variable<DateTime>(resolvedAt);
+    }
+    return map;
+  }
+
+  AnnotationConflictsCompanion toCompanion(bool nullToAbsent) {
+    return AnnotationConflictsCompanion(
+      accountId: Value(accountId),
+      conflictId: Value(conflictId),
+      annotationId: Value(annotationId),
+      attemptedOperationId: Value(attemptedOperationId),
+      baseRevision: Value(baseRevision),
+      serverRevision: Value(serverRevision),
+      attemptedBody: attemptedBody == null && nullToAbsent
+          ? const Value.absent()
+          : Value(attemptedBody),
+      serverBody: serverBody == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverBody),
+      mergeState: Value(mergeState),
+      mergedBody: mergedBody == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mergedBody),
+      createdAt: Value(createdAt),
+      resolvedAt: resolvedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(resolvedAt),
+    );
+  }
+
+  factory AnnotationConflictRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AnnotationConflictRow(
+      accountId: serializer.fromJson<String>(json['accountId']),
+      conflictId: serializer.fromJson<String>(json['conflictId']),
+      annotationId: serializer.fromJson<String>(json['annotationId']),
+      attemptedOperationId: serializer.fromJson<String>(
+        json['attemptedOperationId'],
+      ),
+      baseRevision: serializer.fromJson<int>(json['baseRevision']),
+      serverRevision: serializer.fromJson<int>(json['serverRevision']),
+      attemptedBody: serializer.fromJson<String?>(json['attemptedBody']),
+      serverBody: serializer.fromJson<String?>(json['serverBody']),
+      mergeState: serializer.fromJson<String>(json['mergeState']),
+      mergedBody: serializer.fromJson<String?>(json['mergedBody']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      resolvedAt: serializer.fromJson<DateTime?>(json['resolvedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountId': serializer.toJson<String>(accountId),
+      'conflictId': serializer.toJson<String>(conflictId),
+      'annotationId': serializer.toJson<String>(annotationId),
+      'attemptedOperationId': serializer.toJson<String>(attemptedOperationId),
+      'baseRevision': serializer.toJson<int>(baseRevision),
+      'serverRevision': serializer.toJson<int>(serverRevision),
+      'attemptedBody': serializer.toJson<String?>(attemptedBody),
+      'serverBody': serializer.toJson<String?>(serverBody),
+      'mergeState': serializer.toJson<String>(mergeState),
+      'mergedBody': serializer.toJson<String?>(mergedBody),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'resolvedAt': serializer.toJson<DateTime?>(resolvedAt),
+    };
+  }
+
+  AnnotationConflictRow copyWith({
+    String? accountId,
+    String? conflictId,
+    String? annotationId,
+    String? attemptedOperationId,
+    int? baseRevision,
+    int? serverRevision,
+    Value<String?> attemptedBody = const Value.absent(),
+    Value<String?> serverBody = const Value.absent(),
+    String? mergeState,
+    Value<String?> mergedBody = const Value.absent(),
+    DateTime? createdAt,
+    Value<DateTime?> resolvedAt = const Value.absent(),
+  }) => AnnotationConflictRow(
+    accountId: accountId ?? this.accountId,
+    conflictId: conflictId ?? this.conflictId,
+    annotationId: annotationId ?? this.annotationId,
+    attemptedOperationId: attemptedOperationId ?? this.attemptedOperationId,
+    baseRevision: baseRevision ?? this.baseRevision,
+    serverRevision: serverRevision ?? this.serverRevision,
+    attemptedBody: attemptedBody.present
+        ? attemptedBody.value
+        : this.attemptedBody,
+    serverBody: serverBody.present ? serverBody.value : this.serverBody,
+    mergeState: mergeState ?? this.mergeState,
+    mergedBody: mergedBody.present ? mergedBody.value : this.mergedBody,
+    createdAt: createdAt ?? this.createdAt,
+    resolvedAt: resolvedAt.present ? resolvedAt.value : this.resolvedAt,
+  );
+  AnnotationConflictRow copyWithCompanion(AnnotationConflictsCompanion data) {
+    return AnnotationConflictRow(
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      conflictId: data.conflictId.present
+          ? data.conflictId.value
+          : this.conflictId,
+      annotationId: data.annotationId.present
+          ? data.annotationId.value
+          : this.annotationId,
+      attemptedOperationId: data.attemptedOperationId.present
+          ? data.attemptedOperationId.value
+          : this.attemptedOperationId,
+      baseRevision: data.baseRevision.present
+          ? data.baseRevision.value
+          : this.baseRevision,
+      serverRevision: data.serverRevision.present
+          ? data.serverRevision.value
+          : this.serverRevision,
+      attemptedBody: data.attemptedBody.present
+          ? data.attemptedBody.value
+          : this.attemptedBody,
+      serverBody: data.serverBody.present
+          ? data.serverBody.value
+          : this.serverBody,
+      mergeState: data.mergeState.present
+          ? data.mergeState.value
+          : this.mergeState,
+      mergedBody: data.mergedBody.present
+          ? data.mergedBody.value
+          : this.mergedBody,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      resolvedAt: data.resolvedAt.present
+          ? data.resolvedAt.value
+          : this.resolvedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AnnotationConflictRow(')
+          ..write('accountId: $accountId, ')
+          ..write('conflictId: $conflictId, ')
+          ..write('annotationId: $annotationId, ')
+          ..write('attemptedOperationId: $attemptedOperationId, ')
+          ..write('baseRevision: $baseRevision, ')
+          ..write('serverRevision: $serverRevision, ')
+          ..write('attemptedBody: $attemptedBody, ')
+          ..write('serverBody: $serverBody, ')
+          ..write('mergeState: $mergeState, ')
+          ..write('mergedBody: $mergedBody, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('resolvedAt: $resolvedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    accountId,
+    conflictId,
+    annotationId,
+    attemptedOperationId,
+    baseRevision,
+    serverRevision,
+    attemptedBody,
+    serverBody,
+    mergeState,
+    mergedBody,
+    createdAt,
+    resolvedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AnnotationConflictRow &&
+          other.accountId == this.accountId &&
+          other.conflictId == this.conflictId &&
+          other.annotationId == this.annotationId &&
+          other.attemptedOperationId == this.attemptedOperationId &&
+          other.baseRevision == this.baseRevision &&
+          other.serverRevision == this.serverRevision &&
+          other.attemptedBody == this.attemptedBody &&
+          other.serverBody == this.serverBody &&
+          other.mergeState == this.mergeState &&
+          other.mergedBody == this.mergedBody &&
+          other.createdAt == this.createdAt &&
+          other.resolvedAt == this.resolvedAt);
+}
+
+class AnnotationConflictsCompanion
+    extends UpdateCompanion<AnnotationConflictRow> {
+  final Value<String> accountId;
+  final Value<String> conflictId;
+  final Value<String> annotationId;
+  final Value<String> attemptedOperationId;
+  final Value<int> baseRevision;
+  final Value<int> serverRevision;
+  final Value<String?> attemptedBody;
+  final Value<String?> serverBody;
+  final Value<String> mergeState;
+  final Value<String?> mergedBody;
+  final Value<DateTime> createdAt;
+  final Value<DateTime?> resolvedAt;
+  final Value<int> rowid;
+  const AnnotationConflictsCompanion({
+    this.accountId = const Value.absent(),
+    this.conflictId = const Value.absent(),
+    this.annotationId = const Value.absent(),
+    this.attemptedOperationId = const Value.absent(),
+    this.baseRevision = const Value.absent(),
+    this.serverRevision = const Value.absent(),
+    this.attemptedBody = const Value.absent(),
+    this.serverBody = const Value.absent(),
+    this.mergeState = const Value.absent(),
+    this.mergedBody = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.resolvedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  AnnotationConflictsCompanion.insert({
+    required String accountId,
+    required String conflictId,
+    required String annotationId,
+    required String attemptedOperationId,
+    required int baseRevision,
+    required int serverRevision,
+    this.attemptedBody = const Value.absent(),
+    this.serverBody = const Value.absent(),
+    this.mergeState = const Value.absent(),
+    this.mergedBody = const Value.absent(),
+    required DateTime createdAt,
+    this.resolvedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : accountId = Value(accountId),
+       conflictId = Value(conflictId),
+       annotationId = Value(annotationId),
+       attemptedOperationId = Value(attemptedOperationId),
+       baseRevision = Value(baseRevision),
+       serverRevision = Value(serverRevision),
+       createdAt = Value(createdAt);
+  static Insertable<AnnotationConflictRow> custom({
+    Expression<String>? accountId,
+    Expression<String>? conflictId,
+    Expression<String>? annotationId,
+    Expression<String>? attemptedOperationId,
+    Expression<int>? baseRevision,
+    Expression<int>? serverRevision,
+    Expression<String>? attemptedBody,
+    Expression<String>? serverBody,
+    Expression<String>? mergeState,
+    Expression<String>? mergedBody,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? resolvedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (accountId != null) 'account_id': accountId,
+      if (conflictId != null) 'conflict_id': conflictId,
+      if (annotationId != null) 'annotation_id': annotationId,
+      if (attemptedOperationId != null)
+        'attempted_operation_id': attemptedOperationId,
+      if (baseRevision != null) 'base_revision': baseRevision,
+      if (serverRevision != null) 'server_revision': serverRevision,
+      if (attemptedBody != null) 'attempted_body': attemptedBody,
+      if (serverBody != null) 'server_body': serverBody,
+      if (mergeState != null) 'merge_state': mergeState,
+      if (mergedBody != null) 'merged_body': mergedBody,
+      if (createdAt != null) 'created_at': createdAt,
+      if (resolvedAt != null) 'resolved_at': resolvedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  AnnotationConflictsCompanion copyWith({
+    Value<String>? accountId,
+    Value<String>? conflictId,
+    Value<String>? annotationId,
+    Value<String>? attemptedOperationId,
+    Value<int>? baseRevision,
+    Value<int>? serverRevision,
+    Value<String?>? attemptedBody,
+    Value<String?>? serverBody,
+    Value<String>? mergeState,
+    Value<String?>? mergedBody,
+    Value<DateTime>? createdAt,
+    Value<DateTime?>? resolvedAt,
+    Value<int>? rowid,
+  }) {
+    return AnnotationConflictsCompanion(
+      accountId: accountId ?? this.accountId,
+      conflictId: conflictId ?? this.conflictId,
+      annotationId: annotationId ?? this.annotationId,
+      attemptedOperationId: attemptedOperationId ?? this.attemptedOperationId,
+      baseRevision: baseRevision ?? this.baseRevision,
+      serverRevision: serverRevision ?? this.serverRevision,
+      attemptedBody: attemptedBody ?? this.attemptedBody,
+      serverBody: serverBody ?? this.serverBody,
+      mergeState: mergeState ?? this.mergeState,
+      mergedBody: mergedBody ?? this.mergedBody,
+      createdAt: createdAt ?? this.createdAt,
+      resolvedAt: resolvedAt ?? this.resolvedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (conflictId.present) {
+      map['conflict_id'] = Variable<String>(conflictId.value);
+    }
+    if (annotationId.present) {
+      map['annotation_id'] = Variable<String>(annotationId.value);
+    }
+    if (attemptedOperationId.present) {
+      map['attempted_operation_id'] = Variable<String>(
+        attemptedOperationId.value,
+      );
+    }
+    if (baseRevision.present) {
+      map['base_revision'] = Variable<int>(baseRevision.value);
+    }
+    if (serverRevision.present) {
+      map['server_revision'] = Variable<int>(serverRevision.value);
+    }
+    if (attemptedBody.present) {
+      map['attempted_body'] = Variable<String>(attemptedBody.value);
+    }
+    if (serverBody.present) {
+      map['server_body'] = Variable<String>(serverBody.value);
+    }
+    if (mergeState.present) {
+      map['merge_state'] = Variable<String>(mergeState.value);
+    }
+    if (mergedBody.present) {
+      map['merged_body'] = Variable<String>(mergedBody.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (resolvedAt.present) {
+      map['resolved_at'] = Variable<DateTime>(resolvedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AnnotationConflictsCompanion(')
+          ..write('accountId: $accountId, ')
+          ..write('conflictId: $conflictId, ')
+          ..write('annotationId: $annotationId, ')
+          ..write('attemptedOperationId: $attemptedOperationId, ')
+          ..write('baseRevision: $baseRevision, ')
+          ..write('serverRevision: $serverRevision, ')
+          ..write('attemptedBody: $attemptedBody, ')
+          ..write('serverBody: $serverBody, ')
+          ..write('mergeState: $mergeState, ')
+          ..write('mergedBody: $mergedBody, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('resolvedAt: $resolvedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LocalEvidenceCardsTable extends LocalEvidenceCards
+    with TableInfo<$LocalEvidenceCardsTable, LocalEvidenceCardRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalEvidenceCardsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+    'account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _cardIdMeta = const VerificationMeta('cardId');
+  @override
+  late final GeneratedColumn<String> cardId = GeneratedColumn<String>(
+    'card_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _paperIdMeta = const VerificationMeta(
+    'paperId',
+  );
+  @override
+  late final GeneratedColumn<String> paperId = GeneratedColumn<String>(
+    'paper_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _generationMeta = const VerificationMeta(
+    'generation',
+  );
+  @override
+  late final GeneratedColumn<int> generation = GeneratedColumn<int>(
+    'generation',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _claimOrQuestionMeta = const VerificationMeta(
+    'claimOrQuestion',
+  );
+  @override
+  late final GeneratedColumn<String> claimOrQuestion = GeneratedColumn<String>(
+    'claim_or_question',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _userNoteMeta = const VerificationMeta(
+    'userNote',
+  );
+  @override
+  late final GeneratedColumn<String> userNote = GeneratedColumn<String>(
+    'user_note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sourceBlockIdsJsonMeta =
+      const VerificationMeta('sourceBlockIdsJson');
+  @override
+  late final GeneratedColumn<String> sourceBlockIdsJson =
+      GeneratedColumn<String>(
+        'source_block_ids_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('[]'),
+      );
+  static const VerificationMeta _figureIdsJsonMeta = const VerificationMeta(
+    'figureIdsJson',
+  );
+  @override
+  late final GeneratedColumn<String> figureIdsJson = GeneratedColumn<String>(
+    'figure_ids_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _tableIdsJsonMeta = const VerificationMeta(
+    'tableIdsJson',
+  );
+  @override
+  late final GeneratedColumn<String> tableIdsJson = GeneratedColumn<String>(
+    'table_ids_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _citationContextIdsJsonMeta =
+      const VerificationMeta('citationContextIdsJson');
+  @override
+  late final GeneratedColumn<String> citationContextIdsJson =
+      GeneratedColumn<String>(
+        'citation_context_ids_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('[]'),
+      );
+  static const VerificationMeta _verificationStatusMeta =
+      const VerificationMeta('verificationStatus');
+  @override
+  late final GeneratedColumn<String> verificationStatus =
+      GeneratedColumn<String>(
+        'verification_status',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _syncStateMeta = const VerificationMeta(
+    'syncState',
+  );
+  @override
+  late final GeneratedColumn<String> syncState = GeneratedColumn<String>(
+    'sync_state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('clean'),
+  );
+  static const VerificationMeta _activeOperationIdMeta = const VerificationMeta(
+    'activeOperationId',
+  );
+  @override
+  late final GeneratedColumn<String> activeOperationId =
+      GeneratedColumn<String>(
+        'active_operation_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountId,
+    cardId,
+    paperId,
+    generation,
+    title,
+    claimOrQuestion,
+    userNote,
+    sourceBlockIdsJson,
+    figureIdsJson,
+    tableIdsJson,
+    citationContextIdsJson,
+    verificationStatus,
+    revision,
+    deletedAt,
+    createdAt,
+    updatedAt,
+    syncState,
+    activeOperationId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_evidence_cards';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LocalEvidenceCardRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('card_id')) {
+      context.handle(
+        _cardIdMeta,
+        cardId.isAcceptableOrUnknown(data['card_id']!, _cardIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_cardIdMeta);
+    }
+    if (data.containsKey('paper_id')) {
+      context.handle(
+        _paperIdMeta,
+        paperId.isAcceptableOrUnknown(data['paper_id']!, _paperIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_paperIdMeta);
+    }
+    if (data.containsKey('generation')) {
+      context.handle(
+        _generationMeta,
+        generation.isAcceptableOrUnknown(data['generation']!, _generationMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_generationMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('claim_or_question')) {
+      context.handle(
+        _claimOrQuestionMeta,
+        claimOrQuestion.isAcceptableOrUnknown(
+          data['claim_or_question']!,
+          _claimOrQuestionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('user_note')) {
+      context.handle(
+        _userNoteMeta,
+        userNote.isAcceptableOrUnknown(data['user_note']!, _userNoteMeta),
+      );
+    }
+    if (data.containsKey('source_block_ids_json')) {
+      context.handle(
+        _sourceBlockIdsJsonMeta,
+        sourceBlockIdsJson.isAcceptableOrUnknown(
+          data['source_block_ids_json']!,
+          _sourceBlockIdsJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('figure_ids_json')) {
+      context.handle(
+        _figureIdsJsonMeta,
+        figureIdsJson.isAcceptableOrUnknown(
+          data['figure_ids_json']!,
+          _figureIdsJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('table_ids_json')) {
+      context.handle(
+        _tableIdsJsonMeta,
+        tableIdsJson.isAcceptableOrUnknown(
+          data['table_ids_json']!,
+          _tableIdsJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('citation_context_ids_json')) {
+      context.handle(
+        _citationContextIdsJsonMeta,
+        citationContextIdsJson.isAcceptableOrUnknown(
+          data['citation_context_ids_json']!,
+          _citationContextIdsJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('verification_status')) {
+      context.handle(
+        _verificationStatusMeta,
+        verificationStatus.isAcceptableOrUnknown(
+          data['verification_status']!,
+          _verificationStatusMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_verificationStatusMeta);
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('sync_state')) {
+      context.handle(
+        _syncStateMeta,
+        syncState.isAcceptableOrUnknown(data['sync_state']!, _syncStateMeta),
+      );
+    }
+    if (data.containsKey('active_operation_id')) {
+      context.handle(
+        _activeOperationIdMeta,
+        activeOperationId.isAcceptableOrUnknown(
+          data['active_operation_id']!,
+          _activeOperationIdMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountId, cardId};
+  @override
+  LocalEvidenceCardRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalEvidenceCardRow(
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}account_id'],
+      )!,
+      cardId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}card_id'],
+      )!,
+      paperId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}paper_id'],
+      )!,
+      generation: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}generation'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      claimOrQuestion: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}claim_or_question'],
+      ),
+      userNote: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_note'],
+      ),
+      sourceBlockIdsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_block_ids_json'],
+      )!,
+      figureIdsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}figure_ids_json'],
+      )!,
+      tableIdsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}table_ids_json'],
+      )!,
+      citationContextIdsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}citation_context_ids_json'],
+      )!,
+      verificationStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}verification_status'],
+      )!,
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      syncState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sync_state'],
+      )!,
+      activeOperationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}active_operation_id'],
+      ),
+    );
+  }
+
+  @override
+  $LocalEvidenceCardsTable createAlias(String alias) {
+    return $LocalEvidenceCardsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalEvidenceCardRow extends DataClass
+    implements Insertable<LocalEvidenceCardRow> {
+  final String accountId;
+  final String cardId;
+  final String paperId;
+  final int generation;
+  final String title;
+  final String? claimOrQuestion;
+  final String? userNote;
+  final String sourceBlockIdsJson;
+  final String figureIdsJson;
+  final String tableIdsJson;
+  final String citationContextIdsJson;
+  final String verificationStatus;
+  final int revision;
+  final DateTime? deletedAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String syncState;
+  final String? activeOperationId;
+  const LocalEvidenceCardRow({
+    required this.accountId,
+    required this.cardId,
+    required this.paperId,
+    required this.generation,
+    required this.title,
+    this.claimOrQuestion,
+    this.userNote,
+    required this.sourceBlockIdsJson,
+    required this.figureIdsJson,
+    required this.tableIdsJson,
+    required this.citationContextIdsJson,
+    required this.verificationStatus,
+    required this.revision,
+    this.deletedAt,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.syncState,
+    this.activeOperationId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['account_id'] = Variable<String>(accountId);
+    map['card_id'] = Variable<String>(cardId);
+    map['paper_id'] = Variable<String>(paperId);
+    map['generation'] = Variable<int>(generation);
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || claimOrQuestion != null) {
+      map['claim_or_question'] = Variable<String>(claimOrQuestion);
+    }
+    if (!nullToAbsent || userNote != null) {
+      map['user_note'] = Variable<String>(userNote);
+    }
+    map['source_block_ids_json'] = Variable<String>(sourceBlockIdsJson);
+    map['figure_ids_json'] = Variable<String>(figureIdsJson);
+    map['table_ids_json'] = Variable<String>(tableIdsJson);
+    map['citation_context_ids_json'] = Variable<String>(citationContextIdsJson);
+    map['verification_status'] = Variable<String>(verificationStatus);
+    map['revision'] = Variable<int>(revision);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['sync_state'] = Variable<String>(syncState);
+    if (!nullToAbsent || activeOperationId != null) {
+      map['active_operation_id'] = Variable<String>(activeOperationId);
+    }
+    return map;
+  }
+
+  LocalEvidenceCardsCompanion toCompanion(bool nullToAbsent) {
+    return LocalEvidenceCardsCompanion(
+      accountId: Value(accountId),
+      cardId: Value(cardId),
+      paperId: Value(paperId),
+      generation: Value(generation),
+      title: Value(title),
+      claimOrQuestion: claimOrQuestion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(claimOrQuestion),
+      userNote: userNote == null && nullToAbsent
+          ? const Value.absent()
+          : Value(userNote),
+      sourceBlockIdsJson: Value(sourceBlockIdsJson),
+      figureIdsJson: Value(figureIdsJson),
+      tableIdsJson: Value(tableIdsJson),
+      citationContextIdsJson: Value(citationContextIdsJson),
+      verificationStatus: Value(verificationStatus),
+      revision: Value(revision),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      syncState: Value(syncState),
+      activeOperationId: activeOperationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(activeOperationId),
+    );
+  }
+
+  factory LocalEvidenceCardRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalEvidenceCardRow(
+      accountId: serializer.fromJson<String>(json['accountId']),
+      cardId: serializer.fromJson<String>(json['cardId']),
+      paperId: serializer.fromJson<String>(json['paperId']),
+      generation: serializer.fromJson<int>(json['generation']),
+      title: serializer.fromJson<String>(json['title']),
+      claimOrQuestion: serializer.fromJson<String?>(json['claimOrQuestion']),
+      userNote: serializer.fromJson<String?>(json['userNote']),
+      sourceBlockIdsJson: serializer.fromJson<String>(
+        json['sourceBlockIdsJson'],
+      ),
+      figureIdsJson: serializer.fromJson<String>(json['figureIdsJson']),
+      tableIdsJson: serializer.fromJson<String>(json['tableIdsJson']),
+      citationContextIdsJson: serializer.fromJson<String>(
+        json['citationContextIdsJson'],
+      ),
+      verificationStatus: serializer.fromJson<String>(
+        json['verificationStatus'],
+      ),
+      revision: serializer.fromJson<int>(json['revision']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      syncState: serializer.fromJson<String>(json['syncState']),
+      activeOperationId: serializer.fromJson<String?>(
+        json['activeOperationId'],
+      ),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountId': serializer.toJson<String>(accountId),
+      'cardId': serializer.toJson<String>(cardId),
+      'paperId': serializer.toJson<String>(paperId),
+      'generation': serializer.toJson<int>(generation),
+      'title': serializer.toJson<String>(title),
+      'claimOrQuestion': serializer.toJson<String?>(claimOrQuestion),
+      'userNote': serializer.toJson<String?>(userNote),
+      'sourceBlockIdsJson': serializer.toJson<String>(sourceBlockIdsJson),
+      'figureIdsJson': serializer.toJson<String>(figureIdsJson),
+      'tableIdsJson': serializer.toJson<String>(tableIdsJson),
+      'citationContextIdsJson': serializer.toJson<String>(
+        citationContextIdsJson,
+      ),
+      'verificationStatus': serializer.toJson<String>(verificationStatus),
+      'revision': serializer.toJson<int>(revision),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'syncState': serializer.toJson<String>(syncState),
+      'activeOperationId': serializer.toJson<String?>(activeOperationId),
+    };
+  }
+
+  LocalEvidenceCardRow copyWith({
+    String? accountId,
+    String? cardId,
+    String? paperId,
+    int? generation,
+    String? title,
+    Value<String?> claimOrQuestion = const Value.absent(),
+    Value<String?> userNote = const Value.absent(),
+    String? sourceBlockIdsJson,
+    String? figureIdsJson,
+    String? tableIdsJson,
+    String? citationContextIdsJson,
+    String? verificationStatus,
+    int? revision,
+    Value<DateTime?> deletedAt = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    String? syncState,
+    Value<String?> activeOperationId = const Value.absent(),
+  }) => LocalEvidenceCardRow(
+    accountId: accountId ?? this.accountId,
+    cardId: cardId ?? this.cardId,
+    paperId: paperId ?? this.paperId,
+    generation: generation ?? this.generation,
+    title: title ?? this.title,
+    claimOrQuestion: claimOrQuestion.present
+        ? claimOrQuestion.value
+        : this.claimOrQuestion,
+    userNote: userNote.present ? userNote.value : this.userNote,
+    sourceBlockIdsJson: sourceBlockIdsJson ?? this.sourceBlockIdsJson,
+    figureIdsJson: figureIdsJson ?? this.figureIdsJson,
+    tableIdsJson: tableIdsJson ?? this.tableIdsJson,
+    citationContextIdsJson:
+        citationContextIdsJson ?? this.citationContextIdsJson,
+    verificationStatus: verificationStatus ?? this.verificationStatus,
+    revision: revision ?? this.revision,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    syncState: syncState ?? this.syncState,
+    activeOperationId: activeOperationId.present
+        ? activeOperationId.value
+        : this.activeOperationId,
+  );
+  LocalEvidenceCardRow copyWithCompanion(LocalEvidenceCardsCompanion data) {
+    return LocalEvidenceCardRow(
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      cardId: data.cardId.present ? data.cardId.value : this.cardId,
+      paperId: data.paperId.present ? data.paperId.value : this.paperId,
+      generation: data.generation.present
+          ? data.generation.value
+          : this.generation,
+      title: data.title.present ? data.title.value : this.title,
+      claimOrQuestion: data.claimOrQuestion.present
+          ? data.claimOrQuestion.value
+          : this.claimOrQuestion,
+      userNote: data.userNote.present ? data.userNote.value : this.userNote,
+      sourceBlockIdsJson: data.sourceBlockIdsJson.present
+          ? data.sourceBlockIdsJson.value
+          : this.sourceBlockIdsJson,
+      figureIdsJson: data.figureIdsJson.present
+          ? data.figureIdsJson.value
+          : this.figureIdsJson,
+      tableIdsJson: data.tableIdsJson.present
+          ? data.tableIdsJson.value
+          : this.tableIdsJson,
+      citationContextIdsJson: data.citationContextIdsJson.present
+          ? data.citationContextIdsJson.value
+          : this.citationContextIdsJson,
+      verificationStatus: data.verificationStatus.present
+          ? data.verificationStatus.value
+          : this.verificationStatus,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      syncState: data.syncState.present ? data.syncState.value : this.syncState,
+      activeOperationId: data.activeOperationId.present
+          ? data.activeOperationId.value
+          : this.activeOperationId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalEvidenceCardRow(')
+          ..write('accountId: $accountId, ')
+          ..write('cardId: $cardId, ')
+          ..write('paperId: $paperId, ')
+          ..write('generation: $generation, ')
+          ..write('title: $title, ')
+          ..write('claimOrQuestion: $claimOrQuestion, ')
+          ..write('userNote: $userNote, ')
+          ..write('sourceBlockIdsJson: $sourceBlockIdsJson, ')
+          ..write('figureIdsJson: $figureIdsJson, ')
+          ..write('tableIdsJson: $tableIdsJson, ')
+          ..write('citationContextIdsJson: $citationContextIdsJson, ')
+          ..write('verificationStatus: $verificationStatus, ')
+          ..write('revision: $revision, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('syncState: $syncState, ')
+          ..write('activeOperationId: $activeOperationId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    accountId,
+    cardId,
+    paperId,
+    generation,
+    title,
+    claimOrQuestion,
+    userNote,
+    sourceBlockIdsJson,
+    figureIdsJson,
+    tableIdsJson,
+    citationContextIdsJson,
+    verificationStatus,
+    revision,
+    deletedAt,
+    createdAt,
+    updatedAt,
+    syncState,
+    activeOperationId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalEvidenceCardRow &&
+          other.accountId == this.accountId &&
+          other.cardId == this.cardId &&
+          other.paperId == this.paperId &&
+          other.generation == this.generation &&
+          other.title == this.title &&
+          other.claimOrQuestion == this.claimOrQuestion &&
+          other.userNote == this.userNote &&
+          other.sourceBlockIdsJson == this.sourceBlockIdsJson &&
+          other.figureIdsJson == this.figureIdsJson &&
+          other.tableIdsJson == this.tableIdsJson &&
+          other.citationContextIdsJson == this.citationContextIdsJson &&
+          other.verificationStatus == this.verificationStatus &&
+          other.revision == this.revision &&
+          other.deletedAt == this.deletedAt &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.syncState == this.syncState &&
+          other.activeOperationId == this.activeOperationId);
+}
+
+class LocalEvidenceCardsCompanion
+    extends UpdateCompanion<LocalEvidenceCardRow> {
+  final Value<String> accountId;
+  final Value<String> cardId;
+  final Value<String> paperId;
+  final Value<int> generation;
+  final Value<String> title;
+  final Value<String?> claimOrQuestion;
+  final Value<String?> userNote;
+  final Value<String> sourceBlockIdsJson;
+  final Value<String> figureIdsJson;
+  final Value<String> tableIdsJson;
+  final Value<String> citationContextIdsJson;
+  final Value<String> verificationStatus;
+  final Value<int> revision;
+  final Value<DateTime?> deletedAt;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<String> syncState;
+  final Value<String?> activeOperationId;
+  final Value<int> rowid;
+  const LocalEvidenceCardsCompanion({
+    this.accountId = const Value.absent(),
+    this.cardId = const Value.absent(),
+    this.paperId = const Value.absent(),
+    this.generation = const Value.absent(),
+    this.title = const Value.absent(),
+    this.claimOrQuestion = const Value.absent(),
+    this.userNote = const Value.absent(),
+    this.sourceBlockIdsJson = const Value.absent(),
+    this.figureIdsJson = const Value.absent(),
+    this.tableIdsJson = const Value.absent(),
+    this.citationContextIdsJson = const Value.absent(),
+    this.verificationStatus = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.syncState = const Value.absent(),
+    this.activeOperationId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalEvidenceCardsCompanion.insert({
+    required String accountId,
+    required String cardId,
+    required String paperId,
+    required int generation,
+    required String title,
+    this.claimOrQuestion = const Value.absent(),
+    this.userNote = const Value.absent(),
+    this.sourceBlockIdsJson = const Value.absent(),
+    this.figureIdsJson = const Value.absent(),
+    this.tableIdsJson = const Value.absent(),
+    this.citationContextIdsJson = const Value.absent(),
+    required String verificationStatus,
+    this.revision = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.syncState = const Value.absent(),
+    this.activeOperationId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : accountId = Value(accountId),
+       cardId = Value(cardId),
+       paperId = Value(paperId),
+       generation = Value(generation),
+       title = Value(title),
+       verificationStatus = Value(verificationStatus),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<LocalEvidenceCardRow> custom({
+    Expression<String>? accountId,
+    Expression<String>? cardId,
+    Expression<String>? paperId,
+    Expression<int>? generation,
+    Expression<String>? title,
+    Expression<String>? claimOrQuestion,
+    Expression<String>? userNote,
+    Expression<String>? sourceBlockIdsJson,
+    Expression<String>? figureIdsJson,
+    Expression<String>? tableIdsJson,
+    Expression<String>? citationContextIdsJson,
+    Expression<String>? verificationStatus,
+    Expression<int>? revision,
+    Expression<DateTime>? deletedAt,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<String>? syncState,
+    Expression<String>? activeOperationId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (accountId != null) 'account_id': accountId,
+      if (cardId != null) 'card_id': cardId,
+      if (paperId != null) 'paper_id': paperId,
+      if (generation != null) 'generation': generation,
+      if (title != null) 'title': title,
+      if (claimOrQuestion != null) 'claim_or_question': claimOrQuestion,
+      if (userNote != null) 'user_note': userNote,
+      if (sourceBlockIdsJson != null)
+        'source_block_ids_json': sourceBlockIdsJson,
+      if (figureIdsJson != null) 'figure_ids_json': figureIdsJson,
+      if (tableIdsJson != null) 'table_ids_json': tableIdsJson,
+      if (citationContextIdsJson != null)
+        'citation_context_ids_json': citationContextIdsJson,
+      if (verificationStatus != null) 'verification_status': verificationStatus,
+      if (revision != null) 'revision': revision,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (syncState != null) 'sync_state': syncState,
+      if (activeOperationId != null) 'active_operation_id': activeOperationId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalEvidenceCardsCompanion copyWith({
+    Value<String>? accountId,
+    Value<String>? cardId,
+    Value<String>? paperId,
+    Value<int>? generation,
+    Value<String>? title,
+    Value<String?>? claimOrQuestion,
+    Value<String?>? userNote,
+    Value<String>? sourceBlockIdsJson,
+    Value<String>? figureIdsJson,
+    Value<String>? tableIdsJson,
+    Value<String>? citationContextIdsJson,
+    Value<String>? verificationStatus,
+    Value<int>? revision,
+    Value<DateTime?>? deletedAt,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<String>? syncState,
+    Value<String?>? activeOperationId,
+    Value<int>? rowid,
+  }) {
+    return LocalEvidenceCardsCompanion(
+      accountId: accountId ?? this.accountId,
+      cardId: cardId ?? this.cardId,
+      paperId: paperId ?? this.paperId,
+      generation: generation ?? this.generation,
+      title: title ?? this.title,
+      claimOrQuestion: claimOrQuestion ?? this.claimOrQuestion,
+      userNote: userNote ?? this.userNote,
+      sourceBlockIdsJson: sourceBlockIdsJson ?? this.sourceBlockIdsJson,
+      figureIdsJson: figureIdsJson ?? this.figureIdsJson,
+      tableIdsJson: tableIdsJson ?? this.tableIdsJson,
+      citationContextIdsJson:
+          citationContextIdsJson ?? this.citationContextIdsJson,
+      verificationStatus: verificationStatus ?? this.verificationStatus,
+      revision: revision ?? this.revision,
+      deletedAt: deletedAt ?? this.deletedAt,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      syncState: syncState ?? this.syncState,
+      activeOperationId: activeOperationId ?? this.activeOperationId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (cardId.present) {
+      map['card_id'] = Variable<String>(cardId.value);
+    }
+    if (paperId.present) {
+      map['paper_id'] = Variable<String>(paperId.value);
+    }
+    if (generation.present) {
+      map['generation'] = Variable<int>(generation.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (claimOrQuestion.present) {
+      map['claim_or_question'] = Variable<String>(claimOrQuestion.value);
+    }
+    if (userNote.present) {
+      map['user_note'] = Variable<String>(userNote.value);
+    }
+    if (sourceBlockIdsJson.present) {
+      map['source_block_ids_json'] = Variable<String>(sourceBlockIdsJson.value);
+    }
+    if (figureIdsJson.present) {
+      map['figure_ids_json'] = Variable<String>(figureIdsJson.value);
+    }
+    if (tableIdsJson.present) {
+      map['table_ids_json'] = Variable<String>(tableIdsJson.value);
+    }
+    if (citationContextIdsJson.present) {
+      map['citation_context_ids_json'] = Variable<String>(
+        citationContextIdsJson.value,
+      );
+    }
+    if (verificationStatus.present) {
+      map['verification_status'] = Variable<String>(verificationStatus.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (syncState.present) {
+      map['sync_state'] = Variable<String>(syncState.value);
+    }
+    if (activeOperationId.present) {
+      map['active_operation_id'] = Variable<String>(activeOperationId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalEvidenceCardsCompanion(')
+          ..write('accountId: $accountId, ')
+          ..write('cardId: $cardId, ')
+          ..write('paperId: $paperId, ')
+          ..write('generation: $generation, ')
+          ..write('title: $title, ')
+          ..write('claimOrQuestion: $claimOrQuestion, ')
+          ..write('userNote: $userNote, ')
+          ..write('sourceBlockIdsJson: $sourceBlockIdsJson, ')
+          ..write('figureIdsJson: $figureIdsJson, ')
+          ..write('tableIdsJson: $tableIdsJson, ')
+          ..write('citationContextIdsJson: $citationContextIdsJson, ')
+          ..write('verificationStatus: $verificationStatus, ')
+          ..write('revision: $revision, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('syncState: $syncState, ')
+          ..write('activeOperationId: $activeOperationId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LocalMemoryItemsTable extends LocalMemoryItems
+    with TableInfo<$LocalMemoryItemsTable, LocalMemoryItemRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalMemoryItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+    'account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _itemIdMeta = const VerificationMeta('itemId');
+  @override
+  late final GeneratedColumn<String> itemId = GeneratedColumn<String>(
+    'item_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _paperIdMeta = const VerificationMeta(
+    'paperId',
+  );
+  @override
+  late final GeneratedColumn<String> paperId = GeneratedColumn<String>(
+    'paper_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _generationMeta = const VerificationMeta(
+    'generation',
+  );
+  @override
+  late final GeneratedColumn<int> generation = GeneratedColumn<int>(
+    'generation',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceTypeMeta = const VerificationMeta(
+    'sourceType',
+  );
+  @override
+  late final GeneratedColumn<String> sourceType = GeneratedColumn<String>(
+    'source_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceIdMeta = const VerificationMeta(
+    'sourceId',
+  );
+  @override
+  late final GeneratedColumn<String> sourceId = GeneratedColumn<String>(
+    'source_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _promptTextMeta = const VerificationMeta(
+    'promptText',
+  );
+  @override
+  late final GeneratedColumn<String> promptText = GeneratedColumn<String>(
+    'prompt_text',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _answerTextMeta = const VerificationMeta(
+    'answerText',
+  );
+  @override
+  late final GeneratedColumn<String> answerText = GeneratedColumn<String>(
+    'answer_text',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nextReviewAtMeta = const VerificationMeta(
+    'nextReviewAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> nextReviewAt = GeneratedColumn<DateTime>(
+    'next_review_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reviewCountMeta = const VerificationMeta(
+    'reviewCount',
+  );
+  @override
+  late final GeneratedColumn<int> reviewCount = GeneratedColumn<int>(
+    'review_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _syncStateMeta = const VerificationMeta(
+    'syncState',
+  );
+  @override
+  late final GeneratedColumn<String> syncState = GeneratedColumn<String>(
+    'sync_state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('clean'),
+  );
+  static const VerificationMeta _activeOperationIdMeta = const VerificationMeta(
+    'activeOperationId',
+  );
+  @override
+  late final GeneratedColumn<String> activeOperationId =
+      GeneratedColumn<String>(
+        'active_operation_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountId,
+    itemId,
+    paperId,
+    generation,
+    sourceType,
+    sourceId,
+    promptText,
+    answerText,
+    status,
+    nextReviewAt,
+    reviewCount,
+    revision,
+    deletedAt,
+    createdAt,
+    updatedAt,
+    syncState,
+    activeOperationId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_memory_items';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LocalMemoryItemRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('item_id')) {
+      context.handle(
+        _itemIdMeta,
+        itemId.isAcceptableOrUnknown(data['item_id']!, _itemIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_itemIdMeta);
+    }
+    if (data.containsKey('paper_id')) {
+      context.handle(
+        _paperIdMeta,
+        paperId.isAcceptableOrUnknown(data['paper_id']!, _paperIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_paperIdMeta);
+    }
+    if (data.containsKey('generation')) {
+      context.handle(
+        _generationMeta,
+        generation.isAcceptableOrUnknown(data['generation']!, _generationMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_generationMeta);
+    }
+    if (data.containsKey('source_type')) {
+      context.handle(
+        _sourceTypeMeta,
+        sourceType.isAcceptableOrUnknown(data['source_type']!, _sourceTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceTypeMeta);
+    }
+    if (data.containsKey('source_id')) {
+      context.handle(
+        _sourceIdMeta,
+        sourceId.isAcceptableOrUnknown(data['source_id']!, _sourceIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceIdMeta);
+    }
+    if (data.containsKey('prompt_text')) {
+      context.handle(
+        _promptTextMeta,
+        promptText.isAcceptableOrUnknown(data['prompt_text']!, _promptTextMeta),
+      );
+    }
+    if (data.containsKey('answer_text')) {
+      context.handle(
+        _answerTextMeta,
+        answerText.isAcceptableOrUnknown(data['answer_text']!, _answerTextMeta),
+      );
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_statusMeta);
+    }
+    if (data.containsKey('next_review_at')) {
+      context.handle(
+        _nextReviewAtMeta,
+        nextReviewAt.isAcceptableOrUnknown(
+          data['next_review_at']!,
+          _nextReviewAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('review_count')) {
+      context.handle(
+        _reviewCountMeta,
+        reviewCount.isAcceptableOrUnknown(
+          data['review_count']!,
+          _reviewCountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('sync_state')) {
+      context.handle(
+        _syncStateMeta,
+        syncState.isAcceptableOrUnknown(data['sync_state']!, _syncStateMeta),
+      );
+    }
+    if (data.containsKey('active_operation_id')) {
+      context.handle(
+        _activeOperationIdMeta,
+        activeOperationId.isAcceptableOrUnknown(
+          data['active_operation_id']!,
+          _activeOperationIdMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountId, itemId};
+  @override
+  LocalMemoryItemRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalMemoryItemRow(
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}account_id'],
+      )!,
+      itemId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}item_id'],
+      )!,
+      paperId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}paper_id'],
+      )!,
+      generation: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}generation'],
+      )!,
+      sourceType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_type'],
+      )!,
+      sourceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_id'],
+      )!,
+      promptText: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}prompt_text'],
+      ),
+      answerText: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}answer_text'],
+      ),
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      nextReviewAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}next_review_at'],
+      ),
+      reviewCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}review_count'],
+      )!,
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      syncState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sync_state'],
+      )!,
+      activeOperationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}active_operation_id'],
+      ),
+    );
+  }
+
+  @override
+  $LocalMemoryItemsTable createAlias(String alias) {
+    return $LocalMemoryItemsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalMemoryItemRow extends DataClass
+    implements Insertable<LocalMemoryItemRow> {
+  final String accountId;
+  final String itemId;
+  final String paperId;
+  final int generation;
+  final String sourceType;
+  final String sourceId;
+  final String? promptText;
+  final String? answerText;
+  final String status;
+  final DateTime? nextReviewAt;
+  final int reviewCount;
+  final int revision;
+  final DateTime? deletedAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String syncState;
+  final String? activeOperationId;
+  const LocalMemoryItemRow({
+    required this.accountId,
+    required this.itemId,
+    required this.paperId,
+    required this.generation,
+    required this.sourceType,
+    required this.sourceId,
+    this.promptText,
+    this.answerText,
+    required this.status,
+    this.nextReviewAt,
+    required this.reviewCount,
+    required this.revision,
+    this.deletedAt,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.syncState,
+    this.activeOperationId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['account_id'] = Variable<String>(accountId);
+    map['item_id'] = Variable<String>(itemId);
+    map['paper_id'] = Variable<String>(paperId);
+    map['generation'] = Variable<int>(generation);
+    map['source_type'] = Variable<String>(sourceType);
+    map['source_id'] = Variable<String>(sourceId);
+    if (!nullToAbsent || promptText != null) {
+      map['prompt_text'] = Variable<String>(promptText);
+    }
+    if (!nullToAbsent || answerText != null) {
+      map['answer_text'] = Variable<String>(answerText);
+    }
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || nextReviewAt != null) {
+      map['next_review_at'] = Variable<DateTime>(nextReviewAt);
+    }
+    map['review_count'] = Variable<int>(reviewCount);
+    map['revision'] = Variable<int>(revision);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['sync_state'] = Variable<String>(syncState);
+    if (!nullToAbsent || activeOperationId != null) {
+      map['active_operation_id'] = Variable<String>(activeOperationId);
+    }
+    return map;
+  }
+
+  LocalMemoryItemsCompanion toCompanion(bool nullToAbsent) {
+    return LocalMemoryItemsCompanion(
+      accountId: Value(accountId),
+      itemId: Value(itemId),
+      paperId: Value(paperId),
+      generation: Value(generation),
+      sourceType: Value(sourceType),
+      sourceId: Value(sourceId),
+      promptText: promptText == null && nullToAbsent
+          ? const Value.absent()
+          : Value(promptText),
+      answerText: answerText == null && nullToAbsent
+          ? const Value.absent()
+          : Value(answerText),
+      status: Value(status),
+      nextReviewAt: nextReviewAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nextReviewAt),
+      reviewCount: Value(reviewCount),
+      revision: Value(revision),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      syncState: Value(syncState),
+      activeOperationId: activeOperationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(activeOperationId),
+    );
+  }
+
+  factory LocalMemoryItemRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalMemoryItemRow(
+      accountId: serializer.fromJson<String>(json['accountId']),
+      itemId: serializer.fromJson<String>(json['itemId']),
+      paperId: serializer.fromJson<String>(json['paperId']),
+      generation: serializer.fromJson<int>(json['generation']),
+      sourceType: serializer.fromJson<String>(json['sourceType']),
+      sourceId: serializer.fromJson<String>(json['sourceId']),
+      promptText: serializer.fromJson<String?>(json['promptText']),
+      answerText: serializer.fromJson<String?>(json['answerText']),
+      status: serializer.fromJson<String>(json['status']),
+      nextReviewAt: serializer.fromJson<DateTime?>(json['nextReviewAt']),
+      reviewCount: serializer.fromJson<int>(json['reviewCount']),
+      revision: serializer.fromJson<int>(json['revision']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      syncState: serializer.fromJson<String>(json['syncState']),
+      activeOperationId: serializer.fromJson<String?>(
+        json['activeOperationId'],
+      ),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountId': serializer.toJson<String>(accountId),
+      'itemId': serializer.toJson<String>(itemId),
+      'paperId': serializer.toJson<String>(paperId),
+      'generation': serializer.toJson<int>(generation),
+      'sourceType': serializer.toJson<String>(sourceType),
+      'sourceId': serializer.toJson<String>(sourceId),
+      'promptText': serializer.toJson<String?>(promptText),
+      'answerText': serializer.toJson<String?>(answerText),
+      'status': serializer.toJson<String>(status),
+      'nextReviewAt': serializer.toJson<DateTime?>(nextReviewAt),
+      'reviewCount': serializer.toJson<int>(reviewCount),
+      'revision': serializer.toJson<int>(revision),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'syncState': serializer.toJson<String>(syncState),
+      'activeOperationId': serializer.toJson<String?>(activeOperationId),
+    };
+  }
+
+  LocalMemoryItemRow copyWith({
+    String? accountId,
+    String? itemId,
+    String? paperId,
+    int? generation,
+    String? sourceType,
+    String? sourceId,
+    Value<String?> promptText = const Value.absent(),
+    Value<String?> answerText = const Value.absent(),
+    String? status,
+    Value<DateTime?> nextReviewAt = const Value.absent(),
+    int? reviewCount,
+    int? revision,
+    Value<DateTime?> deletedAt = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    String? syncState,
+    Value<String?> activeOperationId = const Value.absent(),
+  }) => LocalMemoryItemRow(
+    accountId: accountId ?? this.accountId,
+    itemId: itemId ?? this.itemId,
+    paperId: paperId ?? this.paperId,
+    generation: generation ?? this.generation,
+    sourceType: sourceType ?? this.sourceType,
+    sourceId: sourceId ?? this.sourceId,
+    promptText: promptText.present ? promptText.value : this.promptText,
+    answerText: answerText.present ? answerText.value : this.answerText,
+    status: status ?? this.status,
+    nextReviewAt: nextReviewAt.present ? nextReviewAt.value : this.nextReviewAt,
+    reviewCount: reviewCount ?? this.reviewCount,
+    revision: revision ?? this.revision,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    syncState: syncState ?? this.syncState,
+    activeOperationId: activeOperationId.present
+        ? activeOperationId.value
+        : this.activeOperationId,
+  );
+  LocalMemoryItemRow copyWithCompanion(LocalMemoryItemsCompanion data) {
+    return LocalMemoryItemRow(
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      itemId: data.itemId.present ? data.itemId.value : this.itemId,
+      paperId: data.paperId.present ? data.paperId.value : this.paperId,
+      generation: data.generation.present
+          ? data.generation.value
+          : this.generation,
+      sourceType: data.sourceType.present
+          ? data.sourceType.value
+          : this.sourceType,
+      sourceId: data.sourceId.present ? data.sourceId.value : this.sourceId,
+      promptText: data.promptText.present
+          ? data.promptText.value
+          : this.promptText,
+      answerText: data.answerText.present
+          ? data.answerText.value
+          : this.answerText,
+      status: data.status.present ? data.status.value : this.status,
+      nextReviewAt: data.nextReviewAt.present
+          ? data.nextReviewAt.value
+          : this.nextReviewAt,
+      reviewCount: data.reviewCount.present
+          ? data.reviewCount.value
+          : this.reviewCount,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      syncState: data.syncState.present ? data.syncState.value : this.syncState,
+      activeOperationId: data.activeOperationId.present
+          ? data.activeOperationId.value
+          : this.activeOperationId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalMemoryItemRow(')
+          ..write('accountId: $accountId, ')
+          ..write('itemId: $itemId, ')
+          ..write('paperId: $paperId, ')
+          ..write('generation: $generation, ')
+          ..write('sourceType: $sourceType, ')
+          ..write('sourceId: $sourceId, ')
+          ..write('promptText: $promptText, ')
+          ..write('answerText: $answerText, ')
+          ..write('status: $status, ')
+          ..write('nextReviewAt: $nextReviewAt, ')
+          ..write('reviewCount: $reviewCount, ')
+          ..write('revision: $revision, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('syncState: $syncState, ')
+          ..write('activeOperationId: $activeOperationId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    accountId,
+    itemId,
+    paperId,
+    generation,
+    sourceType,
+    sourceId,
+    promptText,
+    answerText,
+    status,
+    nextReviewAt,
+    reviewCount,
+    revision,
+    deletedAt,
+    createdAt,
+    updatedAt,
+    syncState,
+    activeOperationId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalMemoryItemRow &&
+          other.accountId == this.accountId &&
+          other.itemId == this.itemId &&
+          other.paperId == this.paperId &&
+          other.generation == this.generation &&
+          other.sourceType == this.sourceType &&
+          other.sourceId == this.sourceId &&
+          other.promptText == this.promptText &&
+          other.answerText == this.answerText &&
+          other.status == this.status &&
+          other.nextReviewAt == this.nextReviewAt &&
+          other.reviewCount == this.reviewCount &&
+          other.revision == this.revision &&
+          other.deletedAt == this.deletedAt &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.syncState == this.syncState &&
+          other.activeOperationId == this.activeOperationId);
+}
+
+class LocalMemoryItemsCompanion extends UpdateCompanion<LocalMemoryItemRow> {
+  final Value<String> accountId;
+  final Value<String> itemId;
+  final Value<String> paperId;
+  final Value<int> generation;
+  final Value<String> sourceType;
+  final Value<String> sourceId;
+  final Value<String?> promptText;
+  final Value<String?> answerText;
+  final Value<String> status;
+  final Value<DateTime?> nextReviewAt;
+  final Value<int> reviewCount;
+  final Value<int> revision;
+  final Value<DateTime?> deletedAt;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<String> syncState;
+  final Value<String?> activeOperationId;
+  final Value<int> rowid;
+  const LocalMemoryItemsCompanion({
+    this.accountId = const Value.absent(),
+    this.itemId = const Value.absent(),
+    this.paperId = const Value.absent(),
+    this.generation = const Value.absent(),
+    this.sourceType = const Value.absent(),
+    this.sourceId = const Value.absent(),
+    this.promptText = const Value.absent(),
+    this.answerText = const Value.absent(),
+    this.status = const Value.absent(),
+    this.nextReviewAt = const Value.absent(),
+    this.reviewCount = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.syncState = const Value.absent(),
+    this.activeOperationId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalMemoryItemsCompanion.insert({
+    required String accountId,
+    required String itemId,
+    required String paperId,
+    required int generation,
+    required String sourceType,
+    required String sourceId,
+    this.promptText = const Value.absent(),
+    this.answerText = const Value.absent(),
+    required String status,
+    this.nextReviewAt = const Value.absent(),
+    this.reviewCount = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.syncState = const Value.absent(),
+    this.activeOperationId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : accountId = Value(accountId),
+       itemId = Value(itemId),
+       paperId = Value(paperId),
+       generation = Value(generation),
+       sourceType = Value(sourceType),
+       sourceId = Value(sourceId),
+       status = Value(status),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<LocalMemoryItemRow> custom({
+    Expression<String>? accountId,
+    Expression<String>? itemId,
+    Expression<String>? paperId,
+    Expression<int>? generation,
+    Expression<String>? sourceType,
+    Expression<String>? sourceId,
+    Expression<String>? promptText,
+    Expression<String>? answerText,
+    Expression<String>? status,
+    Expression<DateTime>? nextReviewAt,
+    Expression<int>? reviewCount,
+    Expression<int>? revision,
+    Expression<DateTime>? deletedAt,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<String>? syncState,
+    Expression<String>? activeOperationId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (accountId != null) 'account_id': accountId,
+      if (itemId != null) 'item_id': itemId,
+      if (paperId != null) 'paper_id': paperId,
+      if (generation != null) 'generation': generation,
+      if (sourceType != null) 'source_type': sourceType,
+      if (sourceId != null) 'source_id': sourceId,
+      if (promptText != null) 'prompt_text': promptText,
+      if (answerText != null) 'answer_text': answerText,
+      if (status != null) 'status': status,
+      if (nextReviewAt != null) 'next_review_at': nextReviewAt,
+      if (reviewCount != null) 'review_count': reviewCount,
+      if (revision != null) 'revision': revision,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (syncState != null) 'sync_state': syncState,
+      if (activeOperationId != null) 'active_operation_id': activeOperationId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalMemoryItemsCompanion copyWith({
+    Value<String>? accountId,
+    Value<String>? itemId,
+    Value<String>? paperId,
+    Value<int>? generation,
+    Value<String>? sourceType,
+    Value<String>? sourceId,
+    Value<String?>? promptText,
+    Value<String?>? answerText,
+    Value<String>? status,
+    Value<DateTime?>? nextReviewAt,
+    Value<int>? reviewCount,
+    Value<int>? revision,
+    Value<DateTime?>? deletedAt,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<String>? syncState,
+    Value<String?>? activeOperationId,
+    Value<int>? rowid,
+  }) {
+    return LocalMemoryItemsCompanion(
+      accountId: accountId ?? this.accountId,
+      itemId: itemId ?? this.itemId,
+      paperId: paperId ?? this.paperId,
+      generation: generation ?? this.generation,
+      sourceType: sourceType ?? this.sourceType,
+      sourceId: sourceId ?? this.sourceId,
+      promptText: promptText ?? this.promptText,
+      answerText: answerText ?? this.answerText,
+      status: status ?? this.status,
+      nextReviewAt: nextReviewAt ?? this.nextReviewAt,
+      reviewCount: reviewCount ?? this.reviewCount,
+      revision: revision ?? this.revision,
+      deletedAt: deletedAt ?? this.deletedAt,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      syncState: syncState ?? this.syncState,
+      activeOperationId: activeOperationId ?? this.activeOperationId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (itemId.present) {
+      map['item_id'] = Variable<String>(itemId.value);
+    }
+    if (paperId.present) {
+      map['paper_id'] = Variable<String>(paperId.value);
+    }
+    if (generation.present) {
+      map['generation'] = Variable<int>(generation.value);
+    }
+    if (sourceType.present) {
+      map['source_type'] = Variable<String>(sourceType.value);
+    }
+    if (sourceId.present) {
+      map['source_id'] = Variable<String>(sourceId.value);
+    }
+    if (promptText.present) {
+      map['prompt_text'] = Variable<String>(promptText.value);
+    }
+    if (answerText.present) {
+      map['answer_text'] = Variable<String>(answerText.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (nextReviewAt.present) {
+      map['next_review_at'] = Variable<DateTime>(nextReviewAt.value);
+    }
+    if (reviewCount.present) {
+      map['review_count'] = Variable<int>(reviewCount.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (syncState.present) {
+      map['sync_state'] = Variable<String>(syncState.value);
+    }
+    if (activeOperationId.present) {
+      map['active_operation_id'] = Variable<String>(activeOperationId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalMemoryItemsCompanion(')
+          ..write('accountId: $accountId, ')
+          ..write('itemId: $itemId, ')
+          ..write('paperId: $paperId, ')
+          ..write('generation: $generation, ')
+          ..write('sourceType: $sourceType, ')
+          ..write('sourceId: $sourceId, ')
+          ..write('promptText: $promptText, ')
+          ..write('answerText: $answerText, ')
+          ..write('status: $status, ')
+          ..write('nextReviewAt: $nextReviewAt, ')
+          ..write('reviewCount: $reviewCount, ')
+          ..write('revision: $revision, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('syncState: $syncState, ')
+          ..write('activeOperationId: $activeOperationId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ResearchOutboxTable extends ResearchOutbox
+    with TableInfo<$ResearchOutboxTable, ResearchOutboxRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ResearchOutboxTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+    'account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _operationIdMeta = const VerificationMeta(
+    'operationId',
+  );
+  @override
+  late final GeneratedColumn<String> operationId = GeneratedColumn<String>(
+    'operation_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _entityKindMeta = const VerificationMeta(
+    'entityKind',
+  );
+  @override
+  late final GeneratedColumn<String> entityKind = GeneratedColumn<String>(
+    'entity_kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _entityIdMeta = const VerificationMeta(
+    'entityId',
+  );
+  @override
+  late final GeneratedColumn<String> entityId = GeneratedColumn<String>(
+    'entity_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _operationMeta = const VerificationMeta(
+    'operation',
+  );
+  @override
+  late final GeneratedColumn<String> operation = GeneratedColumn<String>(
+    'operation',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _baseRevisionMeta = const VerificationMeta(
+    'baseRevision',
+  );
+  @override
+  late final GeneratedColumn<int> baseRevision = GeneratedColumn<int>(
+    'base_revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _payloadJsonMeta = const VerificationMeta(
+    'payloadJson',
+  );
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+    'payload_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _stateMeta = const VerificationMeta('state');
+  @override
+  late final GeneratedColumn<String> state = GeneratedColumn<String>(
+    'state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('queued'),
+  );
+  static const VerificationMeta _attemptCountMeta = const VerificationMeta(
+    'attemptCount',
+  );
+  @override
+  late final GeneratedColumn<int> attemptCount = GeneratedColumn<int>(
+    'attempt_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _lastErrorCodeMeta = const VerificationMeta(
+    'lastErrorCode',
+  );
+  @override
+  late final GeneratedColumn<String> lastErrorCode = GeneratedColumn<String>(
+    'last_error_code',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountId,
+    operationId,
+    entityKind,
+    entityId,
+    operation,
+    baseRevision,
+    payloadJson,
+    state,
+    attemptCount,
+    lastErrorCode,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'research_outbox';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ResearchOutboxRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('operation_id')) {
+      context.handle(
+        _operationIdMeta,
+        operationId.isAcceptableOrUnknown(
+          data['operation_id']!,
+          _operationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_operationIdMeta);
+    }
+    if (data.containsKey('entity_kind')) {
+      context.handle(
+        _entityKindMeta,
+        entityKind.isAcceptableOrUnknown(data['entity_kind']!, _entityKindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entityKindMeta);
+    }
+    if (data.containsKey('entity_id')) {
+      context.handle(
+        _entityIdMeta,
+        entityId.isAcceptableOrUnknown(data['entity_id']!, _entityIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entityIdMeta);
+    }
+    if (data.containsKey('operation')) {
+      context.handle(
+        _operationMeta,
+        operation.isAcceptableOrUnknown(data['operation']!, _operationMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_operationMeta);
+    }
+    if (data.containsKey('base_revision')) {
+      context.handle(
+        _baseRevisionMeta,
+        baseRevision.isAcceptableOrUnknown(
+          data['base_revision']!,
+          _baseRevisionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+        _payloadJsonMeta,
+        payloadJson.isAcceptableOrUnknown(
+          data['payload_json']!,
+          _payloadJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadJsonMeta);
+    }
+    if (data.containsKey('state')) {
+      context.handle(
+        _stateMeta,
+        state.isAcceptableOrUnknown(data['state']!, _stateMeta),
+      );
+    }
+    if (data.containsKey('attempt_count')) {
+      context.handle(
+        _attemptCountMeta,
+        attemptCount.isAcceptableOrUnknown(
+          data['attempt_count']!,
+          _attemptCountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_error_code')) {
+      context.handle(
+        _lastErrorCodeMeta,
+        lastErrorCode.isAcceptableOrUnknown(
+          data['last_error_code']!,
+          _lastErrorCodeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountId, operationId};
+  @override
+  ResearchOutboxRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ResearchOutboxRow(
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}account_id'],
+      )!,
+      operationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}operation_id'],
+      )!,
+      entityKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entity_kind'],
+      )!,
+      entityId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entity_id'],
+      )!,
+      operation: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}operation'],
+      )!,
+      baseRevision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}base_revision'],
+      )!,
+      payloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_json'],
+      )!,
+      state: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}state'],
+      )!,
+      attemptCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}attempt_count'],
+      )!,
+      lastErrorCode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_error_code'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ResearchOutboxTable createAlias(String alias) {
+    return $ResearchOutboxTable(attachedDatabase, alias);
+  }
+}
+
+class ResearchOutboxRow extends DataClass
+    implements Insertable<ResearchOutboxRow> {
+  final String accountId;
+  final String operationId;
+  final String entityKind;
+  final String entityId;
+  final String operation;
+  final int baseRevision;
+  final String payloadJson;
+  final String state;
+  final int attemptCount;
+  final String? lastErrorCode;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const ResearchOutboxRow({
+    required this.accountId,
+    required this.operationId,
+    required this.entityKind,
+    required this.entityId,
+    required this.operation,
+    required this.baseRevision,
+    required this.payloadJson,
+    required this.state,
+    required this.attemptCount,
+    this.lastErrorCode,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['account_id'] = Variable<String>(accountId);
+    map['operation_id'] = Variable<String>(operationId);
+    map['entity_kind'] = Variable<String>(entityKind);
+    map['entity_id'] = Variable<String>(entityId);
+    map['operation'] = Variable<String>(operation);
+    map['base_revision'] = Variable<int>(baseRevision);
+    map['payload_json'] = Variable<String>(payloadJson);
+    map['state'] = Variable<String>(state);
+    map['attempt_count'] = Variable<int>(attemptCount);
+    if (!nullToAbsent || lastErrorCode != null) {
+      map['last_error_code'] = Variable<String>(lastErrorCode);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ResearchOutboxCompanion toCompanion(bool nullToAbsent) {
+    return ResearchOutboxCompanion(
+      accountId: Value(accountId),
+      operationId: Value(operationId),
+      entityKind: Value(entityKind),
+      entityId: Value(entityId),
+      operation: Value(operation),
+      baseRevision: Value(baseRevision),
+      payloadJson: Value(payloadJson),
+      state: Value(state),
+      attemptCount: Value(attemptCount),
+      lastErrorCode: lastErrorCode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastErrorCode),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ResearchOutboxRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ResearchOutboxRow(
+      accountId: serializer.fromJson<String>(json['accountId']),
+      operationId: serializer.fromJson<String>(json['operationId']),
+      entityKind: serializer.fromJson<String>(json['entityKind']),
+      entityId: serializer.fromJson<String>(json['entityId']),
+      operation: serializer.fromJson<String>(json['operation']),
+      baseRevision: serializer.fromJson<int>(json['baseRevision']),
+      payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      state: serializer.fromJson<String>(json['state']),
+      attemptCount: serializer.fromJson<int>(json['attemptCount']),
+      lastErrorCode: serializer.fromJson<String?>(json['lastErrorCode']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountId': serializer.toJson<String>(accountId),
+      'operationId': serializer.toJson<String>(operationId),
+      'entityKind': serializer.toJson<String>(entityKind),
+      'entityId': serializer.toJson<String>(entityId),
+      'operation': serializer.toJson<String>(operation),
+      'baseRevision': serializer.toJson<int>(baseRevision),
+      'payloadJson': serializer.toJson<String>(payloadJson),
+      'state': serializer.toJson<String>(state),
+      'attemptCount': serializer.toJson<int>(attemptCount),
+      'lastErrorCode': serializer.toJson<String?>(lastErrorCode),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ResearchOutboxRow copyWith({
+    String? accountId,
+    String? operationId,
+    String? entityKind,
+    String? entityId,
+    String? operation,
+    int? baseRevision,
+    String? payloadJson,
+    String? state,
+    int? attemptCount,
+    Value<String?> lastErrorCode = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => ResearchOutboxRow(
+    accountId: accountId ?? this.accountId,
+    operationId: operationId ?? this.operationId,
+    entityKind: entityKind ?? this.entityKind,
+    entityId: entityId ?? this.entityId,
+    operation: operation ?? this.operation,
+    baseRevision: baseRevision ?? this.baseRevision,
+    payloadJson: payloadJson ?? this.payloadJson,
+    state: state ?? this.state,
+    attemptCount: attemptCount ?? this.attemptCount,
+    lastErrorCode: lastErrorCode.present
+        ? lastErrorCode.value
+        : this.lastErrorCode,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ResearchOutboxRow copyWithCompanion(ResearchOutboxCompanion data) {
+    return ResearchOutboxRow(
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      operationId: data.operationId.present
+          ? data.operationId.value
+          : this.operationId,
+      entityKind: data.entityKind.present
+          ? data.entityKind.value
+          : this.entityKind,
+      entityId: data.entityId.present ? data.entityId.value : this.entityId,
+      operation: data.operation.present ? data.operation.value : this.operation,
+      baseRevision: data.baseRevision.present
+          ? data.baseRevision.value
+          : this.baseRevision,
+      payloadJson: data.payloadJson.present
+          ? data.payloadJson.value
+          : this.payloadJson,
+      state: data.state.present ? data.state.value : this.state,
+      attemptCount: data.attemptCount.present
+          ? data.attemptCount.value
+          : this.attemptCount,
+      lastErrorCode: data.lastErrorCode.present
+          ? data.lastErrorCode.value
+          : this.lastErrorCode,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ResearchOutboxRow(')
+          ..write('accountId: $accountId, ')
+          ..write('operationId: $operationId, ')
+          ..write('entityKind: $entityKind, ')
+          ..write('entityId: $entityId, ')
+          ..write('operation: $operation, ')
+          ..write('baseRevision: $baseRevision, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('state: $state, ')
+          ..write('attemptCount: $attemptCount, ')
+          ..write('lastErrorCode: $lastErrorCode, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    accountId,
+    operationId,
+    entityKind,
+    entityId,
+    operation,
+    baseRevision,
+    payloadJson,
+    state,
+    attemptCount,
+    lastErrorCode,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ResearchOutboxRow &&
+          other.accountId == this.accountId &&
+          other.operationId == this.operationId &&
+          other.entityKind == this.entityKind &&
+          other.entityId == this.entityId &&
+          other.operation == this.operation &&
+          other.baseRevision == this.baseRevision &&
+          other.payloadJson == this.payloadJson &&
+          other.state == this.state &&
+          other.attemptCount == this.attemptCount &&
+          other.lastErrorCode == this.lastErrorCode &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ResearchOutboxCompanion extends UpdateCompanion<ResearchOutboxRow> {
+  final Value<String> accountId;
+  final Value<String> operationId;
+  final Value<String> entityKind;
+  final Value<String> entityId;
+  final Value<String> operation;
+  final Value<int> baseRevision;
+  final Value<String> payloadJson;
+  final Value<String> state;
+  final Value<int> attemptCount;
+  final Value<String?> lastErrorCode;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const ResearchOutboxCompanion({
+    this.accountId = const Value.absent(),
+    this.operationId = const Value.absent(),
+    this.entityKind = const Value.absent(),
+    this.entityId = const Value.absent(),
+    this.operation = const Value.absent(),
+    this.baseRevision = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.state = const Value.absent(),
+    this.attemptCount = const Value.absent(),
+    this.lastErrorCode = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ResearchOutboxCompanion.insert({
+    required String accountId,
+    required String operationId,
+    required String entityKind,
+    required String entityId,
+    required String operation,
+    this.baseRevision = const Value.absent(),
+    required String payloadJson,
+    this.state = const Value.absent(),
+    this.attemptCount = const Value.absent(),
+    this.lastErrorCode = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : accountId = Value(accountId),
+       operationId = Value(operationId),
+       entityKind = Value(entityKind),
+       entityId = Value(entityId),
+       operation = Value(operation),
+       payloadJson = Value(payloadJson),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<ResearchOutboxRow> custom({
+    Expression<String>? accountId,
+    Expression<String>? operationId,
+    Expression<String>? entityKind,
+    Expression<String>? entityId,
+    Expression<String>? operation,
+    Expression<int>? baseRevision,
+    Expression<String>? payloadJson,
+    Expression<String>? state,
+    Expression<int>? attemptCount,
+    Expression<String>? lastErrorCode,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (accountId != null) 'account_id': accountId,
+      if (operationId != null) 'operation_id': operationId,
+      if (entityKind != null) 'entity_kind': entityKind,
+      if (entityId != null) 'entity_id': entityId,
+      if (operation != null) 'operation': operation,
+      if (baseRevision != null) 'base_revision': baseRevision,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (state != null) 'state': state,
+      if (attemptCount != null) 'attempt_count': attemptCount,
+      if (lastErrorCode != null) 'last_error_code': lastErrorCode,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ResearchOutboxCompanion copyWith({
+    Value<String>? accountId,
+    Value<String>? operationId,
+    Value<String>? entityKind,
+    Value<String>? entityId,
+    Value<String>? operation,
+    Value<int>? baseRevision,
+    Value<String>? payloadJson,
+    Value<String>? state,
+    Value<int>? attemptCount,
+    Value<String?>? lastErrorCode,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return ResearchOutboxCompanion(
+      accountId: accountId ?? this.accountId,
+      operationId: operationId ?? this.operationId,
+      entityKind: entityKind ?? this.entityKind,
+      entityId: entityId ?? this.entityId,
+      operation: operation ?? this.operation,
+      baseRevision: baseRevision ?? this.baseRevision,
+      payloadJson: payloadJson ?? this.payloadJson,
+      state: state ?? this.state,
+      attemptCount: attemptCount ?? this.attemptCount,
+      lastErrorCode: lastErrorCode ?? this.lastErrorCode,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (operationId.present) {
+      map['operation_id'] = Variable<String>(operationId.value);
+    }
+    if (entityKind.present) {
+      map['entity_kind'] = Variable<String>(entityKind.value);
+    }
+    if (entityId.present) {
+      map['entity_id'] = Variable<String>(entityId.value);
+    }
+    if (operation.present) {
+      map['operation'] = Variable<String>(operation.value);
+    }
+    if (baseRevision.present) {
+      map['base_revision'] = Variable<int>(baseRevision.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (state.present) {
+      map['state'] = Variable<String>(state.value);
+    }
+    if (attemptCount.present) {
+      map['attempt_count'] = Variable<int>(attemptCount.value);
+    }
+    if (lastErrorCode.present) {
+      map['last_error_code'] = Variable<String>(lastErrorCode.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ResearchOutboxCompanion(')
+          ..write('accountId: $accountId, ')
+          ..write('operationId: $operationId, ')
+          ..write('entityKind: $entityKind, ')
+          ..write('entityId: $entityId, ')
+          ..write('operation: $operation, ')
+          ..write('baseRevision: $baseRevision, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('state: $state, ')
+          ..write('attemptCount: $attemptCount, ')
+          ..write('lastErrorCode: $lastErrorCode, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ResearchSyncStatesTable extends ResearchSyncStates
+    with TableInfo<$ResearchSyncStatesTable, ResearchSyncStateRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ResearchSyncStatesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+    'account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _entityKindMeta = const VerificationMeta(
+    'entityKind',
+  );
+  @override
+  late final GeneratedColumn<String> entityKind = GeneratedColumn<String>(
+    'entity_kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _cursorMeta = const VerificationMeta('cursor');
+  @override
+  late final GeneratedColumn<String> cursor = GeneratedColumn<String>(
+    'cursor',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountId,
+    entityKind,
+    revision,
+    cursor,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'research_sync_states';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ResearchSyncStateRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('entity_kind')) {
+      context.handle(
+        _entityKindMeta,
+        entityKind.isAcceptableOrUnknown(data['entity_kind']!, _entityKindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entityKindMeta);
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('cursor')) {
+      context.handle(
+        _cursorMeta,
+        cursor.isAcceptableOrUnknown(data['cursor']!, _cursorMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountId, entityKind};
+  @override
+  ResearchSyncStateRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ResearchSyncStateRow(
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}account_id'],
+      )!,
+      entityKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entity_kind'],
+      )!,
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      )!,
+      cursor: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cursor'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ResearchSyncStatesTable createAlias(String alias) {
+    return $ResearchSyncStatesTable(attachedDatabase, alias);
+  }
+}
+
+class ResearchSyncStateRow extends DataClass
+    implements Insertable<ResearchSyncStateRow> {
+  final String accountId;
+  final String entityKind;
+  final int revision;
+  final String? cursor;
+  final DateTime updatedAt;
+  const ResearchSyncStateRow({
+    required this.accountId,
+    required this.entityKind,
+    required this.revision,
+    this.cursor,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['account_id'] = Variable<String>(accountId);
+    map['entity_kind'] = Variable<String>(entityKind);
+    map['revision'] = Variable<int>(revision);
+    if (!nullToAbsent || cursor != null) {
+      map['cursor'] = Variable<String>(cursor);
+    }
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ResearchSyncStatesCompanion toCompanion(bool nullToAbsent) {
+    return ResearchSyncStatesCompanion(
+      accountId: Value(accountId),
+      entityKind: Value(entityKind),
+      revision: Value(revision),
+      cursor: cursor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cursor),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ResearchSyncStateRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ResearchSyncStateRow(
+      accountId: serializer.fromJson<String>(json['accountId']),
+      entityKind: serializer.fromJson<String>(json['entityKind']),
+      revision: serializer.fromJson<int>(json['revision']),
+      cursor: serializer.fromJson<String?>(json['cursor']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountId': serializer.toJson<String>(accountId),
+      'entityKind': serializer.toJson<String>(entityKind),
+      'revision': serializer.toJson<int>(revision),
+      'cursor': serializer.toJson<String?>(cursor),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ResearchSyncStateRow copyWith({
+    String? accountId,
+    String? entityKind,
+    int? revision,
+    Value<String?> cursor = const Value.absent(),
+    DateTime? updatedAt,
+  }) => ResearchSyncStateRow(
+    accountId: accountId ?? this.accountId,
+    entityKind: entityKind ?? this.entityKind,
+    revision: revision ?? this.revision,
+    cursor: cursor.present ? cursor.value : this.cursor,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ResearchSyncStateRow copyWithCompanion(ResearchSyncStatesCompanion data) {
+    return ResearchSyncStateRow(
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      entityKind: data.entityKind.present
+          ? data.entityKind.value
+          : this.entityKind,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      cursor: data.cursor.present ? data.cursor.value : this.cursor,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ResearchSyncStateRow(')
+          ..write('accountId: $accountId, ')
+          ..write('entityKind: $entityKind, ')
+          ..write('revision: $revision, ')
+          ..write('cursor: $cursor, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(accountId, entityKind, revision, cursor, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ResearchSyncStateRow &&
+          other.accountId == this.accountId &&
+          other.entityKind == this.entityKind &&
+          other.revision == this.revision &&
+          other.cursor == this.cursor &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ResearchSyncStatesCompanion
+    extends UpdateCompanion<ResearchSyncStateRow> {
+  final Value<String> accountId;
+  final Value<String> entityKind;
+  final Value<int> revision;
+  final Value<String?> cursor;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const ResearchSyncStatesCompanion({
+    this.accountId = const Value.absent(),
+    this.entityKind = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.cursor = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ResearchSyncStatesCompanion.insert({
+    required String accountId,
+    required String entityKind,
+    this.revision = const Value.absent(),
+    this.cursor = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : accountId = Value(accountId),
+       entityKind = Value(entityKind),
+       updatedAt = Value(updatedAt);
+  static Insertable<ResearchSyncStateRow> custom({
+    Expression<String>? accountId,
+    Expression<String>? entityKind,
+    Expression<int>? revision,
+    Expression<String>? cursor,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (accountId != null) 'account_id': accountId,
+      if (entityKind != null) 'entity_kind': entityKind,
+      if (revision != null) 'revision': revision,
+      if (cursor != null) 'cursor': cursor,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ResearchSyncStatesCompanion copyWith({
+    Value<String>? accountId,
+    Value<String>? entityKind,
+    Value<int>? revision,
+    Value<String?>? cursor,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return ResearchSyncStatesCompanion(
+      accountId: accountId ?? this.accountId,
+      entityKind: entityKind ?? this.entityKind,
+      revision: revision ?? this.revision,
+      cursor: cursor ?? this.cursor,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (entityKind.present) {
+      map['entity_kind'] = Variable<String>(entityKind.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (cursor.present) {
+      map['cursor'] = Variable<String>(cursor.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ResearchSyncStatesCompanion(')
+          ..write('accountId: $accountId, ')
+          ..write('entityKind: $entityKind, ')
+          ..write('revision: $revision, ')
+          ..write('cursor: $cursor, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CachedVersionArtifactsTable extends CachedVersionArtifacts
+    with TableInfo<$CachedVersionArtifactsTable, CachedVersionArtifactRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedVersionArtifactsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<String> accountId = GeneratedColumn<String>(
+    'account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _paperIdMeta = const VerificationMeta(
+    'paperId',
+  );
+  @override
+  late final GeneratedColumn<String> paperId = GeneratedColumn<String>(
+    'paper_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _cacheKeyMeta = const VerificationMeta(
+    'cacheKey',
+  );
+  @override
+  late final GeneratedColumn<String> cacheKey = GeneratedColumn<String>(
+    'cache_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _payloadJsonMeta = const VerificationMeta(
+    'payloadJson',
+  );
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+    'payload_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _fetchedAtMeta = const VerificationMeta(
+    'fetchedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> fetchedAt = GeneratedColumn<DateTime>(
+    'fetched_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _expiresAtMeta = const VerificationMeta(
+    'expiresAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> expiresAt = GeneratedColumn<DateTime>(
+    'expires_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountId,
+    paperId,
+    cacheKey,
+    payloadJson,
+    fetchedAt,
+    expiresAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_version_artifacts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CachedVersionArtifactRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('paper_id')) {
+      context.handle(
+        _paperIdMeta,
+        paperId.isAcceptableOrUnknown(data['paper_id']!, _paperIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_paperIdMeta);
+    }
+    if (data.containsKey('cache_key')) {
+      context.handle(
+        _cacheKeyMeta,
+        cacheKey.isAcceptableOrUnknown(data['cache_key']!, _cacheKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_cacheKeyMeta);
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+        _payloadJsonMeta,
+        payloadJson.isAcceptableOrUnknown(
+          data['payload_json']!,
+          _payloadJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadJsonMeta);
+    }
+    if (data.containsKey('fetched_at')) {
+      context.handle(
+        _fetchedAtMeta,
+        fetchedAt.isAcceptableOrUnknown(data['fetched_at']!, _fetchedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_fetchedAtMeta);
+    }
+    if (data.containsKey('expires_at')) {
+      context.handle(
+        _expiresAtMeta,
+        expiresAt.isAcceptableOrUnknown(data['expires_at']!, _expiresAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_expiresAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountId, paperId, cacheKey};
+  @override
+  CachedVersionArtifactRow map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedVersionArtifactRow(
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}account_id'],
+      )!,
+      paperId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}paper_id'],
+      )!,
+      cacheKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cache_key'],
+      )!,
+      payloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_json'],
+      )!,
+      fetchedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}fetched_at'],
+      )!,
+      expiresAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}expires_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CachedVersionArtifactsTable createAlias(String alias) {
+    return $CachedVersionArtifactsTable(attachedDatabase, alias);
+  }
+}
+
+class CachedVersionArtifactRow extends DataClass
+    implements Insertable<CachedVersionArtifactRow> {
+  final String accountId;
+  final String paperId;
+  final String cacheKey;
+  final String payloadJson;
+  final DateTime fetchedAt;
+  final DateTime expiresAt;
+  const CachedVersionArtifactRow({
+    required this.accountId,
+    required this.paperId,
+    required this.cacheKey,
+    required this.payloadJson,
+    required this.fetchedAt,
+    required this.expiresAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['account_id'] = Variable<String>(accountId);
+    map['paper_id'] = Variable<String>(paperId);
+    map['cache_key'] = Variable<String>(cacheKey);
+    map['payload_json'] = Variable<String>(payloadJson);
+    map['fetched_at'] = Variable<DateTime>(fetchedAt);
+    map['expires_at'] = Variable<DateTime>(expiresAt);
+    return map;
+  }
+
+  CachedVersionArtifactsCompanion toCompanion(bool nullToAbsent) {
+    return CachedVersionArtifactsCompanion(
+      accountId: Value(accountId),
+      paperId: Value(paperId),
+      cacheKey: Value(cacheKey),
+      payloadJson: Value(payloadJson),
+      fetchedAt: Value(fetchedAt),
+      expiresAt: Value(expiresAt),
+    );
+  }
+
+  factory CachedVersionArtifactRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedVersionArtifactRow(
+      accountId: serializer.fromJson<String>(json['accountId']),
+      paperId: serializer.fromJson<String>(json['paperId']),
+      cacheKey: serializer.fromJson<String>(json['cacheKey']),
+      payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      fetchedAt: serializer.fromJson<DateTime>(json['fetchedAt']),
+      expiresAt: serializer.fromJson<DateTime>(json['expiresAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountId': serializer.toJson<String>(accountId),
+      'paperId': serializer.toJson<String>(paperId),
+      'cacheKey': serializer.toJson<String>(cacheKey),
+      'payloadJson': serializer.toJson<String>(payloadJson),
+      'fetchedAt': serializer.toJson<DateTime>(fetchedAt),
+      'expiresAt': serializer.toJson<DateTime>(expiresAt),
+    };
+  }
+
+  CachedVersionArtifactRow copyWith({
+    String? accountId,
+    String? paperId,
+    String? cacheKey,
+    String? payloadJson,
+    DateTime? fetchedAt,
+    DateTime? expiresAt,
+  }) => CachedVersionArtifactRow(
+    accountId: accountId ?? this.accountId,
+    paperId: paperId ?? this.paperId,
+    cacheKey: cacheKey ?? this.cacheKey,
+    payloadJson: payloadJson ?? this.payloadJson,
+    fetchedAt: fetchedAt ?? this.fetchedAt,
+    expiresAt: expiresAt ?? this.expiresAt,
+  );
+  CachedVersionArtifactRow copyWithCompanion(
+    CachedVersionArtifactsCompanion data,
+  ) {
+    return CachedVersionArtifactRow(
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      paperId: data.paperId.present ? data.paperId.value : this.paperId,
+      cacheKey: data.cacheKey.present ? data.cacheKey.value : this.cacheKey,
+      payloadJson: data.payloadJson.present
+          ? data.payloadJson.value
+          : this.payloadJson,
+      fetchedAt: data.fetchedAt.present ? data.fetchedAt.value : this.fetchedAt,
+      expiresAt: data.expiresAt.present ? data.expiresAt.value : this.expiresAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedVersionArtifactRow(')
+          ..write('accountId: $accountId, ')
+          ..write('paperId: $paperId, ')
+          ..write('cacheKey: $cacheKey, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('fetchedAt: $fetchedAt, ')
+          ..write('expiresAt: $expiresAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    accountId,
+    paperId,
+    cacheKey,
+    payloadJson,
+    fetchedAt,
+    expiresAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedVersionArtifactRow &&
+          other.accountId == this.accountId &&
+          other.paperId == this.paperId &&
+          other.cacheKey == this.cacheKey &&
+          other.payloadJson == this.payloadJson &&
+          other.fetchedAt == this.fetchedAt &&
+          other.expiresAt == this.expiresAt);
+}
+
+class CachedVersionArtifactsCompanion
+    extends UpdateCompanion<CachedVersionArtifactRow> {
+  final Value<String> accountId;
+  final Value<String> paperId;
+  final Value<String> cacheKey;
+  final Value<String> payloadJson;
+  final Value<DateTime> fetchedAt;
+  final Value<DateTime> expiresAt;
+  final Value<int> rowid;
+  const CachedVersionArtifactsCompanion({
+    this.accountId = const Value.absent(),
+    this.paperId = const Value.absent(),
+    this.cacheKey = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.fetchedAt = const Value.absent(),
+    this.expiresAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CachedVersionArtifactsCompanion.insert({
+    required String accountId,
+    required String paperId,
+    required String cacheKey,
+    required String payloadJson,
+    required DateTime fetchedAt,
+    required DateTime expiresAt,
+    this.rowid = const Value.absent(),
+  }) : accountId = Value(accountId),
+       paperId = Value(paperId),
+       cacheKey = Value(cacheKey),
+       payloadJson = Value(payloadJson),
+       fetchedAt = Value(fetchedAt),
+       expiresAt = Value(expiresAt);
+  static Insertable<CachedVersionArtifactRow> custom({
+    Expression<String>? accountId,
+    Expression<String>? paperId,
+    Expression<String>? cacheKey,
+    Expression<String>? payloadJson,
+    Expression<DateTime>? fetchedAt,
+    Expression<DateTime>? expiresAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (accountId != null) 'account_id': accountId,
+      if (paperId != null) 'paper_id': paperId,
+      if (cacheKey != null) 'cache_key': cacheKey,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (fetchedAt != null) 'fetched_at': fetchedAt,
+      if (expiresAt != null) 'expires_at': expiresAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CachedVersionArtifactsCompanion copyWith({
+    Value<String>? accountId,
+    Value<String>? paperId,
+    Value<String>? cacheKey,
+    Value<String>? payloadJson,
+    Value<DateTime>? fetchedAt,
+    Value<DateTime>? expiresAt,
+    Value<int>? rowid,
+  }) {
+    return CachedVersionArtifactsCompanion(
+      accountId: accountId ?? this.accountId,
+      paperId: paperId ?? this.paperId,
+      cacheKey: cacheKey ?? this.cacheKey,
+      payloadJson: payloadJson ?? this.payloadJson,
+      fetchedAt: fetchedAt ?? this.fetchedAt,
+      expiresAt: expiresAt ?? this.expiresAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountId.present) {
+      map['account_id'] = Variable<String>(accountId.value);
+    }
+    if (paperId.present) {
+      map['paper_id'] = Variable<String>(paperId.value);
+    }
+    if (cacheKey.present) {
+      map['cache_key'] = Variable<String>(cacheKey.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (fetchedAt.present) {
+      map['fetched_at'] = Variable<DateTime>(fetchedAt.value);
+    }
+    if (expiresAt.present) {
+      map['expires_at'] = Variable<DateTime>(expiresAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedVersionArtifactsCompanion(')
+          ..write('accountId: $accountId, ')
+          ..write('paperId: $paperId, ')
+          ..write('cacheKey: $cacheKey, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('fetchedAt: $fetchedAt, ')
+          ..write('expiresAt: $expiresAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$PakPerkDatabase extends GeneratedDatabase {
   _$PakPerkDatabase(QueryExecutor e) : super(e);
   $PakPerkDatabaseManager get managers => $PakPerkDatabaseManager(this);
@@ -6975,12 +16699,38 @@ abstract class _$PakPerkDatabase extends GeneratedDatabase {
       $CachedCommentPagesTable(this);
   late final $CachedChatsTable cachedChats = $CachedChatsTable(this);
   late final $LibraryItemsTable libraryItems = $LibraryItemsTable(this);
+  late final $LibraryCustomListsTable libraryCustomLists =
+      $LibraryCustomListsTable(this);
+  late final $LibraryTagsTable libraryTags = $LibraryTagsTable(this);
+  late final $LibraryListMembershipsTable libraryListMemberships =
+      $LibraryListMembershipsTable(this);
+  late final $LibraryTagMembershipsTable libraryTagMemberships =
+      $LibraryTagMembershipsTable(this);
   late final $CommentDraftsTable commentDrafts = $CommentDraftsTable(this);
   late final $BlockedUsersTable blockedUsers = $BlockedUsersTable(this);
   late final $SyncOutboxTable syncOutbox = $SyncOutboxTable(this);
   late final $LibrarySyncStatesTable librarySyncStates =
       $LibrarySyncStatesTable(this);
   late final $CacheMetadataTable cacheMetadata = $CacheMetadataTable(this);
+  late final $CachedDocumentArtifactsTable cachedDocumentArtifacts =
+      $CachedDocumentArtifactsTable(this);
+  late final $ReadingCheckpointsTable readingCheckpoints =
+      $ReadingCheckpointsTable(this);
+  late final $LocalAnnotationsTable localAnnotations = $LocalAnnotationsTable(
+    this,
+  );
+  late final $AnnotationConflictsTable annotationConflicts =
+      $AnnotationConflictsTable(this);
+  late final $LocalEvidenceCardsTable localEvidenceCards =
+      $LocalEvidenceCardsTable(this);
+  late final $LocalMemoryItemsTable localMemoryItems = $LocalMemoryItemsTable(
+    this,
+  );
+  late final $ResearchOutboxTable researchOutbox = $ResearchOutboxTable(this);
+  late final $ResearchSyncStatesTable researchSyncStates =
+      $ResearchSyncStatesTable(this);
+  late final $CachedVersionArtifactsTable cachedVersionArtifacts =
+      $CachedVersionArtifactsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -6995,11 +16745,24 @@ abstract class _$PakPerkDatabase extends GeneratedDatabase {
     cachedCommentPages,
     cachedChats,
     libraryItems,
+    libraryCustomLists,
+    libraryTags,
+    libraryListMemberships,
+    libraryTagMemberships,
     commentDrafts,
     blockedUsers,
     syncOutbox,
     librarySyncStates,
     cacheMetadata,
+    cachedDocumentArtifacts,
+    readingCheckpoints,
+    localAnnotations,
+    annotationConflicts,
+    localEvidenceCards,
+    localMemoryItems,
+    researchOutbox,
+    researchSyncStates,
+    cachedVersionArtifacts,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -10649,9 +20412,20 @@ typedef $$LibraryItemsTableCreateCompanionBuilder =
       Value<DateTime?> removedAt,
       Value<int?> revision,
       Value<String?> lastOperationId,
+      Value<String?> privateNote,
+      Value<String?> saveSourceKind,
+      Value<DateTime?> reminderAt,
+      Value<DateTime?> reviewedAt,
+      Value<DateTime?> archivedAt,
       Value<bool?> canonicalDeleted,
       Value<DateTime?> canonicalSavedAt,
       Value<DateTime?> canonicalRemovedAt,
+      Value<String?> canonicalListState,
+      Value<String?> canonicalPrivateNote,
+      Value<String?> canonicalSaveSourceKind,
+      Value<DateTime?> canonicalReminderAt,
+      Value<DateTime?> canonicalReviewedAt,
+      Value<DateTime?> canonicalArchivedAt,
       Value<int> rowid,
     });
 typedef $$LibraryItemsTableUpdateCompanionBuilder =
@@ -10666,9 +20440,20 @@ typedef $$LibraryItemsTableUpdateCompanionBuilder =
       Value<DateTime?> removedAt,
       Value<int?> revision,
       Value<String?> lastOperationId,
+      Value<String?> privateNote,
+      Value<String?> saveSourceKind,
+      Value<DateTime?> reminderAt,
+      Value<DateTime?> reviewedAt,
+      Value<DateTime?> archivedAt,
       Value<bool?> canonicalDeleted,
       Value<DateTime?> canonicalSavedAt,
       Value<DateTime?> canonicalRemovedAt,
+      Value<String?> canonicalListState,
+      Value<String?> canonicalPrivateNote,
+      Value<String?> canonicalSaveSourceKind,
+      Value<DateTime?> canonicalReminderAt,
+      Value<DateTime?> canonicalReviewedAt,
+      Value<DateTime?> canonicalArchivedAt,
       Value<int> rowid,
     });
 
@@ -10731,6 +20516,31 @@ class $$LibraryItemsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get privateNote => $composableBuilder(
+    column: $table.privateNote,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get saveSourceKind => $composableBuilder(
+    column: $table.saveSourceKind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get reminderAt => $composableBuilder(
+    column: $table.reminderAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get reviewedAt => $composableBuilder(
+    column: $table.reviewedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<bool> get canonicalDeleted => $composableBuilder(
     column: $table.canonicalDeleted,
     builder: (column) => ColumnFilters(column),
@@ -10743,6 +20553,36 @@ class $$LibraryItemsTableFilterComposer
 
   ColumnFilters<DateTime> get canonicalRemovedAt => $composableBuilder(
     column: $table.canonicalRemovedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get canonicalListState => $composableBuilder(
+    column: $table.canonicalListState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get canonicalPrivateNote => $composableBuilder(
+    column: $table.canonicalPrivateNote,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get canonicalSaveSourceKind => $composableBuilder(
+    column: $table.canonicalSaveSourceKind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get canonicalReminderAt => $composableBuilder(
+    column: $table.canonicalReminderAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get canonicalReviewedAt => $composableBuilder(
+    column: $table.canonicalReviewedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get canonicalArchivedAt => $composableBuilder(
+    column: $table.canonicalArchivedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -10806,6 +20646,31 @@ class $$LibraryItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get privateNote => $composableBuilder(
+    column: $table.privateNote,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get saveSourceKind => $composableBuilder(
+    column: $table.saveSourceKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get reminderAt => $composableBuilder(
+    column: $table.reminderAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get reviewedAt => $composableBuilder(
+    column: $table.reviewedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get canonicalDeleted => $composableBuilder(
     column: $table.canonicalDeleted,
     builder: (column) => ColumnOrderings(column),
@@ -10818,6 +20683,36 @@ class $$LibraryItemsTableOrderingComposer
 
   ColumnOrderings<DateTime> get canonicalRemovedAt => $composableBuilder(
     column: $table.canonicalRemovedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get canonicalListState => $composableBuilder(
+    column: $table.canonicalListState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get canonicalPrivateNote => $composableBuilder(
+    column: $table.canonicalPrivateNote,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get canonicalSaveSourceKind => $composableBuilder(
+    column: $table.canonicalSaveSourceKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get canonicalReminderAt => $composableBuilder(
+    column: $table.canonicalReminderAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get canonicalReviewedAt => $composableBuilder(
+    column: $table.canonicalReviewedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get canonicalArchivedAt => $composableBuilder(
+    column: $table.canonicalArchivedAt,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -10867,6 +20762,31 @@ class $$LibraryItemsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get privateNote => $composableBuilder(
+    column: $table.privateNote,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get saveSourceKind => $composableBuilder(
+    column: $table.saveSourceKind,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get reminderAt => $composableBuilder(
+    column: $table.reminderAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get reviewedAt => $composableBuilder(
+    column: $table.reviewedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<bool> get canonicalDeleted => $composableBuilder(
     column: $table.canonicalDeleted,
     builder: (column) => column,
@@ -10879,6 +20799,36 @@ class $$LibraryItemsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get canonicalRemovedAt => $composableBuilder(
     column: $table.canonicalRemovedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get canonicalListState => $composableBuilder(
+    column: $table.canonicalListState,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get canonicalPrivateNote => $composableBuilder(
+    column: $table.canonicalPrivateNote,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get canonicalSaveSourceKind => $composableBuilder(
+    column: $table.canonicalSaveSourceKind,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get canonicalReminderAt => $composableBuilder(
+    column: $table.canonicalReminderAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get canonicalReviewedAt => $composableBuilder(
+    column: $table.canonicalReviewedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get canonicalArchivedAt => $composableBuilder(
+    column: $table.canonicalArchivedAt,
     builder: (column) => column,
   );
 }
@@ -10930,9 +20880,20 @@ class $$LibraryItemsTableTableManager
                 Value<DateTime?> removedAt = const Value.absent(),
                 Value<int?> revision = const Value.absent(),
                 Value<String?> lastOperationId = const Value.absent(),
+                Value<String?> privateNote = const Value.absent(),
+                Value<String?> saveSourceKind = const Value.absent(),
+                Value<DateTime?> reminderAt = const Value.absent(),
+                Value<DateTime?> reviewedAt = const Value.absent(),
+                Value<DateTime?> archivedAt = const Value.absent(),
                 Value<bool?> canonicalDeleted = const Value.absent(),
                 Value<DateTime?> canonicalSavedAt = const Value.absent(),
                 Value<DateTime?> canonicalRemovedAt = const Value.absent(),
+                Value<String?> canonicalListState = const Value.absent(),
+                Value<String?> canonicalPrivateNote = const Value.absent(),
+                Value<String?> canonicalSaveSourceKind = const Value.absent(),
+                Value<DateTime?> canonicalReminderAt = const Value.absent(),
+                Value<DateTime?> canonicalReviewedAt = const Value.absent(),
+                Value<DateTime?> canonicalArchivedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LibraryItemsCompanion(
                 accountId: accountId,
@@ -10945,9 +20906,20 @@ class $$LibraryItemsTableTableManager
                 removedAt: removedAt,
                 revision: revision,
                 lastOperationId: lastOperationId,
+                privateNote: privateNote,
+                saveSourceKind: saveSourceKind,
+                reminderAt: reminderAt,
+                reviewedAt: reviewedAt,
+                archivedAt: archivedAt,
                 canonicalDeleted: canonicalDeleted,
                 canonicalSavedAt: canonicalSavedAt,
                 canonicalRemovedAt: canonicalRemovedAt,
+                canonicalListState: canonicalListState,
+                canonicalPrivateNote: canonicalPrivateNote,
+                canonicalSaveSourceKind: canonicalSaveSourceKind,
+                canonicalReminderAt: canonicalReminderAt,
+                canonicalReviewedAt: canonicalReviewedAt,
+                canonicalArchivedAt: canonicalArchivedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -10962,9 +20934,20 @@ class $$LibraryItemsTableTableManager
                 Value<DateTime?> removedAt = const Value.absent(),
                 Value<int?> revision = const Value.absent(),
                 Value<String?> lastOperationId = const Value.absent(),
+                Value<String?> privateNote = const Value.absent(),
+                Value<String?> saveSourceKind = const Value.absent(),
+                Value<DateTime?> reminderAt = const Value.absent(),
+                Value<DateTime?> reviewedAt = const Value.absent(),
+                Value<DateTime?> archivedAt = const Value.absent(),
                 Value<bool?> canonicalDeleted = const Value.absent(),
                 Value<DateTime?> canonicalSavedAt = const Value.absent(),
                 Value<DateTime?> canonicalRemovedAt = const Value.absent(),
+                Value<String?> canonicalListState = const Value.absent(),
+                Value<String?> canonicalPrivateNote = const Value.absent(),
+                Value<String?> canonicalSaveSourceKind = const Value.absent(),
+                Value<DateTime?> canonicalReminderAt = const Value.absent(),
+                Value<DateTime?> canonicalReviewedAt = const Value.absent(),
+                Value<DateTime?> canonicalArchivedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LibraryItemsCompanion.insert(
                 accountId: accountId,
@@ -10977,9 +20960,20 @@ class $$LibraryItemsTableTableManager
                 removedAt: removedAt,
                 revision: revision,
                 lastOperationId: lastOperationId,
+                privateNote: privateNote,
+                saveSourceKind: saveSourceKind,
+                reminderAt: reminderAt,
+                reviewedAt: reviewedAt,
+                archivedAt: archivedAt,
                 canonicalDeleted: canonicalDeleted,
                 canonicalSavedAt: canonicalSavedAt,
                 canonicalRemovedAt: canonicalRemovedAt,
+                canonicalListState: canonicalListState,
+                canonicalPrivateNote: canonicalPrivateNote,
+                canonicalSaveSourceKind: canonicalSaveSourceKind,
+                canonicalReminderAt: canonicalReminderAt,
+                canonicalReviewedAt: canonicalReviewedAt,
+                canonicalArchivedAt: canonicalArchivedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -11005,6 +20999,1257 @@ typedef $$LibraryItemsTableProcessedTableManager =
         BaseReferences<_$PakPerkDatabase, $LibraryItemsTable, LibraryItemRow>,
       ),
       LibraryItemRow,
+      PrefetchHooks Function()
+    >;
+typedef $$LibraryCustomListsTableCreateCompanionBuilder =
+    LibraryCustomListsCompanion Function({
+      required String accountId,
+      required String listId,
+      required String name,
+      Value<String?> description,
+      Value<int> sortOrder,
+      Value<int?> revision,
+      Value<bool> deleted,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<String?> lastOperationId,
+      Value<String?> canonicalJson,
+      Value<int> rowid,
+    });
+typedef $$LibraryCustomListsTableUpdateCompanionBuilder =
+    LibraryCustomListsCompanion Function({
+      Value<String> accountId,
+      Value<String> listId,
+      Value<String> name,
+      Value<String?> description,
+      Value<int> sortOrder,
+      Value<int?> revision,
+      Value<bool> deleted,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<String?> lastOperationId,
+      Value<String?> canonicalJson,
+      Value<int> rowid,
+    });
+
+class $$LibraryCustomListsTableFilterComposer
+    extends Composer<_$PakPerkDatabase, $LibraryCustomListsTable> {
+  $$LibraryCustomListsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get listId => $composableBuilder(
+    column: $table.listId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastOperationId => $composableBuilder(
+    column: $table.lastOperationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get canonicalJson => $composableBuilder(
+    column: $table.canonicalJson,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LibraryCustomListsTableOrderingComposer
+    extends Composer<_$PakPerkDatabase, $LibraryCustomListsTable> {
+  $$LibraryCustomListsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get listId => $composableBuilder(
+    column: $table.listId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastOperationId => $composableBuilder(
+    column: $table.lastOperationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get canonicalJson => $composableBuilder(
+    column: $table.canonicalJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LibraryCustomListsTableAnnotationComposer
+    extends Composer<_$PakPerkDatabase, $LibraryCustomListsTable> {
+  $$LibraryCustomListsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<String> get listId =>
+      $composableBuilder(column: $table.listId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<bool> get deleted =>
+      $composableBuilder(column: $table.deleted, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get lastOperationId => $composableBuilder(
+    column: $table.lastOperationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get canonicalJson => $composableBuilder(
+    column: $table.canonicalJson,
+    builder: (column) => column,
+  );
+}
+
+class $$LibraryCustomListsTableTableManager
+    extends
+        RootTableManager<
+          _$PakPerkDatabase,
+          $LibraryCustomListsTable,
+          LibraryCustomListRow,
+          $$LibraryCustomListsTableFilterComposer,
+          $$LibraryCustomListsTableOrderingComposer,
+          $$LibraryCustomListsTableAnnotationComposer,
+          $$LibraryCustomListsTableCreateCompanionBuilder,
+          $$LibraryCustomListsTableUpdateCompanionBuilder,
+          (
+            LibraryCustomListRow,
+            BaseReferences<
+              _$PakPerkDatabase,
+              $LibraryCustomListsTable,
+              LibraryCustomListRow
+            >,
+          ),
+          LibraryCustomListRow,
+          PrefetchHooks Function()
+        > {
+  $$LibraryCustomListsTableTableManager(
+    _$PakPerkDatabase db,
+    $LibraryCustomListsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LibraryCustomListsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LibraryCustomListsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LibraryCustomListsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> accountId = const Value.absent(),
+                Value<String> listId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<int?> revision = const Value.absent(),
+                Value<bool> deleted = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<String?> lastOperationId = const Value.absent(),
+                Value<String?> canonicalJson = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LibraryCustomListsCompanion(
+                accountId: accountId,
+                listId: listId,
+                name: name,
+                description: description,
+                sortOrder: sortOrder,
+                revision: revision,
+                deleted: deleted,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                lastOperationId: lastOperationId,
+                canonicalJson: canonicalJson,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String accountId,
+                required String listId,
+                required String name,
+                Value<String?> description = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<int?> revision = const Value.absent(),
+                Value<bool> deleted = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<String?> lastOperationId = const Value.absent(),
+                Value<String?> canonicalJson = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LibraryCustomListsCompanion.insert(
+                accountId: accountId,
+                listId: listId,
+                name: name,
+                description: description,
+                sortOrder: sortOrder,
+                revision: revision,
+                deleted: deleted,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                lastOperationId: lastOperationId,
+                canonicalJson: canonicalJson,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LibraryCustomListsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PakPerkDatabase,
+      $LibraryCustomListsTable,
+      LibraryCustomListRow,
+      $$LibraryCustomListsTableFilterComposer,
+      $$LibraryCustomListsTableOrderingComposer,
+      $$LibraryCustomListsTableAnnotationComposer,
+      $$LibraryCustomListsTableCreateCompanionBuilder,
+      $$LibraryCustomListsTableUpdateCompanionBuilder,
+      (
+        LibraryCustomListRow,
+        BaseReferences<
+          _$PakPerkDatabase,
+          $LibraryCustomListsTable,
+          LibraryCustomListRow
+        >,
+      ),
+      LibraryCustomListRow,
+      PrefetchHooks Function()
+    >;
+typedef $$LibraryTagsTableCreateCompanionBuilder =
+    LibraryTagsCompanion Function({
+      required String accountId,
+      required String tagId,
+      required String name,
+      Value<int?> revision,
+      Value<bool> deleted,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<String?> lastOperationId,
+      Value<String?> canonicalJson,
+      Value<int> rowid,
+    });
+typedef $$LibraryTagsTableUpdateCompanionBuilder =
+    LibraryTagsCompanion Function({
+      Value<String> accountId,
+      Value<String> tagId,
+      Value<String> name,
+      Value<int?> revision,
+      Value<bool> deleted,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<String?> lastOperationId,
+      Value<String?> canonicalJson,
+      Value<int> rowid,
+    });
+
+class $$LibraryTagsTableFilterComposer
+    extends Composer<_$PakPerkDatabase, $LibraryTagsTable> {
+  $$LibraryTagsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tagId => $composableBuilder(
+    column: $table.tagId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastOperationId => $composableBuilder(
+    column: $table.lastOperationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get canonicalJson => $composableBuilder(
+    column: $table.canonicalJson,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LibraryTagsTableOrderingComposer
+    extends Composer<_$PakPerkDatabase, $LibraryTagsTable> {
+  $$LibraryTagsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tagId => $composableBuilder(
+    column: $table.tagId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastOperationId => $composableBuilder(
+    column: $table.lastOperationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get canonicalJson => $composableBuilder(
+    column: $table.canonicalJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LibraryTagsTableAnnotationComposer
+    extends Composer<_$PakPerkDatabase, $LibraryTagsTable> {
+  $$LibraryTagsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<String> get tagId =>
+      $composableBuilder(column: $table.tagId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<bool> get deleted =>
+      $composableBuilder(column: $table.deleted, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get lastOperationId => $composableBuilder(
+    column: $table.lastOperationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get canonicalJson => $composableBuilder(
+    column: $table.canonicalJson,
+    builder: (column) => column,
+  );
+}
+
+class $$LibraryTagsTableTableManager
+    extends
+        RootTableManager<
+          _$PakPerkDatabase,
+          $LibraryTagsTable,
+          LibraryTagRow,
+          $$LibraryTagsTableFilterComposer,
+          $$LibraryTagsTableOrderingComposer,
+          $$LibraryTagsTableAnnotationComposer,
+          $$LibraryTagsTableCreateCompanionBuilder,
+          $$LibraryTagsTableUpdateCompanionBuilder,
+          (
+            LibraryTagRow,
+            BaseReferences<_$PakPerkDatabase, $LibraryTagsTable, LibraryTagRow>,
+          ),
+          LibraryTagRow,
+          PrefetchHooks Function()
+        > {
+  $$LibraryTagsTableTableManager(_$PakPerkDatabase db, $LibraryTagsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LibraryTagsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LibraryTagsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LibraryTagsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> accountId = const Value.absent(),
+                Value<String> tagId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<int?> revision = const Value.absent(),
+                Value<bool> deleted = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<String?> lastOperationId = const Value.absent(),
+                Value<String?> canonicalJson = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LibraryTagsCompanion(
+                accountId: accountId,
+                tagId: tagId,
+                name: name,
+                revision: revision,
+                deleted: deleted,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                lastOperationId: lastOperationId,
+                canonicalJson: canonicalJson,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String accountId,
+                required String tagId,
+                required String name,
+                Value<int?> revision = const Value.absent(),
+                Value<bool> deleted = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<String?> lastOperationId = const Value.absent(),
+                Value<String?> canonicalJson = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LibraryTagsCompanion.insert(
+                accountId: accountId,
+                tagId: tagId,
+                name: name,
+                revision: revision,
+                deleted: deleted,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                lastOperationId: lastOperationId,
+                canonicalJson: canonicalJson,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LibraryTagsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PakPerkDatabase,
+      $LibraryTagsTable,
+      LibraryTagRow,
+      $$LibraryTagsTableFilterComposer,
+      $$LibraryTagsTableOrderingComposer,
+      $$LibraryTagsTableAnnotationComposer,
+      $$LibraryTagsTableCreateCompanionBuilder,
+      $$LibraryTagsTableUpdateCompanionBuilder,
+      (
+        LibraryTagRow,
+        BaseReferences<_$PakPerkDatabase, $LibraryTagsTable, LibraryTagRow>,
+      ),
+      LibraryTagRow,
+      PrefetchHooks Function()
+    >;
+typedef $$LibraryListMembershipsTableCreateCompanionBuilder =
+    LibraryListMembershipsCompanion Function({
+      required String accountId,
+      required String listId,
+      required String paperId,
+      Value<int> positionRank,
+      Value<String?> note,
+      Value<int?> revision,
+      Value<bool> deleted,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<String?> lastOperationId,
+      Value<String?> canonicalJson,
+      Value<int> rowid,
+    });
+typedef $$LibraryListMembershipsTableUpdateCompanionBuilder =
+    LibraryListMembershipsCompanion Function({
+      Value<String> accountId,
+      Value<String> listId,
+      Value<String> paperId,
+      Value<int> positionRank,
+      Value<String?> note,
+      Value<int?> revision,
+      Value<bool> deleted,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<String?> lastOperationId,
+      Value<String?> canonicalJson,
+      Value<int> rowid,
+    });
+
+class $$LibraryListMembershipsTableFilterComposer
+    extends Composer<_$PakPerkDatabase, $LibraryListMembershipsTable> {
+  $$LibraryListMembershipsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get listId => $composableBuilder(
+    column: $table.listId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get positionRank => $composableBuilder(
+    column: $table.positionRank,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastOperationId => $composableBuilder(
+    column: $table.lastOperationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get canonicalJson => $composableBuilder(
+    column: $table.canonicalJson,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LibraryListMembershipsTableOrderingComposer
+    extends Composer<_$PakPerkDatabase, $LibraryListMembershipsTable> {
+  $$LibraryListMembershipsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get listId => $composableBuilder(
+    column: $table.listId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get positionRank => $composableBuilder(
+    column: $table.positionRank,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastOperationId => $composableBuilder(
+    column: $table.lastOperationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get canonicalJson => $composableBuilder(
+    column: $table.canonicalJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LibraryListMembershipsTableAnnotationComposer
+    extends Composer<_$PakPerkDatabase, $LibraryListMembershipsTable> {
+  $$LibraryListMembershipsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<String> get listId =>
+      $composableBuilder(column: $table.listId, builder: (column) => column);
+
+  GeneratedColumn<String> get paperId =>
+      $composableBuilder(column: $table.paperId, builder: (column) => column);
+
+  GeneratedColumn<int> get positionRank => $composableBuilder(
+    column: $table.positionRank,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<bool> get deleted =>
+      $composableBuilder(column: $table.deleted, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get lastOperationId => $composableBuilder(
+    column: $table.lastOperationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get canonicalJson => $composableBuilder(
+    column: $table.canonicalJson,
+    builder: (column) => column,
+  );
+}
+
+class $$LibraryListMembershipsTableTableManager
+    extends
+        RootTableManager<
+          _$PakPerkDatabase,
+          $LibraryListMembershipsTable,
+          LibraryListMembershipRow,
+          $$LibraryListMembershipsTableFilterComposer,
+          $$LibraryListMembershipsTableOrderingComposer,
+          $$LibraryListMembershipsTableAnnotationComposer,
+          $$LibraryListMembershipsTableCreateCompanionBuilder,
+          $$LibraryListMembershipsTableUpdateCompanionBuilder,
+          (
+            LibraryListMembershipRow,
+            BaseReferences<
+              _$PakPerkDatabase,
+              $LibraryListMembershipsTable,
+              LibraryListMembershipRow
+            >,
+          ),
+          LibraryListMembershipRow,
+          PrefetchHooks Function()
+        > {
+  $$LibraryListMembershipsTableTableManager(
+    _$PakPerkDatabase db,
+    $LibraryListMembershipsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LibraryListMembershipsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$LibraryListMembershipsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$LibraryListMembershipsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> accountId = const Value.absent(),
+                Value<String> listId = const Value.absent(),
+                Value<String> paperId = const Value.absent(),
+                Value<int> positionRank = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<int?> revision = const Value.absent(),
+                Value<bool> deleted = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<String?> lastOperationId = const Value.absent(),
+                Value<String?> canonicalJson = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LibraryListMembershipsCompanion(
+                accountId: accountId,
+                listId: listId,
+                paperId: paperId,
+                positionRank: positionRank,
+                note: note,
+                revision: revision,
+                deleted: deleted,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                lastOperationId: lastOperationId,
+                canonicalJson: canonicalJson,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String accountId,
+                required String listId,
+                required String paperId,
+                Value<int> positionRank = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<int?> revision = const Value.absent(),
+                Value<bool> deleted = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<String?> lastOperationId = const Value.absent(),
+                Value<String?> canonicalJson = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LibraryListMembershipsCompanion.insert(
+                accountId: accountId,
+                listId: listId,
+                paperId: paperId,
+                positionRank: positionRank,
+                note: note,
+                revision: revision,
+                deleted: deleted,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                lastOperationId: lastOperationId,
+                canonicalJson: canonicalJson,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LibraryListMembershipsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PakPerkDatabase,
+      $LibraryListMembershipsTable,
+      LibraryListMembershipRow,
+      $$LibraryListMembershipsTableFilterComposer,
+      $$LibraryListMembershipsTableOrderingComposer,
+      $$LibraryListMembershipsTableAnnotationComposer,
+      $$LibraryListMembershipsTableCreateCompanionBuilder,
+      $$LibraryListMembershipsTableUpdateCompanionBuilder,
+      (
+        LibraryListMembershipRow,
+        BaseReferences<
+          _$PakPerkDatabase,
+          $LibraryListMembershipsTable,
+          LibraryListMembershipRow
+        >,
+      ),
+      LibraryListMembershipRow,
+      PrefetchHooks Function()
+    >;
+typedef $$LibraryTagMembershipsTableCreateCompanionBuilder =
+    LibraryTagMembershipsCompanion Function({
+      required String accountId,
+      required String paperId,
+      required String tagId,
+      Value<int?> revision,
+      Value<bool> deleted,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<String?> lastOperationId,
+      Value<String?> canonicalJson,
+      Value<int> rowid,
+    });
+typedef $$LibraryTagMembershipsTableUpdateCompanionBuilder =
+    LibraryTagMembershipsCompanion Function({
+      Value<String> accountId,
+      Value<String> paperId,
+      Value<String> tagId,
+      Value<int?> revision,
+      Value<bool> deleted,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<String?> lastOperationId,
+      Value<String?> canonicalJson,
+      Value<int> rowid,
+    });
+
+class $$LibraryTagMembershipsTableFilterComposer
+    extends Composer<_$PakPerkDatabase, $LibraryTagMembershipsTable> {
+  $$LibraryTagMembershipsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tagId => $composableBuilder(
+    column: $table.tagId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastOperationId => $composableBuilder(
+    column: $table.lastOperationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get canonicalJson => $composableBuilder(
+    column: $table.canonicalJson,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LibraryTagMembershipsTableOrderingComposer
+    extends Composer<_$PakPerkDatabase, $LibraryTagMembershipsTable> {
+  $$LibraryTagMembershipsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tagId => $composableBuilder(
+    column: $table.tagId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastOperationId => $composableBuilder(
+    column: $table.lastOperationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get canonicalJson => $composableBuilder(
+    column: $table.canonicalJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LibraryTagMembershipsTableAnnotationComposer
+    extends Composer<_$PakPerkDatabase, $LibraryTagMembershipsTable> {
+  $$LibraryTagMembershipsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<String> get paperId =>
+      $composableBuilder(column: $table.paperId, builder: (column) => column);
+
+  GeneratedColumn<String> get tagId =>
+      $composableBuilder(column: $table.tagId, builder: (column) => column);
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<bool> get deleted =>
+      $composableBuilder(column: $table.deleted, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get lastOperationId => $composableBuilder(
+    column: $table.lastOperationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get canonicalJson => $composableBuilder(
+    column: $table.canonicalJson,
+    builder: (column) => column,
+  );
+}
+
+class $$LibraryTagMembershipsTableTableManager
+    extends
+        RootTableManager<
+          _$PakPerkDatabase,
+          $LibraryTagMembershipsTable,
+          LibraryTagMembershipRow,
+          $$LibraryTagMembershipsTableFilterComposer,
+          $$LibraryTagMembershipsTableOrderingComposer,
+          $$LibraryTagMembershipsTableAnnotationComposer,
+          $$LibraryTagMembershipsTableCreateCompanionBuilder,
+          $$LibraryTagMembershipsTableUpdateCompanionBuilder,
+          (
+            LibraryTagMembershipRow,
+            BaseReferences<
+              _$PakPerkDatabase,
+              $LibraryTagMembershipsTable,
+              LibraryTagMembershipRow
+            >,
+          ),
+          LibraryTagMembershipRow,
+          PrefetchHooks Function()
+        > {
+  $$LibraryTagMembershipsTableTableManager(
+    _$PakPerkDatabase db,
+    $LibraryTagMembershipsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LibraryTagMembershipsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$LibraryTagMembershipsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$LibraryTagMembershipsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> accountId = const Value.absent(),
+                Value<String> paperId = const Value.absent(),
+                Value<String> tagId = const Value.absent(),
+                Value<int?> revision = const Value.absent(),
+                Value<bool> deleted = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<String?> lastOperationId = const Value.absent(),
+                Value<String?> canonicalJson = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LibraryTagMembershipsCompanion(
+                accountId: accountId,
+                paperId: paperId,
+                tagId: tagId,
+                revision: revision,
+                deleted: deleted,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                lastOperationId: lastOperationId,
+                canonicalJson: canonicalJson,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String accountId,
+                required String paperId,
+                required String tagId,
+                Value<int?> revision = const Value.absent(),
+                Value<bool> deleted = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<String?> lastOperationId = const Value.absent(),
+                Value<String?> canonicalJson = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LibraryTagMembershipsCompanion.insert(
+                accountId: accountId,
+                paperId: paperId,
+                tagId: tagId,
+                revision: revision,
+                deleted: deleted,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                lastOperationId: lastOperationId,
+                canonicalJson: canonicalJson,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LibraryTagMembershipsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PakPerkDatabase,
+      $LibraryTagMembershipsTable,
+      LibraryTagMembershipRow,
+      $$LibraryTagMembershipsTableFilterComposer,
+      $$LibraryTagMembershipsTableOrderingComposer,
+      $$LibraryTagMembershipsTableAnnotationComposer,
+      $$LibraryTagMembershipsTableCreateCompanionBuilder,
+      $$LibraryTagMembershipsTableUpdateCompanionBuilder,
+      (
+        LibraryTagMembershipRow,
+        BaseReferences<
+          _$PakPerkDatabase,
+          $LibraryTagMembershipsTable,
+          LibraryTagMembershipRow
+        >,
+      ),
+      LibraryTagMembershipRow,
       PrefetchHooks Function()
     >;
 typedef $$CommentDraftsTableCreateCompanionBuilder =
@@ -12364,6 +23609,3203 @@ typedef $$CacheMetadataTableProcessedTableManager =
       CacheMetadataRow,
       PrefetchHooks Function()
     >;
+typedef $$CachedDocumentArtifactsTableCreateCompanionBuilder =
+    CachedDocumentArtifactsCompanion Function({
+      required String accountId,
+      required String paperId,
+      required String versionKey,
+      required int generation,
+      required String artifactKind,
+      required String payloadJson,
+      required DateTime fetchedAt,
+      required DateTime expiresAt,
+      Value<int> rowid,
+    });
+typedef $$CachedDocumentArtifactsTableUpdateCompanionBuilder =
+    CachedDocumentArtifactsCompanion Function({
+      Value<String> accountId,
+      Value<String> paperId,
+      Value<String> versionKey,
+      Value<int> generation,
+      Value<String> artifactKind,
+      Value<String> payloadJson,
+      Value<DateTime> fetchedAt,
+      Value<DateTime> expiresAt,
+      Value<int> rowid,
+    });
+
+class $$CachedDocumentArtifactsTableFilterComposer
+    extends Composer<_$PakPerkDatabase, $CachedDocumentArtifactsTable> {
+  $$CachedDocumentArtifactsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get versionKey => $composableBuilder(
+    column: $table.versionKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get artifactKind => $composableBuilder(
+    column: $table.artifactKind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get fetchedAt => $composableBuilder(
+    column: $table.fetchedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get expiresAt => $composableBuilder(
+    column: $table.expiresAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CachedDocumentArtifactsTableOrderingComposer
+    extends Composer<_$PakPerkDatabase, $CachedDocumentArtifactsTable> {
+  $$CachedDocumentArtifactsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get versionKey => $composableBuilder(
+    column: $table.versionKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get artifactKind => $composableBuilder(
+    column: $table.artifactKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get fetchedAt => $composableBuilder(
+    column: $table.fetchedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get expiresAt => $composableBuilder(
+    column: $table.expiresAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CachedDocumentArtifactsTableAnnotationComposer
+    extends Composer<_$PakPerkDatabase, $CachedDocumentArtifactsTable> {
+  $$CachedDocumentArtifactsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<String> get paperId =>
+      $composableBuilder(column: $table.paperId, builder: (column) => column);
+
+  GeneratedColumn<String> get versionKey => $composableBuilder(
+    column: $table.versionKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get artifactKind => $composableBuilder(
+    column: $table.artifactKind,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get fetchedAt =>
+      $composableBuilder(column: $table.fetchedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get expiresAt =>
+      $composableBuilder(column: $table.expiresAt, builder: (column) => column);
+}
+
+class $$CachedDocumentArtifactsTableTableManager
+    extends
+        RootTableManager<
+          _$PakPerkDatabase,
+          $CachedDocumentArtifactsTable,
+          CachedDocumentArtifactRow,
+          $$CachedDocumentArtifactsTableFilterComposer,
+          $$CachedDocumentArtifactsTableOrderingComposer,
+          $$CachedDocumentArtifactsTableAnnotationComposer,
+          $$CachedDocumentArtifactsTableCreateCompanionBuilder,
+          $$CachedDocumentArtifactsTableUpdateCompanionBuilder,
+          (
+            CachedDocumentArtifactRow,
+            BaseReferences<
+              _$PakPerkDatabase,
+              $CachedDocumentArtifactsTable,
+              CachedDocumentArtifactRow
+            >,
+          ),
+          CachedDocumentArtifactRow,
+          PrefetchHooks Function()
+        > {
+  $$CachedDocumentArtifactsTableTableManager(
+    _$PakPerkDatabase db,
+    $CachedDocumentArtifactsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedDocumentArtifactsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$CachedDocumentArtifactsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$CachedDocumentArtifactsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> accountId = const Value.absent(),
+                Value<String> paperId = const Value.absent(),
+                Value<String> versionKey = const Value.absent(),
+                Value<int> generation = const Value.absent(),
+                Value<String> artifactKind = const Value.absent(),
+                Value<String> payloadJson = const Value.absent(),
+                Value<DateTime> fetchedAt = const Value.absent(),
+                Value<DateTime> expiresAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CachedDocumentArtifactsCompanion(
+                accountId: accountId,
+                paperId: paperId,
+                versionKey: versionKey,
+                generation: generation,
+                artifactKind: artifactKind,
+                payloadJson: payloadJson,
+                fetchedAt: fetchedAt,
+                expiresAt: expiresAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String accountId,
+                required String paperId,
+                required String versionKey,
+                required int generation,
+                required String artifactKind,
+                required String payloadJson,
+                required DateTime fetchedAt,
+                required DateTime expiresAt,
+                Value<int> rowid = const Value.absent(),
+              }) => CachedDocumentArtifactsCompanion.insert(
+                accountId: accountId,
+                paperId: paperId,
+                versionKey: versionKey,
+                generation: generation,
+                artifactKind: artifactKind,
+                payloadJson: payloadJson,
+                fetchedAt: fetchedAt,
+                expiresAt: expiresAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CachedDocumentArtifactsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PakPerkDatabase,
+      $CachedDocumentArtifactsTable,
+      CachedDocumentArtifactRow,
+      $$CachedDocumentArtifactsTableFilterComposer,
+      $$CachedDocumentArtifactsTableOrderingComposer,
+      $$CachedDocumentArtifactsTableAnnotationComposer,
+      $$CachedDocumentArtifactsTableCreateCompanionBuilder,
+      $$CachedDocumentArtifactsTableUpdateCompanionBuilder,
+      (
+        CachedDocumentArtifactRow,
+        BaseReferences<
+          _$PakPerkDatabase,
+          $CachedDocumentArtifactsTable,
+          CachedDocumentArtifactRow
+        >,
+      ),
+      CachedDocumentArtifactRow,
+      PrefetchHooks Function()
+    >;
+typedef $$ReadingCheckpointsTableCreateCompanionBuilder =
+    ReadingCheckpointsCompanion Function({
+      required String accountId,
+      required String paperId,
+      required int generation,
+      required String mode,
+      required String stage,
+      Value<String?> blockId,
+      Value<double?> scrollFraction,
+      required DateTime lastReadAt,
+      Value<int> revision,
+      Value<bool> pendingSync,
+      Value<String?> operationId,
+      Value<int> rowid,
+    });
+typedef $$ReadingCheckpointsTableUpdateCompanionBuilder =
+    ReadingCheckpointsCompanion Function({
+      Value<String> accountId,
+      Value<String> paperId,
+      Value<int> generation,
+      Value<String> mode,
+      Value<String> stage,
+      Value<String?> blockId,
+      Value<double?> scrollFraction,
+      Value<DateTime> lastReadAt,
+      Value<int> revision,
+      Value<bool> pendingSync,
+      Value<String?> operationId,
+      Value<int> rowid,
+    });
+
+class $$ReadingCheckpointsTableFilterComposer
+    extends Composer<_$PakPerkDatabase, $ReadingCheckpointsTable> {
+  $$ReadingCheckpointsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mode => $composableBuilder(
+    column: $table.mode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get stage => $composableBuilder(
+    column: $table.stage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get blockId => $composableBuilder(
+    column: $table.blockId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get scrollFraction => $composableBuilder(
+    column: $table.scrollFraction,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastReadAt => $composableBuilder(
+    column: $table.lastReadAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get pendingSync => $composableBuilder(
+    column: $table.pendingSync,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get operationId => $composableBuilder(
+    column: $table.operationId,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ReadingCheckpointsTableOrderingComposer
+    extends Composer<_$PakPerkDatabase, $ReadingCheckpointsTable> {
+  $$ReadingCheckpointsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mode => $composableBuilder(
+    column: $table.mode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get stage => $composableBuilder(
+    column: $table.stage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get blockId => $composableBuilder(
+    column: $table.blockId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get scrollFraction => $composableBuilder(
+    column: $table.scrollFraction,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastReadAt => $composableBuilder(
+    column: $table.lastReadAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get pendingSync => $composableBuilder(
+    column: $table.pendingSync,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get operationId => $composableBuilder(
+    column: $table.operationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ReadingCheckpointsTableAnnotationComposer
+    extends Composer<_$PakPerkDatabase, $ReadingCheckpointsTable> {
+  $$ReadingCheckpointsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<String> get paperId =>
+      $composableBuilder(column: $table.paperId, builder: (column) => column);
+
+  GeneratedColumn<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get mode =>
+      $composableBuilder(column: $table.mode, builder: (column) => column);
+
+  GeneratedColumn<String> get stage =>
+      $composableBuilder(column: $table.stage, builder: (column) => column);
+
+  GeneratedColumn<String> get blockId =>
+      $composableBuilder(column: $table.blockId, builder: (column) => column);
+
+  GeneratedColumn<double> get scrollFraction => $composableBuilder(
+    column: $table.scrollFraction,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastReadAt => $composableBuilder(
+    column: $table.lastReadAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<bool> get pendingSync => $composableBuilder(
+    column: $table.pendingSync,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get operationId => $composableBuilder(
+    column: $table.operationId,
+    builder: (column) => column,
+  );
+}
+
+class $$ReadingCheckpointsTableTableManager
+    extends
+        RootTableManager<
+          _$PakPerkDatabase,
+          $ReadingCheckpointsTable,
+          ReadingCheckpointRow,
+          $$ReadingCheckpointsTableFilterComposer,
+          $$ReadingCheckpointsTableOrderingComposer,
+          $$ReadingCheckpointsTableAnnotationComposer,
+          $$ReadingCheckpointsTableCreateCompanionBuilder,
+          $$ReadingCheckpointsTableUpdateCompanionBuilder,
+          (
+            ReadingCheckpointRow,
+            BaseReferences<
+              _$PakPerkDatabase,
+              $ReadingCheckpointsTable,
+              ReadingCheckpointRow
+            >,
+          ),
+          ReadingCheckpointRow,
+          PrefetchHooks Function()
+        > {
+  $$ReadingCheckpointsTableTableManager(
+    _$PakPerkDatabase db,
+    $ReadingCheckpointsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ReadingCheckpointsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ReadingCheckpointsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ReadingCheckpointsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> accountId = const Value.absent(),
+                Value<String> paperId = const Value.absent(),
+                Value<int> generation = const Value.absent(),
+                Value<String> mode = const Value.absent(),
+                Value<String> stage = const Value.absent(),
+                Value<String?> blockId = const Value.absent(),
+                Value<double?> scrollFraction = const Value.absent(),
+                Value<DateTime> lastReadAt = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<bool> pendingSync = const Value.absent(),
+                Value<String?> operationId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ReadingCheckpointsCompanion(
+                accountId: accountId,
+                paperId: paperId,
+                generation: generation,
+                mode: mode,
+                stage: stage,
+                blockId: blockId,
+                scrollFraction: scrollFraction,
+                lastReadAt: lastReadAt,
+                revision: revision,
+                pendingSync: pendingSync,
+                operationId: operationId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String accountId,
+                required String paperId,
+                required int generation,
+                required String mode,
+                required String stage,
+                Value<String?> blockId = const Value.absent(),
+                Value<double?> scrollFraction = const Value.absent(),
+                required DateTime lastReadAt,
+                Value<int> revision = const Value.absent(),
+                Value<bool> pendingSync = const Value.absent(),
+                Value<String?> operationId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ReadingCheckpointsCompanion.insert(
+                accountId: accountId,
+                paperId: paperId,
+                generation: generation,
+                mode: mode,
+                stage: stage,
+                blockId: blockId,
+                scrollFraction: scrollFraction,
+                lastReadAt: lastReadAt,
+                revision: revision,
+                pendingSync: pendingSync,
+                operationId: operationId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ReadingCheckpointsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PakPerkDatabase,
+      $ReadingCheckpointsTable,
+      ReadingCheckpointRow,
+      $$ReadingCheckpointsTableFilterComposer,
+      $$ReadingCheckpointsTableOrderingComposer,
+      $$ReadingCheckpointsTableAnnotationComposer,
+      $$ReadingCheckpointsTableCreateCompanionBuilder,
+      $$ReadingCheckpointsTableUpdateCompanionBuilder,
+      (
+        ReadingCheckpointRow,
+        BaseReferences<
+          _$PakPerkDatabase,
+          $ReadingCheckpointsTable,
+          ReadingCheckpointRow
+        >,
+      ),
+      ReadingCheckpointRow,
+      PrefetchHooks Function()
+    >;
+typedef $$LocalAnnotationsTableCreateCompanionBuilder =
+    LocalAnnotationsCompanion Function({
+      required String accountId,
+      required String annotationId,
+      required String paperId,
+      required int generation,
+      Value<String?> blockId,
+      required String kind,
+      Value<String?> body,
+      Value<String?> colorRole,
+      Value<String?> selectorJson,
+      Value<String> sectionHintJson,
+      Value<int?> pageHint,
+      required String anchorStatus,
+      Value<int> revision,
+      Value<DateTime?> deletedAt,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<String> syncState,
+      Value<String?> activeOperationId,
+      Value<int> rowid,
+    });
+typedef $$LocalAnnotationsTableUpdateCompanionBuilder =
+    LocalAnnotationsCompanion Function({
+      Value<String> accountId,
+      Value<String> annotationId,
+      Value<String> paperId,
+      Value<int> generation,
+      Value<String?> blockId,
+      Value<String> kind,
+      Value<String?> body,
+      Value<String?> colorRole,
+      Value<String?> selectorJson,
+      Value<String> sectionHintJson,
+      Value<int?> pageHint,
+      Value<String> anchorStatus,
+      Value<int> revision,
+      Value<DateTime?> deletedAt,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<String> syncState,
+      Value<String?> activeOperationId,
+      Value<int> rowid,
+    });
+
+class $$LocalAnnotationsTableFilterComposer
+    extends Composer<_$PakPerkDatabase, $LocalAnnotationsTable> {
+  $$LocalAnnotationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get annotationId => $composableBuilder(
+    column: $table.annotationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get blockId => $composableBuilder(
+    column: $table.blockId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get colorRole => $composableBuilder(
+    column: $table.colorRole,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get selectorJson => $composableBuilder(
+    column: $table.selectorJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sectionHintJson => $composableBuilder(
+    column: $table.sectionHintJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get pageHint => $composableBuilder(
+    column: $table.pageHint,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get anchorStatus => $composableBuilder(
+    column: $table.anchorStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get syncState => $composableBuilder(
+    column: $table.syncState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get activeOperationId => $composableBuilder(
+    column: $table.activeOperationId,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalAnnotationsTableOrderingComposer
+    extends Composer<_$PakPerkDatabase, $LocalAnnotationsTable> {
+  $$LocalAnnotationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get annotationId => $composableBuilder(
+    column: $table.annotationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get blockId => $composableBuilder(
+    column: $table.blockId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get colorRole => $composableBuilder(
+    column: $table.colorRole,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get selectorJson => $composableBuilder(
+    column: $table.selectorJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sectionHintJson => $composableBuilder(
+    column: $table.sectionHintJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get pageHint => $composableBuilder(
+    column: $table.pageHint,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get anchorStatus => $composableBuilder(
+    column: $table.anchorStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get syncState => $composableBuilder(
+    column: $table.syncState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get activeOperationId => $composableBuilder(
+    column: $table.activeOperationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalAnnotationsTableAnnotationComposer
+    extends Composer<_$PakPerkDatabase, $LocalAnnotationsTable> {
+  $$LocalAnnotationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<String> get annotationId => $composableBuilder(
+    column: $table.annotationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get paperId =>
+      $composableBuilder(column: $table.paperId, builder: (column) => column);
+
+  GeneratedColumn<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get blockId =>
+      $composableBuilder(column: $table.blockId, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get body =>
+      $composableBuilder(column: $table.body, builder: (column) => column);
+
+  GeneratedColumn<String> get colorRole =>
+      $composableBuilder(column: $table.colorRole, builder: (column) => column);
+
+  GeneratedColumn<String> get selectorJson => $composableBuilder(
+    column: $table.selectorJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sectionHintJson => $composableBuilder(
+    column: $table.sectionHintJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get pageHint =>
+      $composableBuilder(column: $table.pageHint, builder: (column) => column);
+
+  GeneratedColumn<String> get anchorStatus => $composableBuilder(
+    column: $table.anchorStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get syncState =>
+      $composableBuilder(column: $table.syncState, builder: (column) => column);
+
+  GeneratedColumn<String> get activeOperationId => $composableBuilder(
+    column: $table.activeOperationId,
+    builder: (column) => column,
+  );
+}
+
+class $$LocalAnnotationsTableTableManager
+    extends
+        RootTableManager<
+          _$PakPerkDatabase,
+          $LocalAnnotationsTable,
+          LocalAnnotationRow,
+          $$LocalAnnotationsTableFilterComposer,
+          $$LocalAnnotationsTableOrderingComposer,
+          $$LocalAnnotationsTableAnnotationComposer,
+          $$LocalAnnotationsTableCreateCompanionBuilder,
+          $$LocalAnnotationsTableUpdateCompanionBuilder,
+          (
+            LocalAnnotationRow,
+            BaseReferences<
+              _$PakPerkDatabase,
+              $LocalAnnotationsTable,
+              LocalAnnotationRow
+            >,
+          ),
+          LocalAnnotationRow,
+          PrefetchHooks Function()
+        > {
+  $$LocalAnnotationsTableTableManager(
+    _$PakPerkDatabase db,
+    $LocalAnnotationsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalAnnotationsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalAnnotationsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalAnnotationsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> accountId = const Value.absent(),
+                Value<String> annotationId = const Value.absent(),
+                Value<String> paperId = const Value.absent(),
+                Value<int> generation = const Value.absent(),
+                Value<String?> blockId = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String?> body = const Value.absent(),
+                Value<String?> colorRole = const Value.absent(),
+                Value<String?> selectorJson = const Value.absent(),
+                Value<String> sectionHintJson = const Value.absent(),
+                Value<int?> pageHint = const Value.absent(),
+                Value<String> anchorStatus = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<String> syncState = const Value.absent(),
+                Value<String?> activeOperationId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalAnnotationsCompanion(
+                accountId: accountId,
+                annotationId: annotationId,
+                paperId: paperId,
+                generation: generation,
+                blockId: blockId,
+                kind: kind,
+                body: body,
+                colorRole: colorRole,
+                selectorJson: selectorJson,
+                sectionHintJson: sectionHintJson,
+                pageHint: pageHint,
+                anchorStatus: anchorStatus,
+                revision: revision,
+                deletedAt: deletedAt,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                syncState: syncState,
+                activeOperationId: activeOperationId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String accountId,
+                required String annotationId,
+                required String paperId,
+                required int generation,
+                Value<String?> blockId = const Value.absent(),
+                required String kind,
+                Value<String?> body = const Value.absent(),
+                Value<String?> colorRole = const Value.absent(),
+                Value<String?> selectorJson = const Value.absent(),
+                Value<String> sectionHintJson = const Value.absent(),
+                Value<int?> pageHint = const Value.absent(),
+                required String anchorStatus,
+                Value<int> revision = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<String> syncState = const Value.absent(),
+                Value<String?> activeOperationId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalAnnotationsCompanion.insert(
+                accountId: accountId,
+                annotationId: annotationId,
+                paperId: paperId,
+                generation: generation,
+                blockId: blockId,
+                kind: kind,
+                body: body,
+                colorRole: colorRole,
+                selectorJson: selectorJson,
+                sectionHintJson: sectionHintJson,
+                pageHint: pageHint,
+                anchorStatus: anchorStatus,
+                revision: revision,
+                deletedAt: deletedAt,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                syncState: syncState,
+                activeOperationId: activeOperationId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalAnnotationsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PakPerkDatabase,
+      $LocalAnnotationsTable,
+      LocalAnnotationRow,
+      $$LocalAnnotationsTableFilterComposer,
+      $$LocalAnnotationsTableOrderingComposer,
+      $$LocalAnnotationsTableAnnotationComposer,
+      $$LocalAnnotationsTableCreateCompanionBuilder,
+      $$LocalAnnotationsTableUpdateCompanionBuilder,
+      (
+        LocalAnnotationRow,
+        BaseReferences<
+          _$PakPerkDatabase,
+          $LocalAnnotationsTable,
+          LocalAnnotationRow
+        >,
+      ),
+      LocalAnnotationRow,
+      PrefetchHooks Function()
+    >;
+typedef $$AnnotationConflictsTableCreateCompanionBuilder =
+    AnnotationConflictsCompanion Function({
+      required String accountId,
+      required String conflictId,
+      required String annotationId,
+      required String attemptedOperationId,
+      required int baseRevision,
+      required int serverRevision,
+      Value<String?> attemptedBody,
+      Value<String?> serverBody,
+      Value<String> mergeState,
+      Value<String?> mergedBody,
+      required DateTime createdAt,
+      Value<DateTime?> resolvedAt,
+      Value<int> rowid,
+    });
+typedef $$AnnotationConflictsTableUpdateCompanionBuilder =
+    AnnotationConflictsCompanion Function({
+      Value<String> accountId,
+      Value<String> conflictId,
+      Value<String> annotationId,
+      Value<String> attemptedOperationId,
+      Value<int> baseRevision,
+      Value<int> serverRevision,
+      Value<String?> attemptedBody,
+      Value<String?> serverBody,
+      Value<String> mergeState,
+      Value<String?> mergedBody,
+      Value<DateTime> createdAt,
+      Value<DateTime?> resolvedAt,
+      Value<int> rowid,
+    });
+
+class $$AnnotationConflictsTableFilterComposer
+    extends Composer<_$PakPerkDatabase, $AnnotationConflictsTable> {
+  $$AnnotationConflictsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get conflictId => $composableBuilder(
+    column: $table.conflictId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get annotationId => $composableBuilder(
+    column: $table.annotationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get attemptedOperationId => $composableBuilder(
+    column: $table.attemptedOperationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get baseRevision => $composableBuilder(
+    column: $table.baseRevision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get serverRevision => $composableBuilder(
+    column: $table.serverRevision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get attemptedBody => $composableBuilder(
+    column: $table.attemptedBody,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get serverBody => $composableBuilder(
+    column: $table.serverBody,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mergeState => $composableBuilder(
+    column: $table.mergeState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mergedBody => $composableBuilder(
+    column: $table.mergedBody,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get resolvedAt => $composableBuilder(
+    column: $table.resolvedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AnnotationConflictsTableOrderingComposer
+    extends Composer<_$PakPerkDatabase, $AnnotationConflictsTable> {
+  $$AnnotationConflictsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get conflictId => $composableBuilder(
+    column: $table.conflictId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get annotationId => $composableBuilder(
+    column: $table.annotationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get attemptedOperationId => $composableBuilder(
+    column: $table.attemptedOperationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get baseRevision => $composableBuilder(
+    column: $table.baseRevision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get serverRevision => $composableBuilder(
+    column: $table.serverRevision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get attemptedBody => $composableBuilder(
+    column: $table.attemptedBody,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get serverBody => $composableBuilder(
+    column: $table.serverBody,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mergeState => $composableBuilder(
+    column: $table.mergeState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mergedBody => $composableBuilder(
+    column: $table.mergedBody,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get resolvedAt => $composableBuilder(
+    column: $table.resolvedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AnnotationConflictsTableAnnotationComposer
+    extends Composer<_$PakPerkDatabase, $AnnotationConflictsTable> {
+  $$AnnotationConflictsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<String> get conflictId => $composableBuilder(
+    column: $table.conflictId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get annotationId => $composableBuilder(
+    column: $table.annotationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get attemptedOperationId => $composableBuilder(
+    column: $table.attemptedOperationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get baseRevision => $composableBuilder(
+    column: $table.baseRevision,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get serverRevision => $composableBuilder(
+    column: $table.serverRevision,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get attemptedBody => $composableBuilder(
+    column: $table.attemptedBody,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get serverBody => $composableBuilder(
+    column: $table.serverBody,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get mergeState => $composableBuilder(
+    column: $table.mergeState,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get mergedBody => $composableBuilder(
+    column: $table.mergedBody,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get resolvedAt => $composableBuilder(
+    column: $table.resolvedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$AnnotationConflictsTableTableManager
+    extends
+        RootTableManager<
+          _$PakPerkDatabase,
+          $AnnotationConflictsTable,
+          AnnotationConflictRow,
+          $$AnnotationConflictsTableFilterComposer,
+          $$AnnotationConflictsTableOrderingComposer,
+          $$AnnotationConflictsTableAnnotationComposer,
+          $$AnnotationConflictsTableCreateCompanionBuilder,
+          $$AnnotationConflictsTableUpdateCompanionBuilder,
+          (
+            AnnotationConflictRow,
+            BaseReferences<
+              _$PakPerkDatabase,
+              $AnnotationConflictsTable,
+              AnnotationConflictRow
+            >,
+          ),
+          AnnotationConflictRow,
+          PrefetchHooks Function()
+        > {
+  $$AnnotationConflictsTableTableManager(
+    _$PakPerkDatabase db,
+    $AnnotationConflictsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AnnotationConflictsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AnnotationConflictsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$AnnotationConflictsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> accountId = const Value.absent(),
+                Value<String> conflictId = const Value.absent(),
+                Value<String> annotationId = const Value.absent(),
+                Value<String> attemptedOperationId = const Value.absent(),
+                Value<int> baseRevision = const Value.absent(),
+                Value<int> serverRevision = const Value.absent(),
+                Value<String?> attemptedBody = const Value.absent(),
+                Value<String?> serverBody = const Value.absent(),
+                Value<String> mergeState = const Value.absent(),
+                Value<String?> mergedBody = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> resolvedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => AnnotationConflictsCompanion(
+                accountId: accountId,
+                conflictId: conflictId,
+                annotationId: annotationId,
+                attemptedOperationId: attemptedOperationId,
+                baseRevision: baseRevision,
+                serverRevision: serverRevision,
+                attemptedBody: attemptedBody,
+                serverBody: serverBody,
+                mergeState: mergeState,
+                mergedBody: mergedBody,
+                createdAt: createdAt,
+                resolvedAt: resolvedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String accountId,
+                required String conflictId,
+                required String annotationId,
+                required String attemptedOperationId,
+                required int baseRevision,
+                required int serverRevision,
+                Value<String?> attemptedBody = const Value.absent(),
+                Value<String?> serverBody = const Value.absent(),
+                Value<String> mergeState = const Value.absent(),
+                Value<String?> mergedBody = const Value.absent(),
+                required DateTime createdAt,
+                Value<DateTime?> resolvedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => AnnotationConflictsCompanion.insert(
+                accountId: accountId,
+                conflictId: conflictId,
+                annotationId: annotationId,
+                attemptedOperationId: attemptedOperationId,
+                baseRevision: baseRevision,
+                serverRevision: serverRevision,
+                attemptedBody: attemptedBody,
+                serverBody: serverBody,
+                mergeState: mergeState,
+                mergedBody: mergedBody,
+                createdAt: createdAt,
+                resolvedAt: resolvedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AnnotationConflictsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PakPerkDatabase,
+      $AnnotationConflictsTable,
+      AnnotationConflictRow,
+      $$AnnotationConflictsTableFilterComposer,
+      $$AnnotationConflictsTableOrderingComposer,
+      $$AnnotationConflictsTableAnnotationComposer,
+      $$AnnotationConflictsTableCreateCompanionBuilder,
+      $$AnnotationConflictsTableUpdateCompanionBuilder,
+      (
+        AnnotationConflictRow,
+        BaseReferences<
+          _$PakPerkDatabase,
+          $AnnotationConflictsTable,
+          AnnotationConflictRow
+        >,
+      ),
+      AnnotationConflictRow,
+      PrefetchHooks Function()
+    >;
+typedef $$LocalEvidenceCardsTableCreateCompanionBuilder =
+    LocalEvidenceCardsCompanion Function({
+      required String accountId,
+      required String cardId,
+      required String paperId,
+      required int generation,
+      required String title,
+      Value<String?> claimOrQuestion,
+      Value<String?> userNote,
+      Value<String> sourceBlockIdsJson,
+      Value<String> figureIdsJson,
+      Value<String> tableIdsJson,
+      Value<String> citationContextIdsJson,
+      required String verificationStatus,
+      Value<int> revision,
+      Value<DateTime?> deletedAt,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<String> syncState,
+      Value<String?> activeOperationId,
+      Value<int> rowid,
+    });
+typedef $$LocalEvidenceCardsTableUpdateCompanionBuilder =
+    LocalEvidenceCardsCompanion Function({
+      Value<String> accountId,
+      Value<String> cardId,
+      Value<String> paperId,
+      Value<int> generation,
+      Value<String> title,
+      Value<String?> claimOrQuestion,
+      Value<String?> userNote,
+      Value<String> sourceBlockIdsJson,
+      Value<String> figureIdsJson,
+      Value<String> tableIdsJson,
+      Value<String> citationContextIdsJson,
+      Value<String> verificationStatus,
+      Value<int> revision,
+      Value<DateTime?> deletedAt,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<String> syncState,
+      Value<String?> activeOperationId,
+      Value<int> rowid,
+    });
+
+class $$LocalEvidenceCardsTableFilterComposer
+    extends Composer<_$PakPerkDatabase, $LocalEvidenceCardsTable> {
+  $$LocalEvidenceCardsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get cardId => $composableBuilder(
+    column: $table.cardId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get claimOrQuestion => $composableBuilder(
+    column: $table.claimOrQuestion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userNote => $composableBuilder(
+    column: $table.userNote,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceBlockIdsJson => $composableBuilder(
+    column: $table.sourceBlockIdsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get figureIdsJson => $composableBuilder(
+    column: $table.figureIdsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tableIdsJson => $composableBuilder(
+    column: $table.tableIdsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get citationContextIdsJson => $composableBuilder(
+    column: $table.citationContextIdsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get verificationStatus => $composableBuilder(
+    column: $table.verificationStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get syncState => $composableBuilder(
+    column: $table.syncState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get activeOperationId => $composableBuilder(
+    column: $table.activeOperationId,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalEvidenceCardsTableOrderingComposer
+    extends Composer<_$PakPerkDatabase, $LocalEvidenceCardsTable> {
+  $$LocalEvidenceCardsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get cardId => $composableBuilder(
+    column: $table.cardId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get claimOrQuestion => $composableBuilder(
+    column: $table.claimOrQuestion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userNote => $composableBuilder(
+    column: $table.userNote,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceBlockIdsJson => $composableBuilder(
+    column: $table.sourceBlockIdsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get figureIdsJson => $composableBuilder(
+    column: $table.figureIdsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tableIdsJson => $composableBuilder(
+    column: $table.tableIdsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get citationContextIdsJson => $composableBuilder(
+    column: $table.citationContextIdsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get verificationStatus => $composableBuilder(
+    column: $table.verificationStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get syncState => $composableBuilder(
+    column: $table.syncState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get activeOperationId => $composableBuilder(
+    column: $table.activeOperationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalEvidenceCardsTableAnnotationComposer
+    extends Composer<_$PakPerkDatabase, $LocalEvidenceCardsTable> {
+  $$LocalEvidenceCardsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<String> get cardId =>
+      $composableBuilder(column: $table.cardId, builder: (column) => column);
+
+  GeneratedColumn<String> get paperId =>
+      $composableBuilder(column: $table.paperId, builder: (column) => column);
+
+  GeneratedColumn<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get claimOrQuestion => $composableBuilder(
+    column: $table.claimOrQuestion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get userNote =>
+      $composableBuilder(column: $table.userNote, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceBlockIdsJson => $composableBuilder(
+    column: $table.sourceBlockIdsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get figureIdsJson => $composableBuilder(
+    column: $table.figureIdsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get tableIdsJson => $composableBuilder(
+    column: $table.tableIdsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get citationContextIdsJson => $composableBuilder(
+    column: $table.citationContextIdsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get verificationStatus => $composableBuilder(
+    column: $table.verificationStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get syncState =>
+      $composableBuilder(column: $table.syncState, builder: (column) => column);
+
+  GeneratedColumn<String> get activeOperationId => $composableBuilder(
+    column: $table.activeOperationId,
+    builder: (column) => column,
+  );
+}
+
+class $$LocalEvidenceCardsTableTableManager
+    extends
+        RootTableManager<
+          _$PakPerkDatabase,
+          $LocalEvidenceCardsTable,
+          LocalEvidenceCardRow,
+          $$LocalEvidenceCardsTableFilterComposer,
+          $$LocalEvidenceCardsTableOrderingComposer,
+          $$LocalEvidenceCardsTableAnnotationComposer,
+          $$LocalEvidenceCardsTableCreateCompanionBuilder,
+          $$LocalEvidenceCardsTableUpdateCompanionBuilder,
+          (
+            LocalEvidenceCardRow,
+            BaseReferences<
+              _$PakPerkDatabase,
+              $LocalEvidenceCardsTable,
+              LocalEvidenceCardRow
+            >,
+          ),
+          LocalEvidenceCardRow,
+          PrefetchHooks Function()
+        > {
+  $$LocalEvidenceCardsTableTableManager(
+    _$PakPerkDatabase db,
+    $LocalEvidenceCardsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalEvidenceCardsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalEvidenceCardsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalEvidenceCardsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> accountId = const Value.absent(),
+                Value<String> cardId = const Value.absent(),
+                Value<String> paperId = const Value.absent(),
+                Value<int> generation = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String?> claimOrQuestion = const Value.absent(),
+                Value<String?> userNote = const Value.absent(),
+                Value<String> sourceBlockIdsJson = const Value.absent(),
+                Value<String> figureIdsJson = const Value.absent(),
+                Value<String> tableIdsJson = const Value.absent(),
+                Value<String> citationContextIdsJson = const Value.absent(),
+                Value<String> verificationStatus = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<String> syncState = const Value.absent(),
+                Value<String?> activeOperationId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalEvidenceCardsCompanion(
+                accountId: accountId,
+                cardId: cardId,
+                paperId: paperId,
+                generation: generation,
+                title: title,
+                claimOrQuestion: claimOrQuestion,
+                userNote: userNote,
+                sourceBlockIdsJson: sourceBlockIdsJson,
+                figureIdsJson: figureIdsJson,
+                tableIdsJson: tableIdsJson,
+                citationContextIdsJson: citationContextIdsJson,
+                verificationStatus: verificationStatus,
+                revision: revision,
+                deletedAt: deletedAt,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                syncState: syncState,
+                activeOperationId: activeOperationId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String accountId,
+                required String cardId,
+                required String paperId,
+                required int generation,
+                required String title,
+                Value<String?> claimOrQuestion = const Value.absent(),
+                Value<String?> userNote = const Value.absent(),
+                Value<String> sourceBlockIdsJson = const Value.absent(),
+                Value<String> figureIdsJson = const Value.absent(),
+                Value<String> tableIdsJson = const Value.absent(),
+                Value<String> citationContextIdsJson = const Value.absent(),
+                required String verificationStatus,
+                Value<int> revision = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<String> syncState = const Value.absent(),
+                Value<String?> activeOperationId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalEvidenceCardsCompanion.insert(
+                accountId: accountId,
+                cardId: cardId,
+                paperId: paperId,
+                generation: generation,
+                title: title,
+                claimOrQuestion: claimOrQuestion,
+                userNote: userNote,
+                sourceBlockIdsJson: sourceBlockIdsJson,
+                figureIdsJson: figureIdsJson,
+                tableIdsJson: tableIdsJson,
+                citationContextIdsJson: citationContextIdsJson,
+                verificationStatus: verificationStatus,
+                revision: revision,
+                deletedAt: deletedAt,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                syncState: syncState,
+                activeOperationId: activeOperationId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalEvidenceCardsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PakPerkDatabase,
+      $LocalEvidenceCardsTable,
+      LocalEvidenceCardRow,
+      $$LocalEvidenceCardsTableFilterComposer,
+      $$LocalEvidenceCardsTableOrderingComposer,
+      $$LocalEvidenceCardsTableAnnotationComposer,
+      $$LocalEvidenceCardsTableCreateCompanionBuilder,
+      $$LocalEvidenceCardsTableUpdateCompanionBuilder,
+      (
+        LocalEvidenceCardRow,
+        BaseReferences<
+          _$PakPerkDatabase,
+          $LocalEvidenceCardsTable,
+          LocalEvidenceCardRow
+        >,
+      ),
+      LocalEvidenceCardRow,
+      PrefetchHooks Function()
+    >;
+typedef $$LocalMemoryItemsTableCreateCompanionBuilder =
+    LocalMemoryItemsCompanion Function({
+      required String accountId,
+      required String itemId,
+      required String paperId,
+      required int generation,
+      required String sourceType,
+      required String sourceId,
+      Value<String?> promptText,
+      Value<String?> answerText,
+      required String status,
+      Value<DateTime?> nextReviewAt,
+      Value<int> reviewCount,
+      Value<int> revision,
+      Value<DateTime?> deletedAt,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<String> syncState,
+      Value<String?> activeOperationId,
+      Value<int> rowid,
+    });
+typedef $$LocalMemoryItemsTableUpdateCompanionBuilder =
+    LocalMemoryItemsCompanion Function({
+      Value<String> accountId,
+      Value<String> itemId,
+      Value<String> paperId,
+      Value<int> generation,
+      Value<String> sourceType,
+      Value<String> sourceId,
+      Value<String?> promptText,
+      Value<String?> answerText,
+      Value<String> status,
+      Value<DateTime?> nextReviewAt,
+      Value<int> reviewCount,
+      Value<int> revision,
+      Value<DateTime?> deletedAt,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<String> syncState,
+      Value<String?> activeOperationId,
+      Value<int> rowid,
+    });
+
+class $$LocalMemoryItemsTableFilterComposer
+    extends Composer<_$PakPerkDatabase, $LocalMemoryItemsTable> {
+  $$LocalMemoryItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get itemId => $composableBuilder(
+    column: $table.itemId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceType => $composableBuilder(
+    column: $table.sourceType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceId => $composableBuilder(
+    column: $table.sourceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get promptText => $composableBuilder(
+    column: $table.promptText,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get answerText => $composableBuilder(
+    column: $table.answerText,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get nextReviewAt => $composableBuilder(
+    column: $table.nextReviewAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get reviewCount => $composableBuilder(
+    column: $table.reviewCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get syncState => $composableBuilder(
+    column: $table.syncState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get activeOperationId => $composableBuilder(
+    column: $table.activeOperationId,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalMemoryItemsTableOrderingComposer
+    extends Composer<_$PakPerkDatabase, $LocalMemoryItemsTable> {
+  $$LocalMemoryItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get itemId => $composableBuilder(
+    column: $table.itemId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceType => $composableBuilder(
+    column: $table.sourceType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceId => $composableBuilder(
+    column: $table.sourceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get promptText => $composableBuilder(
+    column: $table.promptText,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get answerText => $composableBuilder(
+    column: $table.answerText,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get nextReviewAt => $composableBuilder(
+    column: $table.nextReviewAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get reviewCount => $composableBuilder(
+    column: $table.reviewCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get syncState => $composableBuilder(
+    column: $table.syncState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get activeOperationId => $composableBuilder(
+    column: $table.activeOperationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalMemoryItemsTableAnnotationComposer
+    extends Composer<_$PakPerkDatabase, $LocalMemoryItemsTable> {
+  $$LocalMemoryItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<String> get itemId =>
+      $composableBuilder(column: $table.itemId, builder: (column) => column);
+
+  GeneratedColumn<String> get paperId =>
+      $composableBuilder(column: $table.paperId, builder: (column) => column);
+
+  GeneratedColumn<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceType => $composableBuilder(
+    column: $table.sourceType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceId =>
+      $composableBuilder(column: $table.sourceId, builder: (column) => column);
+
+  GeneratedColumn<String> get promptText => $composableBuilder(
+    column: $table.promptText,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get answerText => $composableBuilder(
+    column: $table.answerText,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get nextReviewAt => $composableBuilder(
+    column: $table.nextReviewAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get reviewCount => $composableBuilder(
+    column: $table.reviewCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get syncState =>
+      $composableBuilder(column: $table.syncState, builder: (column) => column);
+
+  GeneratedColumn<String> get activeOperationId => $composableBuilder(
+    column: $table.activeOperationId,
+    builder: (column) => column,
+  );
+}
+
+class $$LocalMemoryItemsTableTableManager
+    extends
+        RootTableManager<
+          _$PakPerkDatabase,
+          $LocalMemoryItemsTable,
+          LocalMemoryItemRow,
+          $$LocalMemoryItemsTableFilterComposer,
+          $$LocalMemoryItemsTableOrderingComposer,
+          $$LocalMemoryItemsTableAnnotationComposer,
+          $$LocalMemoryItemsTableCreateCompanionBuilder,
+          $$LocalMemoryItemsTableUpdateCompanionBuilder,
+          (
+            LocalMemoryItemRow,
+            BaseReferences<
+              _$PakPerkDatabase,
+              $LocalMemoryItemsTable,
+              LocalMemoryItemRow
+            >,
+          ),
+          LocalMemoryItemRow,
+          PrefetchHooks Function()
+        > {
+  $$LocalMemoryItemsTableTableManager(
+    _$PakPerkDatabase db,
+    $LocalMemoryItemsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalMemoryItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalMemoryItemsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalMemoryItemsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> accountId = const Value.absent(),
+                Value<String> itemId = const Value.absent(),
+                Value<String> paperId = const Value.absent(),
+                Value<int> generation = const Value.absent(),
+                Value<String> sourceType = const Value.absent(),
+                Value<String> sourceId = const Value.absent(),
+                Value<String?> promptText = const Value.absent(),
+                Value<String?> answerText = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<DateTime?> nextReviewAt = const Value.absent(),
+                Value<int> reviewCount = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<String> syncState = const Value.absent(),
+                Value<String?> activeOperationId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalMemoryItemsCompanion(
+                accountId: accountId,
+                itemId: itemId,
+                paperId: paperId,
+                generation: generation,
+                sourceType: sourceType,
+                sourceId: sourceId,
+                promptText: promptText,
+                answerText: answerText,
+                status: status,
+                nextReviewAt: nextReviewAt,
+                reviewCount: reviewCount,
+                revision: revision,
+                deletedAt: deletedAt,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                syncState: syncState,
+                activeOperationId: activeOperationId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String accountId,
+                required String itemId,
+                required String paperId,
+                required int generation,
+                required String sourceType,
+                required String sourceId,
+                Value<String?> promptText = const Value.absent(),
+                Value<String?> answerText = const Value.absent(),
+                required String status,
+                Value<DateTime?> nextReviewAt = const Value.absent(),
+                Value<int> reviewCount = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<String> syncState = const Value.absent(),
+                Value<String?> activeOperationId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalMemoryItemsCompanion.insert(
+                accountId: accountId,
+                itemId: itemId,
+                paperId: paperId,
+                generation: generation,
+                sourceType: sourceType,
+                sourceId: sourceId,
+                promptText: promptText,
+                answerText: answerText,
+                status: status,
+                nextReviewAt: nextReviewAt,
+                reviewCount: reviewCount,
+                revision: revision,
+                deletedAt: deletedAt,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                syncState: syncState,
+                activeOperationId: activeOperationId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalMemoryItemsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PakPerkDatabase,
+      $LocalMemoryItemsTable,
+      LocalMemoryItemRow,
+      $$LocalMemoryItemsTableFilterComposer,
+      $$LocalMemoryItemsTableOrderingComposer,
+      $$LocalMemoryItemsTableAnnotationComposer,
+      $$LocalMemoryItemsTableCreateCompanionBuilder,
+      $$LocalMemoryItemsTableUpdateCompanionBuilder,
+      (
+        LocalMemoryItemRow,
+        BaseReferences<
+          _$PakPerkDatabase,
+          $LocalMemoryItemsTable,
+          LocalMemoryItemRow
+        >,
+      ),
+      LocalMemoryItemRow,
+      PrefetchHooks Function()
+    >;
+typedef $$ResearchOutboxTableCreateCompanionBuilder =
+    ResearchOutboxCompanion Function({
+      required String accountId,
+      required String operationId,
+      required String entityKind,
+      required String entityId,
+      required String operation,
+      Value<int> baseRevision,
+      required String payloadJson,
+      Value<String> state,
+      Value<int> attemptCount,
+      Value<String?> lastErrorCode,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$ResearchOutboxTableUpdateCompanionBuilder =
+    ResearchOutboxCompanion Function({
+      Value<String> accountId,
+      Value<String> operationId,
+      Value<String> entityKind,
+      Value<String> entityId,
+      Value<String> operation,
+      Value<int> baseRevision,
+      Value<String> payloadJson,
+      Value<String> state,
+      Value<int> attemptCount,
+      Value<String?> lastErrorCode,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$ResearchOutboxTableFilterComposer
+    extends Composer<_$PakPerkDatabase, $ResearchOutboxTable> {
+  $$ResearchOutboxTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get operationId => $composableBuilder(
+    column: $table.operationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get entityKind => $composableBuilder(
+    column: $table.entityKind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get entityId => $composableBuilder(
+    column: $table.entityId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get operation => $composableBuilder(
+    column: $table.operation,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get baseRevision => $composableBuilder(
+    column: $table.baseRevision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get state => $composableBuilder(
+    column: $table.state,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get attemptCount => $composableBuilder(
+    column: $table.attemptCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastErrorCode => $composableBuilder(
+    column: $table.lastErrorCode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ResearchOutboxTableOrderingComposer
+    extends Composer<_$PakPerkDatabase, $ResearchOutboxTable> {
+  $$ResearchOutboxTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get operationId => $composableBuilder(
+    column: $table.operationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get entityKind => $composableBuilder(
+    column: $table.entityKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get entityId => $composableBuilder(
+    column: $table.entityId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get operation => $composableBuilder(
+    column: $table.operation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get baseRevision => $composableBuilder(
+    column: $table.baseRevision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get state => $composableBuilder(
+    column: $table.state,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get attemptCount => $composableBuilder(
+    column: $table.attemptCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastErrorCode => $composableBuilder(
+    column: $table.lastErrorCode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ResearchOutboxTableAnnotationComposer
+    extends Composer<_$PakPerkDatabase, $ResearchOutboxTable> {
+  $$ResearchOutboxTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<String> get operationId => $composableBuilder(
+    column: $table.operationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get entityKind => $composableBuilder(
+    column: $table.entityKind,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get entityId =>
+      $composableBuilder(column: $table.entityId, builder: (column) => column);
+
+  GeneratedColumn<String> get operation =>
+      $composableBuilder(column: $table.operation, builder: (column) => column);
+
+  GeneratedColumn<int> get baseRevision => $composableBuilder(
+    column: $table.baseRevision,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get state =>
+      $composableBuilder(column: $table.state, builder: (column) => column);
+
+  GeneratedColumn<int> get attemptCount => $composableBuilder(
+    column: $table.attemptCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastErrorCode => $composableBuilder(
+    column: $table.lastErrorCode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$ResearchOutboxTableTableManager
+    extends
+        RootTableManager<
+          _$PakPerkDatabase,
+          $ResearchOutboxTable,
+          ResearchOutboxRow,
+          $$ResearchOutboxTableFilterComposer,
+          $$ResearchOutboxTableOrderingComposer,
+          $$ResearchOutboxTableAnnotationComposer,
+          $$ResearchOutboxTableCreateCompanionBuilder,
+          $$ResearchOutboxTableUpdateCompanionBuilder,
+          (
+            ResearchOutboxRow,
+            BaseReferences<
+              _$PakPerkDatabase,
+              $ResearchOutboxTable,
+              ResearchOutboxRow
+            >,
+          ),
+          ResearchOutboxRow,
+          PrefetchHooks Function()
+        > {
+  $$ResearchOutboxTableTableManager(
+    _$PakPerkDatabase db,
+    $ResearchOutboxTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ResearchOutboxTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ResearchOutboxTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ResearchOutboxTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> accountId = const Value.absent(),
+                Value<String> operationId = const Value.absent(),
+                Value<String> entityKind = const Value.absent(),
+                Value<String> entityId = const Value.absent(),
+                Value<String> operation = const Value.absent(),
+                Value<int> baseRevision = const Value.absent(),
+                Value<String> payloadJson = const Value.absent(),
+                Value<String> state = const Value.absent(),
+                Value<int> attemptCount = const Value.absent(),
+                Value<String?> lastErrorCode = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ResearchOutboxCompanion(
+                accountId: accountId,
+                operationId: operationId,
+                entityKind: entityKind,
+                entityId: entityId,
+                operation: operation,
+                baseRevision: baseRevision,
+                payloadJson: payloadJson,
+                state: state,
+                attemptCount: attemptCount,
+                lastErrorCode: lastErrorCode,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String accountId,
+                required String operationId,
+                required String entityKind,
+                required String entityId,
+                required String operation,
+                Value<int> baseRevision = const Value.absent(),
+                required String payloadJson,
+                Value<String> state = const Value.absent(),
+                Value<int> attemptCount = const Value.absent(),
+                Value<String?> lastErrorCode = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ResearchOutboxCompanion.insert(
+                accountId: accountId,
+                operationId: operationId,
+                entityKind: entityKind,
+                entityId: entityId,
+                operation: operation,
+                baseRevision: baseRevision,
+                payloadJson: payloadJson,
+                state: state,
+                attemptCount: attemptCount,
+                lastErrorCode: lastErrorCode,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ResearchOutboxTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PakPerkDatabase,
+      $ResearchOutboxTable,
+      ResearchOutboxRow,
+      $$ResearchOutboxTableFilterComposer,
+      $$ResearchOutboxTableOrderingComposer,
+      $$ResearchOutboxTableAnnotationComposer,
+      $$ResearchOutboxTableCreateCompanionBuilder,
+      $$ResearchOutboxTableUpdateCompanionBuilder,
+      (
+        ResearchOutboxRow,
+        BaseReferences<
+          _$PakPerkDatabase,
+          $ResearchOutboxTable,
+          ResearchOutboxRow
+        >,
+      ),
+      ResearchOutboxRow,
+      PrefetchHooks Function()
+    >;
+typedef $$ResearchSyncStatesTableCreateCompanionBuilder =
+    ResearchSyncStatesCompanion Function({
+      required String accountId,
+      required String entityKind,
+      Value<int> revision,
+      Value<String?> cursor,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$ResearchSyncStatesTableUpdateCompanionBuilder =
+    ResearchSyncStatesCompanion Function({
+      Value<String> accountId,
+      Value<String> entityKind,
+      Value<int> revision,
+      Value<String?> cursor,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$ResearchSyncStatesTableFilterComposer
+    extends Composer<_$PakPerkDatabase, $ResearchSyncStatesTable> {
+  $$ResearchSyncStatesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get entityKind => $composableBuilder(
+    column: $table.entityKind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get cursor => $composableBuilder(
+    column: $table.cursor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ResearchSyncStatesTableOrderingComposer
+    extends Composer<_$PakPerkDatabase, $ResearchSyncStatesTable> {
+  $$ResearchSyncStatesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get entityKind => $composableBuilder(
+    column: $table.entityKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get cursor => $composableBuilder(
+    column: $table.cursor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ResearchSyncStatesTableAnnotationComposer
+    extends Composer<_$PakPerkDatabase, $ResearchSyncStatesTable> {
+  $$ResearchSyncStatesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<String> get entityKind => $composableBuilder(
+    column: $table.entityKind,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<String> get cursor =>
+      $composableBuilder(column: $table.cursor, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$ResearchSyncStatesTableTableManager
+    extends
+        RootTableManager<
+          _$PakPerkDatabase,
+          $ResearchSyncStatesTable,
+          ResearchSyncStateRow,
+          $$ResearchSyncStatesTableFilterComposer,
+          $$ResearchSyncStatesTableOrderingComposer,
+          $$ResearchSyncStatesTableAnnotationComposer,
+          $$ResearchSyncStatesTableCreateCompanionBuilder,
+          $$ResearchSyncStatesTableUpdateCompanionBuilder,
+          (
+            ResearchSyncStateRow,
+            BaseReferences<
+              _$PakPerkDatabase,
+              $ResearchSyncStatesTable,
+              ResearchSyncStateRow
+            >,
+          ),
+          ResearchSyncStateRow,
+          PrefetchHooks Function()
+        > {
+  $$ResearchSyncStatesTableTableManager(
+    _$PakPerkDatabase db,
+    $ResearchSyncStatesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ResearchSyncStatesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ResearchSyncStatesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ResearchSyncStatesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> accountId = const Value.absent(),
+                Value<String> entityKind = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<String?> cursor = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ResearchSyncStatesCompanion(
+                accountId: accountId,
+                entityKind: entityKind,
+                revision: revision,
+                cursor: cursor,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String accountId,
+                required String entityKind,
+                Value<int> revision = const Value.absent(),
+                Value<String?> cursor = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ResearchSyncStatesCompanion.insert(
+                accountId: accountId,
+                entityKind: entityKind,
+                revision: revision,
+                cursor: cursor,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ResearchSyncStatesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PakPerkDatabase,
+      $ResearchSyncStatesTable,
+      ResearchSyncStateRow,
+      $$ResearchSyncStatesTableFilterComposer,
+      $$ResearchSyncStatesTableOrderingComposer,
+      $$ResearchSyncStatesTableAnnotationComposer,
+      $$ResearchSyncStatesTableCreateCompanionBuilder,
+      $$ResearchSyncStatesTableUpdateCompanionBuilder,
+      (
+        ResearchSyncStateRow,
+        BaseReferences<
+          _$PakPerkDatabase,
+          $ResearchSyncStatesTable,
+          ResearchSyncStateRow
+        >,
+      ),
+      ResearchSyncStateRow,
+      PrefetchHooks Function()
+    >;
+typedef $$CachedVersionArtifactsTableCreateCompanionBuilder =
+    CachedVersionArtifactsCompanion Function({
+      required String accountId,
+      required String paperId,
+      required String cacheKey,
+      required String payloadJson,
+      required DateTime fetchedAt,
+      required DateTime expiresAt,
+      Value<int> rowid,
+    });
+typedef $$CachedVersionArtifactsTableUpdateCompanionBuilder =
+    CachedVersionArtifactsCompanion Function({
+      Value<String> accountId,
+      Value<String> paperId,
+      Value<String> cacheKey,
+      Value<String> payloadJson,
+      Value<DateTime> fetchedAt,
+      Value<DateTime> expiresAt,
+      Value<int> rowid,
+    });
+
+class $$CachedVersionArtifactsTableFilterComposer
+    extends Composer<_$PakPerkDatabase, $CachedVersionArtifactsTable> {
+  $$CachedVersionArtifactsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get cacheKey => $composableBuilder(
+    column: $table.cacheKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get fetchedAt => $composableBuilder(
+    column: $table.fetchedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get expiresAt => $composableBuilder(
+    column: $table.expiresAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CachedVersionArtifactsTableOrderingComposer
+    extends Composer<_$PakPerkDatabase, $CachedVersionArtifactsTable> {
+  $$CachedVersionArtifactsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get accountId => $composableBuilder(
+    column: $table.accountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get paperId => $composableBuilder(
+    column: $table.paperId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get cacheKey => $composableBuilder(
+    column: $table.cacheKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get fetchedAt => $composableBuilder(
+    column: $table.fetchedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get expiresAt => $composableBuilder(
+    column: $table.expiresAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CachedVersionArtifactsTableAnnotationComposer
+    extends Composer<_$PakPerkDatabase, $CachedVersionArtifactsTable> {
+  $$CachedVersionArtifactsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<String> get paperId =>
+      $composableBuilder(column: $table.paperId, builder: (column) => column);
+
+  GeneratedColumn<String> get cacheKey =>
+      $composableBuilder(column: $table.cacheKey, builder: (column) => column);
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get fetchedAt =>
+      $composableBuilder(column: $table.fetchedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get expiresAt =>
+      $composableBuilder(column: $table.expiresAt, builder: (column) => column);
+}
+
+class $$CachedVersionArtifactsTableTableManager
+    extends
+        RootTableManager<
+          _$PakPerkDatabase,
+          $CachedVersionArtifactsTable,
+          CachedVersionArtifactRow,
+          $$CachedVersionArtifactsTableFilterComposer,
+          $$CachedVersionArtifactsTableOrderingComposer,
+          $$CachedVersionArtifactsTableAnnotationComposer,
+          $$CachedVersionArtifactsTableCreateCompanionBuilder,
+          $$CachedVersionArtifactsTableUpdateCompanionBuilder,
+          (
+            CachedVersionArtifactRow,
+            BaseReferences<
+              _$PakPerkDatabase,
+              $CachedVersionArtifactsTable,
+              CachedVersionArtifactRow
+            >,
+          ),
+          CachedVersionArtifactRow,
+          PrefetchHooks Function()
+        > {
+  $$CachedVersionArtifactsTableTableManager(
+    _$PakPerkDatabase db,
+    $CachedVersionArtifactsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedVersionArtifactsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$CachedVersionArtifactsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$CachedVersionArtifactsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> accountId = const Value.absent(),
+                Value<String> paperId = const Value.absent(),
+                Value<String> cacheKey = const Value.absent(),
+                Value<String> payloadJson = const Value.absent(),
+                Value<DateTime> fetchedAt = const Value.absent(),
+                Value<DateTime> expiresAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CachedVersionArtifactsCompanion(
+                accountId: accountId,
+                paperId: paperId,
+                cacheKey: cacheKey,
+                payloadJson: payloadJson,
+                fetchedAt: fetchedAt,
+                expiresAt: expiresAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String accountId,
+                required String paperId,
+                required String cacheKey,
+                required String payloadJson,
+                required DateTime fetchedAt,
+                required DateTime expiresAt,
+                Value<int> rowid = const Value.absent(),
+              }) => CachedVersionArtifactsCompanion.insert(
+                accountId: accountId,
+                paperId: paperId,
+                cacheKey: cacheKey,
+                payloadJson: payloadJson,
+                fetchedAt: fetchedAt,
+                expiresAt: expiresAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CachedVersionArtifactsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PakPerkDatabase,
+      $CachedVersionArtifactsTable,
+      CachedVersionArtifactRow,
+      $$CachedVersionArtifactsTableFilterComposer,
+      $$CachedVersionArtifactsTableOrderingComposer,
+      $$CachedVersionArtifactsTableAnnotationComposer,
+      $$CachedVersionArtifactsTableCreateCompanionBuilder,
+      $$CachedVersionArtifactsTableUpdateCompanionBuilder,
+      (
+        CachedVersionArtifactRow,
+        BaseReferences<
+          _$PakPerkDatabase,
+          $CachedVersionArtifactsTable,
+          CachedVersionArtifactRow
+        >,
+      ),
+      CachedVersionArtifactRow,
+      PrefetchHooks Function()
+    >;
 
 class $PakPerkDatabaseManager {
   final _$PakPerkDatabase _db;
@@ -12386,6 +26828,17 @@ class $PakPerkDatabaseManager {
       $$CachedChatsTableTableManager(_db, _db.cachedChats);
   $$LibraryItemsTableTableManager get libraryItems =>
       $$LibraryItemsTableTableManager(_db, _db.libraryItems);
+  $$LibraryCustomListsTableTableManager get libraryCustomLists =>
+      $$LibraryCustomListsTableTableManager(_db, _db.libraryCustomLists);
+  $$LibraryTagsTableTableManager get libraryTags =>
+      $$LibraryTagsTableTableManager(_db, _db.libraryTags);
+  $$LibraryListMembershipsTableTableManager get libraryListMemberships =>
+      $$LibraryListMembershipsTableTableManager(
+        _db,
+        _db.libraryListMemberships,
+      );
+  $$LibraryTagMembershipsTableTableManager get libraryTagMemberships =>
+      $$LibraryTagMembershipsTableTableManager(_db, _db.libraryTagMemberships);
   $$CommentDraftsTableTableManager get commentDrafts =>
       $$CommentDraftsTableTableManager(_db, _db.commentDrafts);
   $$BlockedUsersTableTableManager get blockedUsers =>
@@ -12396,4 +26849,28 @@ class $PakPerkDatabaseManager {
       $$LibrarySyncStatesTableTableManager(_db, _db.librarySyncStates);
   $$CacheMetadataTableTableManager get cacheMetadata =>
       $$CacheMetadataTableTableManager(_db, _db.cacheMetadata);
+  $$CachedDocumentArtifactsTableTableManager get cachedDocumentArtifacts =>
+      $$CachedDocumentArtifactsTableTableManager(
+        _db,
+        _db.cachedDocumentArtifacts,
+      );
+  $$ReadingCheckpointsTableTableManager get readingCheckpoints =>
+      $$ReadingCheckpointsTableTableManager(_db, _db.readingCheckpoints);
+  $$LocalAnnotationsTableTableManager get localAnnotations =>
+      $$LocalAnnotationsTableTableManager(_db, _db.localAnnotations);
+  $$AnnotationConflictsTableTableManager get annotationConflicts =>
+      $$AnnotationConflictsTableTableManager(_db, _db.annotationConflicts);
+  $$LocalEvidenceCardsTableTableManager get localEvidenceCards =>
+      $$LocalEvidenceCardsTableTableManager(_db, _db.localEvidenceCards);
+  $$LocalMemoryItemsTableTableManager get localMemoryItems =>
+      $$LocalMemoryItemsTableTableManager(_db, _db.localMemoryItems);
+  $$ResearchOutboxTableTableManager get researchOutbox =>
+      $$ResearchOutboxTableTableManager(_db, _db.researchOutbox);
+  $$ResearchSyncStatesTableTableManager get researchSyncStates =>
+      $$ResearchSyncStatesTableTableManager(_db, _db.researchSyncStates);
+  $$CachedVersionArtifactsTableTableManager get cachedVersionArtifacts =>
+      $$CachedVersionArtifactsTableTableManager(
+        _db,
+        _db.cachedVersionArtifacts,
+      );
 }

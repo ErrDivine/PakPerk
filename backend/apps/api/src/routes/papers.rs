@@ -2,10 +2,10 @@ use super::{
     ApiError, AppState, ConnectInfo, FulltextPolicy, HeaderMap, IntoResponse, Json, Path,
     PrepareBody, PublicRequestAction, RequestId, SocketAddr, State, StatusCode, Uuid,
     apply_processing_policy, apply_summary_policy, capability_not_ready, enforce_derived_policy,
-    enforce_public_request_limit, internal_db_error, invalid_arxiv_id, negative_exact_cache_ttl,
-    normalize_arxiv_id, observe_arxiv_result, paper_not_found,
+    enforce_public_request_limit, internal_db_error, paper_not_found, paper_resolution_error,
 };
 use crate::middleware::RequestPrincipal;
+use observability::{PreparationDecision, PreparationTriggerClass, record_preparation_decision};
 
 #[utoipa::path(get, path = "/v1/papers/{paper_id}", security((), ("oidcBearer" = [])), params(("paper_id" = Uuid, Path)), responses((status = 200, description = "Paper metadata", body = crate::openapi::PaperSummarySchema), (status = 404, description = "Paper not found", body = crate::openapi::ErrorEnvelopeSchema)))]
 pub(crate) async fn paper_metadata(
@@ -43,86 +43,15 @@ pub(crate) async fn paper_by_arxiv(
     Path(arxiv_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     let request_id = RequestId(principal.request_id);
-    let normalized = normalize_arxiv_id(&arxiv_id).map_err(|_| invalid_arxiv_id(request_id))?;
-    if let Some(paper) = state
-        .papers
-        .get_by_arxiv_base(&normalized.base_id)
+    let resolved = state
+        .paper_resolution
+        .resolve_exact(&arxiv_id)
         .await
-        .map_err(|error| internal_db_error(request_id, &error))?
-    {
-        let mut summary = state
-            .papers
-            .get_summary(paper.id)
-            .await
-            .map_err(|error| internal_db_error(request_id, &error))?
-            .ok_or_else(|| paper_not_found(request_id))?;
-        apply_summary_policy(
-            state.fulltext_policy,
-            paper.metadata.license_uri.as_ref(),
-            &mut summary,
-        );
-        return Ok((StatusCode::OK, Json(summary)));
-    }
-
-    let cache_key = format!("exact:{}", normalized.as_query_id());
-    let metadata = if let Some(mut cached) = state
-        .papers
-        .get_cached_arxiv(&cache_key)
-        .await
-        .map_err(|error| internal_db_error(request_id, &error))?
-    {
-        cached.pop()
-    } else {
-        state
-            .papers
-            .reserve_arxiv_request(state.arxiv_minimum_interval)
-            .await
-            .map_err(|error| internal_db_error(request_id, &error))?;
-        let outcome = state.arxiv.fetch_by_id(&normalized.as_query_id()).await;
-        let fetched = observe_arxiv_result(&state, request_id, outcome).await?;
-        match &fetched {
-            Some(metadata) => {
-                state
-                    .papers
-                    .put_cached_arxiv(
-                        &cache_key,
-                        "exact_id",
-                        std::slice::from_ref(metadata),
-                        state.arxiv_cache_ttl,
-                    )
-                    .await
-                    .map_err(|error| internal_db_error(request_id, &error))?;
-            }
-            None => {
-                state
-                    .papers
-                    .put_cached_arxiv(
-                        &cache_key,
-                        "exact_id",
-                        &[],
-                        negative_exact_cache_ttl(state.arxiv_cache_ttl),
-                    )
-                    .await
-                    .map_err(|error| internal_db_error(request_id, &error))?;
-            }
-        }
-        fetched
-    }
-    .ok_or_else(|| paper_not_found(request_id))?;
-    let paper = state
-        .papers
-        .upsert_metadata(&metadata)
-        .await
-        .map_err(|error| internal_db_error(request_id, &error))?;
-    let mut summary = state
-        .papers
-        .get_summary(paper.id)
-        .await
-        .map_err(|error| internal_db_error(request_id, &error))?
-        .ok_or_else(|| paper_not_found(request_id))?;
+        .map_err(|error| paper_resolution_error(request_id, &error))?;
+    let mut summary = resolved.summary;
     apply_summary_policy(
         state.fulltext_policy,
-        paper.metadata.license_uri.as_ref(),
+        resolved.license_uri.as_ref(),
         &mut summary,
     );
     Ok((StatusCode::OK, Json(summary)))
@@ -148,9 +77,13 @@ pub(crate) async fn prepare(
         principal.anonymous_session_id,
     )
     .await?;
+    record_preparation_decision(
+        preparation_trigger_class(body.trigger),
+        PreparationDecision::Approved,
+    );
     let mut result = state
         .papers
-        .prepare(paper_id, body.retry)
+        .prepare_with_trigger(paper_id, body.retry, body.trigger.into())
         .await
         .map_err(|error| internal_db_error(request_id, &error))?
         .ok_or_else(|| paper_not_found(request_id))?;
@@ -173,6 +106,22 @@ pub(crate) async fn prepare(
         StatusCode::ACCEPTED
     };
     Ok((status, Json(result.state)))
+}
+
+const fn preparation_trigger_class(
+    trigger: crate::dto::PublicPreparationTrigger,
+) -> PreparationTriggerClass {
+    match trigger {
+        crate::dto::PublicPreparationTrigger::IntroductionTransition => {
+            PreparationTriggerClass::IntroductionTransition
+        }
+        crate::dto::PublicPreparationTrigger::InspectEvidence => {
+            PreparationTriggerClass::InspectEvidence
+        }
+        crate::dto::PublicPreparationTrigger::ExplicitPrepare => {
+            PreparationTriggerClass::ExplicitPrepare
+        }
+    }
 }
 
 #[utoipa::path(get, path = "/v1/papers/{paper_id}/processing", security((), ("oidcBearer" = [])), params(("paper_id" = Uuid, Path)), responses((status = 200, description = "Processing state", body = crate::openapi::ProcessingStateSchema), (status = 404, description = "Paper not found", body = crate::openapi::ErrorEnvelopeSchema)))]

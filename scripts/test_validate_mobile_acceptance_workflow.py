@@ -368,28 +368,49 @@ class MobileAcceptanceWorkflowTests(unittest.TestCase):
     def test_required_scenario_removal_is_rejected(self) -> None:
         self.assert_tamper_rejected('                  "expired_token_refresh",\n', "")
 
-    def test_schema_v3_request_cannot_be_downgraded(self) -> None:
+    def test_schema_v6_request_cannot_be_downgraded(self) -> None:
         self.assert_tamper_rejected(
-            '          request = {\n              "schema": 3,\n',
-            '          request = {\n              "schema": 2,\n',
+            '          request = {\n              "schema": 6,\n',
+            '          request = {\n              "schema": 5,\n',
         )
 
-    def test_schema_v3_contract_count_cannot_be_changed(self) -> None:
+    def test_schema_v6_contract_count_cannot_be_changed(self) -> None:
+        for field, expected in (
+            ("scenario_count", 42),
+            ("assertion_count", 317),
+            ("metric_count", 254),
+        ):
+            with self.subTest(field=field):
+                self.assert_tamper_rejected(
+                    f'                  "{field}": {expected},\n',
+                    f'                  "{field}": {expected - 1},\n',
+                )
+
+    def test_schema_v6_contract_digest_cannot_be_changed(self) -> None:
         self.assert_tamper_rejected(
-            '                  "assertion_count": 141,\n',
-            '                  "assertion_count": 140,\n',
+            '                  "sha256": "7483820afc6b2111f4886177dd120e72ab8ca47164757ca1eda9e10f64d70ad5",\n',
+            '                  "sha256": "0483820afc6b2111f4886177dd120e72ab8ca47164757ca1eda9e10f64d70ad5",\n',
         )
 
-    def test_schema_v3_contract_digest_cannot_be_changed(self) -> None:
-        self.assert_tamper_rejected(
-            '                  "sha256": "f1a01b2ce342530d1a867fbe8c643ea3082d711bedbb725868171d76ee4198c4",\n',
-            '                  "sha256": "01a01b2ce342530d1a867fbe8c643ea3082d711bedbb725868171d76ee4198c4",\n',
-        )
+    def test_each_plan02_schema_v5_scenario_removal_is_rejected(self) -> None:
+        for scenario_id in (
+            "plan02_search_lookup_explore_saved_queries",
+            "plan02_research_profile_personalization",
+            "plan02_why_and_feedback",
+            "plan02_reading_brief_progress_authority",
+            "plan02_subscription_notification_safety",
+        ):
+            with self.subTest(scenario_id=scenario_id):
+                self.assert_tamper_rejected(
+                    f'                  "{scenario_id}",\n', ""
+                )
 
-    def test_new_schema_v3_scenario_removal_is_rejected(self) -> None:
-        self.assert_tamper_rejected(
-            '                  "physical_app_link_dispatch",\n', ""
-        )
+    def test_each_plan03_schema_v6_scenario_removal_is_rejected(self) -> None:
+        for scenario_id in validator.evidence.SCENARIO_IDS[-10:]:
+            with self.subTest(scenario_id=scenario_id):
+                self.assert_tamper_rejected(
+                    f'                  "{scenario_id}",\n', ""
+                )
 
     def test_cached_first_readable_p95_limit_cannot_be_weakened(self) -> None:
         original = (
@@ -411,6 +432,38 @@ class MobileAcceptanceWorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "exact performance metric rules"):
             validator._validate_semantic_contract(tampered)
 
+    def test_large_document_device_budget_cannot_be_weakened(self) -> None:
+        cases = (
+            (
+                '                      "large_document_minimum_frame_samples_per_device": '
+                '["min", 120, None],\n',
+                '["min", 119, None]',
+            ),
+            (
+                '                      "large_document_minimum_scroll_window_seconds_per_device": '
+                '["min", 30, None],\n',
+                '["min", 29, None]',
+            ),
+            (
+                '                      "large_document_peak_retained_blocks": '
+                '["range", 1, 2000],\n',
+                '["range", 1, 2001]',
+            ),
+            (
+                '                      "large_document_worst_device_scroll_frame_p95_us": '
+                '["range", 1, 16667],\n',
+                '["range", 1, 16668]',
+            ),
+        )
+        for original, weakened in cases:
+            with self.subTest(metric=original):
+                self.assertIn(original, SOURCE)
+                tampered = SOURCE.replace(original, weakened + "\n", 1)
+                with self.assertRaisesRegex(
+                    RuntimeError, "exact performance metric rules"
+                ):
+                    validator._validate_semantic_contract(tampered)
+
     def test_challenge_keyed_device_identity_contract_cannot_be_removed(self) -> None:
         self.assert_tamper_rejected(
             '              "device_identity_hash_contract": {\n',
@@ -421,6 +474,67 @@ class MobileAcceptanceWorkflowTests(unittest.TestCase):
         self.assert_tamper_rejected(
             '              "runner_session": runner_session_binding,\n',
             "",
+        )
+
+    def test_mobile_feature_evidence_cannot_be_removed_from_request(self) -> None:
+        self.assert_tamper_rejected(
+            '              "mobile_feature_evidence": mobile_feature_evidence,\n',
+            "",
+        )
+
+    def test_mobile_feature_evidence_digest_validation_cannot_be_weakened(
+        self,
+    ) -> None:
+        self.assert_tamper_rejected(
+            '              or len(mobile_feature_evidence["sha256"]) != 64\n',
+            '              or len(mobile_feature_evidence["sha256"]) != 32\n',
+        )
+
+    def test_mobile_feature_evidence_v6_cannot_be_downgraded(self) -> None:
+        self.assert_tamper_rejected(
+            '              or mobile_feature_evidence["schema"] != 6\n',
+            '              or mobile_feature_evidence["schema"] != 5\n',
+        )
+
+    def test_each_new_mobile_feature_flag_is_bound_into_request(self) -> None:
+        for key in (
+            "paperTitleSearch",
+            "libraryImportWrites",
+            "readingFeed",
+            "toReadFirstEnforcement",
+            "libraryV2",
+            "recommendations",
+            "recommendationEvents",
+            "searchLookup",
+            "searchExplore",
+            "savedQueries",
+            "researchProfiles",
+            "readingBriefs",
+            "subscriptions",
+            "notifications",
+            "deepReader",
+            "paperPassport",
+            "semanticFacets",
+            "documentVisualObjects",
+            "readingCheckpoints",
+            "annotations",
+            "evidenceCards",
+            "researchMemory",
+            "versionDiff",
+            "assistantV2",
+        ):
+            with self.subTest(key=key):
+                self.assert_tamper_rejected(
+                    f'                  "{key}",\n',
+                    f'                  "tampered{key}",\n',
+                )
+
+    def test_protected_acceptance_requires_new_mobile_features_enabled(
+        self,
+    ) -> None:
+        self.assert_tamper_rejected(
+            "                  mobile_feature_evidence[key] is not True\n",
+            "                  False\n",
         )
 
     def test_driver_output_redirection_cannot_be_removed(self) -> None:

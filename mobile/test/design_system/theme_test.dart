@@ -2,11 +2,63 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/design_system/colors.dart';
 import 'package:pakperk/design_system/elevation.dart';
+import 'package:pakperk/design_system/radii.dart';
 import 'package:pakperk/design_system/sizes.dart';
 import 'package:pakperk/design_system/skeleton.dart';
 import 'package:pakperk/design_system/theme.dart';
 
 void main() {
+  test('type scale defines every semantic role with optical spacing', () {
+    final light = PakPerkTheme.light();
+    final dark = PakPerkTheme.dark();
+    final lightText = light.textTheme;
+    final styles = <TextStyle?>[
+      lightText.displayLarge,
+      lightText.displayMedium,
+      lightText.displaySmall,
+      lightText.headlineLarge,
+      lightText.headlineMedium,
+      lightText.headlineSmall,
+      lightText.titleLarge,
+      lightText.titleMedium,
+      lightText.titleSmall,
+      lightText.bodyLarge,
+      lightText.bodyMedium,
+      lightText.bodySmall,
+      lightText.labelLarge,
+      lightText.labelMedium,
+      lightText.labelSmall,
+    ];
+
+    expect(styles, everyElement(isNotNull));
+    expect(lightText.displayLarge?.fontSize, 40);
+    expect(lightText.headlineMedium?.fontSize, 26);
+    expect(lightText.titleSmall?.fontSize, 15);
+    expect(lightText.bodySmall?.fontSize, 13);
+    expect(lightText.labelMedium?.fontSize, 13);
+
+    expect(lightText.displayLarge?.letterSpacing, lessThan(0));
+    expect(lightText.headlineMedium?.letterSpacing, lessThan(0));
+    expect(lightText.bodyLarge?.letterSpacing, 0);
+    expect(lightText.bodySmall?.letterSpacing, greaterThan(0));
+    expect(lightText.labelSmall?.letterSpacing, greaterThan(0));
+    expect(
+      lightText.displayLarge?.height,
+      lessThan(lightText.bodyLarge!.height!),
+    );
+    expect(lightText.bodyLarge?.height, greaterThan(1.4));
+    expect(
+      lightText.labelSmall?.letterSpacing,
+      lessThan(1),
+      reason: 'small uppercase labels should remain compact and readable',
+    );
+
+    expect(lightText.bodyLarge?.color, light.colorScheme.onSurface);
+    expect(lightText.bodySmall?.color, light.colorScheme.onSurfaceVariant);
+    expect(dark.textTheme.bodyLarge?.color, dark.colorScheme.onSurface);
+    expect(dark.textTheme.bodySmall?.color, dark.colorScheme.onSurfaceVariant);
+  });
+
   test('light and dark themes expose readable semantic surfaces', () {
     final light = PakPerkTheme.light();
     final dark = PakPerkTheme.dark();
@@ -111,14 +163,21 @@ void main() {
     }
   });
 
-  test('interactive component themes retain Material target sizes', () {
+  test('interactive component themes retain 48 point target sizes', () {
     final theme = PakPerkTheme.light();
     final states = <WidgetState>{};
 
-    expect(
-      theme.filledButtonTheme.style?.minimumSize?.resolve(states)?.height,
-      greaterThanOrEqualTo(PakPerkSizes.minimumInteractive),
-    );
+    for (final style in [
+      theme.elevatedButtonTheme.style,
+      theme.filledButtonTheme.style,
+      theme.outlinedButtonTheme.style,
+      theme.textButtonTheme.style,
+    ]) {
+      expect(
+        style?.minimumSize?.resolve(states)?.height,
+        greaterThanOrEqualTo(PakPerkSizes.minimumInteractive),
+      );
+    }
     expect(
       theme.iconButtonTheme.style?.minimumSize?.resolve(states),
       const Size.square(PakPerkSizes.minimumInteractive),
@@ -127,8 +186,101 @@ void main() {
       theme.navigationBarTheme.height,
       greaterThanOrEqualTo(PakPerkSizes.minimumInteractive),
     );
-    expect(theme.navigationBarTheme.elevation, PakPerkElevation.navigation);
+    expect(
+      theme.listTileTheme.minTileHeight,
+      greaterThanOrEqualTo(PakPerkSizes.minimumInteractive),
+    );
+    expect(theme.navigationBarTheme.elevation, PakPerkElevation.flat);
     expect(theme.dialogTheme.elevation, PakPerkElevation.modal);
+  });
+
+  test('component chrome is calm, tactile, and color-scheme aware', () {
+    final light = PakPerkTheme.light();
+    final dark = PakPerkTheme.dark();
+    final pressed = <WidgetState>{WidgetState.pressed};
+    final hovered = <WidgetState>{WidgetState.hovered};
+    final disabled = <WidgetState>{WidgetState.disabled};
+
+    for (final theme in [light, dark]) {
+      final semantic = theme.extension<PakPerkSemanticColors>()!;
+      final cardShape = theme.cardTheme.shape! as RoundedRectangleBorder;
+      final pressedOverlay = theme.textButtonTheme.style?.overlayColor?.resolve(
+        pressed,
+      );
+      final hoveredOverlay = theme.textButtonTheme.style?.overlayColor?.resolve(
+        hovered,
+      );
+
+      expect(theme.splashFactory, same(NoSplash.splashFactory));
+      expect(theme.splashColor, Colors.transparent);
+      expect(theme.highlightColor.a, greaterThan(0));
+      expect(theme.highlightColor.a, lessThan(.2));
+      expect(pressedOverlay, isNotNull);
+      expect(pressedOverlay!.a, lessThan(.1));
+      expect(hoveredOverlay, isNotNull);
+      expect(hoveredOverlay!.a, lessThan(pressedOverlay.a));
+      expect(
+        theme.textButtonTheme.style?.overlayColor?.resolve(disabled),
+        isNull,
+      );
+
+      expect(theme.appBarTheme.elevation, PakPerkElevation.flat);
+      expect(theme.appBarTheme.scrolledUnderElevation, PakPerkElevation.flat);
+      expect(theme.appBarTheme.surfaceTintColor, Colors.transparent);
+      expect(theme.appBarTheme.backgroundColor?.a, lessThan(1));
+      expect(
+        theme.appBarTheme.titleTextStyle?.fontSize,
+        theme.textTheme.titleMedium?.fontSize,
+      );
+      expect(
+        theme.appBarTheme.titleTextStyle?.fontWeight,
+        theme.textTheme.titleMedium?.fontWeight,
+      );
+      expect(
+        theme.appBarTheme.titleTextStyle?.color,
+        theme.textTheme.titleMedium?.color,
+      );
+
+      expect(theme.cardTheme.color, semantic.raisedPaper);
+      expect(theme.cardTheme.elevation, PakPerkElevation.flat);
+      expect(theme.cardTheme.surfaceTintColor, Colors.transparent);
+      expect(cardShape.borderRadius, PakPerkRadii.card);
+      expect(
+        cardShape.side.color,
+        theme.colorScheme.outlineVariant.withValues(
+          alpha: theme.brightness == Brightness.dark ? .82 : .72,
+        ),
+      );
+
+      expect(theme.navigationBarTheme.backgroundColor?.a, lessThan(1));
+      expect(theme.navigationBarTheme.surfaceTintColor, Colors.transparent);
+      expect(theme.navigationBarTheme.indicatorShape, isA<StadiumBorder>());
+      expect(
+        theme.navigationBarTheme.overlayColor?.resolve(pressed)?.a,
+        lessThan(.1),
+      );
+      expect(theme.navigationRailTheme.elevation, PakPerkElevation.flat);
+      expect(theme.navigationRailTheme.indicatorShape, isA<StadiumBorder>());
+
+      expect(
+        theme.listTileTheme.titleTextStyle?.fontSize,
+        theme.textTheme.bodyLarge?.fontSize,
+      );
+      expect(
+        theme.listTileTheme.subtitleTextStyle?.color,
+        theme.colorScheme.onSurfaceVariant,
+      );
+      expect(theme.listTileTheme.enableFeedback, isTrue);
+    }
+
+    expect(
+      light.appBarTheme.backgroundColor,
+      isNot(dark.appBarTheme.backgroundColor),
+    );
+    expect(
+      light.navigationBarTheme.backgroundColor,
+      isNot(dark.navigationBarTheme.backgroundColor),
+    );
   });
 
   test(

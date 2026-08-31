@@ -16,7 +16,12 @@ import '../core/auth/auth.dart';
 import '../core/cache/drift_local_store.dart';
 import '../core/comments/comment_cache_barrier.dart';
 import '../core/database/account_cache_dao.dart';
+import '../core/discovery_search/search_privacy_store.dart';
+import '../core/library/library_history_store.dart';
+import '../core/library/paper_import_draft_store.dart';
 import '../core/providers.dart';
+import '../core/reading_feed/reading_feed_page_cache.dart';
+import '../features/paper_reader/reader_navigation_controller.dart';
 import 'feature_flags.dart';
 import 'startup_controller.dart';
 
@@ -163,8 +168,10 @@ final authRepositoryProvider = Provider<AuthRepository>(
   ),
 );
 
-/// Clears only local rows whose lifecycle belongs to an account. Public paper
-/// metadata, feed windows, and reading restoration are deliberately untouched.
+/// Clears local state whose lifecycle belongs to an account. Public paper
+/// metadata, feed windows, and safe route references remain available, while
+/// per-reader mode/progress is cleared because the unscoped restoration record
+/// cannot prove which account owns it.
 final accountDataWriteBarrierProvider = Provider<AccountDataWriteBarrier>(
   (ref) => AccountDataWriteBarrier(),
 );
@@ -180,15 +187,43 @@ final accountOwnedDataClearerProvider = Provider<AccountOwnedDataClearer>((
 ) {
   return (accountId, invalidatedThroughEpoch) async {
     final store = await ref.read(localStoreWhenReadyProvider)();
-    if (store is! DriftLocalStore) return;
-    final accountCache = AccountCacheDao(store.database);
+    final accountCache = store is DriftLocalStore
+        ? AccountCacheDao(store.database)
+        : null;
+    final history = SharedPreferencesLibraryHistoryStore();
+    final importDrafts = SharedPreferencesPaperImportDraftStore();
+    final readingFeedPages = SharedPreferencesReadingFeedPageCache();
+    final privateSearch = SharedPreferencesSearchPrivacyStore();
+    final visualAssets = ref.read(visualAssetCacheProvider);
+    final restoration = ref.read(appRestorationControllerProvider.notifier);
     await ref
         .read(accountDataWriteBarrierProvider)
         .clear(
           accountId: accountId,
           invalidatedThroughEpoch: invalidatedThroughEpoch,
-          clearAccount: accountCache.clearAccountData,
-          clearAll: accountCache.clearAllAccountData,
+          clearAccount: (accountId) async {
+            await Future.wait<void>([
+              if (accountCache != null)
+                accountCache.clearAccountData(accountId),
+              history.clear(accountId),
+              importDrafts.clear(accountId),
+              readingFeedPages.clear(accountId),
+              privateSearch.clear(accountId),
+              visualAssets.clearAccount(accountId),
+              restoration.clearReaderStatesForAccountTransition(),
+            ]);
+          },
+          clearAll: () async {
+            await Future.wait<void>([
+              if (accountCache != null) accountCache.clearAllAccountData(),
+              history.clearAll(),
+              importDrafts.clearAll(),
+              readingFeedPages.clearAll(),
+              privateSearch.clearAll(),
+              visualAssets.clearAll(),
+              restoration.clearReaderStatesForAccountTransition(),
+            ]);
+          },
         );
   };
 });

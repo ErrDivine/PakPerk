@@ -142,6 +142,7 @@ final class _SharedLibraryServer implements LibraryRemoteDataSource {
     required String paperId,
     required String operationId,
     required int expectedAuthEpoch,
+    LibrarySaveSourceKind? saveSourceKind,
   }) => _mutate(
     paperId: paperId,
     operationId: operationId,

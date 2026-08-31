@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/models/reader_state.dart';
 import 'package:pakperk/features/paper_reader/reader_navigation_controller.dart';
+import 'package:pakperk/features/reader_modes/reader_mode.dart';
 
 import '../support/fakes.dart';
 
@@ -151,4 +154,81 @@ void main() {
     expect(newer.readerKey, isNot(current.readerKey));
     expect(feedReaderKey(newer.paper), isNot(feedReaderKey(current.paper)));
   });
+
+  test(
+    'account transition clears A reader state after an older write settles',
+    () async {
+      final readerKey = feedReaderKey(samplePaper);
+      final initial = AppRestorationState(
+        feedPaperId: samplePaper.paperId,
+        feedArxivId: samplePaper.arxivId,
+        routeStack: [
+          PaperRouteEntry(routeId: 'safe-public-route', paper: samplePaper),
+        ],
+        readerStates: {
+          readerKey: const ReaderNavigationState(
+            stageIndex: 1,
+            introductionOffset: 420,
+            depthMode: ReaderDepthMode.inspect,
+            checkpointBlockId: 'account-a-block',
+            checkpointScrollFraction: .67,
+          ),
+        },
+      );
+      final store = _FirstWriteGateStore()..restoration = initial;
+      final controller = AppRestorationController(
+        store: store,
+        initial: initial,
+      );
+
+      final staleWrite = controller.flush();
+      await store.firstWriteStarted.future;
+      final transition = controller.clearReaderStatesForAccountTransition();
+
+      expect(controller.state.readerStates, isEmpty);
+      expect(controller.state.routeStack.single.routeId, 'safe-public-route');
+      controller.updateReader(
+        readerKey,
+        (_) => const ReaderNavigationState(
+          introductionOffset: 999,
+          depthMode: ReaderDepthMode.read,
+          checkpointBlockId: 'late-account-a-block',
+        ),
+      );
+      expect(
+        controller.state.readerStates,
+        isEmpty,
+        reason: 'outgoing reader callbacks are dropped during cleanup',
+      );
+      store.releaseFirstWrite.complete();
+      await Future.wait([staleWrite, transition]);
+
+      expect(store.restoration.readerStates, isEmpty);
+      expect(store.restoration.routeStack.single.routeId, 'safe-public-route');
+      expect(
+        controller.state.readerState(readerKey),
+        isA<ReaderNavigationState>()
+            .having((value) => value.introductionOffset, 'offset', 0)
+            .having((value) => value.depthMode, 'mode', ReaderDepthMode.skim)
+            .having((value) => value.checkpointBlockId, 'block', isNull),
+      );
+      controller.dispose();
+    },
+  );
+}
+
+final class _FirstWriteGateStore extends MemoryLocalStore {
+  final Completer<void> firstWriteStarted = Completer<void>();
+  final Completer<void> releaseFirstWrite = Completer<void>();
+  var _writes = 0;
+
+  @override
+  Future<void> saveRestoration(AppRestorationState value) async {
+    _writes += 1;
+    if (_writes == 1) {
+      firstWriteStarted.complete();
+      await releaseFirstWrite.future;
+    }
+    await super.saveRestoration(value);
+  }
 }

@@ -98,6 +98,18 @@ class AccountCacheDao {
         await (database.delete(
           database.libraryItems,
         )..where((table) => table.accountId.equals(accountId))).go();
+        await (database.delete(
+          database.libraryListMemberships,
+        )..where((table) => table.accountId.equals(accountId))).go();
+        await (database.delete(
+          database.libraryTagMemberships,
+        )..where((table) => table.accountId.equals(accountId))).go();
+        await (database.delete(
+          database.libraryCustomLists,
+        )..where((table) => table.accountId.equals(accountId))).go();
+        await (database.delete(
+          database.libraryTags,
+        )..where((table) => table.accountId.equals(accountId))).go();
         await (database.delete(database.commentDrafts)..where(
               (table) =>
                   table.accountId.equals(accountId) | table.accountId.isNull(),
@@ -117,6 +129,33 @@ class AccountCacheDao {
         await (database.delete(
           database.librarySyncStates,
         )..where((table) => table.accountId.equals(accountId))).go();
+        await (database.delete(
+          database.cachedDocumentArtifacts,
+        )..where((table) => table.accountId.equals(accountId))).go();
+        await (database.delete(
+          database.readingCheckpoints,
+        )..where((table) => table.accountId.equals(accountId))).go();
+        await (database.delete(
+          database.localAnnotations,
+        )..where((table) => table.accountId.equals(accountId))).go();
+        await (database.delete(
+          database.annotationConflicts,
+        )..where((table) => table.accountId.equals(accountId))).go();
+        await (database.delete(
+          database.localEvidenceCards,
+        )..where((table) => table.accountId.equals(accountId))).go();
+        await (database.delete(
+          database.localMemoryItems,
+        )..where((table) => table.accountId.equals(accountId))).go();
+        await (database.delete(
+          database.researchOutbox,
+        )..where((table) => table.accountId.equals(accountId))).go();
+        await (database.delete(
+          database.researchSyncStates,
+        )..where((table) => table.accountId.equals(accountId))).go();
+        await (database.delete(
+          database.cachedVersionArtifacts,
+        )..where((table) => table.accountId.equals(accountId))).go();
         for (final row in affectedPapers) {
           final paperId = row.read(database.libraryItems.paperId);
           if (paperId != null) await _refreshPaperPin(paperId);
@@ -131,6 +170,10 @@ class AccountCacheDao {
       database.libraryItems,
     )..addColumns([database.libraryItems.paperId])).get();
     await database.delete(database.libraryItems).go();
+    await database.delete(database.libraryListMemberships).go();
+    await database.delete(database.libraryTagMemberships).go();
+    await database.delete(database.libraryCustomLists).go();
+    await database.delete(database.libraryTags).go();
     await database.delete(database.commentDrafts).go();
     await (database.delete(
       database.cachedCommentPages,
@@ -138,6 +181,15 @@ class AccountCacheDao {
     await database.delete(database.blockedUsers).go();
     await database.delete(database.syncOutbox).go();
     await database.delete(database.librarySyncStates).go();
+    await database.delete(database.cachedDocumentArtifacts).go();
+    await database.delete(database.readingCheckpoints).go();
+    await database.delete(database.localAnnotations).go();
+    await database.delete(database.annotationConflicts).go();
+    await database.delete(database.localEvidenceCards).go();
+    await database.delete(database.localMemoryItems).go();
+    await database.delete(database.researchOutbox).go();
+    await database.delete(database.researchSyncStates).go();
+    await database.delete(database.cachedVersionArtifacts).go();
     for (final row in affectedPapers) {
       final paperId = row.read(database.libraryItems.paperId);
       if (paperId != null) await _refreshPaperPin(paperId);

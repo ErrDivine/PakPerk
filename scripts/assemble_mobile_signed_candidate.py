@@ -36,6 +36,121 @@ SAFE_NAME = re.compile(r"[A-Za-z0-9._+-]{1,255}")
 APPLE_TEAM_ID = re.compile(r"[A-Z0-9]{10}")
 ANDROID_FINGERPRINT = re.compile(r"(?:[A-F0-9]{2}:){31}[A-F0-9]{2}")
 
+MOBILE_FEATURE_EVIDENCE_KEYS = {
+    "schema",
+    "environment",
+    "accounts",
+    "library",
+    "comments",
+    "paperTitleSearch",
+    "libraryImportWrites",
+    "readingFeed",
+    "toReadFirstEnforcement",
+    "libraryV2",
+    "recommendations",
+    "recommendationEvents",
+    "searchLookup",
+    "searchExplore",
+    "savedQueries",
+    "researchProfiles",
+    "readingBriefs",
+    "subscriptions",
+    "notifications",
+    "deepReader",
+    "paperPassport",
+    "semanticFacets",
+    "documentVisualObjects",
+    "readingCheckpoints",
+    "annotations",
+    "evidenceCards",
+    "researchMemory",
+    "versionDiff",
+    "assistantV2",
+    "termsDocumentVersion",
+    "communityGuidelinesDocumentVersion",
+}
+MOBILE_FEATURE_CONFIG_KEYS = {
+    "accounts": "PAKPERK_ACCOUNTS_ENABLED",
+    "library": "PAKPERK_LIBRARY_ENABLED",
+    "comments": "PAKPERK_COMMENTS_ENABLED",
+    "paperTitleSearch": "PAKPERK_PAPER_TITLE_SEARCH_ENABLED",
+    "libraryImportWrites": "PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED",
+    "readingFeed": "PAKPERK_READING_FEED_ENABLED",
+    "toReadFirstEnforcement": "PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED",
+    "libraryV2": "PAKPERK_LIBRARY_V2_ENABLED",
+    "recommendations": "PAKPERK_RECOMMENDATIONS_ENABLED",
+    "recommendationEvents": "PAKPERK_RECOMMENDATION_EVENTS_ENABLED",
+    "searchLookup": "PAKPERK_SEARCH_LOOKUP_ENABLED",
+    "searchExplore": "PAKPERK_SEARCH_EXPLORE_ENABLED",
+    "savedQueries": "PAKPERK_SAVED_QUERIES_ENABLED",
+    "researchProfiles": "PAKPERK_RESEARCH_PROFILES_ENABLED",
+    "readingBriefs": "PAKPERK_READING_BRIEFS_ENABLED",
+    "subscriptions": "PAKPERK_SUBSCRIPTIONS_ENABLED",
+    "notifications": "PAKPERK_NOTIFICATIONS_ENABLED",
+    "deepReader": "PAKPERK_DEEP_READER_ENABLED",
+    "paperPassport": "PAKPERK_PAPER_PASSPORT_ENABLED",
+    "semanticFacets": "PAKPERK_SEMANTIC_FACETS_ENABLED",
+    "documentVisualObjects": "PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED",
+    "readingCheckpoints": "PAKPERK_READING_CHECKPOINTS_ENABLED",
+    "annotations": "PAKPERK_ANNOTATIONS_ENABLED",
+    "evidenceCards": "PAKPERK_EVIDENCE_CARDS_ENABLED",
+    "researchMemory": "PAKPERK_RESEARCH_MEMORY_ENABLED",
+    "versionDiff": "PAKPERK_VERSION_DIFF_ENABLED",
+    "assistantV2": "PAKPERK_ASSISTANT_V2_ENABLED",
+}
+MOBILE_FEATURE_BINDING_KEYS = (
+    "paperTitleSearch",
+    "libraryImportWrites",
+    "readingFeed",
+    "toReadFirstEnforcement",
+    "libraryV2",
+    "recommendations",
+    "recommendationEvents",
+    "searchLookup",
+    "searchExplore",
+    "savedQueries",
+    "researchProfiles",
+    "readingBriefs",
+    "subscriptions",
+    "notifications",
+    "deepReader",
+    "paperPassport",
+    "semanticFacets",
+    "documentVisualObjects",
+    "readingCheckpoints",
+    "annotations",
+    "evidenceCards",
+    "researchMemory",
+    "versionDiff",
+    "assistantV2",
+)
+MOBILE_FEATURE_DEPENDENCIES = (
+    ("library", ("accounts",)),
+    ("comments", ("accounts",)),
+    ("paperTitleSearch", ("accounts",)),
+    ("libraryImportWrites", ("accounts", "library")),
+    ("readingFeed", ("accounts", "library")),
+    ("toReadFirstEnforcement", ("readingFeed",)),
+    ("libraryV2", ("accounts", "library")),
+    ("recommendations", ("accounts", "library", "readingFeed")),
+    ("searchExplore", ("searchLookup",)),
+    ("savedQueries", ("accounts", "searchExplore")),
+    ("researchProfiles", ("accounts",)),
+    ("readingBriefs", ("readingFeed",)),
+    ("subscriptions", ("accounts", "library", "readingFeed")),
+    ("notifications", ("subscriptions",)),
+    ("deepReader", ("readingFeed", "toReadFirstEnforcement")),
+    ("paperPassport", ("deepReader",)),
+    ("semanticFacets", ("deepReader",)),
+    ("documentVisualObjects", ("deepReader",)),
+    ("readingCheckpoints", ("deepReader",)),
+    ("annotations", ("deepReader",)),
+    ("evidenceCards", ("annotations",)),
+    ("researchMemory", ("evidenceCards",)),
+    ("versionDiff", ("deepReader",)),
+    ("assistantV2", ("deepReader",)),
+)
+
 ANDROID_EVIDENCE = {
     "evidence/android-flutter-toolchain.json",
     "evidence/android-native.cdx.json",
@@ -358,6 +473,65 @@ def _transfer(arguments: argparse.Namespace, prefix: str) -> dict[str, Any]:
     return {"artifact_digest": artifact_digest, "artifact_id": int(artifact_id)}
 
 
+def _mobile_feature_evidence_binding(
+    *,
+    evidence: dict[str, Any],
+    config: dict[str, Any],
+    environment: str,
+    feature_sha256: str,
+) -> dict[str, Any]:
+    if set(evidence) != MOBILE_FEATURE_EVIDENCE_KEYS:
+        raise AssemblyError("prepared feature evidence is not the closed schema")
+    if type(evidence["schema"]) is not int or evidence["schema"] != 6:
+        raise AssemblyError("prepared feature evidence schema is not exactly 6")
+    if evidence["environment"] != environment:
+        raise AssemblyError("prepared feature evidence environment does not match")
+    if any(
+        type(evidence[key]) is not bool for key in MOBILE_FEATURE_CONFIG_KEYS
+    ):
+        raise AssemblyError("prepared feature evidence flags are not exact booleans")
+
+    expected: dict[str, Any] = {
+        "schema": 6,
+        "environment": environment,
+    }
+    for evidence_key, config_key in MOBILE_FEATURE_CONFIG_KEYS.items():
+        value = config.get(config_key)
+        if type(value) is not str or value not in {"true", "false"}:
+            raise AssemblyError("prepared mobile feature flag is not exactly true or false")
+        expected[evidence_key] = value == "true"
+    for evidence_key, config_key in (
+        ("termsDocumentVersion", "PAKPERK_TERMS_DOCUMENT_VERSION"),
+        (
+            "communityGuidelinesDocumentVersion",
+            "PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION",
+        ),
+    ):
+        value = config.get(config_key)
+        if (
+            type(value) is not str
+            or not value
+            or len(value.encode("utf-8")) > 128
+            or any(character in value for character in ("\x00", "\n", "\r"))
+        ):
+            raise AssemblyError("prepared mobile document version is invalid")
+        expected[evidence_key] = value
+    if evidence != expected:
+        raise AssemblyError("prepared feature evidence does not derive from config")
+
+    for feature, dependencies in MOBILE_FEATURE_DEPENDENCIES:
+        if expected[feature] and any(
+            not expected[dependency] for dependency in dependencies
+        ):
+            raise AssemblyError("prepared mobile feature dependency graph is invalid")
+
+    return {
+        "schema": 6,
+        "sha256": feature_sha256,
+        **{key: evidence[key] for key in MOBILE_FEATURE_BINDING_KEYS},
+    }
+
+
 def _expected_boundary(
     *, prepared: dict[str, Any], config_sha256: str, feature_sha256: str
 ) -> dict[str, Any]:
@@ -464,6 +638,16 @@ def assemble(arguments: argparse.Namespace) -> tuple[str, str]:
     config, _ = _parse_json(prepared["mobile-release-config.json"], "prepared config")
     if config.get("PAKPERK_ENV") != environment:
         raise AssemblyError("prepared config environment does not match")
+    feature_evidence, _ = _parse_json(
+        prepared["evidence/mobile-feature-flags.json"],
+        "prepared feature evidence",
+    )
+    mobile_feature_evidence = _mobile_feature_evidence_binding(
+        evidence=feature_evidence,
+        config=config,
+        environment=environment,
+        feature_sha256=feature_sha256,
+    )
 
     android_files = _safe_tree(arguments.android_root, "Android signer transfer")
     ios_files = _safe_tree(arguments.ios_root, "iOS signer transfer")
@@ -581,7 +765,8 @@ def assemble(arguments: argparse.Namespace) -> tuple[str, str]:
         "created_at": created_at,
         "environment": environment,
         "ios": ios,
-        "schema": 1,
+        "mobile_feature_evidence": mobile_feature_evidence,
+        "schema": 4,
         "source_revision": source_revision,
         "workflow": {
             "github_run_attempt": run_attempt,
@@ -602,8 +787,9 @@ def assemble(arguments: argparse.Namespace) -> tuple[str, str]:
         "classification": "protected signed mobile candidate",
         "environment": environment,
         "ios": ios,
+        "mobile_feature_evidence": mobile_feature_evidence,
         "provenance_id": provenance_id,
-        "schema": 1,
+        "schema": 4,
         "source_revision": source_revision,
         "strict_full_text": config.get("PAKPERK_FULLTEXT_POLICY") == "strict",
     }

@@ -54,6 +54,79 @@ EXPECTED_TOOLING = {
     "ruby_version": "3.4.10",
     "rubygems_version": "4.0.17",
 }
+MOBILE_FEATURE_EVIDENCE_KEYS = {
+    "schema",
+    "sha256",
+    "paperTitleSearch",
+    "libraryImportWrites",
+    "readingFeed",
+    "toReadFirstEnforcement",
+    "libraryV2",
+    "recommendations",
+    "recommendationEvents",
+    "searchLookup",
+    "searchExplore",
+    "savedQueries",
+    "researchProfiles",
+    "readingBriefs",
+    "subscriptions",
+    "notifications",
+    "deepReader",
+    "paperPassport",
+    "semanticFacets",
+    "documentVisualObjects",
+    "readingCheckpoints",
+    "annotations",
+    "evidenceCards",
+    "researchMemory",
+    "versionDiff",
+    "assistantV2",
+}
+MOBILE_FEATURE_FLAG_KEYS = (
+    "paperTitleSearch",
+    "libraryImportWrites",
+    "readingFeed",
+    "toReadFirstEnforcement",
+    "libraryV2",
+    "recommendations",
+    "recommendationEvents",
+    "searchLookup",
+    "searchExplore",
+    "savedQueries",
+    "researchProfiles",
+    "readingBriefs",
+    "subscriptions",
+    "notifications",
+    "deepReader",
+    "paperPassport",
+    "semanticFacets",
+    "documentVisualObjects",
+    "readingCheckpoints",
+    "annotations",
+    "evidenceCards",
+    "researchMemory",
+    "versionDiff",
+    "assistantV2",
+)
+MOBILE_FEATURE_DEPENDENCIES = (
+    ("toReadFirstEnforcement", ("readingFeed",)),
+    ("recommendations", ("readingFeed",)),
+    ("searchExplore", ("searchLookup",)),
+    ("savedQueries", ("searchExplore",)),
+    ("readingBriefs", ("readingFeed",)),
+    ("subscriptions", ("readingFeed",)),
+    ("notifications", ("subscriptions",)),
+    ("deepReader", ("readingFeed", "toReadFirstEnforcement")),
+    ("paperPassport", ("deepReader",)),
+    ("semanticFacets", ("deepReader",)),
+    ("documentVisualObjects", ("deepReader",)),
+    ("readingCheckpoints", ("deepReader",)),
+    ("annotations", ("deepReader",)),
+    ("evidenceCards", ("annotations",)),
+    ("researchMemory", ("evidenceCards",)),
+    ("versionDiff", ("deepReader",)),
+    ("assistantV2", ("deepReader",)),
+)
 
 
 class FinalizationError(ValueError):
@@ -156,6 +229,26 @@ def _safe(value: str, pattern: re.Pattern[str]) -> str:
     return value if type(value) is str and pattern.fullmatch(value) is not None else "invalid"
 
 
+def _mobile_feature_evidence(value: Any, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != MOBILE_FEATURE_EVIDENCE_KEYS:
+        raise FinalizationError(f"{label} key surface is invalid")
+    if type(value["schema"]) is not int or value["schema"] != 6:
+        raise FinalizationError(f"{label} schema is invalid")
+    if type(value["sha256"]) is not str or SHA256.fullmatch(value["sha256"]) is None:
+        raise FinalizationError(f"{label} digest is invalid")
+    if any(type(value[key]) is not bool for key in MOBILE_FEATURE_FLAG_KEYS):
+        raise FinalizationError(f"{label} flags are invalid")
+    return dict(value)
+
+
+def _validate_mobile_feature_dependencies(
+    value: dict[str, Any], label: str
+) -> None:
+    for feature, dependencies in MOBILE_FEATURE_DEPENDENCIES:
+        if value[feature] and any(not value[dependency] for dependency in dependencies):
+            raise FinalizationError(f"{label} dependency graph is invalid")
+
+
 def _artifact(
     artifact_id: str,
     digest: str,
@@ -247,6 +340,7 @@ def _validate_candidate(args: argparse.Namespace) -> dict[str, Any]:
         "classification",
         "environment",
         "ios",
+        "mobile_feature_evidence",
         "provenance_id",
         "schema",
         "source_revision",
@@ -259,21 +353,38 @@ def _validate_candidate(args: argparse.Namespace) -> dict[str, Any]:
         "created_at",
         "environment",
         "ios",
+        "mobile_feature_evidence",
         "schema",
         "source_revision",
         "workflow",
     }:
         raise FinalizationError("candidate manifest key surface is invalid")
+    candidate_mobile_feature_evidence = _mobile_feature_evidence(
+        candidate["mobile_feature_evidence"],
+        "candidate mobile feature evidence",
+    )
+    provenance_mobile_feature_evidence = _mobile_feature_evidence(
+        provenance["mobile_feature_evidence"],
+        "provenance mobile feature evidence",
+    )
+    if candidate_mobile_feature_evidence != provenance_mobile_feature_evidence:
+        raise FinalizationError(
+            "candidate mobile feature evidence does not match provenance"
+        )
+    _validate_mobile_feature_dependencies(
+        candidate_mobile_feature_evidence,
+        "candidate mobile feature evidence",
+    )
     android = candidate.get("android")
     ios = candidate.get("ios")
     if (
         candidate.get("classification") != "protected signed mobile candidate"
-        or candidate.get("schema") != 1
+        or candidate.get("schema") != 4
         or candidate.get("strict_full_text")
         is not (args.environment != "development")
         or provenance.get("classification")
         != "protected signed mobile release provenance"
-        or provenance.get("schema") != 1
+        or provenance.get("schema") != 4
         or type(provenance.get("created_at")) is not str
         or UTC_TIMESTAMP.fullmatch(provenance["created_at"]) is None
         or not isinstance(android, dict)

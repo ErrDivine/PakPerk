@@ -11,6 +11,8 @@ import 'package:pakperk/core/models/processing.dart';
 import 'package:pakperk/core/models/reader_state.dart';
 import 'package:pakperk/core/providers.dart';
 import 'package:pakperk/core/repository/paper_repository.dart';
+import 'package:pakperk/features/chat/chat_controller.dart';
+import 'package:pakperk/features/chat/chat_sheet.dart';
 import 'package:pakperk/features/paper_reader/paper_reader.dart';
 import 'package:pakperk/features/paper_reader/reader_navigation_controller.dart';
 
@@ -79,10 +81,65 @@ void registerDemoFlowTests() {
     await _pumpReader(tester, repository, readerKey);
     await _swipeReaderLeft(tester, readerKey);
 
-    final composer = find.byType(TextField).first;
-    await tester.enterText(composer, 'What method does this paper use?');
-    await tester.tap(find.byTooltip('Send question').first);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PaperReader)),
+    );
+    final chatArgs = ChatControllerArgs(
+      paperId: samplePaper.paperId,
+      readerKey: readerKey,
+    );
+    await _pumpUntil(tester, () {
+      final chat = container.read(chatControllerProvider(chatArgs));
+      return !chat.restoring && chat.generation == sampleProcessing.generation;
+    }, description: 'the paper chat generation to become authoritative');
+
+    await tester.tap(find.byType(TextField).first);
+    await _pumpUntil(
+      tester,
+      () => find.byType(PaperChatSheet).evaluate().isNotEmpty,
+      description: 'the paper chat sheet to open',
+    );
     await tester.pumpAndSettle();
+    final sheet = find.byType(PaperChatSheet);
+    final composer = find.descendant(
+      of: sheet,
+      matching: find.byType(TextField),
+    );
+    const question = 'What method does this paper use?';
+    // `WidgetTester.enterText` relies on a synthetic text-input channel that is
+    // not deterministic in profile mode. Seed the sheet's real controller;
+    // dispatch and rendering still travel through the visible send control.
+    final composerController = tester.widget<TextField>(composer).controller!;
+    composerController.value = const TextEditingValue(
+      text: question,
+      selection: TextSelection.collapsed(offset: question.length),
+    );
+    await tester.pump();
+    expect(tester.widget<TextField>(composer).controller?.text, question);
+    final sendTooltip = find.descendant(
+      of: sheet,
+      matching: find.byTooltip('Send question'),
+    );
+    final sendButton = find.ancestor(
+      of: sendTooltip,
+      matching: find.byType(IconButton),
+    );
+    await _pumpUntil(tester, () {
+      final buttons = tester.widgetList<IconButton>(sendButton).toList();
+      return buttons.length == 1 && buttons.single.onPressed != null;
+    }, description: 'the visible chat send button to become enabled');
+    await tester.tap(sendButton);
+    await tester.pump();
+    await _pumpUntil(
+      tester,
+      () => repository.chatCalls == 1,
+      description: 'the visible chat composer to dispatch its request',
+    );
+    await _pumpUntil(
+      tester,
+      () => find.text('It uses self-attention.').evaluate().isNotEmpty,
+      description: 'the grounded chat answer to appear',
+    );
 
     expect(find.text('It uses self-attention.'), findsOneWidget);
     expect(find.text('SOURCES'), findsOneWidget);
@@ -116,21 +173,20 @@ void registerDemoFlowTests() {
       connections: connections,
     );
     final readerKey = feedReaderKey(samplePaper);
-    await _pumpApp(
+    await _pumpApp(tester, repository);
+    await tester.tap(find.byKey(const ValueKey('stage-connections')));
+    await _pumpUntil(
       tester,
-      repository,
-      restoration: AppRestorationState(
-        readerStates: {
-          readerKey: const ReaderNavigationState(
-            stageIndex: 2,
-            connectionsOffset: 0,
-            prepareRequested: true,
-          ),
-        },
-      ),
+      () => find.text('A cited paper').evaluate().isNotEmpty,
+      description: 'the Connections stage to load',
     );
 
-    await tester.tap(find.text('A cited paper'));
+    final connectionTitle = find.text('A cited paper');
+    await tester.ensureVisible(connectionTitle);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.ancestor(of: connectionTitle, matching: find.byType(InkWell)).first,
+    );
     await tester.pumpAndSettle();
     final container = ProviderScope.containerOf(
       tester.element(find.byType(PakPerkApp)),
@@ -224,11 +280,7 @@ void registerDemoFlowTests() {
       findsOneWidget,
     );
 
-    await tester.fling(
-      find.byKey(ValueKey('paper-reader-$readerKey')),
-      const Offset(700, 0),
-      1200,
-    );
+    await _swipeReaderRight(tester, readerKey);
     await tester.pumpAndSettle();
     expect(find.text('ABSTRACT'), findsOneWidget);
   });
@@ -381,7 +433,9 @@ Future<void> _pumpReader(
       ),
     ),
   );
-  await tester.pump();
+  // Device/profile bindings may schedule the reader's initial async state over
+  // more than one frame. Wait until that work is quiescent before interacting.
+  await tester.pumpAndSettle();
 }
 
 Future<void> _swipeReaderLeft(
@@ -389,16 +443,52 @@ Future<void> _swipeReaderLeft(
   String readerKey, {
   bool settle = true,
 }) async {
-  await tester.fling(
-    find.byKey(ValueKey('paper-reader-$readerKey')),
-    const Offset(-700, 0),
-    1200,
-  );
+  await _swipeReader(tester, readerKey, direction: -1);
   if (settle) {
     await tester.pumpAndSettle();
   } else {
     await tester.pump(const Duration(milliseconds: 350));
   }
+}
+
+Future<void> _swipeReaderRight(WidgetTester tester, String readerKey) =>
+    _swipeReader(tester, readerKey, direction: 1);
+
+Future<void> _swipeReader(
+  WidgetTester tester,
+  String readerKey, {
+  required double direction,
+}) async {
+  final reader = find.byKey(ValueKey('paper-reader-$readerKey'));
+  final bounds = tester.getRect(reader);
+  final start = Offset(
+    direction < 0
+        ? bounds.left + bounds.width * 0.78
+        : bounds.left + bounds.width * 0.22,
+    bounds.center.dy,
+  );
+
+  // Keep the full gesture inside the viewport. The previous fixed 700-pixel
+  // fling left the bounds of phone-sized readers, so it did not exercise the
+  // same 1:1 drag path as a real finger on profile/device runtimes.
+  await tester.timedDragFrom(
+    start,
+    Offset(direction * bounds.width * 0.62, 0),
+    const Duration(milliseconds: 320),
+  );
+}
+
+Future<void> _pumpUntil(
+  WidgetTester tester,
+  bool Function() predicate, {
+  required String description,
+}) async {
+  const interval = Duration(milliseconds: 50);
+  for (var attempt = 0; attempt < 80; attempt += 1) {
+    if (predicate()) return;
+    await tester.pump(interval);
+  }
+  fail('Timed out waiting for $description.');
 }
 
 PaperProcessingState _processing(

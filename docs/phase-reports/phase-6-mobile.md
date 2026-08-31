@@ -164,27 +164,29 @@ preparation, Android/iOS signing, credential-free assembly, uncredentialed
 store-client bootstrap, Android/iOS upload, and credential-free finalization.
 It binds the iOS leaf certificate to the provisioning profile and retains three
 distinct immutable candidate, store-handoff, and signed-release-outcome
-artifacts. Its workflow validator's 36 regressions, assembler's 8 tests,
-finalizer's 15 tests, authenticated-run verifier's 13 tests, and candidate
-   validator's 43 tests passed. The protected acceptance contract's 51 evidence
-   tests and 71 workflow-tamper tests also passed; schema v3 binds the exact
-   staging API, app-link, OIDC, and client coordinates through a schema-2 source
-   binding, an ephemeral root-owned runner session, four challenge-keyed
-   physical identities, 22 ordered scenarios, 141 assertions, and 78 integer
-   metrics—including the 1,500 ms cached first-readable-frame p95 and 700 ms
-   opening-transition limits. The added contract closes fresh-install guest/
-   arXiv handoff, post-death offline reading, cross-device tombstone, complete
-   comment/replay/report, invalid-refresh, app-link, signed-device protection,
-   cache-bound, and light/dark evidence gaps without claiming that a live run
-   occurred.
+artifacts. The current repository validators cover schema-v6 feature evidence,
+schema-v4 candidate/provenance manifests, and protected acceptance schema v6.
+The latter binds exact staging API, app-link, OIDC, and client coordinates
+through a schema-2 source binding, an ephemeral root-owned runner session, four
+challenge-keyed physical identities, 42 ordered scenarios, 317 assertions, and
+254 integer metrics—including the 1,500 ms cached first-readable-frame p95 and
+700 ms opening-transition limits. In addition to the baseline, To Read First,
+Add Paper, and Plan 02 paths, ten scenarios cover Plan 03 Deep Reader,
+Passport/facets/visuals, checkpoints, annotations/evidence, memory, version
+diff/re-anchoring, Assistant v2, and queue-safe large documents. This is a
+repository contract and does not claim that a live run occurred.
 
 ## Current-tree external verification still required
 
-- Exercise every schema-v3 marker, including fresh-install guest reading,
+- Exercise every schema-v6 marker, including fresh-install guest reading,
   canonical arXiv browser handoff, post-death offline cache, two-device removal,
   invalid refresh, cold/warm/running app links, signed-device data protection,
-  cache bounds, light/dark, runtime reduced motion, and 200% text on the required
-  physical roles.
+  cache bounds, light/dark, runtime reduced motion, 200% text, To Read First
+  queue/fail-closed/account-rollout transitions, and Add Paper exact/title/
+  retry/idempotency paths, and all ten Plan 03 scenarios on the required
+  physical roles. The repository now implements annotation import round-trip
+  and exact generation-bound diff page targets, but their markers still require
+  a passing protected signed-device run.
 - Run the protected signed-candidate workflow and protected four-device
   acceptance lane for the exact reviewed source and imported provenance.
 

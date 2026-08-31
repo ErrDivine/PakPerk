@@ -326,6 +326,46 @@ void main() {
     expect(cache.persistedPages, isEmpty);
   });
 
+  test(
+    'deactivation cancels public work before an auth-mode handoff',
+    () async {
+      final response = Completer<RepositoryValue<FeedPage>>();
+      final remote = _FakeRemote(handler: (_, __) => response.future);
+      final cache = _InMemoryFeedCache();
+      final coordinator = FeedPrefetchCoordinator(
+        remote: remote,
+        cache: cache,
+        scheduler: _ManualScheduler(),
+      );
+      addTearDown(coordinator.dispose);
+      final updates = <FeedPrefetchUpdate>[];
+      final subscription = coordinator.updates.listen(updates.add);
+      addTearDown(subscription.cancel);
+
+      final pending = coordinator.onCommittedPage(
+        index: 0,
+        items: List.generate(11, _paper),
+        nextCursor: 'public-cursor',
+      );
+      await _flushMicrotasks();
+      final cancellation = remote.calls.single.cancellation;
+
+      coordinator.deactivate();
+
+      expect(cancellation?.isCancelled, isTrue);
+      response.complete(
+        RepositoryValue(
+          value: FeedPage(items: [_paper(99)], nextCursor: null),
+          origin: DataOrigin.network,
+          offline: false,
+        ),
+      );
+      await pending;
+      expect(updates, isEmpty);
+      expect(cache.persistedPages, isEmpty);
+    },
+  );
+
   test('rapid A to B to A waits for the first A transport to unwind', () async {
     final firstResponse = Completer<RepositoryValue<FeedPage>>();
     final remote = _FakeRemote(

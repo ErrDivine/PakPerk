@@ -38,6 +38,14 @@ IMAGES = {
     },
 }
 RESTORE_DRILL_ID = digest("restore-drill")
+TO_READ_FIRST_FEATURE_KEYS = {
+    "paperResolution",
+    "paperTitleSearch",
+    "libraryImportWrites",
+    "readingFeed",
+    "toReadFirstEnforcement",
+}
+FEATURE_KEYS = set(evidence.FEATURE_KEYS)
 
 
 def release_contract(gate_ids: dict[str, str] | None = None) -> dict[str, object]:
@@ -45,17 +53,37 @@ def release_contract(gate_ids: dict[str, str] | None = None) -> dict[str, object
     if gate_ids is not None:
         approvals.update(gate_ids)
     approvals["restoreDrillId"] = RESTORE_DRILL_ID
-    return {
-        "schemaVersion": 1,
-        "environment": "production",
-        "features": {
+    approvals["deepReaderReleaseId"] = ""
+    features = dict.fromkeys(FEATURE_KEYS, False)
+    features.update(
+        {
             "accounts": True,
             "library": True,
             "libraryWrites": True,
+            "paperResolution": True,
+            "paperTitleSearch": True,
+            "libraryImportWrites": True,
+            "readingFeed": True,
+            "toReadFirstEnforcement": True,
             "comments": True,
             "commentCreation": True,
             "accountDeletion": True,
-        },
+            "libraryV2": True,
+            "researchProfiles": True,
+            "recommendations": True,
+            "recommendationEvents": True,
+            "searchLookup": True,
+            "searchExplore": True,
+            "savedQueries": True,
+            "readingBriefs": True,
+            "subscriptions": True,
+            "notifications": True,
+        }
+    )
+    return {
+        "schemaVersion": 1,
+        "environment": "production",
+        "features": features,
         "releaseEvidence": approvals,
         "alertPolicySha256": digest("alert-policy"),
         "images": copy.deepcopy(IMAGES),
@@ -69,8 +97,10 @@ def release_contract(gate_ids: dict[str, str] | None = None) -> dict[str, object
     }
 
 
-def binding() -> dict[str, object]:
-    contract = release_contract()
+def binding(
+    contract: dict[str, object] | None = None,
+) -> dict[str, object]:
+    contract = contract or release_contract()
     return {
         "source_revision": hashlib.sha1(b"production-source").hexdigest(),
         "target_environment": "production",
@@ -85,6 +115,60 @@ def binding() -> dict[str, object]:
         "mobile_version": "0.2.0",
         "mobile_build": 2,
     }
+
+
+def old_client_policy(
+    *,
+    strategy: str = "minimum_supported_version",
+    policy_binding: dict[str, object] | None = None,
+    adoption_threshold_basis_points: int | None = None,
+) -> dict[str, object]:
+    if strategy == "minimum_supported_version":
+        parameters = {
+            "minimum_mobile_version": "0.2.0",
+            "minimum_mobile_build": 2,
+            "enforcement_mechanism": "remote_configuration",
+        }
+        policy_evidence = {
+            "policy_record_sha256": digest("minimum-version-policy"),
+            "minimum_version_enforcement_sha256": digest(
+                "minimum-version-enforcement"
+            ),
+            "rollback_evidence_sha256": digest("minimum-version-rollback"),
+        }
+    elif strategy == "disable_legacy_account_library":
+        parameters = {
+            "legacy_maximum_mobile_version": "0.1.0",
+            "legacy_maximum_mobile_build": 1,
+            "account_access": "disabled",
+            "library_access": "disabled",
+        }
+        policy_evidence = {
+            "policy_record_sha256": digest("legacy-access-policy"),
+            "legacy_access_gate_sha256": digest("legacy-access-gate"),
+            "rollback_evidence_sha256": digest("legacy-access-rollback"),
+        }
+    else:
+        assert strategy == "advisory_until_adoption_threshold"
+        assert adoption_threshold_basis_points is not None
+        parameters = {
+            "adoption_threshold_basis_points": adoption_threshold_basis_points,
+            "minimum_observation_hours": 24,
+            "enforcement_claim": "advisory",
+        }
+        policy_evidence = {
+            "policy_record_sha256": digest("advisory-policy"),
+            "adoption_measurement_sha256": digest("adoption-measurement"),
+            "rollback_evidence_sha256": digest("advisory-rollback"),
+        }
+    return evidence.build_old_client_policy(
+        policy_binding or binding(),
+        strategy=strategy,
+        parameters=parameters,
+        policy_evidence=policy_evidence,
+        approved_at="2026-08-01T03:00:00Z",
+        protected_audit_reference=digest(f"{strategy}-approval"),
+    )
 
 
 def measurements(
@@ -187,9 +271,18 @@ def manifest_set() -> dict[str, dict[str, object]]:
     return {gate: manifests[gate] for gate in evidence.GATES}
 
 
-def rendered_manifest(manifests: dict[str, dict[str, object]]) -> bytes:
+def rendered_manifest(
+    manifests: dict[str, dict[str, object]],
+    contract: dict[str, object] | None = None,
+) -> bytes:
     gate_ids = {gate: manifests[gate]["content_id"] for gate in evidence.GATES}
-    contract = release_contract(gate_ids)
+    if contract is None:
+        contract = release_contract(gate_ids)
+    else:
+        contract = copy.deepcopy(contract)
+        approvals = contract["releaseEvidence"]
+        assert isinstance(approvals, dict)
+        approvals.update(gate_ids)
     canonical_contract = json.dumps(
         contract, allow_nan=False, ensure_ascii=True, separators=(",", ":"), sort_keys=True
     )
@@ -242,9 +335,9 @@ def rendered_manifest(manifests: dict[str, dict[str, object]]) -> bytes:
         f"  releaseContract.json: {json.dumps(canonical_contract, ensure_ascii=True)}",
     ]
     lines.extend(
-        f'  {gate}: "{gate_ids[gate]}"' for gate in evidence.GATES
+        f'  {key}: "{contract["releaseEvidence"][key]}"'
+        for key in (*evidence.GATES, "restoreDrillId", "deepReaderReleaseId")
     )
-    lines.append(f'  restoreDrillId: "{RESTORE_DRILL_ID}"')
     return ("\n".join(lines) + "\n").encode("ascii")
 
 
@@ -254,11 +347,18 @@ def digest_bytes(value: bytes) -> str:
 
 def bundle_for(
     manifests: dict[str, dict[str, object]],
-) -> tuple[dict[str, object], bytes]:
+) -> tuple[dict[str, object], bytes, dict[str, object]]:
     gate_ids = {gate: manifests[gate]["content_id"] for gate in evidence.GATES}
     rendered = rendered_manifest(manifests)
-    deployment = evidence.validate_rendered_deployment(rendered, binding(), gate_ids)
-    return evidence.build_bundle(binding(), gate_ids, deployment), rendered
+    policy = old_client_policy()
+    deployment = evidence.validate_rendered_deployment(
+        rendered, binding(), gate_ids, policy
+    )
+    return (
+        evidence.build_bundle(binding(), gate_ids, deployment),
+        rendered,
+        policy,
+    )
 
 
 def set_measurement(
@@ -286,8 +386,8 @@ class ProductionApprovalEvidenceTest(unittest.TestCase):
         for gate in evidence.GATES:
             validated = evidence.validate_evidence(manifests[gate], expected_gate=gate)
             self.assertEqual(validated["binding"]["target_environment"], "production")
-        bundle, rendered = bundle_for(manifests)
-        validated = evidence.validate_predeploy(bundle, manifests)
+        bundle, rendered, policy = bundle_for(manifests)
+        validated = evidence.validate_predeploy(bundle, manifests, policy)
         self.assertEqual(tuple(validated), evidence.GATES)
         self.assertEqual(
             bundle["deployment"],
@@ -295,8 +395,355 @@ class ProductionApprovalEvidenceTest(unittest.TestCase):
                 rendered,
                 binding(),
                 {gate: manifests[gate]["content_id"] for gate in evidence.GATES},
+                policy,
             ),
         )
+
+    def test_release_features_are_exact_default_off_and_dependency_checked(
+        self,
+    ) -> None:
+        manifests = manifest_set()
+        gate_ids = {
+            gate: manifests[gate]["content_id"] for gate in evidence.GATES
+        }
+
+        default_off = release_contract(gate_ids)
+        default_off["features"] = dict.fromkeys(FEATURE_KEYS, False)
+        evidence.validate_rendered_deployment(
+            rendered_manifest(manifests, default_off),
+            binding(default_off),
+            gate_ids,
+        )
+        self.assertEqual(set(release_contract()["features"]), FEATURE_KEYS)
+
+        for key in FEATURE_KEYS:
+            with self.subTest(missing=key):
+                missing = release_contract(gate_ids)
+                features = missing["features"]
+                assert isinstance(features, dict)
+                features.pop(key)
+                with self.assertRaisesRegex(
+                    evidence.EvidenceError, "exact required keys"
+                ):
+                    evidence.validate_rendered_deployment(
+                        rendered_manifest(manifests, missing),
+                        binding(missing),
+                        gate_ids,
+                    )
+
+        extra = release_contract(gate_ids)
+        extra_features = extra["features"]
+        assert isinstance(extra_features, dict)
+        extra_features["unreviewedFeature"] = False
+        with self.assertRaisesRegex(evidence.EvidenceError, "exact required keys"):
+            evidence.validate_rendered_deployment(
+                rendered_manifest(manifests, extra), binding(extra), gate_ids
+            )
+
+        non_boolean = release_contract(gate_ids)
+        non_boolean_features = non_boolean["features"]
+        assert isinstance(non_boolean_features, dict)
+        non_boolean_features["readingFeed"] = "false"
+        with self.assertRaisesRegex(evidence.EvidenceError, "not boolean"):
+            evidence.validate_rendered_deployment(
+                rendered_manifest(manifests, non_boolean),
+                binding(non_boolean),
+                gate_ids,
+            )
+
+        invalid_feature_sets = {
+            "library without accounts": {"library": True},
+            "writes without library": {
+                "accounts": True,
+                "accountDeletion": True,
+                "libraryWrites": True,
+            },
+            "search without resolution": {
+                "accounts": True,
+                "accountDeletion": True,
+                "paperTitleSearch": True,
+            },
+            "search without accounts": {
+                "paperResolution": True,
+                "paperTitleSearch": True,
+            },
+            "import without library writes": {
+                "accounts": True,
+                "accountDeletion": True,
+                "library": True,
+                "paperResolution": True,
+                "libraryImportWrites": True,
+            },
+            "feed without library": {
+                "accounts": True,
+                "accountDeletion": True,
+                "readingFeed": True,
+            },
+            "enforcement without feed": {"toReadFirstEnforcement": True},
+            "comments without accounts": {"comments": True},
+            "creation without comments": {
+                "accounts": True,
+                "accountDeletion": True,
+                "commentCreation": True,
+            },
+            "deletion without accounts": {"accountDeletion": True},
+            "production accounts without deletion": {"accounts": True},
+            "library v2 without library": {
+                "accounts": True,
+                "accountDeletion": True,
+                "libraryV2": True,
+            },
+            "research profiles without accounts": {"researchProfiles": True},
+            "recommendations without feed": {
+                "accounts": True,
+                "accountDeletion": True,
+                "library": True,
+                "recommendations": True,
+            },
+            "explore without lookup": {"searchExplore": True},
+            "saved query without explore": {
+                "accounts": True,
+                "accountDeletion": True,
+                "savedQueries": True,
+            },
+            "brief without feed": {"readingBriefs": True},
+            "subscription without feed": {
+                "accounts": True,
+                "accountDeletion": True,
+                "library": True,
+                "subscriptions": True,
+            },
+            "notification without subscription": {"notifications": True},
+            "passport without deep reader": {"paperPassport": True},
+            "annotations without account": {
+                "deepReader": True,
+                "annotations": True,
+            },
+            "memory without annotations": {
+                "accounts": True,
+                "accountDeletion": True,
+                "deepReader": True,
+                "researchMemory": True,
+            },
+        }
+        for label, enabled in invalid_feature_sets.items():
+            with self.subTest(case=label):
+                invalid = release_contract(gate_ids)
+                invalid["features"] = {
+                    key: enabled.get(key, False) for key in FEATURE_KEYS
+                }
+                with self.assertRaisesRegex(
+                    evidence.EvidenceError, "feature dependencies"
+                ):
+                    evidence.validate_rendered_deployment(
+                        rendered_manifest(manifests, invalid),
+                        binding(invalid),
+                        gate_ids,
+                    )
+
+        deep_reader = release_contract(gate_ids)
+        deep_reader["features"] = dict.fromkeys(FEATURE_KEYS, False)
+        deep_reader["features"]["deepReader"] = True
+        with self.assertRaisesRegex(evidence.EvidenceError, "Deep Reader"):
+            evidence.validate_rendered_deployment(
+                rendered_manifest(manifests, deep_reader),
+                binding(deep_reader),
+                gate_ids,
+            )
+        deep_reader["releaseEvidence"]["deepReaderReleaseId"] = digest(
+            "complete-deep-reader-release-bundle"
+        )
+        evidence.validate_rendered_deployment(
+            rendered_manifest(manifests, deep_reader),
+            binding(deep_reader),
+            gate_ids,
+        )
+
+    def test_to_read_first_feature_tampering_breaks_approval_binding(
+        self,
+    ) -> None:
+        manifests = manifest_set()
+        gate_ids = {
+            gate: manifests[gate]["content_id"] for gate in evidence.GATES
+        }
+        prerequisites = {
+            "paperResolution": {},
+            "paperTitleSearch": {
+                "accounts": True,
+                "accountDeletion": True,
+                "paperResolution": True,
+            },
+            "libraryImportWrites": {
+                "accounts": True,
+                "accountDeletion": True,
+                "library": True,
+                "libraryWrites": True,
+                "paperResolution": True,
+            },
+            "readingFeed": {
+                "accounts": True,
+                "accountDeletion": True,
+                "library": True,
+            },
+            "toReadFirstEnforcement": {
+                "accounts": True,
+                "accountDeletion": True,
+                "library": True,
+                "readingFeed": True,
+            },
+        }
+        for key, required in prerequisites.items():
+            with self.subTest(feature=key):
+                baseline = release_contract(gate_ids)
+                baseline["features"] = {
+                    feature: required.get(feature, False)
+                    for feature in FEATURE_KEYS
+                }
+                changed = copy.deepcopy(baseline)
+                changed_features = changed["features"]
+                assert isinstance(changed_features, dict)
+                changed_features[key] = True
+                self.assertNotEqual(
+                    evidence.compute_release_configuration_id(baseline),
+                    evidence.compute_release_configuration_id(changed),
+                )
+                with self.assertRaisesRegex(
+                    evidence.EvidenceError, "release configuration"
+                ):
+                    evidence.validate_rendered_deployment(
+                        rendered_manifest(manifests, changed),
+                        binding(baseline),
+                        gate_ids,
+                    )
+
+    def test_old_client_policy_is_dormant_until_strict_enforcement(self) -> None:
+        manifests = manifest_set()
+        gate_ids = {
+            gate: manifests[gate]["content_id"] for gate in evidence.GATES
+        }
+        strict_rendered = rendered_manifest(manifests)
+        with self.assertRaisesRegex(
+            evidence.EvidenceError, "requires an approved old-client policy"
+        ):
+            evidence.validate_rendered_deployment(
+                strict_rendered, binding(), gate_ids
+            )
+
+        shadow = release_contract(gate_ids)
+        shadow_features = shadow["features"]
+        assert isinstance(shadow_features, dict)
+        shadow_features["toReadFirstEnforcement"] = False
+        deployment = evidence.validate_rendered_deployment(
+            rendered_manifest(manifests, shadow), binding(shadow), gate_ids
+        )
+        self.assertIs(deployment["to_read_first_enforcement"], False)
+        self.assertIsNone(deployment["old_client_policy_id"])
+
+        policies = [
+            old_client_policy(),
+            old_client_policy(strategy="disable_legacy_account_library"),
+            old_client_policy(
+                strategy="advisory_until_adoption_threshold",
+                adoption_threshold_basis_points=1,
+            ),
+        ]
+        for policy in policies:
+            with self.subTest(strategy=policy["strategy"]):
+                self.assertEqual(
+                    evidence.validate_old_client_policy(policy)["content_id"],
+                    policy["content_id"],
+                )
+                strict = evidence.validate_rendered_deployment(
+                    strict_rendered, binding(), gate_ids, policy
+                )
+                self.assertEqual(
+                    strict["old_client_policy_id"], policy["content_id"]
+                )
+                self.assertIs(strict["to_read_first_enforcement"], True)
+
+    def test_old_client_policy_is_closed_release_bound_and_tamper_evident(
+        self,
+    ) -> None:
+        policy = old_client_policy()
+
+        extra = copy.deepcopy(policy)
+        extra["parameters"]["unreviewed"] = False
+        extra["content_id"] = evidence.compute_old_client_policy_content_id(
+            extra
+        )
+        with self.assertRaisesRegex(evidence.EvidenceError, "exact required keys"):
+            evidence.validate_old_client_policy(extra)
+
+        tampered = copy.deepcopy(policy)
+        tampered["parameters"]["minimum_mobile_build"] = 1
+        tampered["content_id"] = evidence.compute_old_client_policy_content_id(
+            tampered
+        )
+        with self.assertRaisesRegex(evidence.EvidenceError, "not release-bound"):
+            evidence.validate_old_client_policy(
+                tampered, expected_content_id=policy["content_id"]
+            )
+
+        evidence_tampered = copy.deepcopy(policy)
+        evidence_tampered["evidence"]["rollback_evidence_sha256"] = digest(
+            "different-rollback-evidence"
+        )
+        evidence_tampered["content_id"] = (
+            evidence.compute_old_client_policy_content_id(evidence_tampered)
+        )
+        with self.assertRaisesRegex(evidence.EvidenceError, "not release-bound"):
+            evidence.validate_old_client_policy(
+                evidence_tampered, expected_content_id=policy["content_id"]
+            )
+
+        unapproved = copy.deepcopy(policy)
+        unapproved["approval"]["decision"] = "pending"
+        unapproved["content_id"] = evidence.compute_old_client_policy_content_id(
+            unapproved
+        )
+        with self.assertRaisesRegex(evidence.EvidenceError, "owner approval"):
+            evidence.validate_old_client_policy(unapproved)
+
+        wrong_release = copy.deepcopy(policy)
+        wrong_release["binding"]["mobile_build"] = 3
+        wrong_release["content_id"] = (
+            evidence.compute_old_client_policy_content_id(wrong_release)
+        )
+        with self.assertRaisesRegex(evidence.EvidenceError, "expected release"):
+            evidence.validate_old_client_policy(
+                wrong_release, expected_binding=binding()
+            )
+
+        advisory = old_client_policy(
+            strategy="advisory_until_adoption_threshold",
+            adoption_threshold_basis_points=1,
+        )
+        for invalid_threshold in (0, 10_001):
+            with self.subTest(threshold=invalid_threshold):
+                invalid = copy.deepcopy(advisory)
+                invalid["parameters"][
+                    "adoption_threshold_basis_points"
+                ] = invalid_threshold
+                invalid["content_id"] = (
+                    evidence.compute_old_client_policy_content_id(invalid)
+                )
+                with self.assertRaisesRegex(
+                    evidence.EvidenceError, "integer boundary"
+                ):
+                    evidence.validate_old_client_policy(invalid)
+
+        manifests = manifest_set()
+        bundle, _, bound_policy = bundle_for(manifests)
+        different_policy = old_client_policy(
+            strategy="disable_legacy_account_library"
+        )
+        with self.assertRaisesRegex(evidence.EvidenceError, "release-bound"):
+            evidence.validate_predeploy(
+                bundle, manifests, different_policy
+            )
+        with self.assertRaisesRegex(evidence.EvidenceError, "requires"):
+            evidence.validate_predeploy(bundle, manifests)
+        evidence.validate_predeploy(bundle, manifests, bound_policy)
 
     def test_duplicate_noncanonical_and_oversized_files_fail(self) -> None:
         valid = manifest_set()["legalReviewId"]
@@ -370,7 +817,7 @@ class ProductionApprovalEvidenceTest(unittest.TestCase):
         with self.assertRaises(evidence.EvidenceError):
             evidence.validate_evidence(reordered)
 
-        bundle, _ = bundle_for(manifests)
+        bundle, _, policy = bundle_for(manifests)
         rebound = copy.deepcopy(manifests)
         rebound["strictContentReviewId"] = copy.deepcopy(
             rebound["strictContentReviewId"]
@@ -380,13 +827,13 @@ class ProductionApprovalEvidenceTest(unittest.TestCase):
             evidence.compute_evidence_content_id(rebound["strictContentReviewId"])
         )
         with self.assertRaises(evidence.EvidenceError):
-            evidence.validate_predeploy(bundle, rebound)
+            evidence.validate_predeploy(bundle, rebound, policy)
 
         wrong_id = copy.deepcopy(bundle)
         wrong_id["gates"][0]["content_id"] = digest("wrong-legal-gate-id")
         wrong_id["content_id"] = evidence.compute_bundle_content_id(wrong_id)
         with self.assertRaises(evidence.EvidenceError):
-            evidence.validate_predeploy(wrong_id, manifests)
+            evidence.validate_predeploy(wrong_id, manifests, policy)
 
     def test_normalized_binding_breaks_cycle_and_render_tampering_fails(self) -> None:
         manifests = manifest_set()
@@ -396,14 +843,19 @@ class ProductionApprovalEvidenceTest(unittest.TestCase):
             evidence.compute_release_configuration_id(release_contract(gate_ids)),
         )
         rendered = rendered_manifest(manifests)
-        evidence.validate_rendered_deployment(rendered, binding(), gate_ids)
+        policy = old_client_policy()
+        evidence.validate_rendered_deployment(
+            rendered, binding(), gate_ids, policy
+        )
         tampered = rendered.replace(
             gate_ids["legalReviewId"].encode("ascii"),
             digest("wrong legal mirror").encode("ascii"),
             1,
         )
         with self.assertRaises(evidence.EvidenceError):
-            evidence.validate_rendered_deployment(tampered, binding(), gate_ids)
+            evidence.validate_rendered_deployment(
+                tampered, binding(), gate_ids, policy
+            )
 
         invalid_documents = {
             "wrong kind": rendered.replace(
@@ -451,7 +903,7 @@ class ProductionApprovalEvidenceTest(unittest.TestCase):
                 evidence.EvidenceError
             ):
                 evidence.validate_rendered_deployment(
-                    candidate, binding(), gate_ids
+                    candidate, binding(), gate_ids, policy
                 )
 
     def test_cli_validates_manifests_and_predeploy_bundle(self) -> None:
@@ -463,6 +915,7 @@ class ProductionApprovalEvidenceTest(unittest.TestCase):
         script = pathlib.Path(__file__).with_name("production_approval_evidence.py")
         rendered_path = self.directory / "rendered.yaml"
         rendered_path.write_bytes(rendered_manifest(manifests))
+        policy_path = self.write("old-client-policy.json", old_client_policy())
         one = subprocess.run(
             [
                 sys.executable,
@@ -476,6 +929,19 @@ class ProductionApprovalEvidenceTest(unittest.TestCase):
         )
         self.assertEqual(one.returncode, 0, one.stderr)
 
+        policy_checked = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "validate-old-client-policy",
+                str(policy_path),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(policy_checked.returncode, 0, policy_checked.stderr)
+
         bundle_path = self.directory / "predeploy.json"
         built = subprocess.run(
             [
@@ -485,6 +951,8 @@ class ProductionApprovalEvidenceTest(unittest.TestCase):
                 *assignments,
                 "--rendered-manifest",
                 str(rendered_path),
+                "--old-client-policy",
+                str(policy_path),
                 "--output",
                 str(bundle_path),
             ],
@@ -502,6 +970,8 @@ class ProductionApprovalEvidenceTest(unittest.TestCase):
                 *assignments,
                 "--rendered-manifest",
                 str(rendered_path),
+                "--old-client-policy",
+                str(policy_path),
             ],
             check=False,
             capture_output=True,

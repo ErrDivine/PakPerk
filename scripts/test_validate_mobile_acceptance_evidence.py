@@ -40,6 +40,38 @@ NOT_BEFORE = "2026-08-02T01:00:00Z"
 VALIDATED_AT = dt.datetime(2026, 8, 2, 2, 0, 30, tzinfo=dt.timezone.utc)
 RUNNER_SESSION_IDENTITY = "7" * 64
 RUNNER_HOST_IDENTITY = "8" * 64
+MOBILE_FEATURE_EVIDENCE_SHA256 = "5" * 64
+
+
+def valid_mobile_feature_evidence_binding() -> dict[str, object]:
+    return {
+        "schema": 6,
+        "sha256": MOBILE_FEATURE_EVIDENCE_SHA256,
+        "paperTitleSearch": True,
+        "libraryImportWrites": True,
+        "readingFeed": True,
+        "toReadFirstEnforcement": True,
+        "libraryV2": True,
+        "recommendations": True,
+        "recommendationEvents": True,
+        "searchLookup": True,
+        "searchExplore": True,
+        "savedQueries": True,
+        "researchProfiles": True,
+        "readingBriefs": True,
+        "subscriptions": True,
+        "notifications": True,
+        "deepReader": True,
+        "paperPassport": True,
+        "semanticFacets": True,
+        "documentVisualObjects": True,
+        "readingCheckpoints": True,
+        "annotations": True,
+        "evidenceCards": True,
+        "researchMemory": True,
+        "versionDiff": True,
+        "assistantV2": True,
+    }
 
 
 def valid_source_binding_payload() -> dict[str, object]:
@@ -58,13 +90,14 @@ def valid_source_binding_payload() -> dict[str, object]:
 
 def valid_provenance_payload() -> dict[str, object]:
     return {
-        "schema": 1,
+        "schema": 4,
         "classification": "protected signed mobile release provenance",
         "source_revision": SOURCE_REVISION,
         "environment": "staging",
         "app_version": APP_VERSION,
         "build_number": BUILD_NUMBER,
         "created_at": "2026-08-02T00:45:00Z",
+        "mobile_feature_evidence": valid_mobile_feature_evidence_binding(),
         "workflow": {
             "repository": "ErrDivine/PakPerk",
             "path": ".github/workflows/mobile-release.yml",
@@ -98,6 +131,9 @@ def provenance_binding() -> dict[str, object]:
     return {
         "manifest_id": PROVENANCE_ID,
         "workflow": copy.deepcopy(payload["workflow"]),
+        "mobile_feature_evidence": copy.deepcopy(
+            payload["mobile_feature_evidence"]
+        ),
         "android": copy.deepcopy(payload["android"]),
         "ios": copy.deepcopy(payload["ios"]),
     }
@@ -105,13 +141,14 @@ def provenance_binding() -> dict[str, object]:
 
 def valid_candidate_payload() -> dict[str, object]:
     return {
-        "schema": 1,
+        "schema": 4,
         "classification": "protected signed mobile candidate",
         "source_revision": SOURCE_REVISION,
         "environment": "staging",
         "app_version": APP_VERSION,
         "build_number": BUILD_NUMBER,
         "strict_full_text": True,
+        "mobile_feature_evidence": valid_mobile_feature_evidence_binding(),
         "provenance_id": PROVENANCE_ID,
         "android": {
             "aab_sha256": ANDROID_AAB_SHA256,
@@ -212,6 +249,7 @@ def candidate_binding(
     payload: Optional[object] = None,
     *,
     candidate_id: Optional[str] = None,
+    signed_provenance_binding: Optional[dict[str, object]] = None,
 ) -> dict[str, object]:
     if payload is None:
         payload = valid_candidate_payload()
@@ -224,7 +262,7 @@ def candidate_binding(
         source_revision=SOURCE_REVISION,
         candidate_id=candidate_id,
         provenance_id=PROVENANCE_ID,
-        provenance_binding=provenance_binding(),
+        provenance_binding=signed_provenance_binding or provenance_binding(),
         app_version=APP_VERSION,
         build_number=BUILD_NUMBER,
         android_signer_sha256=ANDROID_SIGNER_SHA256,
@@ -349,6 +387,7 @@ def valid_payload() -> dict[str, object]:
         "app_version": APP_VERSION,
         "build_number": BUILD_NUMBER,
         "environment": "staging",
+        "mobile_feature_evidence": valid_mobile_feature_evidence_binding(),
         "coordinates": {
             "api_origin": API_ORIGIN,
             "app_link_origin": APP_LINK_ORIGIN,
@@ -418,11 +457,11 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
     def test_complete_evidence_passes(self) -> None:
         self.validate(valid_payload())
 
-    def test_schema_v3_contract_totals_are_closed(self) -> None:
-        self.assertEqual(validator.EVIDENCE_SCHEMA_VERSION, 3)
-        self.assertEqual(validator.SCENARIO_COUNT, 22)
-        self.assertEqual(validator.ASSERTION_COUNT, 141)
-        self.assertEqual(validator.METRIC_COUNT, 78)
+    def test_schema_v6_contract_totals_are_closed(self) -> None:
+        self.assertEqual(validator.EVIDENCE_SCHEMA_VERSION, 6)
+        self.assertEqual(validator.SCENARIO_COUNT, 42)
+        self.assertEqual(validator.ASSERTION_COUNT, 317)
+        self.assertEqual(validator.METRIC_COUNT, 254)
         self.assertRegex(validator.SCENARIO_CONTRACT_SHA256, r"^[0-9a-f]{64}$")
 
     def test_owner_only_canonical_source_binding_passes(self) -> None:
@@ -534,7 +573,7 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
             candidate_binding(payload)
 
     def test_candidate_manifest_schema_requires_exact_integer(self) -> None:
-        for invalid_schema in (True, 1.0):
+        for invalid_schema in (3, True, 4.0):
             with self.subTest(schema=invalid_schema):
                 payload = valid_candidate_payload()
                 payload["schema"] = invalid_schema
@@ -557,9 +596,82 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(validator.EvidenceError, "signed provenance"):
             candidate_binding(payload)
 
+    def test_candidate_feature_evidence_must_match_signed_provenance(self) -> None:
+        for key in ("sha256", *validator.MOBILE_FEATURE_FLAG_KEYS):
+            with self.subTest(key=key):
+                payload = valid_candidate_payload()
+                feature_evidence = payload["mobile_feature_evidence"]
+                assert isinstance(feature_evidence, dict)
+                feature_evidence[key] = (
+                    "4" * 64
+                    if key == "sha256"
+                    else not feature_evidence[key]
+                )
+                with self.assertRaisesRegex(
+                    validator.EvidenceError, "does not match signed provenance"
+                ):
+                    candidate_binding(payload)
+
+    def test_protected_acceptance_requires_each_new_feature_enabled(self) -> None:
+        for key in validator.MOBILE_FEATURE_FLAG_KEYS:
+            with self.subTest(key=key):
+                payload = valid_candidate_payload()
+                feature_evidence = payload["mobile_feature_evidence"]
+                assert isinstance(feature_evidence, dict)
+                feature_evidence[key] = False
+                signed_binding = provenance_binding()
+                signed_feature_evidence = signed_binding["mobile_feature_evidence"]
+                assert isinstance(signed_feature_evidence, dict)
+                signed_feature_evidence[key] = False
+                with self.assertRaisesRegex(
+                    validator.EvidenceError, "must enable all new mobile features"
+                ):
+                    candidate_binding(
+                        payload,
+                        signed_provenance_binding=signed_binding,
+                    )
+
+    def test_provenance_feature_evidence_requires_closed_schema_and_booleans(
+        self,
+    ) -> None:
+        payload = valid_provenance_payload()
+        feature_evidence = payload["mobile_feature_evidence"]
+        assert isinstance(feature_evidence, dict)
+        feature_evidence["readingFeed"] = 1
+        with self.assertRaisesRegex(validator.EvidenceError, "exact booleans"):
+            load_provenance_payload(payload)
+
+        payload = valid_provenance_payload()
+        feature_evidence = payload["mobile_feature_evidence"]
+        assert isinstance(feature_evidence, dict)
+        feature_evidence["unreviewedFlag"] = True
+        with self.assertRaisesRegex(validator.EvidenceError, "closed key"):
+            load_provenance_payload(payload)
+
+        payload = valid_provenance_payload()
+        feature_evidence = payload["mobile_feature_evidence"]
+        assert isinstance(feature_evidence, dict)
+        feature_evidence["schema"] = 5
+        with self.assertRaisesRegex(validator.EvidenceError, "exact integer 6"):
+            load_provenance_payload(payload)
+
+    def test_each_bound_mobile_dependency_is_fail_closed(self) -> None:
+        for feature, dependencies in validator.MOBILE_FEATURE_DEPENDENCIES:
+            for dependency in dependencies:
+                with self.subTest(feature=feature, dependency=dependency):
+                    payload = valid_provenance_payload()
+                    feature_evidence = payload["mobile_feature_evidence"]
+                    assert isinstance(feature_evidence, dict)
+                    feature_evidence[feature] = True
+                    feature_evidence[dependency] = False
+                    with self.assertRaisesRegex(
+                        validator.EvidenceError, "dependency graph"
+                    ):
+                        load_provenance_payload(payload)
+
     def test_provenance_schema_requires_exact_integer(self) -> None:
         payload = valid_provenance_payload()
-        payload["schema"] = 1.0
+        payload["schema"] = 1
         with self.assertRaisesRegex(validator.EvidenceError, "exact integer"):
             load_provenance_payload(payload)
 
@@ -610,7 +722,7 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
             self.validate(payload)
 
     def test_evidence_schema_requires_exact_integer(self) -> None:
-        for invalid_schema in (2, True, 3.0):
+        for invalid_schema in (5, True, 6.0):
             with self.subTest(schema=invalid_schema):
                 payload = valid_payload()
                 payload["schema"] = invalid_schema
@@ -650,6 +762,22 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
         android["apk_sha256"] = "9" * 64
         with self.assertRaisesRegex(validator.EvidenceError, "candidate artifacts"):
             self.validate(payload)
+
+    def test_evidence_feature_binding_tamper_fails(self) -> None:
+        for key in ("sha256", *validator.MOBILE_FEATURE_FLAG_KEYS):
+            with self.subTest(key=key):
+                payload = valid_payload()
+                feature_evidence = payload["mobile_feature_evidence"]
+                assert isinstance(feature_evidence, dict)
+                feature_evidence[key] = (
+                    "4" * 64
+                    if key == "sha256"
+                    else not feature_evidence[key]
+                )
+                with self.assertRaisesRegex(
+                    validator.EvidenceError, "signed candidate"
+                ):
+                    self.validate(payload)
 
     def test_device_install_artifact_mismatch_fails(self) -> None:
         payload = valid_payload()
@@ -699,6 +827,94 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(validator.EvidenceError, "assertion evidence"):
             self.validate(payload)
 
+    def test_each_plan02_scenario_is_cross_platform(self) -> None:
+        for scenario_id in validator.SCENARIO_IDS[-15:-10]:
+            with self.subTest(scenario_id=scenario_id):
+                self.assertEqual(
+                    validator.SCENARIO_DEVICE_ROLES[scenario_id],
+                    ("android_gesture", "ios_home_indicator"),
+                )
+
+    def test_each_new_scenario_assertion_contract_fails_closed(self) -> None:
+        for scenario_id in validator.SCENARIO_IDS[-10:]:
+            for assertion_id in validator.SCENARIO_ASSERTIONS[scenario_id]:
+                with self.subTest(
+                    scenario_id=scenario_id,
+                    assertion_id=assertion_id,
+                ):
+                    payload = valid_payload()
+                    target = scenario(payload, scenario_id)
+                    assertions = target["assertions"]
+                    assert isinstance(assertions, list)
+                    assertions.remove(assertion_id)
+                    with self.assertRaisesRegex(
+                        validator.EvidenceError, "assertion evidence"
+                    ):
+                        self.validate(payload)
+
+    def test_each_new_scenario_metric_contract_fails_closed(self) -> None:
+        for scenario_id in validator.SCENARIO_IDS[-10:]:
+            for metric_name in validator.SCENARIO_METRIC_RULES[scenario_id]:
+                with self.subTest(
+                    scenario_id=scenario_id,
+                    metric_name=metric_name,
+                ):
+                    payload = valid_payload()
+                    target = scenario(payload, scenario_id)
+                    metrics = target["metrics"]
+                    assert isinstance(metrics, dict)
+                    metrics.pop(metric_name)
+                    with self.assertRaisesRegex(
+                        validator.EvidenceError, "closed key contract"
+                    ):
+                        self.validate(payload)
+
+    def test_new_fail_closed_zero_metrics_reject_one_observed_violation(self) -> None:
+        violations = {
+            "to_read_first_queue_authority": (
+                "recommendation_requests_before_confirmed_empty"
+            ),
+            "to_read_first_fail_closed_mutations": (
+                "recommendation_unlocks_before_final_remove_confirmation"
+            ),
+            "to_read_first_account_scope_rollout": "old_account_visible_frames",
+            "add_paper_exact_and_title_selection": "title_imports_before_selection",
+            "add_paper_failure_retry_idempotency": (
+                "operation_id_changes_during_retry"
+            ),
+            "plan02_search_lookup_explore_saved_queries": (
+                "lookup_library_mutations"
+            ),
+            "plan02_research_profile_personalization": (
+                "queue_mutations_from_profile_actions"
+            ),
+            "plan02_why_and_feedback": "active_library_seed_reasons",
+            "plan02_reading_brief_progress_authority": (
+                "recommendation_unlocks_before_queue_empty"
+            ),
+            "plan02_subscription_notification_safety": (
+                "discovery_deliveries_while_queue_active"
+            ),
+        }
+        for scenario_id, metric in violations.items():
+            with self.subTest(scenario_id=scenario_id, metric=metric):
+                payload = valid_payload()
+                target = scenario(payload, scenario_id)
+                metrics = target["metrics"]
+                assert isinstance(metrics, dict)
+                metrics[metric] = 1
+                with self.assertRaisesRegex(validator.EvidenceError, "required value"):
+                    self.validate(payload)
+
+    def test_add_paper_retained_raw_input_metric_fails_closed(self) -> None:
+        payload = valid_payload()
+        target = scenario(payload, "add_paper_failure_retry_idempotency")
+        metrics = target["metrics"]
+        assert isinstance(metrics, dict)
+        metrics["retained_raw_import_fields"] = 1
+        with self.assertRaisesRegex(validator.EvidenceError, "required value"):
+            self.validate(payload)
+
     def test_twenty_paper_threshold_fails_closed(self) -> None:
         payload = valid_payload()
         metrics = scenario(payload, "vertical_20_papers_latency")["metrics"]
@@ -714,6 +930,90 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
         metrics["cached_first_readable_frame_p95_ms"] = 1_500
         metrics["opening_transition_ms"] = 700
         self.validate(payload)
+
+    def test_large_document_device_budget_boundaries_pass(self) -> None:
+        payload = valid_payload()
+        metrics = scenario(
+            payload, "plan03_reader_queue_and_large_document_safety"
+        )["metrics"]
+        assert isinstance(metrics, dict)
+        metrics["large_document_peak_retained_blocks"] = (
+            validator.LARGE_DOCUMENT_MAX_RETAINED_BLOCKS
+        )
+        metrics["large_document_worst_device_first_page_ms"] = (
+            validator.LARGE_DOCUMENT_FIRST_PAGE_MAX_MS
+        )
+        metrics["large_document_worst_device_page_fetch_p95_ms"] = (
+            validator.LARGE_DOCUMENT_PAGE_FETCH_P95_MAX_MS
+        )
+        metrics["large_document_worst_device_scroll_frame_p95_us"] = (
+            validator.LARGE_DOCUMENT_SCROLL_FRAME_P95_MAX_US
+        )
+        metrics["large_document_worst_device_scroll_frame_max_us"] = (
+            validator.LARGE_DOCUMENT_SCROLL_FRAME_MAX_US
+        )
+        metrics[
+            "large_document_worst_device_missed_frame_ratio_basis_points"
+        ] = validator.LARGE_DOCUMENT_MISSED_FRAME_RATIO_MAX_BPS
+        metrics["large_document_worst_device_peak_rss_growth_mib"] = (
+            validator.LARGE_DOCUMENT_PEAK_RSS_GROWTH_MAX_MIB
+        )
+        metrics["large_document_worst_device_maximum_live_block_widgets"] = (
+            validator.LARGE_DOCUMENT_MAX_LIVE_BLOCK_WIDGETS
+        )
+        self.validate(payload)
+
+    def test_large_document_requires_sustained_per_device_samples(self) -> None:
+        cases = (
+            (
+                "large_document_minimum_page_fetch_samples_per_device",
+                validator.LARGE_DOCUMENT_MIN_PAGE_FETCH_SAMPLES - 1,
+            ),
+            (
+                "large_document_minimum_frame_samples_per_device",
+                validator.LARGE_DOCUMENT_MIN_FRAME_SAMPLES - 1,
+            ),
+            (
+                "large_document_minimum_scroll_window_seconds_per_device",
+                validator.LARGE_DOCUMENT_MIN_SCROLL_WINDOW_SECONDS - 1,
+            ),
+        )
+        for metric_name, invalid_value in cases:
+            with self.subTest(metric_name=metric_name):
+                payload = valid_payload()
+                metrics = scenario(
+                    payload, "plan03_reader_queue_and_large_document_safety"
+                )["metrics"]
+                assert isinstance(metrics, dict)
+                metrics[metric_name] = invalid_value
+                with self.assertRaises(validator.EvidenceError):
+                    self.validate(payload)
+
+    def test_large_document_aggregate_relationships_fail_closed(self) -> None:
+        cases = (
+            (
+                "large_document_minimum_pages_traversed_per_device",
+                validator.LARGE_DOCUMENT_MIN_PAGE_FETCH_SAMPLES + 1,
+            ),
+            (
+                "large_document_minimum_scroll_window_seconds_per_device",
+                validator.LARGE_DOCUMENT_MIN_FRAME_SAMPLES // 4 + 1,
+            ),
+            (
+                "large_document_worst_device_scroll_frame_p95_us",
+                2,
+            ),
+        )
+        for metric_name, invalid_value in cases:
+            with self.subTest(metric_name=metric_name):
+                payload = valid_payload()
+                metrics = scenario(
+                    payload, "plan03_reader_queue_and_large_document_safety"
+                )["metrics"]
+                assert isinstance(metrics, dict)
+                metrics[metric_name] = invalid_value
+                with self.assertRaises(validator.EvidenceError):
+                    self.validate(payload)
 
     def test_cached_first_readable_frame_p95_above_limit_fails_closed(self) -> None:
         payload = valid_payload()
@@ -749,7 +1049,7 @@ class MobileAcceptanceEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(validator.EvidenceError, "required value"):
             self.validate(payload)
 
-    def test_schema_v3_contract_family_boundaries_fail_closed(self) -> None:
+    def test_schema_v6_contract_family_boundaries_fail_closed(self) -> None:
         cases = (
             (
                 "two-device removal convergence",

@@ -27,6 +27,8 @@ void main() {
           readerKey: const ReaderNavigationState(
             stageIndex: 2,
             connectionsOffset: 125,
+            checkpointBlockId: 'account-a-private-block',
+            checkpointScrollFraction: .74,
           ),
         },
       );
@@ -37,6 +39,9 @@ void main() {
       expect(raw, isNot(contains(samplePaper.title)));
       expect(raw, isNot(contains(samplePaper.abstractText)));
       expect(raw, isNot(contains(samplePaper.authors.first)));
+      expect(raw, isNot(contains('account-a-private-block')));
+      expect(raw, isNot(contains('checkpoint_block_id')));
+      expect(raw, isNot(contains('checkpoint_scroll_fraction')));
       final json = Map<String, dynamic>.from(jsonDecode(raw) as Map);
       expect(json['format'], CompactRestorationRecord.format);
       expect(json['feed_ref'], {
@@ -59,6 +64,11 @@ void main() {
       expect(restored.routeReferences.single.routeId, 'route-1');
       expect(restored.readerStates[readerKey]?.stageIndex, 2);
       expect(restored.readerStates[readerKey]?.connectionsOffset, 125);
+      expect(restored.readerStates[readerKey]?.checkpointBlockId, isNull);
+      expect(
+        restored.readerStates[readerKey]?.checkpointScrollFraction,
+        isNull,
+      );
     },
   );
 
@@ -79,10 +89,13 @@ void main() {
             42,
           ],
           'reader_states': {
-            'valid-reader': const ReaderNavigationState(
-              stageIndex: 1,
-              introductionOffset: 88,
-            ).toJson(),
+            'valid-reader':
+                const ReaderNavigationState(
+                    stageIndex: 1,
+                    introductionOffset: 88,
+                  ).toJson()
+                  ..['checkpoint_block_id'] = 'legacy-account-a-block'
+                  ..['checkpoint_scroll_fraction'] = .91,
             'broken-reader': {'chat_sheet_open': 'not-a-bool'},
           },
         }),
@@ -98,6 +111,11 @@ void main() {
       expect(restored.routeStack.single.paper.paperId, samplePaper.paperId);
       expect(restored.readerStates.keys, ['valid-reader']);
       expect(restored.readerState('valid-reader').introductionOffset, 88);
+      expect(restored.readerState('valid-reader').checkpointBlockId, isNull);
+      expect(
+        restored.readerState('valid-reader').checkpointScrollFraction,
+        isNull,
+      );
     },
   );
 

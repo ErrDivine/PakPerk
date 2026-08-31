@@ -1,0 +1,290 @@
+{
+  "schema_version": "deep-reader-evaluation-v1",
+  "corpus_id": "deep-reader-synthetic-contract-v1",
+  "label_source": "repository_synthetic_assertions_not_human_ground_truth",
+  "label_sets": [
+    {
+      "label_set_id": "synthetic-structured-labels-v1",
+      "fixture_id": "synthetic-structured-paper-v1",
+      "blocks": [
+        {
+          "block_id": "block-introduction-heading",
+          "kind": "heading",
+          "section_path": ["section-introduction"],
+          "is_introduction": true,
+          "page": 1,
+          "source_locator_required": true
+        },
+        {
+          "block_id": "block-introduction-paragraph",
+          "kind": "paragraph",
+          "section_path": ["section-introduction"],
+          "is_introduction": true,
+          "page": 1,
+          "source_locator_required": true
+        },
+        {
+          "block_id": "block-methods-heading",
+          "kind": "heading",
+          "section_path": ["section-methods"],
+          "is_introduction": false,
+          "page": 2,
+          "source_locator_required": true
+        },
+        {
+          "block_id": "block-methods-paragraph",
+          "kind": "paragraph",
+          "section_path": ["section-methods"],
+          "is_introduction": false,
+          "page": 2,
+          "source_locator_required": true
+        },
+        {
+          "block_id": "block-figure-caption",
+          "kind": "figure_context",
+          "section_path": ["section-methods"],
+          "is_introduction": false,
+          "page": 2,
+          "source_locator_required": true
+        },
+        {
+          "block_id": "block-table-caption",
+          "kind": "table_context",
+          "section_path": ["section-methods"],
+          "is_introduction": false,
+          "page": 3,
+          "source_locator_required": true
+        },
+        {
+          "block_id": "block-equation-context",
+          "kind": "equation_context",
+          "section_path": ["section-methods"],
+          "is_introduction": false,
+          "page": 3,
+          "source_locator_required": true
+        }
+      ],
+      "citations": [
+        {
+          "mention_id": "citation-mention-1",
+          "source_block_id": "block-introduction-paragraph",
+          "target_id": "reference-b0"
+        }
+      ],
+      "passport_fields": [
+        {
+          "field_key": "research_question",
+          "expected_status": "supported",
+          "accepted_evidence_groups": [["block-introduction-paragraph"]]
+        },
+        {
+          "field_key": "contribution",
+          "expected_status": "inferred",
+          "accepted_evidence_groups": [["block-introduction-paragraph", "block-methods-paragraph"]]
+        },
+        {
+          "field_key": "method",
+          "expected_status": "supported",
+          "accepted_evidence_groups": [["block-methods-paragraph"]]
+        },
+        {
+          "field_key": "data_or_sample",
+          "expected_status": "not_applicable",
+          "accepted_evidence_groups": []
+        },
+        {
+          "field_key": "evaluation",
+          "expected_status": "supported",
+          "accepted_evidence_groups": [["block-methods-paragraph"]]
+        },
+        {
+          "field_key": "main_result",
+          "expected_status": "supported",
+          "accepted_evidence_groups": [["block-methods-paragraph"]]
+        },
+        {
+          "field_key": "limitations",
+          "expected_status": "not_found",
+          "accepted_evidence_groups": []
+        },
+        {
+          "field_key": "assumptions_scope",
+          "expected_status": "conflicting",
+          "accepted_evidence_groups": [["block-introduction-paragraph"], ["block-methods-paragraph"]]
+        },
+        {
+          "field_key": "code_resources",
+          "expected_status": "not_found",
+          "accepted_evidence_groups": []
+        },
+        {
+          "field_key": "publication_status",
+          "expected_status": "not_applicable",
+          "accepted_evidence_groups": []
+        }
+      ],
+      "assistant_cases": [
+        {
+          "case_id": "assistant-direct-fact",
+          "category": "direct_fact",
+          "retrieved_block_ids": ["block-introduction-paragraph"],
+          "expected_status": "supported",
+          "required_claims": [
+            {
+              "claim_id": "claim-direct-fact",
+              "accepted_evidence_groups": [["block-introduction-paragraph"]]
+            }
+          ],
+          "baseline_supported_claim_count": 1
+        },
+        {
+          "case_id": "assistant-method-detail",
+          "category": "method_detail",
+          "retrieved_block_ids": ["block-methods-heading", "block-methods-paragraph"],
+          "expected_status": "supported",
+          "required_claims": [
+            {
+              "claim_id": "claim-method-detail",
+              "accepted_evidence_groups": [["block-methods-paragraph"]]
+            }
+          ],
+          "baseline_supported_claim_count": 1
+        },
+        {
+          "case_id": "assistant-result-comparison",
+          "category": "result_comparison",
+          "retrieved_block_ids": ["block-methods-paragraph", "block-table-caption"],
+          "expected_status": "supported",
+          "required_claims": [
+            {
+              "claim_id": "claim-result-comparison",
+              "accepted_evidence_groups": [["block-methods-paragraph", "block-table-caption"]]
+            }
+          ],
+          "baseline_supported_claim_count": 1
+        },
+        {
+          "case_id": "assistant-limitation",
+          "category": "limitation",
+          "retrieved_block_ids": ["block-introduction-paragraph", "block-methods-paragraph"],
+          "expected_status": "not_found",
+          "required_claims": [],
+          "baseline_supported_claim_count": 0
+        },
+        {
+          "case_id": "assistant-unsupported",
+          "category": "unsupported_question",
+          "retrieved_block_ids": ["block-introduction-paragraph"],
+          "expected_status": "not_found",
+          "required_claims": [],
+          "baseline_supported_claim_count": 0
+        },
+        {
+          "case_id": "assistant-ambiguous",
+          "category": "ambiguous_question",
+          "retrieved_block_ids": ["block-introduction-paragraph", "block-methods-paragraph"],
+          "expected_status": "partial",
+          "required_claims": [
+            {
+              "claim_id": "claim-ambiguous-bounded",
+              "accepted_evidence_groups": [["block-methods-paragraph"]]
+            }
+          ],
+          "baseline_supported_claim_count": 1
+        },
+        {
+          "case_id": "assistant-figure-table",
+          "category": "figure_or_table",
+          "retrieved_block_ids": ["block-figure-caption", "block-table-caption"],
+          "expected_status": "supported",
+          "required_claims": [
+            {
+              "claim_id": "claim-visual-scope",
+              "accepted_evidence_groups": [["block-figure-caption"], ["block-table-caption"]]
+            }
+          ],
+          "baseline_supported_claim_count": 1
+        },
+        {
+          "case_id": "assistant-equation-symbol",
+          "category": "equation_or_symbol",
+          "retrieved_block_ids": ["block-equation-context"],
+          "expected_status": "supported",
+          "required_claims": [
+            {
+              "claim_id": "claim-equation-symbol",
+              "accepted_evidence_groups": [["block-equation-context"]]
+            }
+          ],
+          "baseline_supported_claim_count": 1
+        },
+        {
+          "case_id": "assistant-adversarial-prompt",
+          "category": "adversarial_prompt",
+          "retrieved_block_ids": ["block-introduction-paragraph", "block-methods-paragraph"],
+          "expected_status": "supported",
+          "required_claims": [
+            {
+              "claim_id": "claim-adversarial-grounded",
+              "accepted_evidence_groups": [["block-methods-paragraph"]]
+            }
+          ],
+          "baseline_supported_claim_count": 1
+        },
+        {
+          "case_id": "assistant-stale-generation",
+          "category": "stale_generation",
+          "retrieved_block_ids": [],
+          "expected_status": "rejected_stale_generation",
+          "required_claims": [],
+          "baseline_supported_claim_count": 0
+        },
+        {
+          "case_id": "assistant-conflicting-evidence",
+          "category": "conflicting_evidence",
+          "retrieved_block_ids": ["block-introduction-paragraph", "block-methods-paragraph"],
+          "expected_status": "partial",
+          "required_claims": [
+            {
+              "claim_id": "claim-conflict-preserved",
+              "accepted_evidence_groups": [["block-introduction-paragraph"], ["block-methods-paragraph"]]
+            }
+          ],
+          "baseline_supported_claim_count": 1
+        }
+      ],
+      "visual_objects": [
+        {
+          "object_id": "figure-1",
+          "kind": "figure",
+          "caption_id": "caption-figure-1",
+          "structure_sha256": null,
+          "page": 2,
+          "source_block_ids": ["block-figure-caption"]
+        },
+        {
+          "object_id": "table-1",
+          "kind": "table",
+          "caption_id": "caption-table-1",
+          "structure_sha256": "sha256:1c2799dd3eaa1dbf3d7b6be5165c7f9daf0cb3a0ddd774557511650476f25bab",
+          "page": 3,
+          "source_block_ids": ["block-table-caption"]
+        },
+        {
+          "object_id": "equation-1",
+          "kind": "equation",
+          "caption_id": "caption-equation-1",
+          "structure_sha256": null,
+          "page": 3,
+          "source_block_ids": ["block-equation-context"]
+        }
+      ]
+    }
+  ],
+  "protected_evidence": {
+    "human_domain": "not_ready",
+    "legal_review": "not_ready",
+    "live_model": "not_ready",
+    "signed_device": "not_ready"
+  }
+}

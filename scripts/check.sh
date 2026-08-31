@@ -138,6 +138,12 @@ python3 "$project_dir/scripts/test_production_approval_evidence.py"
 python3 "$project_dir/scripts/production_approval_evidence.py" --help >/dev/null
 python3 "$project_dir/scripts/test_deployment_binding_evidence.py"
 python3 "$project_dir/scripts/deployment_binding_evidence.py" --help >/dev/null
+python3 "$project_dir/scripts/test_deep_reader_release_evidence.py"
+python3 "$project_dir/scripts/deep_reader_release_evidence.py" --help >/dev/null
+python3 "$project_dir/scripts/test_deep_reader_evaluation.py"
+python3 "$project_dir/scripts/deep_reader_evaluation.py" --help >/dev/null
+python3 "$project_dir/scripts/test_deep_reader_rollout_docs.py"
+python3 "$project_dir/scripts/test_to_read_first_rollout_docs.py"
 python3 "$project_dir/scripts/test_protected_service_exercise_evidence.py"
 python3 "$project_dir/scripts/protected_service_exercise_evidence.py" --help >/dev/null
 python3 "$project_dir/scripts/test_validate_protected_service_exercise_workflow.py"
@@ -205,7 +211,14 @@ if command -v flutter >/dev/null 2>&1; then
         echo "PAKPERK_MOBILE_DEVICE_ID contains unsupported characters." >&2
         exit 2
       fi
-      flutter --no-version-check test integration_test/production_verification_test.dart \
+      flutter --no-version-check devices --machine \
+        >"$temporary_dir/flutter-devices.json"
+      python3 "$project_dir/scripts/validate_flutter_physical_device.py" \
+        "$temporary_dir/flutter-devices.json"
+      flutter --no-version-check drive \
+        --driver=test_driver/integration_test.dart \
+        --target=integration_test/production_verification_test.dart \
+        --flavor prod --dart-define-from-file=config/prod.json \
         --profile -d "$PAKPERK_MOBILE_DEVICE_ID"
     else
       echo "Physical-device verification NOT RUN. The deterministic production harness ran headlessly in flutter test; set PAKPERK_MOBILE_DEVICE_ID or dispatch mobile-device-integration for the device probe." >&2

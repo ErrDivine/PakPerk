@@ -35,6 +35,35 @@ class Fixture:
                 {
                     "PAKPERK_ENV": "production",
                     "PAKPERK_FULLTEXT_POLICY": "strict",
+                    "PAKPERK_ACCOUNTS_ENABLED": "true",
+                    "PAKPERK_LIBRARY_ENABLED": "true",
+                    "PAKPERK_COMMENTS_ENABLED": "false",
+                    "PAKPERK_PAPER_TITLE_SEARCH_ENABLED": "true",
+                    "PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED": "true",
+                    "PAKPERK_READING_FEED_ENABLED": "true",
+                    "PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED": "true",
+                    "PAKPERK_LIBRARY_V2_ENABLED": "true",
+                    "PAKPERK_RECOMMENDATIONS_ENABLED": "true",
+                    "PAKPERK_RECOMMENDATION_EVENTS_ENABLED": "true",
+                    "PAKPERK_SEARCH_LOOKUP_ENABLED": "true",
+                    "PAKPERK_SEARCH_EXPLORE_ENABLED": "true",
+                    "PAKPERK_SAVED_QUERIES_ENABLED": "true",
+                    "PAKPERK_RESEARCH_PROFILES_ENABLED": "true",
+                    "PAKPERK_READING_BRIEFS_ENABLED": "true",
+                    "PAKPERK_SUBSCRIPTIONS_ENABLED": "true",
+                    "PAKPERK_NOTIFICATIONS_ENABLED": "true",
+                    "PAKPERK_DEEP_READER_ENABLED": "true",
+                    "PAKPERK_PAPER_PASSPORT_ENABLED": "true",
+                    "PAKPERK_SEMANTIC_FACETS_ENABLED": "true",
+                    "PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED": "true",
+                    "PAKPERK_READING_CHECKPOINTS_ENABLED": "true",
+                    "PAKPERK_ANNOTATIONS_ENABLED": "true",
+                    "PAKPERK_EVIDENCE_CARDS_ENABLED": "true",
+                    "PAKPERK_RESEARCH_MEMORY_ENABLED": "true",
+                    "PAKPERK_VERSION_DIFF_ENABLED": "true",
+                    "PAKPERK_ASSISTANT_V2_ENABLED": "true",
+                    "PAKPERK_TERMS_DOCUMENT_VERSION": "2026-08-01",
+                    "PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION": "2026-08-01",
                 },
                 sort_keys=True,
             ).encode()
@@ -42,7 +71,44 @@ class Fixture:
         )
         self._write(
             self.prepared / "evidence/mobile-feature-flags.json",
-            b'{"schema":2}\n',
+            json.dumps(
+                {
+                    "schema": 6,
+                    "environment": "production",
+                    "accounts": True,
+                    "library": True,
+                    "comments": False,
+                    "paperTitleSearch": True,
+                    "libraryImportWrites": True,
+                    "readingFeed": True,
+                    "toReadFirstEnforcement": True,
+                    "libraryV2": True,
+                    "recommendations": True,
+                    "recommendationEvents": True,
+                    "searchLookup": True,
+                    "searchExplore": True,
+                    "savedQueries": True,
+                    "researchProfiles": True,
+                    "readingBriefs": True,
+                    "subscriptions": True,
+                    "notifications": True,
+                    "deepReader": True,
+                    "paperPassport": True,
+                    "semanticFacets": True,
+                    "documentVisualObjects": True,
+                    "readingCheckpoints": True,
+                    "annotations": True,
+                    "evidenceCards": True,
+                    "researchMemory": True,
+                    "versionDiff": True,
+                    "assistantV2": True,
+                    "termsDocumentVersion": "2026-08-01",
+                    "communityGuidelinesDocumentVersion": "2026-08-01",
+                },
+                indent=2,
+                sort_keys=True,
+            ).encode()
+            + b"\n",
         )
         self.config_sha256 = self._digest(
             self.prepared / "mobile-release-config.json"
@@ -161,6 +227,22 @@ class Fixture:
     def _digest(path: pathlib.Path) -> str:
         return hashlib.sha256(path.read_bytes()).hexdigest()
 
+    def replace_feature_evidence(self, value: object) -> None:
+        path = self.prepared / "evidence/mobile-feature-flags.json"
+        self._write(path, json.dumps(value, indent=2, sort_keys=True).encode() + b"\n")
+        self.feature_sha256 = self._digest(path)
+        self.arguments.feature_evidence_sha256 = self.feature_sha256
+        for root, platform in (
+            (self.android, "android"),
+            (self.ios, "ios"),
+        ):
+            boundary_path = (
+                root / f"evidence/{platform}-prepared-config-boundary.json"
+            )
+            boundary = json.loads(boundary_path.read_text(encoding="utf-8"))
+            boundary["featureEvidenceSha256"] = self.feature_sha256
+            self._write(boundary_path, assembler.canonical_json_bytes(boundary))
+
 
 class AssembleMobileSignedCandidateTests(unittest.TestCase):
     def fixture(self, directory: str) -> Fixture:
@@ -178,11 +260,121 @@ class AssembleMobileSignedCandidateTests(unittest.TestCase):
             candidate = json.loads(
                 (fixture.output / "evidence/mobile-candidate.json").read_text()
             )
+            provenance = json.loads(
+                (
+                    fixture.output / "evidence/mobile-release-provenance.json"
+                ).read_text()
+            )
             self.assertTrue(candidate["strict_full_text"])
+            self.assertEqual(candidate["schema"], 4)
+            self.assertEqual(provenance["schema"], 4)
+            expected_feature_binding = {
+                "schema": 6,
+                "sha256": fixture.feature_sha256,
+                "paperTitleSearch": True,
+                "libraryImportWrites": True,
+                "readingFeed": True,
+                "toReadFirstEnforcement": True,
+                "libraryV2": True,
+                "recommendations": True,
+                "recommendationEvents": True,
+                "searchLookup": True,
+                "searchExplore": True,
+                "savedQueries": True,
+                "researchProfiles": True,
+                "readingBriefs": True,
+                "subscriptions": True,
+                "notifications": True,
+                "deepReader": True,
+                "paperPassport": True,
+                "semanticFacets": True,
+                "documentVisualObjects": True,
+                "readingCheckpoints": True,
+                "annotations": True,
+                "evidenceCards": True,
+                "researchMemory": True,
+                "versionDiff": True,
+                "assistantV2": True,
+            }
+            self.assertEqual(
+                candidate["mobile_feature_evidence"], expected_feature_binding
+            )
+            self.assertEqual(
+                provenance["mobile_feature_evidence"], expected_feature_binding
+            )
             self.assertEqual(
                 candidate["android"]["aab_sha256"],
                 hashlib.sha256(b"aab").hexdigest(),
             )
+
+    def test_feature_evidence_schema_downgrade_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory)
+            path = fixture.prepared / "evidence/mobile-feature-flags.json"
+            value = json.loads(path.read_text(encoding="utf-8"))
+            value["schema"] = 5
+            fixture.replace_feature_evidence(value)
+            with self.assertRaisesRegex(assembler.AssemblyError, "exactly 6"):
+                assembler.assemble(fixture.arguments)
+
+    def test_each_bound_feature_flag_must_derive_from_prepared_config(self) -> None:
+        for key in assembler.MOBILE_FEATURE_BINDING_KEYS:
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as directory:
+                fixture = self.fixture(directory)
+                path = fixture.prepared / "evidence/mobile-feature-flags.json"
+                value = json.loads(path.read_text(encoding="utf-8"))
+                value[key] = not value[key]
+                fixture.replace_feature_evidence(value)
+                with self.assertRaisesRegex(assembler.AssemblyError, "derive from config"):
+                    assembler.assemble(fixture.arguments)
+
+    def test_feature_evidence_flags_require_exact_booleans(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory)
+            path = fixture.prepared / "evidence/mobile-feature-flags.json"
+            value = json.loads(path.read_text(encoding="utf-8"))
+            value["readingFeed"] = 1
+            fixture.replace_feature_evidence(value)
+            with self.assertRaisesRegex(assembler.AssemblyError, "exact booleans"):
+                assembler.assemble(fixture.arguments)
+
+    def test_every_mobile_feature_dependency_is_fail_closed(self) -> None:
+        for feature, _dependencies in assembler.MOBILE_FEATURE_DEPENDENCIES:
+            with self.subTest(feature=feature), tempfile.TemporaryDirectory() as directory:
+                fixture = self.fixture(directory)
+                config = json.loads(
+                    (fixture.prepared / "mobile-release-config.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                evidence = json.loads(
+                    (
+                        fixture.prepared / "evidence/mobile-feature-flags.json"
+                    ).read_text(encoding="utf-8")
+                )
+                for evidence_key, config_key in assembler.MOBILE_FEATURE_CONFIG_KEYS.items():
+                    config[config_key] = "false"
+                    evidence[evidence_key] = False
+                config_key = assembler.MOBILE_FEATURE_CONFIG_KEYS[feature]
+                config[config_key] = "true"
+                evidence[feature] = True
+                with self.assertRaisesRegex(
+                    assembler.AssemblyError, "dependency graph"
+                ):
+                    assembler._mobile_feature_evidence_binding(
+                        evidence=evidence,
+                        config=config,
+                        environment="production",
+                        feature_sha256="1" * 64,
+                    )
+
+    def test_feature_evidence_byte_tamper_is_rejected_by_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(directory)
+            path = fixture.prepared / "evidence/mobile-feature-flags.json"
+            path.write_bytes(path.read_bytes() + b" ")
+            with self.assertRaisesRegex(assembler.AssemblyError, "digest does not match"):
+                assembler.assemble(fixture.arguments)
 
     def test_upstream_ids_and_raw_digests_are_canonical_and_bound(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

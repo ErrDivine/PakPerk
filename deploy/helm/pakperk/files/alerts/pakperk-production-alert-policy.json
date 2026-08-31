@@ -130,6 +130,61 @@
         }
       },
       {
+        "id": "reading-feed-authority-unavailable",
+        "summary": "The production reading feed failed closed because queue authority could not be proven.",
+        "severity": "critical",
+        "notification": "page",
+        "owner": "service-on-call",
+        "runbook": "docs/runbooks/incident-response.md",
+        "signal": {
+          "input": "kubernetes-redacted-logs",
+          "kind": "log",
+          "name": "pakperk.static_message.count",
+          "aggregation": "sum_increase",
+          "filters": {
+            "body": "authenticated reading feed could not prove queue authority",
+            "code.namespace": "pakperk_api::routes::reading_feed",
+            "deployment.environment.name": "production",
+            "log.severity_text": "ERROR",
+            "service.name": "pakperk-backend-stdout"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 0,
+          "windowSeconds": 300,
+          "forSeconds": 60,
+          "missingData": "healthy"
+        }
+      },
+      {
+        "id": "recommendation-card-queue-leakage",
+        "summary": "A signed-in recommendation card was rendered without a proven-empty queue.",
+        "severity": "critical",
+        "notification": "page",
+        "owner": "service-on-call",
+        "runbook": "docs/runbooks/incident-response.md",
+        "signal": {
+          "input": "application-otlp",
+          "kind": "log",
+          "name": "pakperk.mobile.event.count",
+          "aggregation": "sum_increase",
+          "filters": {
+            "body": "recommendation_card_rendered",
+            "deployment.environment.name": "production",
+            "policy_consistent": "false",
+            "service.name": "pakperk-mobile"
+          }
+        },
+        "condition": {
+          "operator": "greater_than",
+          "threshold": 0,
+          "windowSeconds": 300,
+          "forSeconds": 60,
+          "missingData": "healthy"
+        }
+      },
+      {
         "id": "database-pool-saturation",
         "summary": "A production Pakperk database pool is saturated.",
         "severity": "critical",

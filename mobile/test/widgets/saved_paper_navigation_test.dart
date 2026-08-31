@@ -11,7 +11,7 @@ void main() {
     tester,
   ) async {
     final router = GoRouter(
-      initialLocation: PakPerkRoutes.youLibrary,
+      initialLocation: PakPerkRoutes.library,
       routes: [
         StatefulShellRoute.indexedStack(
           builder: (context, _, navigationShell) {
@@ -39,6 +39,10 @@ void main() {
                       NavigationDestination(
                         icon: Icon(Icons.book),
                         label: 'Read',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.local_library),
+                        label: 'Library',
                       ),
                       NavigationDestination(
                         icon: Icon(Icons.person),
@@ -71,18 +75,20 @@ void main() {
             StatefulShellBranch(
               routes: [
                 GoRoute(
+                  path: PakPerkRoutes.library,
+                  builder: (context, _) => FilledButton(
+                    onPressed: () =>
+                        openSavedPaperFromLibrary(context, samplePaper),
+                    child: const Text('Open saved paper'),
+                  ),
+                ),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
                   path: PakPerkRoutes.you,
                   builder: (_, __) => const Text('You'),
-                  routes: [
-                    GoRoute(
-                      path: 'library',
-                      builder: (context, _) => FilledButton(
-                        onPressed: () =>
-                            openSavedPaperFromLibrary(context, samplePaper),
-                        child: const Text('Open saved paper'),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
@@ -111,16 +117,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Open saved paper'), findsOneWidget);
-    expect(router.state.uri.path, PakPerkRoutes.youLibrary);
+    expect(router.state.uri.path, PakPerkRoutes.library);
     expect(_selectedDestination(tester), 1);
 
     await tester.tap(find.text('Open saved paper'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('You'));
+    await tester.tap(find.text('Library'));
     await tester.pumpAndSettle();
 
     expect(find.text('Open saved paper'), findsOneWidget);
-    expect(router.state.uri.path, PakPerkRoutes.youLibrary);
+    expect(router.state.uri.path, PakPerkRoutes.library);
     expect(_selectedDestination(tester), 1);
   });
 }

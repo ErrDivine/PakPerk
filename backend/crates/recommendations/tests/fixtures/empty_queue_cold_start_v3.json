@@ -1,0 +1,209 @@
+{
+  "schema_version": 3,
+  "fixture_id": "empty_queue_cold_start_v3",
+  "queue_decision": {
+    "active_count": 0,
+    "library_revision": 126,
+    "proven_empty": true
+  },
+  "profile": {
+    "personalization_enabled": true,
+    "categories": [],
+    "topics": [],
+    "authors": [],
+    "saved_query_matches": {},
+    "feedback_categories": [],
+    "inferred_categories": [],
+    "historical_seeds": []
+  },
+  "documents": [
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000201",
+      "arxiv_id": "2608.20001v1",
+      "title": "Cold Start Language Systems",
+      "authors": [
+        "Ari Bell"
+      ],
+      "primary_category": "cs.CL",
+      "topics": [
+        "language-systems"
+      ],
+      "embedding": [
+        1.0,
+        0.0
+      ],
+      "citation_neighbors": [],
+      "metadata_completeness": 1.0,
+      "published_at": "2026-08-18T12:00:00Z",
+      "relevance_grade": 3,
+      "cold_start": true
+    },
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000202",
+      "arxiv_id": "2608.20002v1",
+      "title": "Cold Start Learning Systems",
+      "authors": [
+        "Bao Chen"
+      ],
+      "primary_category": "cs.LG",
+      "topics": [
+        "learning-systems"
+      ],
+      "embedding": [
+        0.8,
+        0.2
+      ],
+      "citation_neighbors": [],
+      "metadata_completeness": 1.0,
+      "published_at": "2026-08-17T12:00:00Z",
+      "relevance_grade": 3,
+      "cold_start": true
+    },
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000203",
+      "arxiv_id": "2608.20003v1",
+      "title": "Cold Start Statistical Methods",
+      "authors": [
+        "Cyra Das"
+      ],
+      "primary_category": "stat.ML",
+      "topics": [
+        "statistical-methods"
+      ],
+      "embedding": [
+        0.6,
+        0.4
+      ],
+      "citation_neighbors": [],
+      "metadata_completeness": 1.0,
+      "published_at": "2026-08-16T12:00:00Z",
+      "relevance_grade": 2,
+      "cold_start": true
+    },
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000204",
+      "arxiv_id": "2608.20004v1",
+      "title": "Cold Start Optimization Methods",
+      "authors": [
+        "Dara Evans"
+      ],
+      "primary_category": "math.OC",
+      "topics": [
+        "optimization-methods"
+      ],
+      "embedding": [
+        0.4,
+        0.6
+      ],
+      "citation_neighbors": [],
+      "metadata_completeness": 1.0,
+      "published_at": "2026-08-15T12:00:00Z",
+      "relevance_grade": 2,
+      "cold_start": true
+    },
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000205",
+      "arxiv_id": "2608.20005v1",
+      "title": "Cold Start Quantum Methods",
+      "authors": [
+        "Emi Flores"
+      ],
+      "primary_category": "quant-ph",
+      "topics": [
+        "quantum-methods"
+      ],
+      "embedding": [
+        0.2,
+        0.8
+      ],
+      "citation_neighbors": [],
+      "metadata_completeness": 1.0,
+      "published_at": "2026-08-14T12:00:00Z",
+      "relevance_grade": 1,
+      "cold_start": true
+    },
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000206",
+      "arxiv_id": "2608.20006v1",
+      "title": "Cold Start Optical Methods",
+      "authors": [
+        "Fara Gupta"
+      ],
+      "primary_category": "physics.optics",
+      "topics": [
+        "optical-methods"
+      ],
+      "embedding": [
+        0.0,
+        1.0
+      ],
+      "citation_neighbors": [],
+      "metadata_completeness": 1.0,
+      "published_at": "2026-08-13T12:00:00Z",
+      "relevance_grade": 1,
+      "cold_start": true
+    }
+  ],
+  "expected_candidate_pool_ids": [
+    "00000000-0000-0000-0000-000000000201",
+    "00000000-0000-0000-0000-000000000202",
+    "00000000-0000-0000-0000-000000000203",
+    "00000000-0000-0000-0000-000000000204",
+    "00000000-0000-0000-0000-000000000205",
+    "00000000-0000-0000-0000-000000000206"
+  ],
+  "expected_unique_ranked_base_arxiv_ids": 5,
+  "expected_ranked_paper_ids": [
+    "00000000-0000-0000-0000-000000000201",
+    "00000000-0000-0000-0000-000000000202",
+    "00000000-0000-0000-0000-000000000203",
+    "00000000-0000-0000-0000-000000000204",
+    "00000000-0000-0000-0000-000000000205"
+  ],
+  "evaluation_k": 5,
+  "covered_cases": [
+    "cold_start_paper_cohort",
+    "cold_start_user",
+    "deterministic_recent_fallback",
+    "empty_profile",
+    "expected_candidate_pool",
+    "proven_empty_queue"
+  ],
+  "negative_feedback_paper_ids": [],
+  "resource_evaluation": {
+    "usage": {
+      "measurement_source": "injected",
+      "latency_micros": 5000,
+      "estimated_cost_microusd": 0,
+      "generator_invocations": 7,
+      "generator_document_work_units": 42,
+      "external_requests": 0
+    },
+    "budget": {
+      "max_latency_micros": 10000,
+      "max_estimated_cost_microusd": 0,
+      "max_generator_invocations": 7,
+      "max_generator_document_work_units": 42,
+      "max_external_requests": 0
+    }
+  },
+  "small_profile_change": {
+    "categories": [],
+    "topics": [],
+    "authors": []
+  },
+  "thresholds": {
+    "min_recall_at_k": 0.8,
+    "min_ndcg_at_k": 0.95,
+    "min_catalog_coverage": 0.8,
+    "min_topic_coverage": 0.8,
+    "min_intra_list_diversity": 0.9,
+    "min_novelty": 1.0,
+    "max_author_concentration": 0.2,
+    "max_category_concentration": 0.2,
+    "min_cold_start_coverage": 0.8,
+    "explanation_correctness": 1.0,
+    "negative_feedback_response": 1.0,
+    "min_ranking_stability": 1.0
+  }
+}

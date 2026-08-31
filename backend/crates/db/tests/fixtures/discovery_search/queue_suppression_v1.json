@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "initial_library_rows": 0,
+  "after_explicit_search_library_rows": 0,
+  "canonical_save_state": "inbox",
+  "expected_feed_mode": "to_read",
+  "expected_active_count": 1,
+  "recommendations_allowed": false,
+  "expected_processing_stage": "not_requested",
+  "expected_job_count": 0
+}

@@ -79,6 +79,19 @@ abstract final class PakPerkTheme {
     required PakPerkSkeletonTheme skeleton,
   }) {
     final textTheme = PakPerkTypography.textTheme(scheme);
+    final isDark = brightness == Brightness.dark;
+    final quietHighlight = scheme.onSurface.withValues(
+      alpha: isDark ? .12 : .07,
+    );
+    final quietFocus = scheme.primary.withValues(alpha: isDark ? .16 : .1);
+    final quietHover = scheme.primary.withValues(alpha: isDark ? .09 : .05);
+    final primaryOverlay = _quietOverlay(scheme.primary);
+    final chromeColor = semantic.raisedPaper.withValues(
+      alpha: isDark ? .96 : .94,
+    );
+    final subtleOutline = scheme.outlineVariant.withValues(
+      alpha: isDark ? .82 : .72,
+    );
     final inputBorder = OutlineInputBorder(
       borderRadius: PakPerkRadii.input,
       borderSide: BorderSide(color: scheme.outline),
@@ -92,16 +105,38 @@ abstract final class PakPerkTheme {
       canvasColor: semantic.paper,
       textTheme: textTheme,
       extensions: [semantic, skeleton],
-      splashFactory: InkSparkle.splashFactory,
+      splashFactory: NoSplash.splashFactory,
+      splashColor: Colors.transparent,
+      highlightColor: quietHighlight,
+      focusColor: quietFocus,
+      hoverColor: quietHover,
       visualDensity: VisualDensity.standard,
       materialTapTargetSize: MaterialTapTargetSize.padded,
+      appBarTheme: AppBarThemeData(
+        backgroundColor: chromeColor,
+        foregroundColor: scheme.onSurface,
+        elevation: PakPerkElevation.flat,
+        scrolledUnderElevation: PakPerkElevation.flat,
+        shadowColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        titleSpacing: 16,
+        toolbarHeight: 56,
+        titleTextStyle: textTheme.titleMedium,
+        toolbarTextStyle: textTheme.bodyMedium,
+        iconTheme: IconThemeData(color: scheme.onSurface, size: 22),
+        actionsIconTheme: IconThemeData(color: scheme.onSurface, size: 22),
+        actionsPadding: const EdgeInsetsDirectional.only(end: 4),
+      ),
       cardTheme: CardThemeData(
         color: semantic.raisedPaper,
+        shadowColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         elevation: PakPerkElevation.flat,
         margin: EdgeInsets.zero,
+        clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
           borderRadius: PakPerkRadii.card,
-          side: BorderSide(color: scheme.outline),
+          side: BorderSide(color: subtleOutline),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -120,61 +155,143 @@ abstract final class PakPerkTheme {
       dividerColor: scheme.outlineVariant,
       progressIndicatorTheme: ProgressIndicatorThemeData(color: scheme.primary),
       elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          minimumSize: const Size(0, PakPerkSizes.minimumInteractive),
-          textStyle: textTheme.labelLarge,
-          shape: const RoundedRectangleBorder(borderRadius: PakPerkRadii.input),
-        ),
+        style:
+            ElevatedButton.styleFrom(
+              minimumSize: const Size(0, PakPerkSizes.minimumInteractive),
+              textStyle: textTheme.labelLarge,
+              shape: const RoundedRectangleBorder(
+                borderRadius: PakPerkRadii.input,
+              ),
+            ).copyWith(
+              elevation: const WidgetStatePropertyAll(PakPerkElevation.flat),
+              overlayColor: primaryOverlay,
+              splashFactory: NoSplash.splashFactory,
+            ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           minimumSize: const Size(0, PakPerkSizes.minimumInteractive),
           textStyle: textTheme.labelLarge,
           shape: const RoundedRectangleBorder(borderRadius: PakPerkRadii.input),
-        ),
+        ).copyWith(splashFactory: NoSplash.splashFactory),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size(0, PakPerkSizes.minimumInteractive),
-          textStyle: textTheme.labelLarge,
-          shape: const RoundedRectangleBorder(borderRadius: PakPerkRadii.input),
-        ),
+        style:
+            OutlinedButton.styleFrom(
+              minimumSize: const Size(0, PakPerkSizes.minimumInteractive),
+              textStyle: textTheme.labelLarge,
+              side: BorderSide(color: scheme.outline.withValues(alpha: .84)),
+              shape: const RoundedRectangleBorder(
+                borderRadius: PakPerkRadii.input,
+              ),
+            ).copyWith(
+              overlayColor: primaryOverlay,
+              splashFactory: NoSplash.splashFactory,
+            ),
       ),
       textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
-          minimumSize: const Size(
-            PakPerkSizes.minimumInteractive,
-            PakPerkSizes.minimumInteractive,
-          ),
-          textStyle: textTheme.labelLarge,
-        ),
+        style:
+            TextButton.styleFrom(
+              minimumSize: const Size(
+                PakPerkSizes.minimumInteractive,
+                PakPerkSizes.minimumInteractive,
+              ),
+              textStyle: textTheme.labelLarge,
+              shape: const RoundedRectangleBorder(
+                borderRadius: PakPerkRadii.input,
+              ),
+            ).copyWith(
+              overlayColor: primaryOverlay,
+              splashFactory: NoSplash.splashFactory,
+            ),
       ),
-      iconButtonTheme: const IconButtonThemeData(
+      iconButtonTheme: IconButtonThemeData(
         style: ButtonStyle(
-          minimumSize: WidgetStatePropertyAll(
+          minimumSize: const WidgetStatePropertyAll(
             Size.square(PakPerkSizes.minimumInteractive),
           ),
+          shape: const WidgetStatePropertyAll(CircleBorder()),
+          overlayColor: primaryOverlay,
+          splashFactory: NoSplash.splashFactory,
         ),
+      ),
+      listTileTheme: ListTileThemeData(
+        minTileHeight: PakPerkSizes.minimumInteractive,
+        minVerticalPadding: 8,
+        minLeadingWidth: 24,
+        horizontalTitleGap: 12,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        shape: const RoundedRectangleBorder(borderRadius: PakPerkRadii.input),
+        iconColor: scheme.onSurfaceVariant,
+        textColor: scheme.onSurface,
+        selectedColor: scheme.primary,
+        selectedTileColor: scheme.primaryContainer.withValues(alpha: .52),
+        titleTextStyle: textTheme.bodyLarge?.copyWith(
+          fontWeight: FontWeight.w500,
+        ),
+        subtitleTextStyle: textTheme.bodyMedium?.copyWith(
+          color: scheme.onSurfaceVariant,
+        ),
+        leadingAndTrailingTextStyle: textTheme.labelMedium,
+        enableFeedback: true,
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: PakPerkSizes.navigationBarHeight,
-        elevation: PakPerkElevation.navigation,
-        backgroundColor: semantic.raisedPaper,
-        indicatorColor: scheme.primaryContainer,
+        elevation: PakPerkElevation.flat,
+        backgroundColor: chromeColor,
+        shadowColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: scheme.primaryContainer.withValues(alpha: .82),
+        indicatorShape: const StadiumBorder(),
+        overlayColor: primaryOverlay,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            color: selected ? scheme.primary : scheme.onSurfaceVariant,
+            size: 24,
+          );
+        }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return textTheme.labelMedium?.copyWith(
             color: selected ? scheme.primary : scheme.onSurfaceVariant,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            fontSize: 12,
+            letterSpacing: .1,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
           );
         }),
+      ),
+      navigationRailTheme: NavigationRailThemeData(
+        backgroundColor: chromeColor,
+        elevation: PakPerkElevation.flat,
+        useIndicator: true,
+        indicatorColor: scheme.primaryContainer.withValues(alpha: .82),
+        indicatorShape: const StadiumBorder(),
+        selectedIconTheme: IconThemeData(color: scheme.primary, size: 24),
+        unselectedIconTheme: IconThemeData(
+          color: scheme.onSurfaceVariant,
+          size: 24,
+        ),
+        selectedLabelTextStyle: textTheme.labelMedium?.copyWith(
+          color: scheme.primary,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelTextStyle: textTheme.labelMedium?.copyWith(
+          color: scheme.onSurfaceVariant,
+          fontWeight: FontWeight.w500,
+        ),
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: semantic.raisedPaper,
         modalBackgroundColor: semantic.raisedPaper,
+        surfaceTintColor: Colors.transparent,
         elevation: PakPerkElevation.modal,
         modalElevation: PakPerkElevation.modal,
+        shadowColor: scheme.shadow,
         showDragHandle: true,
+        dragHandleColor: scheme.onSurfaceVariant.withValues(alpha: .42),
+        dragHandleSize: const Size(36, 5),
         shape: const RoundedRectangleBorder(borderRadius: PakPerkRadii.sheet),
       ),
       snackBarTheme: SnackBarThemeData(
@@ -206,5 +323,21 @@ abstract final class PakPerkTheme {
         contentTextStyle: textTheme.bodyMedium,
       ),
     );
+  }
+
+  static WidgetStateProperty<Color?> _quietOverlay(Color color) {
+    return WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.disabled)) return null;
+      if (states.contains(WidgetState.pressed)) {
+        return color.withValues(alpha: .08);
+      }
+      if (states.contains(WidgetState.focused)) {
+        return color.withValues(alpha: .07);
+      }
+      if (states.contains(WidgetState.hovered)) {
+        return color.withValues(alpha: .04);
+      }
+      return null;
+    });
   }
 }

@@ -6,11 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/providers.dart';
 import '../core/auth/auth.dart';
 import '../features/feed/feed_controller.dart';
+import '../features/feed/reading_feed_controller.dart';
 import '../features/paper_reader/reader_navigation_controller.dart';
 import 'account_providers.dart';
 import 'appearance_controller.dart';
 import 'library_providers.dart';
 import 'comments_providers.dart';
+import 'discovery_providers.dart';
 import 'router.dart';
 import 'startup_controller.dart';
 import 'startup_gate.dart';
@@ -44,6 +46,12 @@ class _PakPerkAppState extends ConsumerState<PakPerkApp>
       unawaited(
         ref.read(librarySyncControllerProvider.notifier).onForeground(),
       );
+      final flags = ref.read(featureFlagsProvider);
+      if (flags.readingFeed) {
+        unawaited(
+          ref.read(readingFeedControllerProvider.notifier).onForeground(),
+        );
+      }
     }
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
@@ -54,22 +62,35 @@ class _PakPerkAppState extends ConsumerState<PakPerkApp>
 
   void _notifyFirstUsableFrame() {
     ref.read(startupControllerProvider.notifier).notifyFirstUsableFrame();
-    unawaited(
-      ref.read(feedControllerProvider.notifier).refreshPreloadedFirstPageOnce(),
-    );
+    if (ref.read(publicDiscoveryAllowedProvider)) {
+      unawaited(
+        ref
+            .read(feedControllerProvider.notifier)
+            .refreshPreloadedFirstPageOnce(),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     _observeAccountSession();
+    _observeDiscoveryActivation();
     if (ref.watch(featureFlagsProvider).accounts) {
       ref.watch(accountSessionRecoveryRuntimeProvider);
     }
     if (ref.watch(featureFlagsProvider).library) {
       ref.watch(libraryRuntimeProvider);
     }
+    if (ref.watch(featureFlagsProvider).readingFeed) {
+      ref.watch(readingFeedRuntimeProvider);
+    }
     if (ref.watch(featureFlagsProvider).comments) {
       ref.watch(commentsRuntimeProvider);
+    }
+    if (ref.watch(featureFlagsProvider).recommendationEventsEnabled) {
+      // Warm current account consent before the first qualified feed/reader
+      // interaction. Unknown, failed, guest, and switching scopes stay off.
+      ref.watch(interactionPersonalizationEnabledProvider);
     }
     final startup = ref.watch(startupControllerProvider);
     final startupController = ref.read(startupControllerProvider.notifier);
@@ -103,6 +124,20 @@ class _PakPerkAppState extends ConsumerState<PakPerkApp>
       }
       ref.read(currentAccountProvider.notifier).clear();
       ref.read(pendingAuthenticatedActionProvider.notifier).clear();
+    });
+  }
+
+  void _observeDiscoveryActivation() {
+    ref.listen<bool>(publicDiscoveryAllowedProvider, (previous, next) {
+      // Initial guest startup is revalidated after the first usable frame.
+      // This branch covers a later strict -> shadow server-policy rollback,
+      // when that one-shot startup callback has already run.
+      if (!shouldRefreshDiscoveryAfterPolicyChange(previous, next)) return;
+      unawaited(
+        ref
+            .read(feedControllerProvider.notifier)
+            .refreshPreloadedFirstPageOnce(),
+      );
     });
   }
 }

@@ -50,10 +50,18 @@ abstract final class PakPerkTelemetryEvent {
   static const feedCacheRows = 'feed_cache_rows';
   static const feedCacheBytes = 'feed_cache_bytes';
   static const feedTimeToReadable = 'feed_time_to_readable_ms';
+  static const readingFeedShadowDecision = 'reading_feed_shadow_decision';
+  static const recommendationCardRendered = 'recommendation_card_rendered';
+  static const recommendationPublicationRejected =
+      'recommendation_publication_rejected';
+  static const pendingIntentAge = 'pending_intent_age';
+  static const discoverySuppressionLatency = 'discovery_suppression_latency';
+  static const discoveryUnlockLatency = 'discovery_unlock_latency';
   static const saveRequested = 'save_requested';
   static const saveSynced = 'save_synced';
   static const saveFailed = 'save_failed';
   static const libraryOutboxBacklog = 'library_outbox_backlog';
+  static const librarySyncConflict = 'library_sync_conflict';
   static const authStarted = 'auth_started';
   static const authCompleted = 'auth_completed';
   static const authCancelled = 'auth_cancelled';
@@ -69,6 +77,19 @@ abstract final class PakPerkTelemetryEvent {
   static const accountDeletionLocalCleanupFailed =
       'account_deletion_local_cleanup_failed';
   static const httpRequestCompleted = 'http_request_completed';
+  static const readerEntryContext = 'reader_entry_context';
+  static const queueAutoAdvance = 'queue_auto_advance';
+  static const queueStaleCursorRecovery = 'queue_stale_cursor_recovery';
+  static const recommendationAdvanceCancelledAfterSave =
+      'recommendation_advance_cancelled_after_save';
+  static const endOfDocumentLibraryMutation =
+      'end_of_document_library_mutation';
+  static const finalItemCheckingDuration = 'final_item_checking_duration';
+  static const documentCacheLookup = 'document_cache_lookup';
+  static const documentCacheEviction = 'document_cache_eviction';
+  static const documentCacheSize = 'document_cache_size';
+  static const annotationSyncOutcome = 'annotation_sync_outcome';
+  static const memoryLifecycle = 'memory_lifecycle';
 }
 
 /// Audited event and attribute filter placed in front of every exporter.
@@ -109,6 +130,20 @@ final class RedactingTelemetrySink implements TelemetrySink {
     'local_cleanup',
   });
   static const _boolean = _BooleanPolicy();
+  static const _durationBucket = _StringEnumPolicy({
+    'none',
+    'unknown',
+    'lt_100ms',
+    '100ms_1s',
+    '1s_5s',
+    '5s_30s',
+    '30s_2m',
+    '2m_15m',
+    '15m_1h',
+    '1h_6h',
+    '6h_24h',
+    'gte_24h',
+  });
 
   static const _eventAttributes = <String, Map<String, _AttributePolicy>>{
     PakPerkTelemetryEvent.appColdStart: {'environment': _environment},
@@ -124,11 +159,15 @@ final class RedactingTelemetrySink implements TelemetrySink {
       'timed_out': _boolean,
     },
     PakPerkTelemetryEvent.shellDestinationSelected: {
-      'destination': _StringEnumPolicy({'read', 'you'}),
+      'destination': _StringEnumPolicy({'read', 'library', 'you'}),
       'reselected': _boolean,
     },
     PakPerkTelemetryEvent.paperPageCommitted: {
-      'source': _StringEnumPolicy({'read_feed'}),
+      'source': _StringEnumPolicy({
+        'to_read',
+        'reading_recommendations',
+        'public_discovery',
+      }),
       'position_bucket': _IntegerRangePolicy(0, 100),
     },
     PakPerkTelemetryEvent.paperStageCommitted: {
@@ -154,6 +193,64 @@ final class RedactingTelemetrySink implements TelemetrySink {
     PakPerkTelemetryEvent.feedTimeToReadable: {
       'elapsed_ms': _IntegerRangePolicy(0, 86_400_000),
     },
+    PakPerkTelemetryEvent.readingFeedShadowDecision: {
+      'shadow_decision': _StringEnumPolicy({
+        'checking_queue',
+        'finishing_queue',
+        'to_read',
+        'recommendations',
+        'fail_closed',
+      }),
+      'queue_authority': _StringEnumPolicy({
+        'unknown',
+        'local_non_empty',
+        'pending_save',
+        'server_non_empty',
+        'server_empty',
+        'stale',
+      }),
+      'legacy_decision': _StringEnumPolicy({'public_discovery'}),
+      'server_policy': _StringEnumPolicy({'unknown', 'shadow', 'strict'}),
+      'queue_policy_agrees': _boolean,
+      'offline': _boolean,
+    },
+    PakPerkTelemetryEvent.recommendationCardRendered: {
+      'queue_authority': _StringEnumPolicy({
+        'unknown',
+        'local_non_empty',
+        'pending_save',
+        'server_non_empty',
+        'server_empty',
+        'stale',
+      }),
+      'server_active_count': _StringEnumPolicy({'zero', 'nonzero', 'unknown'}),
+      'policy_consistent': _boolean,
+    },
+    PakPerkTelemetryEvent.recommendationPublicationRejected: {
+      'reason': _StringEnumPolicy({
+        'local_queue_non_empty',
+        'pending_save',
+        'pending_import',
+        'pending_remove',
+        'sync_reset',
+        'revision_stale',
+        'server_queue_not_empty',
+        'personalization_off',
+        'personalization_unknown',
+      }),
+    },
+    PakPerkTelemetryEvent.pendingIntentAge: {
+      'intent_kind': _StringEnumPolicy({'save', 'import'}),
+      'age_bucket': _durationBucket,
+    },
+    PakPerkTelemetryEvent.discoverySuppressionLatency: {
+      'trigger': _StringEnumPolicy({'save'}),
+      'latency_bucket': _durationBucket,
+    },
+    PakPerkTelemetryEvent.discoveryUnlockLatency: {
+      'trigger': _StringEnumPolicy({'final_completion'}),
+      'latency_bucket': _durationBucket,
+    },
     PakPerkTelemetryEvent.saveRequested: {
       'intent': _StringEnumPolicy({'save', 'remove'}),
     },
@@ -167,6 +264,10 @@ final class RedactingTelemetrySink implements TelemetrySink {
     },
     PakPerkTelemetryEvent.libraryOutboxBacklog: {
       'pending_count': _IntegerRangePolicy(0, 100000),
+      'oldest_age_bucket': _durationBucket,
+    },
+    PakPerkTelemetryEvent.librarySyncConflict: {
+      'boundary': _StringEnumPolicy({'local_revision', 'remote_operation'}),
     },
     PakPerkTelemetryEvent.authStarted: {
       'purpose': _StringEnumPolicy({'session', 'account_deletion'}),
@@ -223,6 +324,12 @@ final class RedactingTelemetrySink implements TelemetrySink {
         'account',
         'account_deletion',
         'library',
+        'reading_feed',
+        'search',
+        'profile',
+        'recommendations',
+        'engagement',
+        'events',
         'comments',
         'moderation',
         'unknown',
@@ -248,6 +355,179 @@ final class RedactingTelemetrySink implements TelemetrySink {
       'elapsed_ms': _IntegerRangePolicy(0, 86_400_000),
       'retry_count': _IntegerRangePolicy(0, 1),
     },
+    PakPerkTelemetryEvent.readerEntryContext: {
+      'source': _StringEnumPolicy({
+        'queue',
+        'recommendation',
+        'library',
+        'search',
+        'connection',
+        'memory',
+        'public_discovery',
+        'external',
+      }),
+      'queue_membership': _StringEnumPolicy({
+        'in_to_read',
+        'outside_to_read',
+        'unknown',
+      }),
+    },
+    PakPerkTelemetryEvent.queueAutoAdvance: {
+      'outcome': _StringEnumPolicy({
+        'succeeded',
+        'page_requested',
+        'checking',
+        'natural_stop',
+        'offline_unknown',
+        'blocked',
+        'fail_closed',
+      }),
+      'offline': _boolean,
+    },
+    PakPerkTelemetryEvent.queueStaleCursorRecovery: {
+      'outcome': _StringEnumPolicy({'restart_requested'}),
+      'surface': _StringEnumPolicy({'queue', 'recommendations'}),
+      'offline': _boolean,
+    },
+    PakPerkTelemetryEvent.recommendationAdvanceCancelledAfterSave: {
+      'outcome': _StringEnumPolicy({'cancelled'}),
+      'local_intent': _boolean,
+    },
+    PakPerkTelemetryEvent.endOfDocumentLibraryMutation: {
+      'mutation_attempted': _boolean,
+      'explicit_user_action': _boolean,
+    },
+    PakPerkTelemetryEvent.finalItemCheckingDuration: {
+      'duration_bucket': _durationBucket,
+      'outcome': _StringEnumPolicy({
+        'recommendations',
+        'queue_active',
+        'offline_unknown',
+        'unavailable',
+        'account_changed',
+      }),
+    },
+    PakPerkTelemetryEvent.documentCacheLookup: {
+      'outcome': _StringEnumPolicy({'hit', 'miss'}),
+      'offline': _boolean,
+    },
+    PakPerkTelemetryEvent.documentCacheEviction: {
+      'reason': _StringEnumPolicy({
+        'expired',
+        'invalid',
+        'lru',
+        'account_cleanup',
+      }),
+      'count': _IntegerRangePolicy(0, 100000),
+    },
+    PakPerkTelemetryEvent.documentCacheSize: {
+      'bytes': _IntegerRangePolicy(0, 1073741824),
+    },
+    PakPerkTelemetryEvent.annotationSyncOutcome: {
+      'action': _StringEnumPolicy({
+        'create',
+        'update',
+        'reanchor',
+        'manual_reattach',
+        'refresh',
+      }),
+      'outcome': _StringEnumPolicy({
+        'requested',
+        'anchored',
+        'uncertain',
+        'orphaned',
+        'conflict',
+      }),
+      'strategy': _StringEnumPolicy({
+        'exact_quote',
+        'quote_context',
+        'server',
+        'manual',
+        'not_applicable',
+      }),
+      'offline': _boolean,
+      'count': _IntegerRangePolicy(0, 100000),
+    },
+    PakPerkTelemetryEvent.memoryLifecycle: {
+      'action': _StringEnumPolicy({'create', 'review', 'snooze', 'retire'}),
+      'source_type': _StringEnumPolicy({
+        'annotation',
+        'evidence_card',
+        'passport_field',
+        'user_question',
+      }),
+      'offline': _boolean,
+    },
+  };
+
+  static const _requiredEventAttributes = <String, Set<String>>{
+    PakPerkTelemetryEvent.shellDestinationSelected: {
+      'destination',
+      'reselected',
+    },
+    PakPerkTelemetryEvent.paperPageCommitted: {'source', 'position_bucket'},
+    PakPerkTelemetryEvent.readingFeedShadowDecision: {
+      'shadow_decision',
+      'queue_authority',
+      'legacy_decision',
+      'server_policy',
+      'queue_policy_agrees',
+      'offline',
+    },
+    PakPerkTelemetryEvent.recommendationCardRendered: {
+      'queue_authority',
+      'server_active_count',
+      'policy_consistent',
+    },
+    PakPerkTelemetryEvent.recommendationPublicationRejected: {'reason'},
+    PakPerkTelemetryEvent.pendingIntentAge: {'intent_kind', 'age_bucket'},
+    PakPerkTelemetryEvent.discoverySuppressionLatency: {
+      'trigger',
+      'latency_bucket',
+    },
+    PakPerkTelemetryEvent.discoveryUnlockLatency: {'trigger', 'latency_bucket'},
+    PakPerkTelemetryEvent.libraryOutboxBacklog: {
+      'pending_count',
+      'oldest_age_bucket',
+    },
+    PakPerkTelemetryEvent.librarySyncConflict: {'boundary'},
+    PakPerkTelemetryEvent.httpRequestCompleted: {
+      'method_class',
+      'route_class',
+      'outcome',
+      'status_family',
+      'elapsed_ms',
+      'retry_count',
+    },
+    PakPerkTelemetryEvent.readerEntryContext: {'source', 'queue_membership'},
+    PakPerkTelemetryEvent.queueAutoAdvance: {'outcome', 'offline'},
+    PakPerkTelemetryEvent.queueStaleCursorRecovery: {
+      'outcome',
+      'surface',
+      'offline',
+    },
+    PakPerkTelemetryEvent.recommendationAdvanceCancelledAfterSave: {
+      'outcome',
+      'local_intent',
+    },
+    PakPerkTelemetryEvent.endOfDocumentLibraryMutation: {
+      'mutation_attempted',
+      'explicit_user_action',
+    },
+    PakPerkTelemetryEvent.finalItemCheckingDuration: {
+      'duration_bucket',
+      'outcome',
+    },
+    PakPerkTelemetryEvent.documentCacheLookup: {'outcome', 'offline'},
+    PakPerkTelemetryEvent.documentCacheEviction: {'reason', 'count'},
+    PakPerkTelemetryEvent.documentCacheSize: {'bytes'},
+    PakPerkTelemetryEvent.annotationSyncOutcome: {
+      'action',
+      'outcome',
+      'strategy',
+      'offline',
+    },
+    PakPerkTelemetryEvent.memoryLifecycle: {'action', 'source_type', 'offline'},
   };
 
   static const _errorContext = <String, _AttributePolicy>{
@@ -267,6 +547,8 @@ final class RedactingTelemetrySink implements TelemetrySink {
     final allowed = _eventAttributes[name];
     if (allowed == null) return;
     final safe = _sanitize(attributes, allowed);
+    final required = _requiredEventAttributes[name];
+    if (required != null && !required.every(safe.containsKey)) return;
     await _delegate.event(name, safe);
   }
 
@@ -376,6 +658,28 @@ final class TelemetryErrorCategory implements Exception {
 
   @override
   String toString() => 'TelemetryErrorCategory($category)';
+}
+
+/// Converts an internal monotonic or wall-clock duration into the only age and
+/// latency vocabulary accepted by the mobile telemetry boundary.
+///
+/// Callers keep timestamps in account-scoped memory or storage; only this
+/// coarse category may leave the device. Negative clock skew is clamped to the
+/// smallest bucket instead of exporting either timestamp.
+String telemetryDurationBucket(Duration? duration, {bool none = false}) {
+  if (none) return 'none';
+  if (duration == null) return 'unknown';
+  final value = duration.isNegative ? Duration.zero : duration;
+  if (value < const Duration(milliseconds: 100)) return 'lt_100ms';
+  if (value < const Duration(seconds: 1)) return '100ms_1s';
+  if (value < const Duration(seconds: 5)) return '1s_5s';
+  if (value < const Duration(seconds: 30)) return '5s_30s';
+  if (value < const Duration(minutes: 2)) return '30s_2m';
+  if (value < const Duration(minutes: 15)) return '2m_15m';
+  if (value < const Duration(hours: 1)) return '15m_1h';
+  if (value < const Duration(hours: 6)) return '1h_6h';
+  if (value < const Duration(hours: 24)) return '6h_24h';
+  return 'gte_24h';
 }
 
 /// Fire-and-forget helper that prevents an analytics provider from affecting

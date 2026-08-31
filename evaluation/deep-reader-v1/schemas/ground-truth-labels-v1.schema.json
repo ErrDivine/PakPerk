@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pakperk.invalid/schemas/deep-reader/ground-truth-labels-v1.schema.json",
+  "title": "Pakperk Deep Reader synthetic label contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "corpus_id",
+    "label_source",
+    "label_sets",
+    "protected_evidence"
+  ],
+  "properties": {
+    "schema_version": {"const": "deep-reader-evaluation-v1"},
+    "corpus_id": {"$ref": "common-v1.schema.json#/$defs/safeId"},
+    "label_source": {"const": "repository_synthetic_assertions_not_human_ground_truth"},
+    "label_sets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {"$ref": "#/$defs/labelSet"}
+    },
+    "protected_evidence": {
+      "$ref": "common-v1.schema.json#/$defs/protectedEvidence"
+    }
+  },
+  "$defs": {
+    "labelSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label_set_id",
+        "fixture_id",
+        "blocks",
+        "citations",
+        "passport_fields",
+        "assistant_cases",
+        "visual_objects"
+      ],
+      "properties": {
+        "label_set_id": {"$ref": "common-v1.schema.json#/$defs/safeId"},
+        "fixture_id": {"$ref": "common-v1.schema.json#/$defs/safeId"},
+        "blocks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1024,
+          "items": {"$ref": "#/$defs/block"}
+        },
+        "citations": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {"$ref": "#/$defs/citation"}
+        },
+        "passport_fields": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "items": {"$ref": "#/$defs/passportField"}
+        },
+        "assistant_cases": {
+          "type": "array",
+          "minItems": 11,
+          "maxItems": 128,
+          "items": {"$ref": "#/$defs/assistantCase"}
+        },
+        "visual_objects": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {"$ref": "#/$defs/visualObject"}
+        }
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "block_id",
+        "kind",
+        "section_path",
+        "is_introduction",
+        "page",
+        "source_locator_required"
+      ],
+      "properties": {
+        "block_id": {"$ref": "common-v1.schema.json#/$defs/safeId"},
+        "kind": {"$ref": "common-v1.schema.json#/$defs/blockKind"},
+        "section_path": {"$ref": "common-v1.schema.json#/$defs/idList"},
+        "is_introduction": {"type": "boolean"},
+        "page": {"type": ["integer", "null"], "minimum": 1, "maximum": 100000},
+        "source_locator_required": {"type": "boolean"}
+      }
+    },
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mention_id", "source_block_id", "target_id"],
+      "properties": {
+        "mention_id": {"$ref": "common-v1.schema.json#/$defs/safeId"},
+        "source_block_id": {"$ref": "common-v1.schema.json#/$defs/safeId"},
+        "target_id": {"$ref": "common-v1.schema.json#/$defs/safeId"}
+      }
+    },
+    "passportField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field_key", "expected_status", "accepted_evidence_groups"],
+      "properties": {
+        "field_key": {
+          "enum": [
+            "research_question",
+            "contribution",
+            "method",
+            "data_or_sample",
+            "evaluation",
+            "main_result",
+            "limitations",
+            "assumptions_scope",
+            "code_resources",
+            "publication_status"
+          ]
+        },
+        "expected_status": {"$ref": "common-v1.schema.json#/$defs/passportStatus"},
+        "accepted_evidence_groups": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "allOf": [
+              {"$ref": "common-v1.schema.json#/$defs/idList"},
+              {"minItems": 1, "maxItems": 32}
+            ]
+          }
+        }
+      }
+    },
+    "assistantCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "category",
+        "retrieved_block_ids",
+        "expected_status",
+        "required_claims",
+        "baseline_supported_claim_count"
+      ],
+      "properties": {
+        "case_id": {"$ref": "common-v1.schema.json#/$defs/safeId"},
+        "category": {
+          "enum": [
+            "direct_fact",
+            "method_detail",
+            "result_comparison",
+            "limitation",
+            "unsupported_question",
+            "ambiguous_question",
+            "figure_or_table",
+            "equation_or_symbol",
+            "adversarial_prompt",
+            "stale_generation",
+            "conflicting_evidence"
+          ]
+        },
+        "retrieved_block_ids": {"$ref": "common-v1.schema.json#/$defs/idList"},
+        "expected_status": {"$ref": "common-v1.schema.json#/$defs/assistantStatus"},
+        "required_claims": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["claim_id", "accepted_evidence_groups"],
+            "properties": {
+              "claim_id": {"$ref": "common-v1.schema.json#/$defs/safeId"},
+              "accepted_evidence_groups": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 32,
+                "items": {
+                  "allOf": [
+                    {"$ref": "common-v1.schema.json#/$defs/idList"},
+                    {"minItems": 1, "maxItems": 32}
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "baseline_supported_claim_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32
+        }
+      }
+    },
+    "visualObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "kind", "caption_id", "structure_sha256", "page", "source_block_ids"],
+      "properties": {
+        "object_id": {"$ref": "common-v1.schema.json#/$defs/safeId"},
+        "kind": {"$ref": "common-v1.schema.json#/$defs/visualKind"},
+        "caption_id": {"$ref": "common-v1.schema.json#/$defs/safeId"},
+        "structure_sha256": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "common-v1.schema.json#/$defs/sha256"}
+          ]
+        },
+        "page": {"type": "integer", "minimum": 1, "maximum": 100000},
+        "source_block_ids": {
+          "allOf": [
+            {"$ref": "common-v1.schema.json#/$defs/idList"},
+            {"minItems": 1, "maxItems": 32}
+          ]
+        }
+      }
+    }
+  }
+}

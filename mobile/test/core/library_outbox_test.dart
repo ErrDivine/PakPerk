@@ -87,6 +87,32 @@ void main() {
     expect(saved.syncPending, isTrue);
   });
 
+  test('known save provenance survives the durable legacy outbox', () async {
+    final harness = await _Harness.create(
+      saveBehaviors: [
+        (operationId) async => LibraryMutationResult(
+          _canonical(revision: 1, operationId: operationId),
+        ),
+      ],
+    );
+    addTearDown(harness.close);
+    await harness.repository.setSaved(
+      accountId: _accountId,
+      authEpoch: harness.scope.epoch,
+      paperId: samplePaper.paperId,
+      saved: true,
+      paper: samplePaper,
+      saveSourceKind: LibrarySaveSourceKind.discovery,
+    );
+    final queued = await harness.database
+        .select(harness.database.syncOutbox)
+        .getSingle();
+    expect(queued.payloadJson, contains('"save_source_kind":"discovery"'));
+
+    await harness.outbox.drain(accountId: _accountId, authEpoch: 7);
+    expect(harness.remote.saveSourceKinds, [LibrarySaveSourceKind.discovery]);
+  });
+
   test(
     'unverified identity cannot claim or upload local outbox work',
     () async {
@@ -451,6 +477,9 @@ void main() {
       expect(item.deleted, isTrue);
       expect(item.canonicalDeleted, isTrue);
       expect(item.revision, 2);
+      expect(harness.finalCompletionAcknowledgements, [
+        (accountId: _accountId, authEpoch: 7, acknowledgedAt: harness.now),
+      ]);
     },
   );
 }
@@ -466,6 +495,7 @@ final class _Harness {
     required this.outbox,
     required this.scope,
     required this.now,
+    required this.finalCompletionAcknowledgements,
   });
 
   final PakPerkDatabase database;
@@ -474,6 +504,8 @@ final class _Harness {
   final LibraryOutboxController outbox;
   final _Scope scope;
   final DateTime now;
+  final List<({String accountId, int authEpoch, DateTime acknowledgedAt})>
+  finalCompletionAcknowledgements;
 
   static Future<_Harness> create({
     List<String> operationIds = const [_operation1],
@@ -502,6 +534,8 @@ final class _Harness {
           ? (accountId: scope.accountId, authEpoch: scope.epoch)
           : null,
     );
+    final acknowledgements =
+        <({String accountId, int authEpoch, DateTime acknowledgedAt})>[];
     return _Harness._(
       database: database,
       repository: repository,
@@ -510,9 +544,20 @@ final class _Harness {
         repository: repository,
         retryPolicy: OutboxRetryPolicy(jitter: () => 0),
         clock: () => now,
+        onFinalCompletionAcknowledged:
+            ({
+              required accountId,
+              required authEpoch,
+              required acknowledgedAt,
+            }) => acknowledgements.add((
+              accountId: accountId,
+              authEpoch: authEpoch,
+              acknowledgedAt: acknowledgedAt,
+            )),
       ),
       scope: scope,
       now: now,
+      finalCompletionAcknowledgements: acknowledgements,
     );
   }
 
@@ -545,6 +590,7 @@ final class _MutationRemote implements LibraryRemoteDataSource {
   final List<String> saveOperationIds = [];
   final List<int> expectedAuthEpochs = [];
   final List<String> calls = [];
+  final List<LibrarySaveSourceKind?> saveSourceKinds = [];
   final Completer<void> firstSaveStarted = Completer<void>();
 
   @override
@@ -552,7 +598,9 @@ final class _MutationRemote implements LibraryRemoteDataSource {
     required String paperId,
     required String operationId,
     required int expectedAuthEpoch,
+    LibrarySaveSourceKind? saveSourceKind,
   }) {
+    saveSourceKinds.add(saveSourceKind);
     saveOperationIds.add(operationId);
     expectedAuthEpochs.add(expectedAuthEpoch);
     calls.add('save:$operationId');

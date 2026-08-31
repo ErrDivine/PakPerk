@@ -2,9 +2,21 @@ use async_trait::async_trait;
 use domain::{ChatAnswer, RelationType};
 
 use crate::{
-    ChatCompletionRequest, EmbeddingRequest, EmbeddingResponse, ProviderError, RelationshipRequest,
-    RelationshipSummary,
+    AssistantCompletion, AssistantCompletionRequest, ChatCompletionRequest, EmbeddingRequest,
+    EmbeddingResponse, ProviderError, RelationshipRequest, RelationshipSummary,
 };
+
+#[async_trait]
+pub trait AssistantProvider: Send + Sync {
+    /// Stable, non-secret identifier recorded in bounded provenance. This is
+    /// the adapter family, not a credential, endpoint, or provider request ID.
+    fn provenance_provider_id(&self) -> &'static str;
+
+    async fn answer_with_evidence(
+        &self,
+        request: &AssistantCompletionRequest,
+    ) -> Result<AssistantCompletion, ProviderError>;
+}
 
 #[async_trait]
 pub trait ChatProvider: Send + Sync {

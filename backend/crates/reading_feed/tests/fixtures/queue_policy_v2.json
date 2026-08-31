@@ -1,0 +1,26 @@
+{
+  "schema_version": 3,
+  "invariant": "recommendations require a server-proven empty active set at the current library revision",
+  "active_states": ["inbox", "read_next", "reading"],
+  "inactive_states": ["reviewed", "archived"],
+  "cases": [
+    {"name": "empty_current", "active_count": 0, "pending_intents": 0, "authority_known": true, "revision_current": true, "account_scope_current": true, "recommendations_allowed": true, "expected_surface": "recommendations", "recommendation_source_invocations": 1},
+    {"name": "inbox_active", "active_count": 1, "pending_intents": 0, "authority_known": true, "revision_current": true, "account_scope_current": true, "recommendations_allowed": false, "expected_surface": "queue", "recommendation_source_invocations": 0},
+    {"name": "read_next_active", "active_count": 1, "pending_intents": 0, "authority_known": true, "revision_current": true, "account_scope_current": true, "recommendations_allowed": false, "expected_surface": "queue", "recommendation_source_invocations": 0},
+    {"name": "reading_active", "active_count": 1, "pending_intents": 0, "authority_known": true, "revision_current": true, "account_scope_current": true, "recommendations_allowed": false, "expected_surface": "queue", "recommendation_source_invocations": 0},
+    {"name": "reviewed_only", "active_count": 0, "pending_intents": 0, "authority_known": true, "revision_current": true, "account_scope_current": true, "recommendations_allowed": true, "expected_surface": "recommendations", "recommendation_source_invocations": 1},
+    {"name": "archived_only", "active_count": 0, "pending_intents": 0, "authority_known": true, "revision_current": true, "account_scope_current": true, "recommendations_allowed": true, "expected_surface": "recommendations", "recommendation_source_invocations": 1},
+    {"name": "many_active", "active_count": 4, "pending_intents": 0, "authority_known": true, "revision_current": true, "account_scope_current": true, "recommendations_allowed": false, "expected_surface": "queue", "recommendation_source_invocations": 0},
+    {"name": "pending_save_before_ack", "active_count": 0, "pending_intents": 1, "authority_known": true, "revision_current": true, "account_scope_current": true, "recommendations_allowed": false, "expected_surface": "queue", "recommendation_source_invocations": 0},
+    {"name": "final_item_remove_before_ack", "active_count": 0, "pending_intents": 1, "authority_known": true, "revision_current": false, "account_scope_current": true, "recommendations_allowed": false, "expected_surface": "queue", "recommendation_source_invocations": 0},
+    {"name": "final_item_remove_after_ack", "active_count": 0, "pending_intents": 0, "authority_known": true, "revision_current": true, "account_scope_current": true, "recommendations_allowed": true, "expected_surface": "recommendations", "recommendation_source_invocations": 1},
+    {"name": "cross_device_revision_between_pages", "active_count": 0, "pending_intents": 0, "authority_known": true, "revision_current": false, "account_scope_current": true, "recommendations_allowed": false, "expected_surface": "unavailable", "recommendation_source_invocations": 0},
+    {"name": "account_switch_stale_response", "active_count": 0, "pending_intents": 0, "authority_known": true, "revision_current": true, "account_scope_current": false, "recommendations_allowed": false, "expected_surface": "unavailable", "recommendation_source_invocations": 0},
+    {"name": "offline_empty_local_cache", "active_count": 0, "pending_intents": 0, "authority_known": false, "revision_current": false, "account_scope_current": true, "recommendations_allowed": false, "expected_surface": "unavailable", "recommendation_source_invocations": 0},
+    {"name": "sync_reset", "active_count": 0, "pending_intents": 0, "authority_known": false, "revision_current": false, "account_scope_current": true, "recommendations_allowed": false, "expected_surface": "unavailable", "recommendation_source_invocations": 0},
+    {"name": "unresolved_import_draft", "active_count": 0, "pending_intents": 1, "authority_known": true, "revision_current": true, "account_scope_current": true, "recommendations_allowed": false, "expected_surface": "queue", "recommendation_source_invocations": 0},
+    {"name": "late_recommendation_batch_after_save", "active_count": 0, "pending_intents": 1, "authority_known": true, "revision_current": true, "account_scope_current": true, "recommendations_allowed": false, "expected_surface": "queue", "recommendation_source_invocations": 0},
+    {"name": "brief_exhausted_while_active_remain", "active_count": 2, "pending_intents": 0, "authority_known": true, "revision_current": true, "account_scope_current": true, "recommendations_allowed": false, "expected_surface": "queue", "recommendation_source_invocations": 0},
+    {"name": "generation_skipped_while_queue_active", "active_count": 4, "pending_intents": 0, "authority_known": true, "revision_current": true, "account_scope_current": true, "recommendations_allowed": false, "expected_surface": "queue", "recommendation_source_invocations": 0}
+  ]
+}

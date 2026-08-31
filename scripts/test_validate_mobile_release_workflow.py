@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import json
 import pathlib
 import tempfile
 import unittest
+from unittest import mock
 
 import validate_mobile_release_workflow as validator
 
@@ -37,13 +39,17 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
             materializer_path.write_text(materializer, encoding="utf-8")
             validator.validate(mobile_path, security_path, ios_path, materializer_path)
 
-    def _replace_rejected(self, original: str, replacement: str, *, count: int = 1) -> None:
+    def _replace_rejected(
+        self, original: str, replacement: str, *, count: int = 1
+    ) -> None:
         self.assertGreaterEqual(MOBILE_SOURCE.count(original), count)
         tampered = MOBILE_SOURCE.replace(original, replacement, count)
         with self.assertRaises(RuntimeError):
             self._validate(mobile=tampered)
 
-    def _job_replace_rejected(self, job_id: str, original: str, replacement: str) -> None:
+    def _job_replace_rejected(
+        self, job_id: str, original: str, replacement: str
+    ) -> None:
         block = validator._job_block(MOBILE_SOURCE, job_id)
         self.assertIn(original, block)
         tampered_block = block.replace(original, replacement, 1)
@@ -54,7 +60,9 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
         self._validate()
 
     def test_exact_eight_job_surface_is_immutable(self) -> None:
-        self._replace_rejected("  signed-release-finalizer:\n", "  mutable-finalizer:\n")
+        self._replace_rejected(
+            "  signed-release-finalizer:\n", "  mutable-finalizer:\n"
+        )
 
     def test_exact_production_job_display_names_are_bound(self) -> None:
         self._job_replace_rejected(
@@ -82,6 +90,135 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
             "candidate-preparation",
             "      - name: Retain immutable credential-free prepared mobile config\n",
             "      - name: Retain mutable config\n",
+        )
+
+    def test_protected_feature_flags_are_exact_and_default_off(self) -> None:
+        self._job_replace_rejected(
+            "candidate-preparation",
+            "          RELEASE_READING_FEED_ENABLED: ${{ vars.PAKPERK_READING_FEED_ENABLED }}\n",
+            "          RELEASE_READING_FEED_ENABLED: true\n",
+        )
+        self._job_replace_rejected(
+            "candidate-preparation",
+            'raw = os.environ.get(f"RELEASE_{short_name}_ENABLED", "") or "false"',
+            'raw = os.environ.get(f"RELEASE_{short_name}_ENABLED", "") or "true"',
+        )
+
+    def test_checked_in_protected_defaults_cannot_be_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            paths = tuple(root / f"config-{index}.json" for index in range(3))
+            values = {
+                config_key: "false"
+                for _, config_key, _ in validator.MOBILE_RELEASE_FEATURES
+            }
+            for path in paths:
+                path.write_text(json.dumps(values), encoding="utf-8")
+            values["PAKPERK_READING_FEED_ENABLED"] = "true"
+            paths[1].write_text(json.dumps(values), encoding="utf-8")
+            with mock.patch.object(validator, "MOBILE_CONFIGS", paths):
+                with self.assertRaisesRegex(RuntimeError, "defaults must stay off"):
+                    validator._validate_default_feature_configs()
+
+    def test_feature_evidence_binds_exact_boolean_values_and_schema(self) -> None:
+        self._job_replace_rejected(
+            "candidate-preparation",
+            '"readingFeed": config["PAKPERK_READING_FEED_ENABLED"] == "true",',
+            '"readingFeed": config["PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED"] == "true",',
+        )
+        self._job_replace_rejected(
+            "candidate-preparation",
+            '"schema": 6,',
+            '"schema": 5,',
+        )
+
+    def test_to_read_first_dependencies_are_bound_before_materialization(self) -> None:
+        self._job_replace_rejected(
+            "candidate-preparation",
+            'protected["PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED"] == "true" and protected["PAKPERK_READING_FEED_ENABLED"] != "true"',
+            'protected["PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED"] == "true" and protected["PAKPERK_READING_FEED_ENABLED"] == "true"',
+        )
+
+    def test_each_plan02_flag_is_bound_from_protected_input_to_evidence(self) -> None:
+        for short, config_key, evidence_key in validator.PLAN02_FEATURES:
+            with self.subTest(short=short):
+                self._job_replace_rejected(
+                    "candidate-preparation",
+                    f"          RELEASE_{short}_ENABLED: ${{{{ vars.{config_key} }}}}\n",
+                    f"          RELEASE_{short}_ENABLED: true\n",
+                )
+                self._job_replace_rejected(
+                    "candidate-preparation",
+                    f'"{evidence_key}": config["{config_key}"] == "true",',
+                    f'"{evidence_key}": False,',
+                )
+
+    def test_each_plan03_flag_is_bound_from_protected_input_to_evidence(self) -> None:
+        for short, config_key, evidence_key in validator.PLAN03_FEATURES:
+            with self.subTest(short=short):
+                self._job_replace_rejected(
+                    "candidate-preparation",
+                    f"          RELEASE_{short}_ENABLED: ${{{{ vars.{config_key} }}}}\n",
+                    f"          RELEASE_{short}_ENABLED: true\n",
+                )
+                self._job_replace_rejected(
+                    "candidate-preparation",
+                    f'"{evidence_key}": config["{config_key}"] == "true",',
+                    f'"{evidence_key}": False,',
+                )
+
+    def test_each_plan03_dependency_check_is_tamper_bound(self) -> None:
+        statements = (
+            'protected["PAKPERK_DEEP_READER_ENABLED"] == "true" and (',
+            'protected["PAKPERK_EVIDENCE_CARDS_ENABLED"] == "true" and protected["PAKPERK_ANNOTATIONS_ENABLED"] != "true"',
+            'protected["PAKPERK_RESEARCH_MEMORY_ENABLED"] == "true" and protected["PAKPERK_EVIDENCE_CARDS_ENABLED"] != "true"',
+        )
+        for statement in statements:
+            with self.subTest(statement=statement):
+                self._job_replace_rejected(
+                    "candidate-preparation",
+                    statement,
+                    statement.replace(' == "true"', ' != "true"', 1),
+                )
+
+    def test_each_plan02_dependency_check_is_tamper_bound(self) -> None:
+        statements = (
+            'protected["PAKPERK_LIBRARY_V2_ENABLED"] == "true" and (',
+            'protected["PAKPERK_RECOMMENDATIONS_ENABLED"] == "true" and (',
+            'protected["PAKPERK_SEARCH_EXPLORE_ENABLED"] == "true" and protected["PAKPERK_SEARCH_LOOKUP_ENABLED"] != "true"',
+            'protected["PAKPERK_SAVED_QUERIES_ENABLED"] == "true" and (',
+            'protected["PAKPERK_RESEARCH_PROFILES_ENABLED"] == "true" and protected["PAKPERK_ACCOUNTS_ENABLED"] != "true"',
+            'protected["PAKPERK_READING_BRIEFS_ENABLED"] == "true" and protected["PAKPERK_READING_FEED_ENABLED"] != "true"',
+            'protected["PAKPERK_SUBSCRIPTIONS_ENABLED"] == "true" and (',
+            'protected["PAKPERK_NOTIFICATIONS_ENABLED"] == "true" and protected["PAKPERK_SUBSCRIPTIONS_ENABLED"] != "true"',
+        )
+        for statement in statements:
+            with self.subTest(statement=statement):
+                self._job_replace_rejected(
+                    "candidate-preparation",
+                    statement,
+                    statement.replace(' == "true"', ' != "true"', 1),
+                )
+
+    def test_both_signers_bind_dependency_checks_at_re_attestation_level(self) -> None:
+        statement = '          if expected_config.get("PAKPERK_READING_FEED_ENABLED") == "true" and (\n'
+        for job_id in ("android-signed-candidate", "ios-signed-candidate"):
+            with self.subTest(job_id=job_id):
+                self._job_replace_rejected(job_id, statement, "    " + statement)
+
+    def test_both_signers_bind_config_and_feature_evidence_before_credentials(
+        self,
+    ) -> None:
+        statement = '          actual_config = json.loads(root.joinpath("mobile-release-config.json").read_text(encoding="utf-8"))\n'
+        for job_id in ("android-signed-candidate", "ios-signed-candidate"):
+            with self.subTest(job_id=job_id):
+                self._job_replace_rejected(job_id, statement, "    " + statement)
+
+    def test_candidate_assembly_binds_feature_evidence_digest(self) -> None:
+        self._job_replace_rejected(
+            "signed-candidate",
+            '--feature-evidence-sha256 "${{ needs.candidate-preparation.outputs.prepared_feature_evidence_sha256 }}"',
+            '--feature-evidence-sha256 "${{ needs.candidate-preparation.outputs.prepared_config_sha256 }}"',
         )
 
     def test_store_request_is_production_only(self) -> None:
@@ -183,7 +320,9 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
 
     def test_bootstrap_is_credential_free_and_upload_only(self) -> None:
         self._job_replace_rejected(
-            "store-client-bootstrap", "    if: inputs.upload_to_stores\n", "    if: always()\n"
+            "store-client-bootstrap",
+            "    if: inputs.upload_to_stores\n",
+            "    if: always()\n",
         )
         self._job_replace_rejected(
             "store-client-bootstrap",
@@ -245,7 +384,9 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
             "      - name: Retain isolated iOS upload evidence\n",
         )
 
-    def test_uploads_re_attest_both_artifact_ids_and_raw_digests_before_secrets(self) -> None:
+    def test_uploads_re_attest_both_artifact_ids_and_raw_digests_before_secrets(
+        self,
+    ) -> None:
         self._job_replace_rejected(
             "android-store-upload",
             "EXPECTED_STORE_CLIENT_ARTIFACT_DIGEST: ${{ needs.store-client-bootstrap.outputs.archive_artifact_digest }}",
@@ -293,7 +434,9 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
             "      - name: Retain isolated iOS upload evidence\n        id: ios_evidence_upload\n        if: success()\n",
         )
 
-    def test_finalizer_is_always_run_credential_free_and_depends_on_both_platforms(self) -> None:
+    def test_finalizer_is_always_run_credential_free_and_depends_on_both_platforms(
+        self,
+    ) -> None:
         self._job_replace_rejected(
             "signed-release-finalizer", "    if: always()\n", "    if: success()\n"
         )
@@ -324,7 +467,9 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
             "needs.ios-store-upload.result != 'cancelled'",
         )
 
-    def test_final_outcome_receives_both_job_results_and_raw_evidence_digests(self) -> None:
+    def test_final_outcome_receives_both_job_results_and_raw_evidence_digests(
+        self,
+    ) -> None:
         self._job_replace_rejected(
             "signed-release-finalizer",
             '--environment "${{ inputs.environment }}"',
@@ -364,7 +509,9 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
         )
 
     def test_action_pins_and_loader_sanitization_are_immutable(self) -> None:
-        self._replace_rejected(validator.DOWNLOAD_ACTION, "actions/download-artifact@main")
+        self._replace_rejected(
+            validator.DOWNLOAD_ACTION, "actions/download-artifact@main"
+        )
         self._replace_rejected('          NODE_OPTIONS: ""\n', "", count=1)
 
     def test_helper_materializer_and_ios_verifier_bytes_are_pinned(self) -> None:

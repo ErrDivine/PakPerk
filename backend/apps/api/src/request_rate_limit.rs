@@ -18,6 +18,7 @@ struct Policy {
 pub(crate) enum PublicRequestAction {
     Prepare,
     Chat,
+    PaperSearch,
 }
 
 #[derive(Debug)]
@@ -33,6 +34,7 @@ pub(crate) struct PublicRequestRateLimiter {
     origin: RequestOriginConfig,
     prepare: Policy,
     chat: Policy,
+    paper_search: Policy,
 }
 
 impl PublicRequestRateLimiter {
@@ -41,6 +43,7 @@ impl PublicRequestRateLimiter {
         origin: RequestOriginConfig,
         prepare_limit: u32,
         chat_limit: u32,
+        paper_search_limit: u32,
     ) -> anyhow::Result<Self> {
         let limiter = Self {
             repository,
@@ -53,10 +56,15 @@ impl PublicRequestRateLimiter {
                 bucket: "paper_chat",
                 limit: chat_limit,
             },
+            paper_search: Policy {
+                bucket: "paper_search_origin",
+                limit: paper_search_limit,
+            },
         };
         for (policy, scope) in [
             (limiter.prepare, format!("origin:{}", "0".repeat(64))),
             (limiter.chat, format!("session:{}", Uuid::nil())),
+            (limiter.paper_search, format!("origin:{}", "0".repeat(64))),
         ] {
             RateLimitRequest::new(policy.bucket, scope, policy.limit, RATE_LIMIT_WINDOW)
                 .map_err(|_| anyhow::anyhow!("public request rate-limit policy is invalid"))?;
@@ -78,6 +86,7 @@ impl PublicRequestRateLimiter {
         let policy = match action {
             PublicRequestAction::Prepare => self.prepare,
             PublicRequestAction::Chat => self.chat,
+            PublicRequestAction::PaperSearch => self.paper_search,
         };
         self.consume(
             policy,

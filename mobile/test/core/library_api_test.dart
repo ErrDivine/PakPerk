@@ -54,6 +54,7 @@ void main() {
       paperId: samplePaper.paperId,
       operationId: _operationId,
       expectedAuthEpoch: _authEpoch,
+      saveSourceKind: LibrarySaveSourceKind.discovery,
     );
     await api.remove(
       paperId: samplePaper.paperId,
@@ -67,6 +68,7 @@ void main() {
     expect(jsonDecode(adapter.bodies[0]), {
       'operation_id': _operationId,
       'state': 'to_read',
+      'save_source_kind': 'discovery',
     });
     final remove = adapter.requests[1];
     expect(remove.method, 'DELETE');
@@ -118,6 +120,16 @@ void main() {
         throwsFormatException,
       );
     }
+  });
+
+  test('unknown legacy provenance stays unknown rather than Other', () {
+    final future = _item()..['save_source_kind'] = 'future_source';
+    expect(LibraryCanonicalItem.fromJson(future).saveSourceKind, isNull);
+    final explicitOther = _item()..['save_source_kind'] = 'other';
+    expect(
+      LibraryCanonicalItem.fromJson(explicitOther).saveSourceKind,
+      LibrarySaveSourceKind.other,
+    );
   });
 
   test('mutation rejects non-canonical UUIDs before transport', () async {

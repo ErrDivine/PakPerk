@@ -6,7 +6,11 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use observability::{record_http_request, set_parent_from_headers};
+use observability::{
+    PreparationDecision, PreparationTriggerClass, VisualObjectClass, VisualObjectOperation,
+    VisualObjectOutcome, record_http_request, record_preparation_decision, record_visual_object,
+    set_parent_from_headers,
+};
 use tracing::{Instrument as _, info_span};
 
 #[cfg(test)]
@@ -49,6 +53,24 @@ pub(crate) async fn telemetry_middleware(request: Request, next: Next) -> Respon
     // Axum route templates and methods originate in the static router, but the
     // metric API accepts owned strings to keep this middleware generic.
     record_http_request(&route, method, status, started.elapsed());
+    if method == "GET"
+        && let Some(object) = visual_object_for_route(&route)
+    {
+        record_visual_object(
+            VisualObjectOperation::Delivery,
+            object,
+            visual_delivery_outcome(status),
+        );
+    }
+    if method == "POST"
+        && route == "/v1/papers/{paper_id}/prepare"
+        && matches!(status, 400 | 422 | 429)
+    {
+        record_preparation_decision(
+            PreparationTriggerClass::UnparsedPublicRequest,
+            PreparationDecision::Rejected,
+        );
+    }
     #[cfg(test)]
     if let Some(probe) = test_probe {
         probe
@@ -58,6 +80,29 @@ pub(crate) async fn telemetry_middleware(request: Request, next: Next) -> Respon
             .push(status);
     }
     response
+}
+
+fn visual_object_for_route(route: &str) -> Option<VisualObjectClass> {
+    match route {
+        "/v1/papers/{paper_id}/figures"
+        | "/v1/papers/{paper_id}/figures/{figure_id}"
+        | "/v1/papers/{paper_id}/figures/{figure_id}/asset" => Some(VisualObjectClass::Figure),
+        "/v1/papers/{paper_id}/tables" | "/v1/papers/{paper_id}/tables/{table_id}" => {
+            Some(VisualObjectClass::Table)
+        }
+        "/v1/papers/{paper_id}/equations" => Some(VisualObjectClass::Equation),
+        _ => None,
+    }
+}
+
+const fn visual_delivery_outcome(status: u16) -> VisualObjectOutcome {
+    match status {
+        200..=299 => VisualObjectOutcome::Success,
+        403 => VisualObjectOutcome::PolicyDenied,
+        404 => VisualObjectOutcome::NotFound,
+        409 => VisualObjectOutcome::NotReady,
+        _ => VisualObjectOutcome::Failure,
+    }
 }
 
 fn normalized_method(method: &Method) -> &'static str {
@@ -96,6 +141,26 @@ mod tests {
         assert_eq!(
             normalized_method(&Method::from_bytes(b"ATTACKER-CHOSEN-METHOD").unwrap()),
             "OTHER"
+        );
+    }
+
+    #[test]
+    fn visual_delivery_metrics_accept_only_static_routes_and_closed_outcomes() {
+        assert_eq!(
+            visual_object_for_route("/v1/papers/{paper_id}/figures/{figure_id}"),
+            Some(VisualObjectClass::Figure)
+        );
+        assert_eq!(
+            visual_object_for_route("/v1/papers/{paper_id}/figures/{figure_id}/asset"),
+            Some(VisualObjectClass::Figure)
+        );
+        assert_eq!(
+            visual_object_for_route("/v1/papers/private-id/figures"),
+            None
+        );
+        assert_eq!(
+            visual_delivery_outcome(StatusCode::CONFLICT.as_u16()),
+            VisualObjectOutcome::NotReady
         );
     }
 

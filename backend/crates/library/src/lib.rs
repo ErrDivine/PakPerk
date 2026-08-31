@@ -7,6 +7,7 @@
 mod service;
 
 pub use service::{
-    LibraryChangesPage, LibraryMutationResult, LibraryPage, LibraryPolicy, LibraryPolicyError,
-    LibraryService, LibraryServiceError, LibraryStore, RateLimitStore, TOMBSTONE_RETENTION,
+    LibraryChangesPage, LibraryListsPage, LibraryMutationResult, LibraryPage, LibraryPolicy,
+    LibraryPolicyError, LibraryService, LibraryServiceError, LibraryStore, LibraryTagsPage,
+    LibraryV2ChangesPage, LibraryV2MutationResult, RateLimitStore, TOMBSTONE_RETENTION,
 };

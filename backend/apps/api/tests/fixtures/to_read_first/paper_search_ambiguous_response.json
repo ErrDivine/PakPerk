@@ -1,0 +1,47 @@
+{
+  "query_id": "0198f500-0000-7000-8000-000000000021",
+  "normalized_query": "Graph Attention Networks",
+  "candidates": [
+    {
+      "arxiv_id": "1710.10903v3",
+      "title": "Graph Attention Networks",
+      "authors": [
+        "Petar Velickovic",
+        "Guillem Cucurull"
+      ],
+      "abstract": "We present graph attention networks operating on graph-structured data.",
+      "primary_category": "stat.ML",
+      "categories": [
+        "stat.ML",
+        "cs.LG"
+      ],
+      "published_at": "2017-10-30T00:00:00Z",
+      "updated_at": "2018-02-04T00:00:00Z",
+      "abs_url": "https://arxiv.org/abs/1710.10903v3",
+      "match": {
+        "kind": "title",
+        "rank": 1
+      }
+    },
+    {
+      "arxiv_id": "2205.10610v2",
+      "title": "Graph Attention Networks Revisited",
+      "authors": [
+        "Dmytro Brody",
+        "Uri Alon"
+      ],
+      "abstract": "We revisit the expressive behavior of attention over graph neighborhoods.",
+      "primary_category": "cs.LG",
+      "categories": [
+        "cs.LG"
+      ],
+      "published_at": "2022-05-20T00:00:00Z",
+      "updated_at": "2022-09-12T00:00:00Z",
+      "abs_url": "https://arxiv.org/abs/2205.10610v2",
+      "match": {
+        "kind": "title",
+        "rank": 2
+      }
+    }
+  ]
+}

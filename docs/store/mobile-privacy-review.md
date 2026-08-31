@@ -24,6 +24,11 @@ and [Google Play Data Safety guidance](https://support.google.com/googleplay/and
   database does not copy that email into the Pakperk profile.
 - To Read stores account-to-paper relationships. Comments and report details
   are user-generated content; blocks and moderation state are account actions.
+- Default-off Deep Reader features may synchronize private annotations and
+  notes, retained conflict versions, re-anchor history, evidence cards,
+  position/mode checkpoints, memory prompts/answers and review state, and
+  assistant conversations/provenance when the account chooses those features.
+  None of those bodies is a recommendation or telemetry input.
 - The app has no advertising SDK, ad identifier, contact/location/photo/audio
   permission, payment SDK, or cross-app tracking integration.
 - Authentication uses the system browser. Tokens are kept in memory or
@@ -57,7 +62,13 @@ and [Google Play Data Safety guidance](https://support.google.com/googleplay/and
   retain source IP access data under its controller-wide logging policy, so
   signed-deployment and processor evidence remains a release blocker.
 - Production and staging use TLS. Android backups are disabled. iOS local data
-  is excluded from backup and protected on devices.
+  is excluded from backup and uses platform file protection. The Drift database
+  itself is ordinary, application-layer plaintext SQLite, including private
+  research bodies; protection depends on the OS app sandbox, device access
+  control, file protection, and backup policy. SQLCipher is not implemented and
+  is deferred until its threat model and migration/key-recovery design are
+  reviewed. Do not answer any questionnaire as though Pakperk encrypts this
+  local database at the application layer.
 
 ## Apple App Privacy answers
 
@@ -69,8 +80,8 @@ Use conservative disclosure for the union of enabled production features:
 | Email Address | Yes | App Functionality | optional account registration, verification, login, and recovery at the identity provider; not copied into the Pakperk application profile database |
 | User ID | Yes | App Functionality | OIDC/local account identity |
 | Other Data Types | Yes | App Functionality | keyed trusted request-origin scope retained for shared comment and expensive public-action abuse limits, plus reviewed production-edge network/security processing |
-| Other User Content | Yes | App Functionality | comments and report/support free text |
-| Product Interaction | Yes | App Functionality; Analytics | account-linked To Read/actions plus identifier-free interaction telemetry; linkage is marked Yes because the category also has a linked use |
+| Other User Content | Yes | App Functionality | comments and report/support free text; optional private annotations, notes, evidence cards, memory prompts/answers, and assistant conversations |
+| Product Interaction | Yes | App Functionality; Analytics | account-linked To Read, checkpoint/memory-review, and research-artifact actions plus identifier-free interaction telemetry; linkage is marked Yes because the category also has a linked use |
 | Crash Data | No | Analytics | custom exporter receives only sanitized `timeout`, `format`, `state`, `argument`, or `unexpected`; an uncaught sanitized replacement can retain separate OS-managed native crash diagnostics under platform policy |
 | Performance Data | No | Analytics | bounded startup duration and cache/interaction performance signals |
 
@@ -109,8 +120,8 @@ The proposed production mapping is:
 | Personal info — Email address | collected by the identity provider for account management, verification, login, and recovery | optional; guest reading works without an account, and the Pakperk application profile database does not copy it |
 | Personal info — User IDs | collected for app functionality/account management and security | optional; required only when account features are chosen |
 | Device or other IDs | keyed request-origin network identifier collected for abuse prevention, security, and shared rate limiting; production edges may also process source IP access data | automatic when requests reach those protected service/edge boundaries; never used for advertising or tracking |
-| App activity — Other user-generated content | collected for app functionality/safety (comments and report text) | optional |
-| App activity — App interactions / Other actions | collected for account functionality (To Read, block/report actions) and analytics (closed-vocabulary events) | functionality is optional; production analytics is automatic when enabled |
+| App activity — Other user-generated content | collected for app functionality/safety (comments, report text, optional private annotations/notes/evidence/memory/assistant content) | optional |
+| App activity — App interactions / Other actions | collected for account functionality (To Read, block/report, checkpoint, memory-review, and research-artifact actions) and analytics (closed-vocabulary events) | functionality is optional; production analytics is automatic when enabled |
 | App info and performance — Crash logs | custom exporter collects a sanitized error category; an uncaught category-and-empty-stack replacement may separately produce OS-managed native crash diagnostics | automatic when production telemetry is enabled or the platform diagnostics policy applies; verify the signed deployment and console settings |
 | App info and performance — Diagnostics | bounded startup/cache timing and outcome data collected for analytics | automatic when production telemetry is enabled |
 
@@ -132,6 +143,18 @@ The public and bundled policies must retain the same schedule:
 - keyed request-origin abuse-limit scopes: until the configured rate window
   expires (maximum 30 days), then removed by bounded maintenance; recoverable
   copies remain subject to the backup horizon below;
+- reading briefs: 35 days; in-app notifications: 30 days; engagement
+  retry/idempotency rows and completed/failed notification work: 30 days; each
+  hourly deletion query is capped at 1,000 rows per table;
+- assistant threads: initially 30 days, refreshed by at most 30 days and never
+  beyond 90 days from creation, with at most 50 messages; hourly cleanup removes
+  at most 1,000 expired threads and their private provenance;
+- annotations/conflicts/re-anchor history, evidence cards, checkpoints, and
+  memory items: until individual deletion where supported or account deletion;
+  item tombstones clear bodies but have no claimed shorter routine purge;
+- account-scoped mobile research rows, conflicts, cached version artifacts, and
+  pending research outbox work: removed by local sign-out/account-switch and
+  account-deletion cleanup; exact signed-device evidence is pending;
 - recoverable database/identity backup and PITR history: at most 35 days;
 - anonymized security/moderation audit: 90 days;
 - content-free telemetry and platform/application logs: 30 days;
@@ -169,6 +192,8 @@ the closed result shape; it cannot create the live delivery or human approval.
 - Release owner / review date: **pending**
 - Signed iOS build and Xcode privacy report: **pending**
 - Signed Android build and SDK/permission inventory: **pending**
+- Signed-device local research-data cleanup and ordinary-SQLite threat-model
+  acceptance: **pending**
 - Published privacy/support/deletion URLs and monitored contact: **pending**
 - Processor/service-provider contract review: **pending**
 - Deployed identity-provider email handling and ingress/source-IP log inventory,

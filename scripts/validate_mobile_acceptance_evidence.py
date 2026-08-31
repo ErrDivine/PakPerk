@@ -32,8 +32,30 @@ TOOLING_ARCHIVE_NAME = "mobile-acceptance-tooling.json"
 CHECKSUM_ARCHIVE_NAME = "SHA256SUMS"
 CACHED_FIRST_READABLE_FRAME_P95_MAX_MS = 1_500
 OPENING_TRANSITION_MAX_MS = 700
+# Plan 03's large-document gate is a distinct sustained-reader budget, not an
+# inference from launch or the 20-paper feed probe. Every scalar below is the
+# minimum or worst observation across *each* assigned physical-device role.
+# Thirty seconds plus 120 frame samples and one sample per traversed page stop
+# a single fast frame/request from satisfying the gate. The latency, frame,
+# bounded-retention, widget, and incremental-RSS caps define a conservative
+# low-end-device envelope without claiming that a protected run has occurred.
+LARGE_DOCUMENT_FIXTURE_BLOCKS = 2_000
+LARGE_DOCUMENT_BLOCKS_TRAVERSED_PER_DEVICE = 2_000
+LARGE_DOCUMENT_MIN_PAGES_TRAVERSED = 20
+LARGE_DOCUMENT_MIN_PAGE_FETCH_SAMPLES = 20
+LARGE_DOCUMENT_MIN_FRAME_SAMPLES = 120
+LARGE_DOCUMENT_MIN_SCROLL_WINDOW_SECONDS = 30
+LARGE_DOCUMENT_REQUEST_PAGE_SIZE_BLOCKS = 100
+LARGE_DOCUMENT_MAX_RETAINED_BLOCKS = 2_000
+LARGE_DOCUMENT_FIRST_PAGE_MAX_MS = 1_000
+LARGE_DOCUMENT_PAGE_FETCH_P95_MAX_MS = 750
+LARGE_DOCUMENT_SCROLL_FRAME_P95_MAX_US = 16_667
+LARGE_DOCUMENT_SCROLL_FRAME_MAX_US = 50_000
+LARGE_DOCUMENT_MISSED_FRAME_RATIO_MAX_BPS = 100
+LARGE_DOCUMENT_PEAK_RSS_GROWTH_MAX_MIB = 96
+LARGE_DOCUMENT_MAX_LIVE_BLOCK_WIDGETS = 80
 SOURCE_BINDING_SCHEMA_VERSION = 2
-EVIDENCE_SCHEMA_VERSION = 3
+EVIDENCE_SCHEMA_VERSION = 6
 MAX_CACHED_PAPER_RECORDS = 500
 MAX_CACHE_PHYSICAL_BYTES = 64 * 1024 * 1024
 
@@ -223,6 +245,222 @@ SCENARIO_ASSERTIONS = {
         "two_hundred_percent_text_scale_verified",
         "minimum_interactive_targets_verified",
     ),
+    "to_read_first_queue_authority": (
+        "authenticated_queue_scope_verified",
+        "local_nonempty_queue_preceded_remote_recommendations",
+        "server_nonempty_queue_rendered_in_fifo_order",
+        "queue_page_cursor_preserved_fifo_order",
+        "recommendations_requested_only_after_server_confirmed_empty",
+        "recommendations_excluded_active_to_read_papers",
+        "queue_authority_rechecked_after_mutation",
+    ),
+    "to_read_first_fail_closed_mutations": (
+        "pending_save_kept_to_read_authority",
+        "pending_import_kept_to_read_authority",
+        "offline_unknown_authority_blocked_recommendations",
+        "sync_reset_blocked_recommendations",
+        "pending_remove_kept_finishing_queue_authority",
+        "final_server_remove_confirmation_required",
+        "recommendations_blocked_until_final_remove_confirmation",
+        "confirmed_empty_after_remove_unlocked_recommendations",
+    ),
+    "to_read_first_account_scope_rollout": (
+        "account_switch_cancelled_inflight_feed_request",
+        "old_account_rows_never_rendered_in_new_scope",
+        "old_auth_epoch_response_discarded",
+        "new_account_queue_revalidated_before_render",
+        "shadow_policy_recorded_without_surface_switch",
+        "strict_policy_suppressed_public_discovery",
+        "strict_transition_revalidated_queue_before_render",
+        "rollback_to_shadow_revalidated_before_discovery",
+        "rollout_transition_preserved_account_scope",
+    ),
+    "add_paper_exact_and_title_selection": (
+        "add_paper_opened_from_read_and_to_read_entrypoints",
+        "bare_arxiv_id_imported_without_title_search",
+        "canonical_arxiv_url_imported_without_title_search",
+        "exact_inputs_used_canonical_import_sources",
+        "title_search_waited_for_debounce",
+        "title_candidates_presented_without_auto_import",
+        "candidate_selection_required_before_title_import",
+        "selected_title_candidate_imported_to_to_read",
+        "operation_scoped_progress_announced_accessibly",
+        "optimistic_placeholder_remained_outside_canonical_drift",
+        "canonical_result_applied_without_duplicate_outbox_save",
+    ),
+    "add_paper_failure_retry_idempotency": (
+        "ambiguous_title_results_required_explicit_selection",
+        "retryable_search_error_exposed_accessibly",
+        "retryable_import_error_exposed_accessibly",
+        "retry_reused_exact_operation_id",
+        "idempotent_replay_converged_to_single_canonical_save",
+        "retry_placeholder_kept_original_operation_scope",
+        "nonretryable_input_error_offered_no_retry",
+        "account_scope_change_cancelled_inflight_import",
+        "old_scope_import_result_not_applied",
+        "retained_evidence_omitted_raw_import_inputs_and_account_identity",
+    ),
+    "plan02_search_lookup_explore_saved_queries": (
+        "search_destination_reached_from_read",
+        "lookup_normalized_query_visible",
+        "lookup_result_opened_without_library_mutation",
+        "suggestions_metadata_only_and_bounded",
+        "explore_source_diagnostics_visible",
+        "explore_result_opened_without_library_mutation",
+        "saved_query_required_authenticated_account",
+        "saved_query_replayed_in_same_account",
+        "account_switch_removed_prior_saved_queries",
+        "accessible_search_empty_and_error_states_verified",
+    ),
+    "plan02_research_profile_personalization": (
+        "profile_default_personalization_off",
+        "explicit_topics_authors_categories_labeled",
+        "feedback_and_inferred_interests_separately_labeled",
+        "personalization_enabled_only_by_explicit_action",
+        "preferred_mode_and_brief_size_persisted",
+        "profile_export_returned_closed_account_owned_data",
+        "reset_inferred_preserved_explicit_interests_and_queue",
+        "reset_all_removed_nonexplicit_interests_and_preserved_queue",
+        "account_switch_cleared_prior_profile",
+        "large_text_and_reduced_motion_profile_controls_verified",
+    ),
+    "plan02_why_and_feedback": (
+        "enhanced_batch_explanation_available",
+        "recent_fallback_explanation_unavailable",
+        "why_reason_code_was_closed",
+        "why_reason_backed_by_actual_candidate_evidence",
+        "historical_reason_referenced_only_inactive_seed",
+        "relevant_feedback_acknowledged",
+        "not_relevant_feedback_suppressed_candidate",
+        "dismiss_feedback_suppressed_candidate",
+        "feedback_retry_reused_operation_id",
+        "feedback_actions_preserved_queue_authority",
+    ),
+    "plan02_reading_brief_progress_authority": (
+        "brief_created_from_current_authoritative_feed",
+        "omitted_brief_size_used_stored_or_default_size",
+        "explicit_brief_size_override_won",
+        "omitted_brief_mode_used_stored_or_recent_fallback",
+        "brief_progress_persisted_after_relaunch",
+        "current_brief_resumed_same_identity_and_revision",
+        "exhausted_brief_did_not_unlock_recommendations_with_active_queue",
+        "brief_completion_did_not_mutate_library_state",
+        "account_switch_removed_prior_brief",
+        "brief_progress_announced_accessibly",
+    ),
+    "plan02_subscription_notification_safety": (
+        "subscriptions_required_authenticated_account",
+        "active_queue_deferred_discovery_delivery",
+        "active_paper_updates_required_explicit_opt_in",
+        "quiet_hours_suppressed_delivery",
+        "daily_budget_suppressed_excess_delivery",
+        "global_pause_and_mute_suppressed_delivery",
+        "empty_queue_digest_was_bounded",
+        "notification_read_and_dismiss_actions_persisted",
+        "duplicate_schedule_created_no_duplicate_delivery",
+        "account_switch_removed_prior_notifications",
+        "push_and_email_channels_remained_disabled",
+    ),
+    "plan03_deep_reader_document_navigation": (
+        "prepared_generation_bound_to_exact_paper",
+        "outline_and_blocks_loaded_through_pagination",
+        "source_locator_opened_exact_original_page",
+        "reader_mode_change_preserved_position",
+        "definition_sheet_preserved_selection_and_position",
+        "preparation_started_only_after_committed_intent",
+        "parser_failure_exposed_original_without_fake_section",
+        "stale_generation_content_never_rendered",
+    ),
+    "plan03_passport_evidence_navigation": (
+        "passport_bound_to_exact_generation",
+        "supported_and_inferred_states_distinct",
+        "conflicting_evidence_preserved",
+        "missing_field_rendered_not_found",
+        "every_populated_field_carried_evidence",
+        "evidence_action_opened_exact_block",
+        "full_paper_version_visible",
+        "passport_read_did_not_mutate_library",
+    ),
+    "plan03_semantic_facets_definition_context": (
+        "semantic_facets_required_explicit_feature",
+        "term_definition_bound_to_current_paper_generation",
+        "term_occurrence_opened_exact_block",
+        "unavailable_definition_did_not_fabricate_content",
+        "definition_close_restored_exact_reader_state",
+        "facet_navigation_did_not_insert_feed_item",
+    ),
+    "plan03_visual_objects_source_integrity": (
+        "figure_table_equation_cards_exercised",
+        "visual_objects_bound_to_exact_generation",
+        "uncertain_figure_association_did_not_show_wrong_asset",
+        "object_source_action_opened_exact_page",
+        "table_headers_and_plain_text_fallback_accessible",
+        "equation_latex_copy_and_zoom_accessible",
+        "asset_authorization_failed_closed",
+        "visual_evidence_save_preserved_source_locator",
+    ),
+    "plan03_checkpoint_library_isolation": (
+        "checkpoint_saved_exact_position_only",
+        "checkpoint_restored_after_process_restart",
+        "checkpoint_mode_change_preserved_library_state",
+        "checkpoint_write_changed_no_queue_eligibility",
+        "document_end_changed_no_library_state",
+        "mark_reviewed_used_explicit_library_mutation",
+    ),
+    "plan03_annotation_evidence_durability": (
+        "offline_highlight_and_note_restored_after_process_death",
+        "annotation_sync_replayed_idempotently",
+        "second_installation_received_annotation",
+        "concurrent_note_conflict_preserved_both_bodies",
+        "reflow_anchor_restored_or_marked_uncertain",
+        "evidence_card_preserved_exact_source_anchor",
+        "annotation_export_import_round_trip_exact",
+        "private_bodies_absent_from_retained_telemetry",
+        "account_switch_removed_prior_research_rows",
+    ),
+    "plan03_research_memory_isolation": (
+        "memory_item_created_only_by_explicit_user_action",
+        "review_used_user_created_source_content",
+        "snooze_and_retire_persisted_after_relaunch",
+        "retired_item_did_not_reappear",
+        "memory_review_changed_no_library_state",
+        "memory_origin_back_restored_reader_state",
+        "memory_navigation_did_not_insert_feed_item",
+        "cross_account_memory_rows_visible_zero",
+    ),
+    "plan03_version_diff_reanchor_safety": (
+        "newer_version_diff_bound_both_generations",
+        "old_and_new_source_actions_opened_exact_blocks",
+        "changed_sections_and_objects_identified",
+        "unchanged_content_not_reported_changed",
+        "annotation_reanchor_status_visible",
+        "uncertain_or_orphaned_annotation_never_silently_moved",
+        "diff_navigation_changed_no_library_state",
+    ),
+    "plan03_assistant_evidence_integrity": (
+        "assistant_request_bound_explicit_scope_and_generation",
+        "invented_evidence_id_rejected",
+        "stale_generation_response_rejected",
+        "paper_prompt_injection_treated_as_source_data",
+        "every_material_claim_carried_validated_evidence",
+        "unsupported_question_abstained",
+        "evidence_chip_opened_exact_source_range",
+        "offline_send_produced_no_ungrounded_answer",
+        "private_prompt_and_answer_absent_from_retained_telemetry",
+    ),
+    "plan03_reader_queue_and_large_document_safety": (
+        "automatic_next_selected_active_queue_only",
+        "final_item_waited_for_server_confirmed_empty",
+        "offline_unknown_queue_never_opened_recommendation",
+        "explicit_connection_branch_returned_original_reader_state",
+        "explicit_memory_branch_returned_original_reader_state",
+        "explicit_branches_inserted_no_automatic_feed_items",
+        "large_document_used_bounded_lazy_page_loading",
+        "large_document_reader_passed_two_hundred_percent_text",
+        "reduced_motion_and_transparency_paths_passed",
+        "selection_table_pan_and_pager_gestures_did_not_conflict",
+        "interactive_targets_met_minimum_size",
+    ),
 }
 
 SCENARIO_IDS = tuple(SCENARIO_ASSERTIONS)
@@ -267,6 +505,87 @@ SCENARIO_DEVICE_ROLES.update(
         ),
         "hardware_keyboard_navigation": (
             "android_gesture",
+            "ipad_keyboard_secondary_sync",
+        ),
+        "to_read_first_queue_authority": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "to_read_first_fail_closed_mutations": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "to_read_first_account_scope_rollout": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "add_paper_exact_and_title_selection": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "add_paper_failure_retry_idempotency": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "plan02_search_lookup_explore_saved_queries": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "plan02_research_profile_personalization": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "plan02_why_and_feedback": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "plan02_reading_brief_progress_authority": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "plan02_subscription_notification_safety": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "plan03_deep_reader_document_navigation": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "plan03_passport_evidence_navigation": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "plan03_semantic_facets_definition_context": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "plan03_visual_objects_source_integrity": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "plan03_checkpoint_library_isolation": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "plan03_annotation_evidence_durability": (
+            "android_gesture",
+            "ipad_keyboard_secondary_sync",
+        ),
+        "plan03_research_memory_isolation": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "plan03_version_diff_reanchor_safety": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "plan03_assistant_evidence_integrity": (
+            "android_gesture",
+            "ios_home_indicator",
+        ),
+        "plan03_reader_queue_and_large_document_safety": (
+            "android_gesture",
+            "ios_home_indicator",
             "ipad_keyboard_secondary_sync",
         ),
     }
@@ -404,6 +723,282 @@ SCENARIO_METRIC_RULES = {
         "text_scale_percent": ("min", 200, None),
         "clipped_action_labels": ("eq", 0, None),
     },
+    "to_read_first_queue_authority": {
+        "platforms_tested": ("eq", 2, None),
+        "local_nonempty_authority_checks": ("min", 2, None),
+        "server_fifo_items_verified": ("min", 4, None),
+        "fifo_order_violations": ("eq", 0, None),
+        "recommendation_requests_before_confirmed_empty": ("eq", 0, None),
+        "confirmed_empty_transitions": ("eq", 2, None),
+        "queued_papers_rendered_as_recommendations": ("eq", 0, None),
+    },
+    "to_read_first_fail_closed_mutations": {
+        "platforms_tested": ("eq", 2, None),
+        "pending_save_authority_checks": ("min", 2, None),
+        "pending_import_authority_checks": ("min", 2, None),
+        "offline_unknown_authority_checks": ("min", 2, None),
+        "sync_reset_authority_checks": ("min", 2, None),
+        "recommendation_requests_while_authority_unconfirmed": ("eq", 0, None),
+        "final_remove_confirmations": ("eq", 2, None),
+        "recommendation_unlocks_before_final_remove_confirmation": ("eq", 0, None),
+    },
+    "to_read_first_account_scope_rollout": {
+        "platforms_tested": ("eq", 2, None),
+        "account_switches": ("eq", 2, None),
+        "old_account_visible_frames": ("eq", 0, None),
+        "old_generation_responses_published": ("eq", 0, None),
+        "shadow_strict_rollback_cycles": ("eq", 2, None),
+        "queue_revalidations_across_rollout": ("min", 4, None),
+        "unvalidated_surface_switches": ("eq", 0, None),
+        "cross_account_rollout_publications": ("eq", 0, None),
+    },
+    "add_paper_exact_and_title_selection": {
+        "platforms_tested": ("eq", 2, None),
+        "bare_id_imports": ("eq", 2, None),
+        "canonical_url_imports": ("eq", 2, None),
+        "title_searches_after_debounce": ("eq", 2, None),
+        "title_searches_before_400_ms": ("eq", 0, None),
+        "title_imports_before_selection": ("eq", 0, None),
+        "selected_title_imports": ("eq", 2, None),
+        "canonical_library_results": ("eq", 6, None),
+        "accessible_progress_announcements": ("min", 6, None),
+        "placeholder_drift_rows": ("eq", 0, None),
+        "duplicate_outbox_saves": ("eq", 0, None),
+    },
+    "add_paper_failure_retry_idempotency": {
+        "platforms_tested": ("eq", 2, None),
+        "ambiguous_candidate_sets": ("min", 2, None),
+        "automatic_imports_from_ambiguous_results": ("eq", 0, None),
+        "retryable_search_errors": ("eq", 2, None),
+        "retryable_import_errors": ("eq", 2, None),
+        "accessible_error_states": ("min", 4, None),
+        "retry_attempts_reusing_operation_id": ("eq", 2, None),
+        "operation_id_changes_during_retry": ("eq", 0, None),
+        "canonical_saves_after_replay": ("eq", 2, None),
+        "duplicate_server_import_operations": ("eq", 0, None),
+        "cross_account_import_results_applied": ("eq", 0, None),
+        "retained_raw_import_fields": ("eq", 0, None),
+    },
+    "plan02_search_lookup_explore_saved_queries": {
+        "platforms_tested": ("eq", 2, None),
+        "lookup_queries": ("min", 2, None),
+        "lookup_library_mutations": ("eq", 0, None),
+        "suggestion_responses": ("min", 2, None),
+        "maximum_suggestion_items_observed": ("range", 0, 8),
+        "missing_explore_diagnostics": ("eq", 0, None),
+        "cross_account_saved_queries_visible": ("eq", 0, None),
+    },
+    "plan02_research_profile_personalization": {
+        "platforms_tested": ("eq", 2, None),
+        "automatic_personalization_enables": ("eq", 0, None),
+        "explicit_interest_groups_verified": ("min", 3, None),
+        "inferred_interests_mislabeled_as_follows": ("eq", 0, None),
+        "queue_mutations_from_profile_actions": ("eq", 0, None),
+        "cross_account_profile_rows_visible": ("eq", 0, None),
+        "accessible_profile_state_checks": ("min", 4, None),
+    },
+    "plan02_why_and_feedback": {
+        "platforms_tested": ("eq", 2, None),
+        "enhanced_why_views": ("min", 2, None),
+        "recent_fallback_why_actions": ("eq", 0, None),
+        "unsupported_reason_codes": ("eq", 0, None),
+        "active_library_seed_reasons": ("eq", 0, None),
+        "duplicate_feedback_mutations": ("eq", 0, None),
+        "feedback_excluded_items_visible": ("eq", 0, None),
+        "library_revisions_from_feedback": ("eq", 0, None),
+    },
+    "plan02_reading_brief_progress_authority": {
+        "platforms_tested": ("eq", 2, None),
+        "stored_or_default_size_checks": ("min", 2, None),
+        "explicit_size_override_checks": ("min", 2, None),
+        "brief_relaunch_resume_checks": ("min", 2, None),
+        "library_mutations_from_brief_progress": ("eq", 0, None),
+        "recommendation_unlocks_before_queue_empty": ("eq", 0, None),
+        "cross_account_briefs_visible": ("eq", 0, None),
+        "accessible_progress_announcements": ("min", 2, None),
+    },
+    "plan02_subscription_notification_safety": {
+        "platforms_tested": ("eq", 2, None),
+        "discovery_deliveries_while_queue_active": ("eq", 0, None),
+        "active_paper_deliveries_without_opt_in": ("eq", 0, None),
+        "quiet_hours_delivery_violations": ("eq", 0, None),
+        "daily_budget_delivery_violations": ("eq", 0, None),
+        "deliveries_while_globally_paused_or_muted": ("eq", 0, None),
+        "bounded_empty_queue_digests_delivered": ("eq", 1, None),
+        "maximum_digest_items_observed": ("range", 1, 20),
+        "duplicate_notification_deliveries": ("eq", 0, None),
+        "cross_account_notifications_visible": ("eq", 0, None),
+        "external_channel_deliveries": ("eq", 0, None),
+    },
+    "plan03_deep_reader_document_navigation": {
+        "platforms_tested": ("eq", 2, None),
+        "paginated_block_pages_loaded": ("min", 4, None),
+        "exact_source_navigations": ("min", 2, None),
+        "preparation_calls_before_committed_intent": ("eq", 0, None),
+        "stale_generation_blocks_rendered": ("eq", 0, None),
+        "fabricated_fallback_sections": ("eq", 0, None),
+    },
+    "plan03_passport_evidence_navigation": {
+        "platforms_tested": ("eq", 2, None),
+        "populated_passport_fields": ("min", 3, None),
+        "passport_evidence_navigations": ("min", 3, None),
+        "populated_fields_without_evidence": ("eq", 0, None),
+        "missing_fields_presented_as_supported": ("eq", 0, None),
+        "library_mutations_from_passport": ("eq", 0, None),
+    },
+    "plan03_semantic_facets_definition_context": {
+        "platforms_tested": ("eq", 2, None),
+        "term_definition_views": ("min", 2, None),
+        "exact_term_occurrence_navigations": ("min", 2, None),
+        "fabricated_term_definitions": ("eq", 0, None),
+        "reader_state_restore_failures": ("eq", 0, None),
+        "automatic_feed_insertions": ("eq", 0, None),
+    },
+    "plan03_visual_objects_source_integrity": {
+        "platforms_tested": ("eq", 2, None),
+        "object_kinds_exercised": ("eq", 3, None),
+        "wrong_visual_assets_displayed": ("eq", 0, None),
+        "exact_object_source_navigations": ("min", 3, None),
+        "unauthorized_asset_exposures": ("eq", 0, None),
+        "visual_accessibility_checks": ("min", 4, None),
+    },
+    "plan03_checkpoint_library_isolation": {
+        "platforms_tested": ("eq", 2, None),
+        "checkpoint_restart_restorations": ("min", 2, None),
+        "library_revision_changes_from_checkpoints": ("eq", 0, None),
+        "queue_eligibility_changes_from_checkpoints": ("eq", 0, None),
+        "library_mutations_from_document_end": ("eq", 0, None),
+        "explicit_mark_reviewed_mutations": ("eq", 2, None),
+    },
+    "plan03_annotation_evidence_durability": {
+        "independent_installations": ("eq", 2, None),
+        "offline_process_restarts": ("min", 1, None),
+        "duplicate_annotation_mutations": ("eq", 0, None),
+        "concurrent_conflicts_detected": ("min", 1, None),
+        "silently_lost_note_bodies": ("eq", 0, None),
+        "export_import_mismatches": ("eq", 0, None),
+        "private_body_telemetry_fields": ("eq", 0, None),
+        "cross_account_research_rows_visible": ("eq", 0, None),
+    },
+    "plan03_research_memory_isolation": {
+        "platforms_tested": ("eq", 2, None),
+        "explicit_memory_creations": ("min", 2, None),
+        "unselected_generated_memory_items": ("eq", 0, None),
+        "retired_items_reappearing": ("eq", 0, None),
+        "library_revision_changes_from_memory": ("eq", 0, None),
+        "automatic_feed_insertions": ("eq", 0, None),
+        "cross_account_memory_rows_visible": ("eq", 0, None),
+    },
+    "plan03_version_diff_reanchor_safety": {
+        "platforms_tested": ("eq", 2, None),
+        "version_pairs_compared": ("min", 2, None),
+        "old_and_new_source_navigations": ("min", 4, None),
+        "unchanged_blocks_reported_changed": ("eq", 0, None),
+        "silent_unrelated_annotation_moves": ("eq", 0, None),
+        "library_revision_changes_from_diff": ("eq", 0, None),
+    },
+    "plan03_assistant_evidence_integrity": {
+        "platforms_tested": ("eq", 2, None),
+        "scoped_questions_exercised": ("min", 4, None),
+        "invented_evidence_ids_accepted": ("eq", 0, None),
+        "stale_generation_answers_rendered": ("eq", 0, None),
+        "unsupported_answers_without_abstention": ("eq", 0, None),
+        "material_claims_without_evidence": ("eq", 0, None),
+        "exact_assistant_source_navigations": ("min", 4, None),
+        "offline_ungrounded_answers": ("eq", 0, None),
+        "private_assistant_telemetry_fields": ("eq", 0, None),
+    },
+    "plan03_reader_queue_and_large_document_safety": {
+        "physical_device_roles_tested": ("eq", 3, None),
+        "active_queue_auto_advances": ("min", 4, None),
+        "recommendation_requests_before_confirmed_empty": ("eq", 0, None),
+        "explicit_branch_round_trips": ("min", 4, None),
+        "automatic_feed_insertions_from_explicit_branches": ("eq", 0, None),
+        "large_document_fixture_blocks": (
+            "eq",
+            LARGE_DOCUMENT_FIXTURE_BLOCKS,
+            None,
+        ),
+        "large_document_minimum_blocks_traversed_per_device": (
+            "eq",
+            LARGE_DOCUMENT_BLOCKS_TRAVERSED_PER_DEVICE,
+            None,
+        ),
+        "large_document_minimum_pages_traversed_per_device": (
+            "min",
+            LARGE_DOCUMENT_MIN_PAGES_TRAVERSED,
+            None,
+        ),
+        "large_document_minimum_page_fetch_samples_per_device": (
+            "min",
+            LARGE_DOCUMENT_MIN_PAGE_FETCH_SAMPLES,
+            None,
+        ),
+        "large_document_minimum_frame_samples_per_device": (
+            "min",
+            LARGE_DOCUMENT_MIN_FRAME_SAMPLES,
+            None,
+        ),
+        "large_document_minimum_scroll_window_seconds_per_device": (
+            "min",
+            LARGE_DOCUMENT_MIN_SCROLL_WINDOW_SECONDS,
+            None,
+        ),
+        "large_document_requested_page_size_blocks": (
+            "eq",
+            LARGE_DOCUMENT_REQUEST_PAGE_SIZE_BLOCKS,
+            None,
+        ),
+        "large_document_peak_retained_blocks": (
+            "range",
+            1,
+            LARGE_DOCUMENT_MAX_RETAINED_BLOCKS,
+        ),
+        "large_document_worst_device_first_page_ms": (
+            "range",
+            1,
+            LARGE_DOCUMENT_FIRST_PAGE_MAX_MS,
+        ),
+        "large_document_worst_device_page_fetch_p95_ms": (
+            "range",
+            1,
+            LARGE_DOCUMENT_PAGE_FETCH_P95_MAX_MS,
+        ),
+        "large_document_worst_device_scroll_frame_p95_us": (
+            "range",
+            1,
+            LARGE_DOCUMENT_SCROLL_FRAME_P95_MAX_US,
+        ),
+        "large_document_worst_device_scroll_frame_max_us": (
+            "range",
+            1,
+            LARGE_DOCUMENT_SCROLL_FRAME_MAX_US,
+        ),
+        "large_document_worst_device_missed_frame_ratio_basis_points": (
+            "range",
+            0,
+            LARGE_DOCUMENT_MISSED_FRAME_RATIO_MAX_BPS,
+        ),
+        "large_document_worst_device_peak_rss_growth_mib": (
+            "range",
+            0,
+            LARGE_DOCUMENT_PEAK_RSS_GROWTH_MAX_MIB,
+        ),
+        "large_document_worst_device_maximum_live_block_widgets": (
+            "range",
+            1,
+            LARGE_DOCUMENT_MAX_LIVE_BLOCK_WIDGETS,
+        ),
+        "eager_block_loads_beyond_bounded_window": ("eq", 0, None),
+        "visual_objects_loaded_before_reveal": ("eq", 0, None),
+        "document_request_cancellations_exercised": ("min", 4, None),
+        "late_document_responses_after_scope_switch": ("eq", 0, None),
+        "scroll_anchor_restoration_failures": ("eq", 0, None),
+        "selection_anchor_restoration_failures": ("eq", 0, None),
+        "text_scale_percent": ("min", 200, None),
+        "interactive_target_failures": ("eq", 0, None),
+        "gesture_arbitration_failures": ("eq", 0, None),
+    },
 }
 
 SCENARIO_COUNT = len(SCENARIO_IDS)
@@ -412,7 +1007,7 @@ METRIC_COUNT = sum(len(rules) for rules in SCENARIO_METRIC_RULES.values())
 
 
 def scenario_contract_payload() -> dict[str, Any]:
-    """Return the canonical producer/validator contract carried by schema v3."""
+    """Return the canonical producer/validator contract carried by schema v6."""
 
     return {
         "schema": EVIDENCE_SCHEMA_VERSION,
@@ -459,6 +1054,7 @@ CANDIDATE_TOP_LEVEL_KEYS = {
     "app_version",
     "build_number",
     "strict_full_text",
+    "mobile_feature_evidence",
     "provenance_id",
     "android",
     "ios",
@@ -480,9 +1076,84 @@ CANDIDATE_BINDING_KEYS = {
     "provenance_id",
     "signed_workflow",
     "strict_full_text",
+    "mobile_feature_evidence",
     "android",
     "ios",
 }
+
+MOBILE_FEATURE_EVIDENCE_BINDING_KEYS = {
+    "schema",
+    "sha256",
+    "paperTitleSearch",
+    "libraryImportWrites",
+    "readingFeed",
+    "toReadFirstEnforcement",
+    "libraryV2",
+    "recommendations",
+    "recommendationEvents",
+    "searchLookup",
+    "searchExplore",
+    "savedQueries",
+    "researchProfiles",
+    "readingBriefs",
+    "subscriptions",
+    "notifications",
+    "deepReader",
+    "paperPassport",
+    "semanticFacets",
+    "documentVisualObjects",
+    "readingCheckpoints",
+    "annotations",
+    "evidenceCards",
+    "researchMemory",
+    "versionDiff",
+    "assistantV2",
+}
+MOBILE_FEATURE_FLAG_KEYS = (
+    "paperTitleSearch",
+    "libraryImportWrites",
+    "readingFeed",
+    "toReadFirstEnforcement",
+    "libraryV2",
+    "recommendations",
+    "recommendationEvents",
+    "searchLookup",
+    "searchExplore",
+    "savedQueries",
+    "researchProfiles",
+    "readingBriefs",
+    "subscriptions",
+    "notifications",
+    "deepReader",
+    "paperPassport",
+    "semanticFacets",
+    "documentVisualObjects",
+    "readingCheckpoints",
+    "annotations",
+    "evidenceCards",
+    "researchMemory",
+    "versionDiff",
+    "assistantV2",
+)
+MOBILE_FEATURE_DEPENDENCIES = (
+    ("toReadFirstEnforcement", ("readingFeed",)),
+    ("recommendations", ("readingFeed",)),
+    ("searchExplore", ("searchLookup",)),
+    ("savedQueries", ("searchExplore",)),
+    ("readingBriefs", ("readingFeed",)),
+    ("subscriptions", ("readingFeed",)),
+    ("notifications", ("subscriptions",)),
+    ("deepReader", ("readingFeed", "toReadFirstEnforcement")),
+    ("paperPassport", ("deepReader",)),
+    ("semanticFacets", ("deepReader",)),
+    ("documentVisualObjects", ("deepReader",)),
+    ("readingCheckpoints", ("deepReader",)),
+    ("annotations", ("deepReader",)),
+    ("evidenceCards", ("annotations",)),
+    ("researchMemory", ("evidenceCards",)),
+    ("versionDiff", ("deepReader",)),
+    ("assistantV2", ("deepReader",)),
+)
 
 PROVENANCE_TOP_LEVEL_KEYS = {
     "schema",
@@ -492,6 +1163,7 @@ PROVENANCE_TOP_LEVEL_KEYS = {
     "app_version",
     "build_number",
     "created_at",
+    "mobile_feature_evidence",
     "workflow",
     "android",
     "ios",
@@ -549,6 +1221,7 @@ TOP_LEVEL_KEYS = {
     "build_number",
     "environment",
     "coordinates",
+    "mobile_feature_evidence",
     "candidate",
     "runner_session",
     "driver",
@@ -704,6 +1377,28 @@ def _string(value: Any, label: str, pattern: re.Pattern[str]) -> str:
 def _exact_integer(value: Any, expected: int, label: str) -> None:
     if type(value) is not int or value != expected:
         raise EvidenceError(f"{label} must be the exact integer {expected}")
+
+
+def _validate_mobile_feature_evidence_binding(
+    value: Any, label: str
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise EvidenceError(f"{label} must be an object")
+    _exact_keys(value, MOBILE_FEATURE_EVIDENCE_BINDING_KEYS, label)
+    _exact_integer(value["schema"], 6, f"{label} schema")
+    _string(value["sha256"], f"{label} SHA-256", HEX_64)
+    for key in MOBILE_FEATURE_FLAG_KEYS:
+        if type(value[key]) is not bool:
+            raise EvidenceError(f"{label} feature flags must be exact booleans")
+    return dict(value)
+
+
+def _validate_mobile_feature_dependencies(
+    value: dict[str, Any], label: str
+) -> None:
+    for feature, dependencies in MOBILE_FEATURE_DEPENDENCIES:
+        if value[feature] and any(not value[dependency] for dependency in dependencies):
+            raise EvidenceError(f"{label} dependency graph is invalid")
 
 
 def _timestamp(value: Any, label: str) -> dt.datetime:
@@ -945,7 +1640,7 @@ def load_signed_release_provenance(
     observed_id = f"sha256:{hashlib.sha256(raw_bytes).hexdigest()}"
     if observed_id != provenance_id:
         raise EvidenceError("signed-release provenance content digest does not match")
-    _exact_integer(payload["schema"], 1, "signed-release provenance schema")
+    _exact_integer(payload["schema"], 4, "signed-release provenance schema")
     if payload["classification"] != "protected signed mobile release provenance":
         raise EvidenceError("signed-release provenance classification is invalid")
     if payload["source_revision"] != source_revision:
@@ -957,6 +1652,14 @@ def load_signed_release_provenance(
             "signed-release provenance app version/build does not match"
         )
     _timestamp(payload["created_at"], "signed-release provenance created_at")
+    mobile_feature_evidence = _validate_mobile_feature_evidence_binding(
+        payload["mobile_feature_evidence"],
+        "signed-release mobile feature evidence",
+    )
+    _validate_mobile_feature_dependencies(
+        mobile_feature_evidence,
+        "signed-release mobile feature evidence",
+    )
 
     workflow = payload["workflow"]
     if not isinstance(workflow, dict):
@@ -1002,6 +1705,7 @@ def load_signed_release_provenance(
     return {
         "manifest_id": observed_id,
         "workflow": dict(workflow),
+        "mobile_feature_evidence": mobile_feature_evidence,
         "android": dict(android),
         "ios": dict(ios),
     }
@@ -1040,7 +1744,7 @@ def validate_candidate_manifest_payload(
         raise EvidenceError(
             "candidate manifest content digest does not match candidate ID"
         )
-    _exact_integer(payload["schema"], 1, "candidate manifest schema")
+    _exact_integer(payload["schema"], 4, "candidate manifest schema")
     if payload["classification"] != "protected signed mobile candidate":
         raise EvidenceError("candidate manifest classification is invalid")
     if payload["source_revision"] != source_revision:
@@ -1053,6 +1757,22 @@ def validate_candidate_manifest_payload(
         raise EvidenceError("candidate manifest must identify the strict signed flavor")
     if payload["provenance_id"] != provenance_id:
         raise EvidenceError("candidate manifest provenance ID does not match")
+    mobile_feature_evidence = _validate_mobile_feature_evidence_binding(
+        payload["mobile_feature_evidence"],
+        "candidate mobile feature evidence",
+    )
+    if mobile_feature_evidence != provenance_binding.get("mobile_feature_evidence"):
+        raise EvidenceError(
+            "candidate mobile feature evidence does not match signed provenance"
+        )
+    if any(mobile_feature_evidence[key] is not True for key in MOBILE_FEATURE_FLAG_KEYS):
+        raise EvidenceError(
+            "protected acceptance candidate must enable all new mobile features"
+        )
+    _validate_mobile_feature_dependencies(
+        mobile_feature_evidence,
+        "candidate mobile feature evidence",
+    )
 
     android = payload["android"]
     ios = payload["ios"]
@@ -1088,6 +1808,7 @@ def validate_candidate_manifest_payload(
         "provenance_id": provenance_id,
         "signed_workflow": dict(signed_workflow),
         "strict_full_text": True,
+        "mobile_feature_evidence": mobile_feature_evidence,
         "android": dict(android),
         "ios": dict(ios),
     }
@@ -1258,6 +1979,39 @@ def _validate_metric(value: Any, rule: tuple[Any, ...], label: str) -> None:
         raise EvidenceError(f"{label} is outside its required range")
 
 
+def _validate_large_document_metric_relationships(metrics: dict[str, Any]) -> None:
+    """Reject internally inconsistent aggregate physical-device measurements."""
+
+    pages = metrics["large_document_minimum_pages_traversed_per_device"]
+    fetch_samples = metrics[
+        "large_document_minimum_page_fetch_samples_per_device"
+    ]
+    if fetch_samples < pages:
+        raise EvidenceError(
+            "large-document page fetch samples do not cover every traversed page"
+        )
+    page_size = metrics["large_document_requested_page_size_blocks"]
+    blocks = metrics["large_document_minimum_blocks_traversed_per_device"]
+    if page_size * fetch_samples < blocks:
+        raise EvidenceError(
+            "large-document page samples cannot account for traversed blocks"
+        )
+    frame_samples = metrics["large_document_minimum_frame_samples_per_device"]
+    window_seconds = metrics[
+        "large_document_minimum_scroll_window_seconds_per_device"
+    ]
+    if frame_samples < window_seconds * 4:
+        raise EvidenceError(
+            "large-document frame samples do not cover the sustained scroll window"
+        )
+    p95_frame = metrics["large_document_worst_device_scroll_frame_p95_us"]
+    maximum_frame = metrics["large_document_worst_device_scroll_frame_max_us"]
+    if maximum_frame < p95_frame:
+        raise EvidenceError(
+            "large-document maximum frame duration is below its p95 duration"
+        )
+
+
 def validate_payload(
     payload: Any,
     *,
@@ -1311,6 +2065,14 @@ def validate_payload(
     if not isinstance(candidate_binding, dict):
         raise EvidenceError("expected candidate binding must be an object")
     _exact_keys(candidate_binding, CANDIDATE_BINDING_KEYS, "expected candidate binding")
+    expected_mobile_feature_evidence = _validate_mobile_feature_evidence_binding(
+        candidate_binding["mobile_feature_evidence"],
+        "expected mobile feature evidence",
+    )
+    _validate_mobile_feature_dependencies(
+        expected_mobile_feature_evidence,
+        "expected mobile feature evidence",
+    )
     if not isinstance(runner_session_binding, dict):
         raise EvidenceError("expected runner session binding must be an object")
     _exact_keys(
@@ -1371,6 +2133,10 @@ def validate_payload(
         )
     if payload["environment"] != "staging":
         raise EvidenceError("physical-device acceptance must target staging")
+    if payload["mobile_feature_evidence"] != expected_mobile_feature_evidence:
+        raise EvidenceError(
+            "evidence mobile feature flags do not match the signed candidate"
+        )
 
     coordinates = payload["coordinates"]
     if not isinstance(coordinates, dict):
@@ -1589,6 +2355,8 @@ def validate_payload(
                 rule,
                 f"scenario {scenario_id} metric {metric_name}",
             )
+        if scenario_id == "plan03_reader_queue_and_large_document_safety":
+            _validate_large_document_metric_relationships(metrics)
 
     redaction = payload["redaction"]
     if not isinstance(redaction, dict):

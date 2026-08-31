@@ -1,14 +1,19 @@
 use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use db::{
-    DbError, LibraryChangesOutcome, LibraryMutationIntent, LibraryMutationOutcome,
-    LibraryOperationResolution, LibraryReadOutcome, LibraryRepository, RateLimitConfigError,
-    RateLimitDecision, RateLimitRepository, RateLimitRequest, StoredLibraryChangesPage,
-    StoredLibraryPage,
+    DbError, LibraryChangesOutcome, LibraryCollectionIntent, LibraryItemFilter,
+    LibraryItemMutation, LibraryItemTagWrite, LibraryListItemWrite, LibraryListWrite,
+    LibraryMutationIntent, LibraryMutationOutcome, LibraryOperationResolution, LibraryReadOutcome,
+    LibraryRepository, LibraryTagWrite, LibraryV2MutationOutcome, LibraryV2ReadOutcome,
+    RateLimitConfigError, RateLimitDecision, RateLimitRepository, RateLimitRequest,
+    StoredLibraryChangesPage, StoredLibraryLists, StoredLibraryPage, StoredLibraryTags,
+    StoredLibraryV2ChangesPage,
 };
 use domain::{
-    AccountStatus, AuthenticatedUserId, LibraryChange, LibraryItem, LibraryState, PaperId,
+    AccountStatus, AuthenticatedUserId, LibraryChange, LibraryItem, LibraryItemTag, LibraryList,
+    LibraryListItem, LibrarySaveSourceKind, LibraryState, LibraryTag, LibraryV2Change, PaperId,
     SavedLibraryPaper,
 };
 use thiserror::Error;
@@ -77,6 +82,32 @@ pub struct LibraryChangesPage {
     pub sync_revision: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LibraryV2MutationResult<T> {
+    pub value: T,
+    pub replayed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LibraryListsPage {
+    pub items: Vec<LibraryList>,
+    pub sync_revision: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LibraryTagsPage {
+    pub items: Vec<LibraryTag>,
+    pub sync_revision: i64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LibraryV2ChangesPage {
+    pub items: Vec<LibraryV2Change>,
+    pub next_after_revision: i64,
+    pub has_more: bool,
+    pub sync_revision: i64,
+}
+
 #[derive(Debug, Error)]
 pub enum LibraryServiceError {
     #[error("library operation ID must not be nil")]
@@ -97,6 +128,22 @@ pub enum LibraryServiceError {
     Deleted,
     #[error("paper was not found")]
     PaperNotFound,
+    #[error("library list was not found")]
+    ListNotFound,
+    #[error("library tag was not found")]
+    TagNotFound,
+    #[error("library membership was not found")]
+    MembershipNotFound,
+    #[error("library list or tag name already exists")]
+    NameConflict,
+    #[error("library item private note is invalid")]
+    InvalidPrivateNote,
+    #[error("library item reminder is invalid")]
+    InvalidReminder,
+    #[error("library list or tag name is invalid")]
+    InvalidName,
+    #[error("library description or membership note is invalid")]
+    InvalidDescription,
     #[error("operation ID was already used for a different library intent")]
     IdempotencyConflict,
     #[error(
@@ -138,6 +185,30 @@ pub trait LibraryStore: Send + Sync {
         state: LibraryState,
     ) -> Result<LibraryMutationOutcome, DbError>;
 
+    async fn resolve_item_operation(
+        &self,
+        user_id: AuthenticatedUserId,
+        paper_id: PaperId,
+        operation_id: Uuid,
+        intent: LibraryMutationIntent,
+        mutation: &LibraryItemMutation,
+    ) -> Result<LibraryOperationResolution, DbError> {
+        self.resolve_operation(user_id, paper_id, operation_id, intent, mutation.state)
+            .await
+    }
+
+    async fn mutate_item(
+        &self,
+        user_id: AuthenticatedUserId,
+        paper_id: PaperId,
+        operation_id: Uuid,
+        intent: LibraryMutationIntent,
+        mutation: LibraryItemMutation,
+    ) -> Result<LibraryMutationOutcome, DbError> {
+        self.mutate(user_id, paper_id, operation_id, intent, mutation.state)
+            .await
+    }
+
     async fn list(
         &self,
         user_id: AuthenticatedUserId,
@@ -145,6 +216,113 @@ pub trait LibraryStore: Send + Sync {
         cursor: Option<&str>,
         limit: u32,
     ) -> Result<LibraryReadOutcome<StoredLibraryPage>, DbError>;
+
+    /// v0.0 exposed one `to_read` collection. During the v2 compatibility
+    /// window it must contain every state with active queue membership, while
+    /// v2 state filters remain exact.
+    async fn list_legacy_active(
+        &self,
+        user_id: AuthenticatedUserId,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<LibraryReadOutcome<StoredLibraryPage>, DbError> {
+        self.list(user_id, LibraryState::Inbox, cursor, limit).await
+    }
+
+    async fn list_items(
+        &self,
+        user_id: AuthenticatedUserId,
+        filter: LibraryItemFilter,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<LibraryReadOutcome<StoredLibraryPage>, DbError> {
+        self.list(
+            user_id,
+            filter.state.unwrap_or(LibraryState::Inbox),
+            cursor,
+            limit,
+        )
+        .await
+    }
+
+    async fn mutate_list(
+        &self,
+        _user_id: AuthenticatedUserId,
+        _operation_id: Uuid,
+        _intent: LibraryCollectionIntent,
+        _write: &LibraryListWrite,
+    ) -> Result<LibraryV2MutationOutcome<LibraryList>, DbError> {
+        Err(DbError::InvalidData(
+            "library v2 list storage is unavailable".to_owned(),
+        ))
+    }
+
+    async fn mutate_tag(
+        &self,
+        _user_id: AuthenticatedUserId,
+        _operation_id: Uuid,
+        _intent: LibraryCollectionIntent,
+        _write: &LibraryTagWrite,
+    ) -> Result<LibraryV2MutationOutcome<LibraryTag>, DbError> {
+        Err(DbError::InvalidData(
+            "library v2 tag storage is unavailable".to_owned(),
+        ))
+    }
+
+    async fn mutate_list_item(
+        &self,
+        _user_id: AuthenticatedUserId,
+        _operation_id: Uuid,
+        _intent: LibraryCollectionIntent,
+        _write: &LibraryListItemWrite,
+    ) -> Result<LibraryV2MutationOutcome<LibraryListItem>, DbError> {
+        Err(DbError::InvalidData(
+            "library v2 list membership storage is unavailable".to_owned(),
+        ))
+    }
+
+    async fn mutate_item_tag(
+        &self,
+        _user_id: AuthenticatedUserId,
+        _operation_id: Uuid,
+        _intent: LibraryCollectionIntent,
+        _write: LibraryItemTagWrite,
+    ) -> Result<LibraryV2MutationOutcome<LibraryItemTag>, DbError> {
+        Err(DbError::InvalidData(
+            "library v2 tag membership storage is unavailable".to_owned(),
+        ))
+    }
+
+    async fn lists(
+        &self,
+        _user_id: AuthenticatedUserId,
+        _limit: u32,
+    ) -> Result<LibraryV2ReadOutcome<StoredLibraryLists>, DbError> {
+        Err(DbError::InvalidData(
+            "library v2 list storage is unavailable".to_owned(),
+        ))
+    }
+
+    async fn tags(
+        &self,
+        _user_id: AuthenticatedUserId,
+        _limit: u32,
+    ) -> Result<LibraryV2ReadOutcome<StoredLibraryTags>, DbError> {
+        Err(DbError::InvalidData(
+            "library v2 tag storage is unavailable".to_owned(),
+        ))
+    }
+
+    async fn v2_changes(
+        &self,
+        _user_id: AuthenticatedUserId,
+        _after_revision: i64,
+        _limit: u32,
+    ) -> Result<LibraryV2ReadOutcome<StoredLibraryV2ChangesPage>, DbError> {
+        Err(DbError::InvalidData(
+            "library v2 change storage is unavailable".to_owned(),
+        ))
+    }
 
     async fn changes(
         &self,
@@ -185,6 +363,37 @@ impl LibraryStore for LibraryRepository {
         LibraryRepository::mutate(self, user_id, paper_id, operation_id, intent, state).await
     }
 
+    async fn resolve_item_operation(
+        &self,
+        user_id: AuthenticatedUserId,
+        paper_id: PaperId,
+        operation_id: Uuid,
+        intent: LibraryMutationIntent,
+        mutation: &LibraryItemMutation,
+    ) -> Result<LibraryOperationResolution, DbError> {
+        LibraryRepository::resolve_item_operation(
+            self,
+            user_id,
+            paper_id,
+            operation_id,
+            intent,
+            mutation,
+        )
+        .await
+    }
+
+    async fn mutate_item(
+        &self,
+        user_id: AuthenticatedUserId,
+        paper_id: PaperId,
+        operation_id: Uuid,
+        intent: LibraryMutationIntent,
+        mutation: LibraryItemMutation,
+    ) -> Result<LibraryMutationOutcome, DbError> {
+        LibraryRepository::mutate_item(self, user_id, paper_id, operation_id, intent, mutation)
+            .await
+    }
+
     async fn list(
         &self,
         user_id: AuthenticatedUserId,
@@ -193,6 +402,90 @@ impl LibraryStore for LibraryRepository {
         limit: u32,
     ) -> Result<LibraryReadOutcome<StoredLibraryPage>, DbError> {
         LibraryRepository::list(self, user_id, state, cursor, limit).await
+    }
+
+    async fn list_legacy_active(
+        &self,
+        user_id: AuthenticatedUserId,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<LibraryReadOutcome<StoredLibraryPage>, DbError> {
+        LibraryRepository::list_active(self, user_id, cursor, limit).await
+    }
+
+    async fn list_items(
+        &self,
+        user_id: AuthenticatedUserId,
+        filter: LibraryItemFilter,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<LibraryReadOutcome<StoredLibraryPage>, DbError> {
+        LibraryRepository::list_items(self, user_id, filter, cursor, limit).await
+    }
+
+    async fn mutate_list(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        intent: LibraryCollectionIntent,
+        write: &LibraryListWrite,
+    ) -> Result<LibraryV2MutationOutcome<LibraryList>, DbError> {
+        LibraryRepository::mutate_list(self, user_id, operation_id, intent, write).await
+    }
+
+    async fn mutate_tag(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        intent: LibraryCollectionIntent,
+        write: &LibraryTagWrite,
+    ) -> Result<LibraryV2MutationOutcome<LibraryTag>, DbError> {
+        LibraryRepository::mutate_tag(self, user_id, operation_id, intent, write).await
+    }
+
+    async fn mutate_list_item(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        intent: LibraryCollectionIntent,
+        write: &LibraryListItemWrite,
+    ) -> Result<LibraryV2MutationOutcome<LibraryListItem>, DbError> {
+        LibraryRepository::mutate_list_item(self, user_id, operation_id, intent, write).await
+    }
+
+    async fn mutate_item_tag(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        intent: LibraryCollectionIntent,
+        write: LibraryItemTagWrite,
+    ) -> Result<LibraryV2MutationOutcome<LibraryItemTag>, DbError> {
+        LibraryRepository::mutate_item_tag(self, user_id, operation_id, intent, write).await
+    }
+
+    async fn lists(
+        &self,
+        user_id: AuthenticatedUserId,
+        limit: u32,
+    ) -> Result<LibraryV2ReadOutcome<StoredLibraryLists>, DbError> {
+        LibraryRepository::lists(self, user_id, limit).await
+    }
+
+    async fn tags(
+        &self,
+        user_id: AuthenticatedUserId,
+        limit: u32,
+    ) -> Result<LibraryV2ReadOutcome<StoredLibraryTags>, DbError> {
+        LibraryRepository::tags(self, user_id, limit).await
+    }
+
+    async fn v2_changes(
+        &self,
+        user_id: AuthenticatedUserId,
+        after_revision: i64,
+        limit: u32,
+    ) -> Result<LibraryV2ReadOutcome<StoredLibraryV2ChangesPage>, DbError> {
+        LibraryRepository::v2_changes(self, user_id, after_revision, limit).await
     }
 
     async fn changes(
@@ -288,9 +581,513 @@ impl LibraryService {
             paper_id,
             operation_id,
             LibraryMutationIntent::Remove,
-            LibraryState::ToRead,
+            LibraryState::Inbox,
         )
         .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn put_item_v2(
+        &self,
+        user_id: AuthenticatedUserId,
+        paper_id: PaperId,
+        operation_id: Uuid,
+        state: LibraryState,
+        private_note: Option<String>,
+        save_source_kind: Option<LibrarySaveSourceKind>,
+    ) -> Result<LibraryMutationResult, LibraryServiceError> {
+        self.put_item_v2_with_reminder(
+            user_id,
+            paper_id,
+            operation_id,
+            state,
+            private_note,
+            save_source_kind,
+            None,
+            Utc::now(),
+        )
+        .await
+    }
+
+    /// Applies a canonical v2 item replacement with explicit reminder patch
+    /// semantics: omission preserves, null clears, and a timestamp replaces.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn put_item_v2_with_reminder(
+        &self,
+        user_id: AuthenticatedUserId,
+        paper_id: PaperId,
+        operation_id: Uuid,
+        state: LibraryState,
+        private_note: Option<String>,
+        save_source_kind: Option<LibrarySaveSourceKind>,
+        reminder_at: Option<Option<DateTime<Utc>>>,
+        now: DateTime<Utc>,
+    ) -> Result<LibraryMutationResult, LibraryServiceError> {
+        validate_optional_text(private_note.as_deref(), 500, false)
+            .map_err(|()| LibraryServiceError::InvalidPrivateNote)?;
+        if reminder_at
+            .flatten()
+            .is_some_and(|selected| !state.is_active() || selected <= now)
+        {
+            return Err(LibraryServiceError::InvalidReminder);
+        }
+        let mutation = LibraryItemMutation::replace_with_reminder(
+            state,
+            private_note,
+            save_source_kind,
+            reminder_at,
+        );
+        self.mutate_v2_item(
+            user_id,
+            paper_id,
+            operation_id,
+            LibraryMutationIntent::Save,
+            mutation,
+        )
+        .await
+    }
+
+    async fn mutate_v2_item(
+        &self,
+        user_id: AuthenticatedUserId,
+        paper_id: PaperId,
+        operation_id: Uuid,
+        intent: LibraryMutationIntent,
+        mutation: LibraryItemMutation,
+    ) -> Result<LibraryMutationResult, LibraryServiceError> {
+        if operation_id.is_nil() {
+            return Err(LibraryServiceError::InvalidOperationId);
+        }
+        if let Some(result) = map_operation_resolution(
+            self.library
+                .resolve_item_operation(user_id, paper_id, operation_id, intent, &mutation)
+                .await?,
+        ) {
+            return result;
+        }
+        self.check_mutation_rate(user_id).await?;
+        match self
+            .library
+            .mutate_item(user_id, paper_id, operation_id, intent, mutation)
+            .await?
+        {
+            LibraryMutationOutcome::Applied { item, replayed } => {
+                Ok(LibraryMutationResult { item, replayed })
+            }
+            LibraryMutationOutcome::AccountNotFound => Err(LibraryServiceError::AccountNotFound),
+            LibraryMutationOutcome::Inactive(status) => Err(inactive_error(status)),
+            LibraryMutationOutcome::PaperNotFound => Err(LibraryServiceError::PaperNotFound),
+            LibraryMutationOutcome::IdempotencyConflict => {
+                Err(LibraryServiceError::IdempotencyConflict)
+            }
+        }
+    }
+
+    pub async fn list_items_v2(
+        &self,
+        user_id: AuthenticatedUserId,
+        filter: LibraryItemFilter,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> Result<LibraryPage, LibraryServiceError> {
+        validate_page(cursor, limit)?;
+        map_library_page(
+            self.library
+                .list_items(user_id, filter, cursor, limit)
+                .await?,
+        )
+    }
+
+    pub async fn create_list(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        id: Uuid,
+        name: String,
+        description: Option<String>,
+        sort_order: i32,
+    ) -> Result<LibraryV2MutationResult<LibraryList>, LibraryServiceError> {
+        self.write_list(
+            user_id,
+            operation_id,
+            LibraryCollectionIntent::Create,
+            id,
+            name,
+            description,
+            sort_order,
+        )
+        .await
+    }
+
+    pub async fn update_list(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        id: Uuid,
+        name: String,
+        description: Option<String>,
+        sort_order: i32,
+    ) -> Result<LibraryV2MutationResult<LibraryList>, LibraryServiceError> {
+        self.write_list(
+            user_id,
+            operation_id,
+            LibraryCollectionIntent::Update,
+            id,
+            name,
+            description,
+            sort_order,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn write_list(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        intent: LibraryCollectionIntent,
+        id: Uuid,
+        name: String,
+        description: Option<String>,
+        sort_order: i32,
+    ) -> Result<LibraryV2MutationResult<LibraryList>, LibraryServiceError> {
+        validate_operation_and_entity_ids(operation_id, id)?;
+        let normalized_name = normalize_name(&name, 100)?;
+        validate_optional_text(description.as_deref(), 500, true)
+            .map_err(|()| LibraryServiceError::InvalidDescription)?;
+        self.check_mutation_rate(user_id).await?;
+        map_v2_mutation(
+            self.library
+                .mutate_list(
+                    user_id,
+                    operation_id,
+                    intent,
+                    &LibraryListWrite {
+                        id,
+                        name,
+                        normalized_name,
+                        description,
+                        sort_order,
+                    },
+                )
+                .await?,
+        )
+    }
+
+    pub async fn delete_list(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        id: Uuid,
+    ) -> Result<LibraryV2MutationResult<LibraryList>, LibraryServiceError> {
+        validate_operation_and_entity_ids(operation_id, id)?;
+        self.check_mutation_rate(user_id).await?;
+        map_v2_mutation(
+            self.library
+                .mutate_list(
+                    user_id,
+                    operation_id,
+                    LibraryCollectionIntent::Delete,
+                    &LibraryListWrite {
+                        id,
+                        name: String::new(),
+                        normalized_name: String::new(),
+                        description: None,
+                        sort_order: 0,
+                    },
+                )
+                .await?,
+        )
+    }
+
+    pub async fn lists(
+        &self,
+        user_id: AuthenticatedUserId,
+    ) -> Result<LibraryListsPage, LibraryServiceError> {
+        match self.library.lists(user_id, MAX_LIST_LIMIT).await? {
+            LibraryV2ReadOutcome::Found(StoredLibraryLists {
+                items,
+                sync_revision,
+            }) => Ok(LibraryListsPage {
+                items,
+                sync_revision,
+            }),
+            outcome => Err(map_v2_read_error(&outcome)),
+        }
+    }
+
+    pub async fn create_tag(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        id: Uuid,
+        name: String,
+    ) -> Result<LibraryV2MutationResult<LibraryTag>, LibraryServiceError> {
+        self.write_tag(
+            user_id,
+            operation_id,
+            LibraryCollectionIntent::Create,
+            id,
+            name,
+        )
+        .await
+    }
+
+    pub async fn update_tag(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        id: Uuid,
+        name: String,
+    ) -> Result<LibraryV2MutationResult<LibraryTag>, LibraryServiceError> {
+        self.write_tag(
+            user_id,
+            operation_id,
+            LibraryCollectionIntent::Update,
+            id,
+            name,
+        )
+        .await
+    }
+
+    async fn write_tag(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        intent: LibraryCollectionIntent,
+        id: Uuid,
+        name: String,
+    ) -> Result<LibraryV2MutationResult<LibraryTag>, LibraryServiceError> {
+        validate_operation_and_entity_ids(operation_id, id)?;
+        let normalized_name = normalize_name(&name, 60)?;
+        self.check_mutation_rate(user_id).await?;
+        map_v2_mutation(
+            self.library
+                .mutate_tag(
+                    user_id,
+                    operation_id,
+                    intent,
+                    &LibraryTagWrite {
+                        id,
+                        name,
+                        normalized_name,
+                    },
+                )
+                .await?,
+        )
+    }
+
+    pub async fn delete_tag(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        id: Uuid,
+    ) -> Result<LibraryV2MutationResult<LibraryTag>, LibraryServiceError> {
+        validate_operation_and_entity_ids(operation_id, id)?;
+        self.check_mutation_rate(user_id).await?;
+        map_v2_mutation(
+            self.library
+                .mutate_tag(
+                    user_id,
+                    operation_id,
+                    LibraryCollectionIntent::Delete,
+                    &LibraryTagWrite {
+                        id,
+                        name: String::new(),
+                        normalized_name: String::new(),
+                    },
+                )
+                .await?,
+        )
+    }
+
+    pub async fn tags(
+        &self,
+        user_id: AuthenticatedUserId,
+    ) -> Result<LibraryTagsPage, LibraryServiceError> {
+        match self.library.tags(user_id, MAX_LIST_LIMIT).await? {
+            LibraryV2ReadOutcome::Found(StoredLibraryTags {
+                items,
+                sync_revision,
+            }) => Ok(LibraryTagsPage {
+                items,
+                sync_revision,
+            }),
+            outcome => Err(map_v2_read_error(&outcome)),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn put_list_item(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        list_id: Uuid,
+        paper_id: PaperId,
+        position_rank: i64,
+        note: Option<String>,
+    ) -> Result<LibraryV2MutationResult<LibraryListItem>, LibraryServiceError> {
+        validate_operation_and_entity_ids(operation_id, list_id)?;
+        validate_optional_text(note.as_deref(), 500, true)
+            .map_err(|()| LibraryServiceError::InvalidDescription)?;
+        self.check_mutation_rate(user_id).await?;
+        map_v2_mutation(
+            self.library
+                .mutate_list_item(
+                    user_id,
+                    operation_id,
+                    LibraryCollectionIntent::Put,
+                    &LibraryListItemWrite {
+                        list_id,
+                        paper_id,
+                        position_rank,
+                        note,
+                    },
+                )
+                .await?,
+        )
+    }
+
+    pub async fn remove_list_item(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        list_id: Uuid,
+        paper_id: PaperId,
+    ) -> Result<LibraryV2MutationResult<LibraryListItem>, LibraryServiceError> {
+        validate_operation_and_entity_ids(operation_id, list_id)?;
+        self.check_mutation_rate(user_id).await?;
+        map_v2_mutation(
+            self.library
+                .mutate_list_item(
+                    user_id,
+                    operation_id,
+                    LibraryCollectionIntent::Remove,
+                    &LibraryListItemWrite {
+                        list_id,
+                        paper_id,
+                        position_rank: 0,
+                        note: None,
+                    },
+                )
+                .await?,
+        )
+    }
+
+    pub async fn put_item_tag(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        paper_id: PaperId,
+        tag_id: Uuid,
+    ) -> Result<LibraryV2MutationResult<LibraryItemTag>, LibraryServiceError> {
+        self.write_item_tag(
+            user_id,
+            operation_id,
+            paper_id,
+            tag_id,
+            LibraryCollectionIntent::Put,
+        )
+        .await
+    }
+
+    pub async fn remove_item_tag(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        paper_id: PaperId,
+        tag_id: Uuid,
+    ) -> Result<LibraryV2MutationResult<LibraryItemTag>, LibraryServiceError> {
+        self.write_item_tag(
+            user_id,
+            operation_id,
+            paper_id,
+            tag_id,
+            LibraryCollectionIntent::Remove,
+        )
+        .await
+    }
+
+    async fn write_item_tag(
+        &self,
+        user_id: AuthenticatedUserId,
+        operation_id: Uuid,
+        paper_id: PaperId,
+        tag_id: Uuid,
+        intent: LibraryCollectionIntent,
+    ) -> Result<LibraryV2MutationResult<LibraryItemTag>, LibraryServiceError> {
+        validate_operation_and_entity_ids(operation_id, tag_id)?;
+        self.check_mutation_rate(user_id).await?;
+        map_v2_mutation(
+            self.library
+                .mutate_item_tag(
+                    user_id,
+                    operation_id,
+                    intent,
+                    LibraryItemTagWrite { paper_id, tag_id },
+                )
+                .await?,
+        )
+    }
+
+    pub async fn changes_v2(
+        &self,
+        user_id: AuthenticatedUserId,
+        after_revision: i64,
+        limit: u32,
+    ) -> Result<LibraryV2ChangesPage, LibraryServiceError> {
+        if after_revision < 0 {
+            return Err(LibraryServiceError::InvalidAfterRevision);
+        }
+        if !(1..=MAX_CHANGES_LIMIT).contains(&limit) {
+            return Err(LibraryServiceError::InvalidLimit);
+        }
+        match self
+            .library
+            .v2_changes(user_id, after_revision, limit)
+            .await?
+        {
+            LibraryV2ReadOutcome::Found(StoredLibraryV2ChangesPage {
+                items,
+                next_after_revision,
+                has_more,
+                sync_revision,
+                purged_through_revision: _,
+            }) => Ok(LibraryV2ChangesPage {
+                items,
+                next_after_revision,
+                has_more,
+                sync_revision,
+            }),
+            LibraryV2ReadOutcome::ResetRequired {
+                purged_through_revision,
+                sync_revision,
+            } => Err(LibraryServiceError::SyncResetRequired {
+                purged_through_revision,
+                sync_revision,
+            }),
+            outcome => Err(map_v2_read_error(&outcome)),
+        }
+    }
+
+    async fn check_mutation_rate(
+        &self,
+        user_id: AuthenticatedUserId,
+    ) -> Result<(), LibraryServiceError> {
+        let request = RateLimitRequest::library_mutation(
+            user_id,
+            self.policy.mutation_limit(),
+            self.policy.mutation_window(),
+        )
+        .map_err(|_| LibraryServiceError::InvalidRateLimitPolicy)?;
+        let decision = self.rate_limits.check(&request).await?;
+        if decision.allowed {
+            Ok(())
+        } else {
+            Err(LibraryServiceError::RateLimited {
+                retry_after_seconds: decision.retry_after_seconds.unwrap_or(1).max(1),
+            })
+        }
     }
 
     async fn mutate(
@@ -364,7 +1161,12 @@ impl LibraryService {
         if cursor.is_some_and(|cursor| cursor.len() > MAX_CURSOR_BYTES) {
             return Err(LibraryServiceError::InvalidCursor);
         }
-        match self.library.list(user_id, state, cursor, limit).await? {
+        let _ = state;
+        match self
+            .library
+            .list_legacy_active(user_id, cursor, limit)
+            .await?
+        {
             LibraryReadOutcome::Found(StoredLibraryPage {
                 items,
                 next_cursor,
@@ -448,6 +1250,121 @@ fn map_operation_resolution(
             Some(Err(LibraryServiceError::IdempotencyConflict))
         }
     }
+}
+
+fn map_v2_mutation<T>(
+    outcome: LibraryV2MutationOutcome<T>,
+) -> Result<LibraryV2MutationResult<T>, LibraryServiceError> {
+    match outcome {
+        LibraryV2MutationOutcome::Applied { value, replayed } => {
+            Ok(LibraryV2MutationResult { value, replayed })
+        }
+        LibraryV2MutationOutcome::AccountNotFound => Err(LibraryServiceError::AccountNotFound),
+        LibraryV2MutationOutcome::Inactive(status) => Err(inactive_error(status)),
+        LibraryV2MutationOutcome::PaperNotFound => Err(LibraryServiceError::PaperNotFound),
+        LibraryV2MutationOutcome::ListNotFound => Err(LibraryServiceError::ListNotFound),
+        LibraryV2MutationOutcome::TagNotFound => Err(LibraryServiceError::TagNotFound),
+        LibraryV2MutationOutcome::MembershipNotFound => {
+            Err(LibraryServiceError::MembershipNotFound)
+        }
+        LibraryV2MutationOutcome::NameConflict => Err(LibraryServiceError::NameConflict),
+        LibraryV2MutationOutcome::IdempotencyConflict => {
+            Err(LibraryServiceError::IdempotencyConflict)
+        }
+    }
+}
+
+fn map_v2_read_error<T>(outcome: &LibraryV2ReadOutcome<T>) -> LibraryServiceError {
+    match outcome {
+        LibraryV2ReadOutcome::AccountNotFound => LibraryServiceError::AccountNotFound,
+        LibraryV2ReadOutcome::Inactive(status) => inactive_error(*status),
+        LibraryV2ReadOutcome::InvalidAfterRevision => LibraryServiceError::InvalidAfterRevision,
+        LibraryV2ReadOutcome::ResetRequired {
+            purged_through_revision,
+            sync_revision,
+        } => LibraryServiceError::SyncResetRequired {
+            purged_through_revision: *purged_through_revision,
+            sync_revision: *sync_revision,
+        },
+        LibraryV2ReadOutcome::Found(_) => LibraryServiceError::Storage(DbError::InvalidData(
+            "library read outcome was routed through an invalid branch".to_owned(),
+        )),
+    }
+}
+
+fn validate_page(cursor: Option<&str>, limit: u32) -> Result<(), LibraryServiceError> {
+    if !(1..=MAX_LIST_LIMIT).contains(&limit) {
+        return Err(LibraryServiceError::InvalidLimit);
+    }
+    if cursor.is_some_and(|cursor| cursor.len() > MAX_CURSOR_BYTES) {
+        return Err(LibraryServiceError::InvalidCursor);
+    }
+    Ok(())
+}
+
+fn map_library_page(
+    outcome: LibraryReadOutcome<StoredLibraryPage>,
+) -> Result<LibraryPage, LibraryServiceError> {
+    match outcome {
+        LibraryReadOutcome::Found(StoredLibraryPage {
+            items,
+            next_cursor,
+            sync_revision,
+        }) => Ok(LibraryPage {
+            items,
+            next_cursor,
+            sync_revision,
+        }),
+        LibraryReadOutcome::AccountNotFound => Err(LibraryServiceError::AccountNotFound),
+        LibraryReadOutcome::Inactive(status) => Err(inactive_error(status)),
+        LibraryReadOutcome::InvalidCursor => Err(LibraryServiceError::InvalidCursor),
+    }
+}
+
+fn validate_operation_and_entity_ids(
+    operation_id: Uuid,
+    entity_id: Uuid,
+) -> Result<(), LibraryServiceError> {
+    if operation_id.is_nil() || entity_id.is_nil() {
+        return Err(LibraryServiceError::InvalidOperationId);
+    }
+    Ok(())
+}
+
+fn normalize_name(value: &str, max_chars: usize) -> Result<String, LibraryServiceError> {
+    if value.contains('\0') || value.trim() != value {
+        return Err(LibraryServiceError::InvalidName);
+    }
+    let normalized_spacing = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized_spacing != value
+        || !(1..=max_chars).contains(&value.chars().count())
+        || value.contains(['\n', '\r'])
+    {
+        return Err(LibraryServiceError::InvalidName);
+    }
+    let normalized = value.to_lowercase();
+    if normalized.chars().count() > max_chars {
+        return Err(LibraryServiceError::InvalidName);
+    }
+    Ok(normalized)
+}
+
+fn validate_optional_text(
+    value: Option<&str>,
+    max_chars: usize,
+    allow_newlines: bool,
+) -> Result<(), ()> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if value.trim() != value
+        || value.contains('\0')
+        || !(1..=max_chars).contains(&value.chars().count())
+        || (!allow_newlines && value.contains(['\n', '\r']))
+    {
+        return Err(());
+    }
+    Ok(())
 }
 
 fn inactive_error(status: AccountStatus) -> LibraryServiceError {
@@ -593,9 +1510,14 @@ mod tests {
         let now = Utc.with_ymd_and_hms(2026, 7, 31, 12, 0, 0).unwrap();
         LibraryItem {
             paper_id: Uuid::now_v7(),
-            state: LibraryState::ToRead,
+            state: LibraryState::Inbox,
+            private_note: None,
+            save_source_kind: None,
+            reminder_at: None,
             saved_at: now,
             updated_at: now,
+            reviewed_at: None,
+            archived_at: None,
             removed_at: None,
             revision: 3,
             last_operation_id: operation_id,
@@ -647,7 +1569,7 @@ mod tests {
                 AuthenticatedUserId::new(Uuid::now_v7()),
                 paper_id,
                 operation_id,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap();
@@ -675,7 +1597,7 @@ mod tests {
                 AuthenticatedUserId::new(Uuid::now_v7()),
                 paper_id,
                 operation_id,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap();
@@ -770,7 +1692,7 @@ mod tests {
             service
                 .list(
                     AuthenticatedUserId::new(Uuid::now_v7()),
-                    LibraryState::ToRead,
+                    LibraryState::Inbox,
                     None,
                     20,
                 )
@@ -803,19 +1725,19 @@ mod tests {
         let user_id = AuthenticatedUserId::new(Uuid::now_v7());
         assert!(matches!(
             service
-                .list(user_id, LibraryState::ToRead, Some("not a cursor"), 20)
+                .list(user_id, LibraryState::Inbox, Some("not a cursor"), 20)
                 .await,
             Err(LibraryServiceError::InvalidCursor)
         ));
         let oversized = "a".repeat(MAX_CURSOR_BYTES + 1);
         assert!(matches!(
             service
-                .list(user_id, LibraryState::ToRead, Some(&oversized), 20,)
+                .list(user_id, LibraryState::Inbox, Some(&oversized), 20,)
                 .await,
             Err(LibraryServiceError::InvalidCursor)
         ));
         assert!(matches!(
-            service.list(user_id, LibraryState::ToRead, None, 0).await,
+            service.list(user_id, LibraryState::Inbox, None, 0).await,
             Err(LibraryServiceError::InvalidLimit)
         ));
         assert!(matches!(
@@ -837,5 +1759,89 @@ mod tests {
     fn mutation_policy_rejects_zero_or_unbounded_windows() {
         assert!(LibraryPolicy::new(0, Duration::from_secs(60)).is_err());
         assert!(LibraryPolicy::new(1, Duration::ZERO).is_err());
+    }
+
+    #[tokio::test]
+    async fn v2_private_values_and_names_are_bounded_before_storage_or_rate_limits() {
+        let operation_id = Uuid::now_v7();
+        let (service, mutations, checks, _) = fixture_service(
+            LibraryMutationOutcome::PaperNotFound,
+            true,
+            AccountStatus::Active,
+        );
+        let user_id = AuthenticatedUserId::new(Uuid::now_v7());
+        assert!(matches!(
+            service
+                .put_item_v2(
+                    user_id,
+                    Uuid::now_v7(),
+                    operation_id,
+                    LibraryState::Inbox,
+                    Some("line one\nline two".to_owned()),
+                    Some(LibrarySaveSourceKind::Other),
+                )
+                .await,
+            Err(LibraryServiceError::InvalidPrivateNote)
+        ));
+        assert!(matches!(
+            service
+                .create_list(
+                    user_id,
+                    operation_id,
+                    Uuid::now_v7(),
+                    "  Later".to_owned(),
+                    None,
+                    0,
+                )
+                .await,
+            Err(LibraryServiceError::InvalidName)
+        ));
+        assert_eq!(*checks.lock().unwrap(), 0);
+        assert!(mutations.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn reminders_must_be_future_and_belong_to_active_items() {
+        let operation_id = Uuid::now_v7();
+        let (service, mutations, checks, _) = fixture_service(
+            LibraryMutationOutcome::PaperNotFound,
+            true,
+            AccountStatus::Active,
+        );
+        let user_id = AuthenticatedUserId::new(Uuid::now_v7());
+        let now = Utc.with_ymd_and_hms(2026, 8, 28, 12, 0, 0).unwrap();
+        for (state, selected) in [
+            (LibraryState::Inbox, now),
+            (LibraryState::Reviewed, now + chrono::TimeDelta::hours(1)),
+        ] {
+            assert!(matches!(
+                service
+                    .put_item_v2_with_reminder(
+                        user_id,
+                        Uuid::now_v7(),
+                        operation_id,
+                        state,
+                        None,
+                        None,
+                        Some(Some(selected)),
+                        now,
+                    )
+                    .await,
+                Err(LibraryServiceError::InvalidReminder)
+            ));
+        }
+        assert_eq!(*checks.lock().unwrap(), 0);
+        assert!(mutations.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn v2_name_normalization_is_closed_and_stable() {
+        assert_eq!(normalize_name("Core Methods", 100).unwrap(), "core methods");
+        for invalid in ["", " Core", "Core ", "Core  Methods", "Core\nMethods"] {
+            assert!(matches!(
+                normalize_name(invalid, 100),
+                Err(LibraryServiceError::InvalidName)
+            ));
+        }
     }
 }

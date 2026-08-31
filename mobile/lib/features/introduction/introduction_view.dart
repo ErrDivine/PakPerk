@@ -9,6 +9,7 @@ import '../../core/models/paper.dart';
 import '../../core/models/processing.dart';
 import '../../core/providers.dart';
 import '../../core/widgets/status_widgets.dart';
+import '../../design_system/motion.dart';
 import '../chat/chat_controller.dart';
 import '../paper_reader/abstract_view.dart';
 import '../paper_reader/paper_processing_controller.dart';
@@ -47,6 +48,7 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
   final TextEditingController _composer = TextEditingController();
   bool _chatRouteOpen = false;
   bool _restoredChatScheduled = false;
+  int? _scheduledChatGeneration;
 
   ChatControllerArgs get _chatArgs => ChatControllerArgs(
     paperId: widget.paper.paperId,
@@ -68,6 +70,7 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
       readerNavigationStateProvider(widget.readerKey),
     );
     final chat = ref.watch(chatControllerProvider(_chatArgs));
+    _synchronizeChatGeneration(chat);
     final repositoryOffline = ref.read(paperRepositoryProvider).isOffline;
     final networkOffline = ref
         .watch(networkOfflineProvider)
@@ -216,6 +219,24 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
     unawaited(
       ref.read(chatControllerProvider(_chatArgs).notifier).send(question),
     );
+  }
+
+  void _synchronizeChatGeneration(ChatState chat) {
+    final generation = widget.processing.processing?.generation;
+    if (generation == null ||
+        generation <= 0 ||
+        chat.generation == generation ||
+        _scheduledChatGeneration == generation) {
+      return;
+    }
+    _scheduledChatGeneration = generation;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _scheduledChatGeneration != generation) return;
+      _scheduledChatGeneration = null;
+      ref
+          .read(chatControllerProvider(_chatArgs).notifier)
+          .acceptGeneration(generation);
+    });
   }
 }
 
@@ -459,16 +480,14 @@ class IntroductionParagraphText extends StatelessWidget {
         WidgetSpan(
           alignment: PlaceholderAlignment.baseline,
           baseline: TextBaseline.alphabetic,
-          child: Semantics(
-            link: true,
-            label: '${citation.marker}, citation to $titles',
-            child: InkWell(
-              key: ValueKey(
-                'citation-marker-${paragraph.ordinal}-$citationIndex',
-              ),
-              onTap: () => onOpenCitation(citation),
-              child: Text(citation.marker, style: linkStyle),
+          child: _CitationLink(
+            key: ValueKey(
+              'citation-marker-${paragraph.ordinal}-$citationIndex',
             ),
+            marker: citation.marker,
+            semanticsLabel: '${citation.marker}, citation to $titles',
+            style: linkStyle,
+            onTap: () => onOpenCitation(citation),
           ),
         ),
       );
@@ -483,6 +502,74 @@ class IntroductionParagraphText extends StatelessWidget {
       child: Text.rich(
         TextSpan(style: bodyStyle, children: spans),
         key: ValueKey('introduction-paragraph-${paragraph.ordinal}'),
+      ),
+    );
+  }
+}
+
+class _CitationLink extends StatefulWidget {
+  const _CitationLink({
+    required this.marker,
+    required this.semanticsLabel,
+    required this.style,
+    required this.onTap,
+    super.key,
+  });
+
+  final String marker;
+  final String semanticsLabel;
+  final TextStyle? style;
+  final VoidCallback onTap;
+
+  @override
+  State<_CitationLink> createState() => _CitationLinkState();
+}
+
+class _CitationLinkState extends State<_CitationLink> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final reducedMotion = platformPrefersReducedMotion(context);
+    return Semantics(
+      container: true,
+      link: true,
+      label: widget.semanticsLabel,
+      child: ExcludeSemantics(
+        child: AnimatedScale(
+          scale: _pressed ? .98 : 1,
+          duration: reducedMotion
+              ? PakPerkMotion.instant
+              : const Duration(milliseconds: 80),
+          curve: Curves.easeOut,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onHighlightChanged: (pressed) {
+                if (_pressed != pressed) setState(() => _pressed = pressed);
+              },
+              overlayColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.pressed)) {
+                  return colors.primary.withValues(alpha: .12);
+                }
+                if (states.contains(WidgetState.focused)) {
+                  return colors.primary.withValues(alpha: .09);
+                }
+                if (states.contains(WidgetState.hovered)) {
+                  return colors.primary.withValues(alpha: .06);
+                }
+                return null;
+              }),
+              onTap: widget.onTap,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                child: Center(child: Text(widget.marker, style: widget.style)),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

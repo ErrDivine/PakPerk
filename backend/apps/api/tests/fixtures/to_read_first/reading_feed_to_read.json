@@ -1,0 +1,50 @@
+{
+  "enforcement": "shadow",
+  "mode": "to_read",
+  "decision": {
+    "policy_version": "queue_first_v1",
+    "library_revision": 128,
+    "active_to_read_count": 1,
+    "queue_proven_empty": false
+  },
+  "batch_id": null,
+  "batch_metadata": null,
+  "items": [
+    {
+      "paper": {
+        "paper_id": "0198f4d7-a4ce-7b40-8ee8-4f350350810c",
+        "arxiv_id": "2401.12345v2",
+        "title": "A bounded paper title",
+        "abstract": "Bounded public arXiv metadata.",
+        "authors": [
+          "Ada Reader"
+        ],
+        "primary_category": "cs.AI",
+        "categories": [
+          "cs.AI"
+        ],
+        "published_at": "2026-07-01T00:00:00Z",
+        "updated_at": "2026-07-02T00:00:00Z",
+        "abs_url": "https://arxiv.org/abs/2401.12345v2",
+        "pdf_url": "https://arxiv.org/pdf/2401.12345v2",
+        "capabilities": {
+          "metadata": true,
+          "introduction": false,
+          "chat": false,
+          "connections": false
+        }
+      },
+      "queue": {
+        "state": "inbox",
+        "saved_at": "2026-07-31T12:00:00Z",
+        "revision": 126,
+        "save_source_kind": "title_search"
+      },
+      "source": "to_read",
+      "recommendation": null
+    }
+  ],
+  "next_cursor": null,
+  "brief": null,
+  "server_time": "2026-08-19T12:00:00Z"
+}

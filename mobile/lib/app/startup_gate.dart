@@ -173,79 +173,106 @@ class _StartupOpeningTransitionState extends State<StartupOpeningTransition>
       return widget.child;
     }
 
-    return AnimatedBuilder(
-      animation: _controller,
-      child: widget.child,
-      builder: (context, child) {
-        final progress = _controller.value;
-        if (_reducedMotion) {
+    return Listener(
+      key: const ValueKey('startup-opening-interrupt'),
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => _finishOpeningForInteraction(),
+      child: AnimatedBuilder(
+        animation: _controller,
+        child: widget.child,
+        builder: (context, child) {
+          final progress = _controller.value;
+          if (_reducedMotion) {
+            final contentIsPrimary = progress > 0;
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                ExcludeSemantics(
+                  excluding: !contentIsPrimary,
+                  child: IgnorePointer(
+                    key: const ValueKey('startup-content-interaction'),
+                    ignoring: progress <= 0,
+                    child: Opacity(opacity: progress, child: child),
+                  ),
+                ),
+                ExcludeSemantics(
+                  excluding: contentIsPrimary,
+                  child: IgnorePointer(
+                    child: Opacity(
+                      opacity: 1 - progress,
+                      child: const _StartupLaunchSurface(),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
+
+          final intervals = widget.launchMode == StartupLaunchMode.deepLink
+              ? const _OpeningIntervals(
+                  markStart: 0,
+                  markEnd: .45,
+                  contentStart: .15,
+                )
+              : const _OpeningIntervals(
+                  markStart: .19,
+                  markEnd: .58,
+                  contentStart: .48,
+                );
+          final markProgress = CurvedAnimation(
+            parent: _controller,
+            curve: Interval(
+              intervals.markStart,
+              intervals.markEnd,
+              curve: PakPerkMotion.emphasized,
+            ),
+          ).value;
+          final contentProgress = CurvedAnimation(
+            parent: _controller,
+            curve: Interval(
+              intervals.contentStart,
+              1,
+              curve: PakPerkMotion.enter,
+            ),
+          ).value;
+          final contentIsPrimary = contentProgress > 0;
+
           return Stack(
             fit: StackFit.expand,
             children: [
-              Opacity(opacity: progress, child: child),
-              IgnorePointer(
-                child: Opacity(
-                  opacity: 1 - progress,
-                  child: const _StartupLaunchSurface(),
+              ExcludeSemantics(
+                excluding: !contentIsPrimary,
+                child: IgnorePointer(
+                  key: const ValueKey('startup-content-interaction'),
+                  // Input becomes available as soon as the real interface is
+                  // visible. A new gesture can therefore interrupt the opening
+                  // instead of waiting for a decorative transition to finish.
+                  ignoring: contentProgress <= 0,
+                  child: Opacity(
+                    opacity: contentProgress,
+                    child: Transform.translate(
+                      offset: Offset(0, 12 * (1 - contentProgress)),
+                      child: child,
+                    ),
+                  ),
+                ),
+              ),
+              ExcludeSemantics(
+                excluding: contentIsPrimary,
+                child: IgnorePointer(
+                  child: Opacity(
+                    opacity: 1 - contentProgress,
+                    child: _StartupLaunchSurface(
+                      markScale: .96 + (.04 * markProgress),
+                      wordmarkOpacity: markProgress,
+                    ),
+                  ),
                 ),
               ),
             ],
           );
-        }
-
-        final intervals = widget.launchMode == StartupLaunchMode.deepLink
-            ? const _OpeningIntervals(
-                markStart: 0,
-                markEnd: .45,
-                contentStart: .15,
-              )
-            : const _OpeningIntervals(
-                markStart: .19,
-                markEnd: .58,
-                contentStart: .48,
-              );
-        final markProgress = CurvedAnimation(
-          parent: _controller,
-          curve: Interval(
-            intervals.markStart,
-            intervals.markEnd,
-            curve: PakPerkMotion.emphasized,
-          ),
-        ).value;
-        final contentProgress = CurvedAnimation(
-          parent: _controller,
-          curve: Interval(
-            intervals.contentStart,
-            1,
-            curve: PakPerkMotion.enter,
-          ),
-        ).value;
-
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            IgnorePointer(
-              ignoring: contentProgress < 1,
-              child: Opacity(
-                opacity: contentProgress,
-                child: Transform.translate(
-                  offset: Offset(0, 12 * (1 - contentProgress)),
-                  child: child,
-                ),
-              ),
-            ),
-            IgnorePointer(
-              child: Opacity(
-                opacity: 1 - contentProgress,
-                child: _StartupLaunchSurface(
-                  markScale: .96 + (.04 * markProgress),
-                  wordmarkOpacity: markProgress,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+        },
+      ),
     );
   }
 
@@ -278,6 +305,13 @@ class _StartupOpeningTransitionState extends State<StartupOpeningTransition>
     if (!mounted || _finished) return;
     setState(() => _finished = true);
     widget.onComplete();
+  }
+
+  void _finishOpeningForInteraction() {
+    if (_finished || !_controller.isAnimating) return;
+    _controller.stop();
+    _controller.value = 1;
+    _complete();
   }
 }
 

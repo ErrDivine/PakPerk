@@ -57,6 +57,90 @@ void main() {
     expect(PakPerkMotion.deepLinkOpening, lessThan(PakPerkMotion.coldOpening));
   });
 
+  testWidgets('visible content becomes interactive before opening completes', (
+    tester,
+  ) async {
+    var taps = 0;
+    var completed = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: PakPerkTheme.light(),
+        home: StartupOpeningTransition(
+          launchMode: StartupLaunchMode.cold,
+          reducedMotionPreference: ReducedMotionPreference.full,
+          onComplete: () => completed += 1,
+          child: Semantics(
+            label: 'Reader content',
+            button: true,
+            child: GestureDetector(
+              key: const ValueKey('usable-content'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => taps += 1,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester
+          .widget<IgnorePointer>(
+            find.byKey(const ValueKey('startup-content-interaction')),
+          )
+          .ignoring,
+      isTrue,
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(completed, 0);
+    expect(
+      tester
+          .widget<IgnorePointer>(
+            find.byKey(const ValueKey('startup-content-interaction')),
+          )
+          .ignoring,
+      isFalse,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('usable-content')));
+    expect(taps, 1);
+    await tester.pump();
+    expect(completed, 1);
+    expect(find.byKey(const ValueKey('startup-launch-surface')), findsNothing);
+  });
+
+  testWidgets('opening exposes only the visually primary semantics layer', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: PakPerkTheme.light(),
+        home: StartupOpeningTransition(
+          launchMode: StartupLaunchMode.cold,
+          reducedMotionPreference: ReducedMotionPreference.full,
+          onComplete: () {},
+          child: Semantics(
+            label: 'Reader content',
+            child: const ColoredBox(color: Colors.green),
+          ),
+        ),
+      ),
+    );
+
+    Iterable<String> traversalLabels() => tester.semantics
+        .simulatedAccessibilityTraversal()
+        .map((node) => node.label)
+        .where((label) => label.isNotEmpty);
+
+    expect(traversalLabels(), contains('Pakperk is opening'));
+    expect(traversalLabels(), isNot(contains('Reader content')));
+
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(traversalLabels(), isNot(contains('Pakperk is opening')));
+    expect(traversalLabels(), contains('Reader content'));
+    semantics.dispose();
+  });
+
   testWidgets('reduced motion cross-fades without moving usable content', (
     tester,
   ) async {

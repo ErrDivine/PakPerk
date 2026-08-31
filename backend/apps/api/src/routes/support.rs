@@ -1,11 +1,9 @@
 use super::{
-    ApiError, AppState, ArxivError, Capabilities, CursorError, DbError, Duration, Extension,
-    FailureCategory, FulltextPolicy, HeaderMap, OverallProcessingState, Paper, PaperSummary,
+    ApiError, AppState, ArxivError, Capabilities, CursorError, DbError, Extension, FailureCategory,
+    FulltextPolicy, HeaderMap, OverallProcessingState, Paper, PaperResolutionError, PaperSummary,
     ProcessingError, ProcessingStage, ProcessingState, ProviderError, PublicRequestAction,
     PublicRequestRateLimitError, RequestId, SocketAddr, StatusCode, Url, Uuid, error,
 };
-
-pub(super) const NEGATIVE_EXACT_ARXIV_CACHE_TTL: Duration = Duration::from_secs(15 * 60);
 
 pub(crate) async fn not_found(Extension(request_id): Extension<RequestId>) -> ApiError {
     ApiError::new(
@@ -188,33 +186,28 @@ pub(super) fn internal_db_error(request_id: RequestId, error_value: &DbError) ->
     )
 }
 
-pub(super) async fn observe_arxiv_result<T>(
-    state: &AppState,
+pub(super) fn paper_resolution_error(
     request_id: RequestId,
-    outcome: Result<T, ArxivError>,
-) -> Result<T, ApiError> {
-    match outcome {
-        Ok(value) => Ok(value),
-        Err(error_value) => {
-            if let Some(cooldown) = error_value.shared_cooldown()
-                && let Err(database_error) = state.papers.defer_arxiv_requests(cooldown).await
+    error_value: &PaperResolutionError,
+) -> ApiError {
+    match error_value {
+        PaperResolutionError::InvalidArxivId => invalid_arxiv_id(request_id),
+        PaperResolutionError::NotFound => paper_not_found(request_id),
+        PaperResolutionError::Storage(error_value) => internal_db_error(request_id, error_value),
+        PaperResolutionError::ArxivUnavailable { error, .. } => {
+            if let Some(database_error) = error_value.cooldown_publication_error()
+                && let Some(cooldown) = error.shared_cooldown()
             {
                 error!(
                     request_id = %request_id.0,
-                    error.kind = db_error_kind(&database_error),
+                    error.kind = db_error_kind(database_error),
                     cooldown_seconds = cooldown.as_secs(),
                     "could not publish shared arXiv cooldown"
                 );
             }
-            Err(arxiv_error(request_id, &error_value))
+            arxiv_error(request_id, error)
         }
     }
-}
-
-pub(super) fn negative_exact_cache_ttl(configured: Duration) -> Duration {
-    configured
-        .min(NEGATIVE_EXACT_ARXIV_CACHE_TTL)
-        .max(Duration::from_secs(1))
 }
 
 pub(super) fn arxiv_error(request_id: RequestId, error_value: &ArxivError) -> ApiError {
@@ -287,6 +280,8 @@ fn db_error_kind(error: &DbError) -> &'static str {
         DbError::Cursor(_) => "cursor",
         DbError::StaleGeneration => "stale_generation",
         DbError::InvalidChatThread => "invalid_chat_thread",
+        DbError::AssistantContextNotReady => "assistant_context_not_ready",
+        DbError::InvalidAssistantThread => "invalid_assistant_thread",
         DbError::IdentityTombstoned => "identity_tombstoned",
     }
 }
@@ -401,5 +396,39 @@ mod telemetry_tests {
                 byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'
             }));
         }
+    }
+
+    #[test]
+    fn paper_resolution_keeps_existing_error_contract() {
+        let request_id = RequestId(Uuid::nil());
+        let invalid = paper_resolution_error(request_id, &PaperResolutionError::InvalidArxivId);
+        assert_eq!(invalid.status, StatusCode::BAD_REQUEST);
+        assert_eq!(invalid.code, "INVALID_ARXIV_ID");
+        assert_eq!(invalid.message, "The arXiv identifier is invalid.");
+        assert!(!invalid.retryable);
+
+        let missing = paper_resolution_error(request_id, &PaperResolutionError::NotFound);
+        assert_eq!(missing.status, StatusCode::NOT_FOUND);
+        assert_eq!(missing.code, "PAPER_NOT_FOUND");
+        assert_eq!(
+            missing.message,
+            "The requested paper is not in the metadata cache."
+        );
+        assert!(!missing.retryable);
+
+        let upstream = paper_resolution_error(
+            request_id,
+            &PaperResolutionError::ArxivUnavailable {
+                error: ArxivError::InvalidConfiguration("fixture".to_owned()),
+                cooldown_publication_error: None,
+            },
+        );
+        assert_eq!(upstream.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(upstream.code, "ARXIV_UNAVAILABLE");
+        assert_eq!(
+            upstream.message,
+            "arXiv metadata is temporarily unavailable."
+        );
+        assert!(upstream.retryable);
     }
 }

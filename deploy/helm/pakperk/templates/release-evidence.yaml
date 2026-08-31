@@ -47,3 +47,4 @@ data:
   restoreDrillId: {{ .Values.releaseEvidence.restoreDrillId | quote }}
   reviewerFlowId: {{ .Values.releaseEvidence.reviewerFlowId | quote }}
   strictContentReviewId: {{ .Values.releaseEvidence.strictContentReviewId | quote }}
+  deepReaderReleaseId: {{ .Values.releaseEvidence.deepReaderReleaseId | quote }}

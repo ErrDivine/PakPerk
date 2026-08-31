@@ -177,6 +177,26 @@ class FeedPrefetchCoordinator {
 
   bool get hasInFlightRequest => _inFlight.isNotEmpty;
 
+  /// Immediately removes the public-discovery query as a gesture/background
+  /// work owner. Auth transitions call this before account-scoped content is
+  /// published so speculative public pages cannot leak across feed modes.
+  void deactivate() {
+    if (_disposed) return;
+    _generation += 1;
+    _active = null;
+    for (final cancellation in _cancellations.values) {
+      cancellation.cancel('Public discovery prefetch was deactivated.');
+    }
+    _cancellations.clear();
+    for (final task in _retryTasks.values) {
+      task.cancel();
+    }
+    _retryTasks.clear();
+    _retryAttempts.clear();
+    _evictionTask?.cancel();
+    _evictionTask = null;
+  }
+
   /// Obsoletes and cancels speculative work when the selected category
   /// changes, even before the replacement feed has rendered its first card.
   void activateQuery({String? category}) {
@@ -565,17 +585,8 @@ class FeedPrefetchCoordinator {
 
   Future<void> dispose() async {
     if (_disposed) return;
+    deactivate();
     _disposed = true;
-    for (final cancellation in _cancellations.values) {
-      cancellation.cancel('The feed prefetch coordinator was disposed.');
-    }
-    _cancellations.clear();
-    for (final task in _retryTasks.values) {
-      task.cancel();
-    }
-    _retryTasks.clear();
-    _evictionTask?.cancel();
-    _evictionTask = null;
     await _updates.close();
   }
 }

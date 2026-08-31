@@ -1,9 +1,16 @@
 import '../api/api_exception.dart';
 import '../library/library_models.dart';
 import '../library/library_repository.dart';
+import '../telemetry/telemetry.dart';
 import 'retry_policy.dart';
 
 typedef OutboxClock = DateTime Function();
+typedef FinalCompletionAcknowledged =
+    void Function({
+      required String accountId,
+      required int authEpoch,
+      required DateTime acknowledgedAt,
+    });
 
 final class OutboxDrainResult {
   const OutboxDrainResult({
@@ -24,13 +31,19 @@ final class LibraryOutboxController {
     required LibraryRepository repository,
     OutboxRetryPolicy? retryPolicy,
     OutboxClock? clock,
+    TelemetrySink telemetry = const NoopTelemetrySink(),
+    FinalCompletionAcknowledged? onFinalCompletionAcknowledged,
   }) : _repository = repository,
        _retryPolicy = retryPolicy ?? OutboxRetryPolicy(),
-       _clock = clock ?? DateTime.now;
+       _clock = clock ?? DateTime.now,
+       _telemetry = telemetry,
+       _onFinalCompletionAcknowledged = onFinalCompletionAcknowledged;
 
   final LibraryRepository _repository;
   final OutboxRetryPolicy _retryPolicy;
   final OutboxClock _clock;
+  final TelemetrySink _telemetry;
+  final FinalCompletionAcknowledged? _onFinalCompletionAcknowledged;
   final Map<_OutboxScope, Future<OutboxDrainResult>> _flights = {};
 
   Future<OutboxDrainResult> drain({
@@ -75,8 +88,22 @@ final class LibraryOutboxController {
           authEpoch: authEpoch,
           scopeGuard: guard,
         );
+        if (guard() && operation.removesFromActiveQueue) {
+          await _recordFinalCompletionIfApplicable(
+            operation: operation,
+            authEpoch: authEpoch,
+            scopeGuard: guard,
+          );
+        }
       } on ApiException catch (error) {
         if (!guard()) return _scopeChanged(accountId);
+        if (error.statusCode == 409) {
+          emitTelemetry(
+            _telemetry,
+            PakPerkTelemetryEvent.librarySyncConflict,
+            const {'boundary': 'remote_operation'},
+          );
+        }
         if (_retryPolicy.shouldRetry(error)) {
           final delay = _retryPolicy.delayFor(
             completedAttempts: operation.attemptCount,
@@ -120,6 +147,28 @@ final class LibraryOutboxController {
       scopeChanged: false,
       issue: await _repository.latestSyncIssue(accountId),
     );
+  }
+
+  Future<void> _recordFinalCompletionIfApplicable({
+    required LibraryPendingOperation operation,
+    required int authEpoch,
+    required bool Function() scopeGuard,
+  }) async {
+    try {
+      final pending = await _repository.pendingIntents(operation.accountId);
+      if (!scopeGuard() || pending.removes != 0) return;
+      final activeCount = await _repository.activeToReadCount(
+        operation.accountId,
+      );
+      if (!scopeGuard() || activeCount != 0) return;
+      _onFinalCompletionAcknowledged?.call(
+        accountId: operation.accountId,
+        authEpoch: authEpoch,
+        acknowledgedAt: _clock().toUtc(),
+      );
+    } on Object {
+      // This best-effort operational signal cannot change outbox convergence.
+    }
   }
 
   Future<OutboxDrainResult> _scopeChanged(String accountId) async =>

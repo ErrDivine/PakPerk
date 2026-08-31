@@ -4,8 +4,11 @@ use anyhow::{Context as _, Result};
 use db::Database;
 use observability::{ObservabilityConfig, init};
 use pakperk_api::{
-    ApiConfig, AppState, build_router, initialize_auth_runtime, spawn_auth_recovery,
-    spawn_library_maintenance, spawn_operational_telemetry, spawn_rate_limit_maintenance,
+    ApiConfig, AppState, build_router, initialize_auth_runtime, spawn_assistant_maintenance,
+    spawn_auth_recovery, spawn_engagement_maintenance, spawn_engagement_retention,
+    spawn_interaction_maintenance, spawn_library_maintenance, spawn_operational_telemetry,
+    spawn_paper_import_maintenance, spawn_rate_limit_maintenance, spawn_recommendation_maintenance,
+    spawn_research_profile_maintenance, spawn_saved_search_maintenance,
 };
 use tokio::net::TcpListener;
 use tracing::info;
@@ -36,8 +39,19 @@ async fn main() -> Result<()> {
     }
 
     let _rate_limit_maintenance = spawn_rate_limit_maintenance(database.clone());
-    let _operational_telemetry =
-        spawn_operational_telemetry(database.clone(), config.features.comments);
+    let _assistant_maintenance = spawn_assistant_maintenance(database.clone());
+    let _operational_telemetry = spawn_operational_telemetry(
+        database.clone(),
+        config.features.comments,
+        config.features.notifications,
+    );
+    let _library_maintenance = spawn_library_maintenance(database.clone());
+    let _paper_import_maintenance = spawn_paper_import_maintenance(database.clone());
+    let _research_profile_maintenance = spawn_research_profile_maintenance(database.clone());
+    let _interaction_maintenance = spawn_interaction_maintenance(database.clone());
+    let _saved_search_maintenance = spawn_saved_search_maintenance(database.clone());
+    let _recommendation_maintenance = spawn_recommendation_maintenance(database.clone());
+    let _engagement_retention = spawn_engagement_retention(database.clone());
 
     let auth = initialize_auth_runtime(config.accounts.as_ref()).await;
     let _auth_recovery = config
@@ -46,7 +60,15 @@ async fn main() -> Result<()> {
         .and_then(|accounts| spawn_auth_recovery(auth.clone(), accounts));
     let state = AppState::new_with_auth(database, &config, auth)
         .context("could not initialize API state")?;
-    let _library_maintenance = spawn_library_maintenance(state.library_service());
+    let _recommendation_generation = state.spawn_recommendation_generation_worker();
+    let _engagement_maintenance = spawn_engagement_maintenance(
+        (config.features.reading_briefs
+            || config.features.subscriptions
+            || config.features.notifications)
+            .then(|| state.engagement_service())
+            .flatten(),
+        config.features.notifications,
+    );
     let app = build_router(state, &config);
     let listener = TcpListener::bind(config.bind)
         .await

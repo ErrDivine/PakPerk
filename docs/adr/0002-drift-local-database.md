@@ -27,16 +27,20 @@ account deletion.
 ## Implemented shape
 
 The production database uses the stable `pakperk_content.sqlite` filename and
-currently has schema version 6. Foreign keys are enabled and the database uses
+currently has schema version 10. Foreign keys are enabled and the database uses
 WAL mode. The schema contains:
 
 - normalized paper, feed-query, and ordered feed-membership tables;
 - generation- and arXiv-version-bound processing, Introduction, Connections,
   and anonymous chat caches;
 - a bounded comment-page cache; and
-- account-scoped library, draft, outbox, sync-state, and cache-metadata tables.
-  Phase 4 activates the library subset only behind its feature gates; comment
-  behavior remains disabled.
+- account-scoped five-state Library, custom-list/tag membership, draft, outbox,
+  sync-state, and cache-metadata tables;
+- generation-bound normalized document/Passport/visual/semantic response
+  caches and position-only reading checkpoints; and
+- account-scoped annotations, retained note-conflict versions, evidence cards,
+  memory items, research outbox/sync state, and version-diff cache entries.
+  All Plan 03 surfaces remain behind default-off build and server flags.
 
 Feed rows are keyed by an opaque, versioned identity that includes the exact
 category and limit. The first-page validator is stored with that query, while
@@ -101,11 +105,18 @@ convention.
 - Account-owned tables are structurally separated for logout/account-switch
   cleanup and later deletion; public paper metadata can remain available
   offline.
+- Private research bodies are ordinary SQLite text. This ADR does not claim
+  application-layer database encryption: the current local boundary is the OS
+  app sandbox, device access controls, platform file protection, and backup
+  exclusion/disablement. SQLCipher is deferred until a reviewed threat model
+  defines key ownership, migration, restore/recovery, rotation, and cleanup.
 - Cache size, TTL, LRU eviction, saved-paper pinning, and lifecycle-safe
   physical compaction have focused metrics and tests.
 - Migrations are explicit and tested from complete historical schema fixtures
-  through version 6.
+  through version 10.
   Rebuildable pre-generation derived blobs are discarded during the version-3
   migration instead of being relabeled as current. Later migrations add
   synchronized-library state, account-bound comment caches/drafts and blocks,
-  and remove the dormant reply column without weakening prior boundaries.
+  remove the dormant reply column, add the Plan 02 Library/search/reading-feed
+  projections, then add Plan 03 document and private-research caches without
+  weakening prior boundaries.

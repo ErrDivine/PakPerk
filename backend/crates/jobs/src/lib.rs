@@ -8,10 +8,14 @@
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use domain::{FailureCategory, PaperId, ProcessingGeneration};
+use domain::{
+    FailureCategory, PaperId, PreparationTriggerKind, PreparationTriggerKindParseError,
+    ProcessingGeneration,
+};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use sqlx::{FromRow, PgPool};
 use thiserror::Error;
 use tracing::{debug, warn};
@@ -20,8 +24,19 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum JobKind {
+    PrepareCoreDocument,
+    EnrichVisualObjects,
+    ExtractTerms,
+    BuildPaperPassport,
+    BuildFacetedSpans,
+    ReanchorAnnotations,
+    ComparePaperVersions,
+    RegenerateAccessibilityDescriptions,
+    /// Rolling-deploy compatibility alias for `prepare_core_document`.
     PrepareDocument,
+    /// Legacy core pipeline job retained until chat v1 is retired.
     IndexChat,
+    /// Legacy core pipeline job retained until connections v1 is retired.
     ResolveConnections,
 }
 
@@ -29,6 +44,14 @@ impl JobKind {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::PrepareCoreDocument => "prepare_core_document",
+            Self::EnrichVisualObjects => "enrich_visual_objects",
+            Self::ExtractTerms => "extract_terms",
+            Self::BuildPaperPassport => "build_paper_passport",
+            Self::BuildFacetedSpans => "build_faceted_spans",
+            Self::ReanchorAnnotations => "reanchor_annotations",
+            Self::ComparePaperVersions => "compare_paper_versions",
+            Self::RegenerateAccessibilityDescriptions => "regenerate_accessibility_descriptions",
             Self::PrepareDocument => "prepare_document",
             Self::IndexChat => "index_chat",
             Self::ResolveConnections => "resolve_connections",
@@ -41,12 +64,101 @@ impl TryFrom<&str> for JobKind {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
+            "prepare_core_document" => Ok(Self::PrepareCoreDocument),
+            "enrich_visual_objects" => Ok(Self::EnrichVisualObjects),
+            "extract_terms" => Ok(Self::ExtractTerms),
+            "build_paper_passport" => Ok(Self::BuildPaperPassport),
+            "build_faceted_spans" => Ok(Self::BuildFacetedSpans),
+            "reanchor_annotations" => Ok(Self::ReanchorAnnotations),
+            "compare_paper_versions" => Ok(Self::ComparePaperVersions),
+            "regenerate_accessibility_descriptions" => {
+                Ok(Self::RegenerateAccessibilityDescriptions)
+            }
             "prepare_document" => Ok(Self::PrepareDocument),
             "index_chat" => Ok(Self::IndexChat),
             "resolve_connections" => Ok(Self::ResolveConnections),
             other => Err(QueueError::UnknownJobKind(other.to_owned())),
         }
     }
+}
+
+/// Content-free, versioned identity for one logical artifact build.
+///
+/// Deep-reader callers construct this from parser/model/schema identifiers and
+/// an optional public revision. Only the SHA-256 digest is persisted, so a
+/// future caller cannot accidentally put prompt text or other private content
+/// into the queue identity.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct JobIdentity(String);
+
+impl JobIdentity {
+    pub const LEGACY: &'static str = "legacy-v1";
+
+    #[must_use]
+    pub fn legacy() -> Self {
+        Self(Self::LEGACY.to_owned())
+    }
+
+    pub fn for_artifact(
+        parser_id: &str,
+        parser_version: &str,
+        model_id: Option<&str>,
+        schema_version: &str,
+        revision: Option<u64>,
+    ) -> Result<Self, QueueError> {
+        for component in [
+            Some(parser_id),
+            Some(parser_version),
+            model_id,
+            Some(schema_version),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if component.is_empty()
+                || component.len() > 256
+                || component.trim() != component
+                || component.contains('\0')
+            {
+                return Err(QueueError::InvalidIdentity);
+            }
+        }
+        let mut digest = Sha256::new();
+        hash_identity_component(&mut digest, parser_id);
+        hash_identity_component(&mut digest, parser_version);
+        hash_identity_component(&mut digest, model_id.unwrap_or("none"));
+        hash_identity_component(&mut digest, schema_version);
+        hash_identity_component(
+            &mut digest,
+            revision
+                .map(|value| value.to_string())
+                .as_deref()
+                .unwrap_or("none"),
+        );
+        Ok(Self(format!("v1:{}", hex_digest(digest.finalize()))))
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+fn hash_identity_component(digest: &mut Sha256, value: &str) {
+    digest.update(value.len().to_be_bytes());
+    digest.update(value.as_bytes());
+}
+
+fn hex_digest(bytes: impl AsRef<[u8]>) -> String {
+    use std::fmt::Write as _;
+
+    bytes
+        .as_ref()
+        .iter()
+        .fold(String::with_capacity(64), |mut output, byte| {
+            write!(output, "{byte:02x}").expect("writing to a String is infallible");
+            output
+        })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,6 +183,8 @@ pub struct ClaimedJob {
     pub kind: JobKind,
     pub paper_id: PaperId,
     pub generation: ProcessingGeneration,
+    pub preparation_trigger: PreparationTriggerKind,
+    pub identity: JobIdentity,
     pub attempt: u32,
     pub max_attempts: u32,
     pub payload: Value,
@@ -104,10 +218,16 @@ pub enum QueueError {
     Sql(#[from] sqlx::Error),
     #[error("unknown job kind `{0}`")]
     UnknownJobKind(String),
+    #[error("unknown preparation trigger `{0}`")]
+    UnknownPreparationTrigger(String),
+    #[error("preparation trigger `{0}` is valid only for rolling-deploy compatibility rows")]
+    UnapprovedPreparationTrigger(PreparationTriggerKind),
     #[error("job lease is no longer owned by this worker")]
     LeaseLost,
     #[error("duration is too large")]
     DurationOverflow,
+    #[error("job identity components are invalid")]
+    InvalidIdentity,
 }
 
 #[derive(Clone)]
@@ -133,23 +253,52 @@ impl JobQueue {
         paper_id: PaperId,
         generation: ProcessingGeneration,
         kind: JobKind,
+        preparation_trigger: PreparationTriggerKind,
         payload: Value,
         max_attempts: u32,
     ) -> Result<EnqueueOutcome, QueueError> {
+        self.enqueue_once_with_identity(
+            paper_id,
+            generation,
+            kind,
+            preparation_trigger,
+            &JobIdentity::legacy(),
+            payload,
+            max_attempts,
+        )
+        .await
+    }
+
+    /// Inserts one versioned logical artifact build.
+    #[allow(clippy::too_many_arguments)] // Queue identity is an explicit part of the durable contract.
+    pub async fn enqueue_once_with_identity(
+        &self,
+        paper_id: PaperId,
+        generation: ProcessingGeneration,
+        kind: JobKind,
+        preparation_trigger: PreparationTriggerKind,
+        identity: &JobIdentity,
+        payload: Value,
+        max_attempts: u32,
+    ) -> Result<EnqueueOutcome, QueueError> {
+        validate_new_enqueue_trigger(preparation_trigger)?;
         let max_attempts = i32::try_from(max_attempts).map_err(|_| QueueError::DurationOverflow)?;
         if let Some(id) = sqlx::query_scalar::<_, Uuid>(
             r"
             INSERT INTO jobs (
-                job_type, paper_id, generation, payload, max_attempts
+                job_type, paper_id, generation, preparation_trigger_kind,
+                identity_key, payload, max_attempts
             )
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (paper_id, generation, job_type) DO NOTHING
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (paper_id, generation, job_type, identity_key) DO NOTHING
             RETURNING id
             ",
         )
         .bind(kind.as_str())
         .bind(paper_id)
         .bind(generation)
+        .bind(preparation_trigger.as_str())
+        .bind(identity.as_str())
         .bind(payload)
         .bind(max_attempts)
         .fetch_optional(&self.pool)
@@ -163,15 +312,39 @@ impl JobQueue {
             SELECT id
             FROM jobs
             WHERE paper_id = $1 AND generation = $2 AND job_type = $3
+              AND identity_key = $4
             ",
         )
         .bind(paper_id)
         .bind(generation)
         .bind(kind.as_str())
+        .bind(identity.as_str())
         .fetch_one(&self.pool)
         .await?;
 
         Ok(EnqueueOutcome::AlreadyExists(id))
+    }
+
+    /// Enqueues a downstream artifact while inheriting the already-audited
+    /// preparation origin. Callers cannot substitute a metadata-only trigger.
+    pub async fn enqueue_follow_up(
+        &self,
+        parent: &ClaimedJob,
+        kind: JobKind,
+        identity: &JobIdentity,
+        payload: Value,
+        max_attempts: u32,
+    ) -> Result<EnqueueOutcome, QueueError> {
+        self.enqueue_once_with_identity(
+            parent.paper_id,
+            parent.generation,
+            kind,
+            parent.preparation_trigger,
+            identity,
+            payload,
+            max_attempts,
+        )
+        .await
     }
 
     /// Explicitly revives a failed logical job. This is only intended for
@@ -181,6 +354,17 @@ impl JobQueue {
         paper_id: PaperId,
         generation: ProcessingGeneration,
         kind: JobKind,
+    ) -> Result<Option<EnqueueOutcome>, QueueError> {
+        self.requeue_failed_with_identity(paper_id, generation, kind, &JobIdentity::legacy())
+            .await
+    }
+
+    pub async fn requeue_failed_with_identity(
+        &self,
+        paper_id: PaperId,
+        generation: ProcessingGeneration,
+        kind: JobKind,
+        identity: &JobIdentity,
     ) -> Result<Option<EnqueueOutcome>, QueueError> {
         let id = sqlx::query_scalar::<_, Uuid>(
             r"
@@ -198,6 +382,7 @@ impl JobQueue {
             WHERE paper_id = $1
               AND generation = $2
               AND job_type = $3
+              AND identity_key = $4
               AND state = 'failed'
             RETURNING id
             ",
@@ -205,6 +390,7 @@ impl JobQueue {
         .bind(paper_id)
         .bind(generation)
         .bind(kind.as_str())
+        .bind(identity.as_str())
         .fetch_optional(&self.pool)
         .await?;
 
@@ -222,45 +408,7 @@ impl JobQueue {
 
         // A worker can disappear on its last attempt. Make that row terminal
         // instead of leaving an unclaimable `running` record forever.
-        let exhausted = sqlx::query(
-            r"
-            WITH exhausted AS (
-                UPDATE jobs
-                SET state = 'failed',
-                    lease_owner = NULL,
-                    lease_expires_at = NULL,
-                    completed_at = now(),
-                    updated_at = now(),
-                    last_error_class = COALESCE(last_error_class, 'internal'),
-                    last_error_code = COALESCE(last_error_code, 'LEASE_EXHAUSTED'),
-                    last_error_message = COALESCE(
-                        last_error_message,
-                        'The final worker attempt ended without completing.'
-                    )
-                WHERE state = 'running'
-                  AND lease_expires_at <= now()
-                  AND attempts >= max_attempts
-                RETURNING paper_id, generation
-            )
-            UPDATE paper_processing AS processing
-            SET stage = 'failed_retryable',
-                retryable = true,
-                last_error_category = 'internal',
-                last_error_code = 'LEASE_EXHAUSTED',
-                last_error_message = 'The final worker attempt ended without completing.',
-                completed_at = now(),
-                updated_at = now()
-            FROM exhausted
-            WHERE processing.paper_id = exhausted.paper_id
-              AND processing.generation = exhausted.generation
-            ",
-        )
-        .execute(&self.pool)
-        .await?
-        .rows_affected();
-        if exhausted > 0 {
-            warn!(exhausted, "marked jobs with exhausted leases as failed");
-        }
+        self.fail_exhausted_leases().await?;
 
         let row = sqlx::query_as::<_, ClaimedJobRow>(
             r"
@@ -294,6 +442,8 @@ impl JobQueue {
                 j.job_type,
                 j.paper_id,
                 j.generation,
+                j.preparation_trigger_kind,
+                j.identity_key,
                 j.attempts,
                 j.max_attempts,
                 j.payload,
@@ -306,6 +456,80 @@ impl JobQueue {
         .await?;
 
         row.map(ClaimedJob::try_from).transpose()
+    }
+
+    async fn fail_exhausted_leases(&self) -> Result<(), QueueError> {
+        let exhausted = sqlx::query(
+            r"
+            WITH exhausted AS (
+                UPDATE jobs
+                SET state = 'failed',
+                    lease_owner = NULL,
+                    lease_expires_at = NULL,
+                    completed_at = now(),
+                    updated_at = now(),
+                    last_error_class = COALESCE(last_error_class, 'internal'),
+                    last_error_code = COALESCE(last_error_code, 'LEASE_EXHAUSTED'),
+                    last_error_message = COALESCE(
+                        last_error_message,
+                        'The final worker attempt ended without completing.'
+                    )
+                WHERE state = 'running'
+                  AND lease_expires_at <= now()
+                  AND attempts >= max_attempts
+                RETURNING paper_id, generation, job_type
+            )
+            UPDATE paper_processing AS processing
+            SET stage = 'failed_retryable',
+                retryable = true,
+                last_error_category = 'internal',
+                last_error_code = 'LEASE_EXHAUSTED',
+                last_error_message = 'The final worker attempt ended without completing.',
+                completed_at = now(),
+                updated_at = now()
+            FROM exhausted
+            WHERE processing.paper_id = exhausted.paper_id
+              AND processing.generation = exhausted.generation
+              AND exhausted.job_type IN (
+                  'prepare_core_document', 'prepare_document',
+                  'index_chat', 'resolve_connections'
+              )
+            ",
+        )
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+        if exhausted > 0 {
+            warn!(exhausted, "marked jobs with exhausted leases as failed");
+        }
+        sqlx::query(
+            r"
+            UPDATE paper_enrichment_state AS enrichment
+            SET status = 'failed',
+                last_error_category = 'internal',
+                last_error_code = 'LEASE_EXHAUSTED',
+                last_error_message = 'The final worker attempt ended without completing.',
+                completed_at = now(),
+                updated_at = now()
+            FROM jobs AS job
+            WHERE job.paper_id = enrichment.paper_id
+              AND job.generation = enrichment.generation
+              AND enrichment.capability = CASE job.job_type
+                  WHEN 'enrich_visual_objects' THEN 'visual_objects'
+                  WHEN 'extract_terms' THEN 'terms'
+                  WHEN 'build_faceted_spans' THEN 'semantic_facets'
+                  WHEN 'build_paper_passport' THEN 'paper_passport'
+                  WHEN 'regenerate_accessibility_descriptions' THEN 'accessibility_descriptions'
+                  ELSE NULL
+              END
+              AND job.state = 'failed'
+              AND job.last_error_code = 'LEASE_EXHAUSTED'
+              AND enrichment.status = 'running'
+            ",
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     pub async fn extend_lease(
@@ -428,6 +652,8 @@ struct ClaimedJobRow {
     job_type: String,
     paper_id: Uuid,
     generation: i32,
+    preparation_trigger_kind: String,
+    identity_key: String,
     attempts: i32,
     max_attempts: i32,
     payload: Value,
@@ -443,6 +669,12 @@ impl TryFrom<ClaimedJobRow> for ClaimedJob {
             kind: JobKind::try_from(row.job_type.as_str())?,
             paper_id: row.paper_id,
             generation: row.generation,
+            preparation_trigger: row.preparation_trigger_kind.parse().map_err(
+                |_error: PreparationTriggerKindParseError| {
+                    QueueError::UnknownPreparationTrigger(row.preparation_trigger_kind)
+                },
+            )?,
+            identity: JobIdentity(row.identity_key),
             attempt: u32::try_from(row.attempts).unwrap_or_default(),
             max_attempts: u32::try_from(row.max_attempts).unwrap_or_default(),
             payload: row.payload,
@@ -460,6 +692,14 @@ fn failure_category_name(category: FailureCategory) -> &'static str {
         FailureCategory::ModelTemporary => "model_temporary",
         FailureCategory::Validation => "validation",
         FailureCategory::Internal => "internal",
+    }
+}
+
+fn validate_new_enqueue_trigger(trigger: PreparationTriggerKind) -> Result<(), QueueError> {
+    if trigger.is_approved_for_new_enqueue() {
+        Ok(())
+    } else {
+        Err(QueueError::UnapprovedPreparationTrigger(trigger))
     }
 }
 
@@ -484,12 +724,75 @@ mod tests {
     #[test]
     fn job_kind_round_trips() {
         for kind in [
+            JobKind::PrepareCoreDocument,
+            JobKind::EnrichVisualObjects,
+            JobKind::ExtractTerms,
+            JobKind::BuildPaperPassport,
+            JobKind::BuildFacetedSpans,
+            JobKind::ReanchorAnnotations,
+            JobKind::ComparePaperVersions,
+            JobKind::RegenerateAccessibilityDescriptions,
             JobKind::PrepareDocument,
             JobKind::IndexChat,
             JobKind::ResolveConnections,
         ] {
             assert_eq!(JobKind::try_from(kind.as_str()).unwrap(), kind);
         }
+    }
+
+    #[test]
+    fn artifact_identity_is_deterministic_bounded_and_content_free() {
+        let identity = JobIdentity::for_artifact(
+            "grobid",
+            "0.8.1",
+            Some("deterministic-v1"),
+            "passport-v1",
+            Some(7),
+        )
+        .unwrap();
+        assert_eq!(identity.as_str().len(), 67);
+        assert!(identity.as_str().starts_with("v1:"));
+        assert!(!identity.as_str().contains("grobid"));
+        assert_eq!(
+            identity,
+            JobIdentity::for_artifact(
+                "grobid",
+                "0.8.1",
+                Some("deterministic-v1"),
+                "passport-v1",
+                Some(7),
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn preparation_trigger_provenance_round_trips() {
+        for trigger in [
+            PreparationTriggerKind::IntroductionTransition,
+            PreparationTriggerKind::InspectEvidence,
+            PreparationTriggerKind::ExplicitPrepare,
+            PreparationTriggerKind::ApprovedReprocessing,
+            PreparationTriggerKind::LegacyIntroductionTransition,
+        ] {
+            assert_eq!(
+                trigger.as_str().parse::<PreparationTriggerKind>().unwrap(),
+                trigger
+            );
+        }
+    }
+
+    #[test]
+    fn rolling_deploy_trigger_cannot_be_used_for_new_jobs() {
+        let error =
+            validate_new_enqueue_trigger(PreparationTriggerKind::LegacyIntroductionTransition)
+                .unwrap_err();
+        assert!(matches!(
+            error,
+            QueueError::UnapprovedPreparationTrigger(
+                PreparationTriggerKind::LegacyIntroductionTransition
+            )
+        ));
     }
 
     #[test]

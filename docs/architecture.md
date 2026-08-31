@@ -43,6 +43,65 @@ worker, provider-admin adapter, signed external ledger, and restore-replay
 boundary. Public comment enablement still waits for exercised environment,
 moderation, deletion, retention, and store-policy evidence.
 
+## Plan 02 queue-first discovery state
+
+Plan 02 remains inside the same modular monolith and PostgreSQL database. Its
+additive migrations 12–18 expand the canonical Library, research profile,
+revision-bound recommendation records, metadata-only Lookup/Explore, saved
+queries, content-free interactions, reading briefs, subscriptions, and
+queue-aware in-app notifications. No discovery service, search cluster, event
+authority, or second queue was introduced. The implemented boundaries and
+default-off dependency map are recorded in
+[Plan 02 discovery and library](discovery-and-library.md).
+
+`ReadingFeedService` remains above recommendation generation. It obtains the
+active count, library revision, exclusions, and queue/recommendation candidates
+from one authoritative snapshot. Recommendations persist and recheck library,
+profile, and feedback revisions before serving. Search is explicit navigation;
+only a canonical Library/import write changes queue state. Content-free events
+can be disabled or deleted without reconstructing product state.
+
+Advanced recommendation builds use a separate account-owned generation-job
+queue added by migration 18. The worker claim is bounded and revision bound;
+final persistence and serving still recheck library, profile, and feedback
+authority. Persisted candidate rows and continuation coordinates make
+pagination stable without turning that worker queue into a second reading-feed
+or Library authority.
+
+## Plan 03 Deep Reader state
+
+Plan 03 is another additive expansion of the same monolith and database. The
+current migration boundary is schema 18 to schema 24: preparation-trigger
+audit, parser-independent document generations and objects, Passport/shared
+provenance/assistant state, principal-scoped annotations and research memory,
+bounded version diffs, and atomic annotation archive import. There is no
+separate research-memory service, vector
+store, or queue authority. Shared document artifacts remain paper/generation
+owned; notes, evidence cards, checkpoints, memory, and owner assistant history
+remain principal scoped.
+
+GROBID remains the production parser baseline. The worker's current Passport
+implementation is deterministic source-cue selection, and the current
+`stable-key-content-similarity-v2` diff compares stable object keys, exact
+hashes, and a bounded similarity signal; neither is a claim of human-domain
+quality or validated semantic text-edit similarity. New generations enqueue a
+bounded background annotation re-anchor pass, while uncertain fuzzy candidates
+remain review-only and exact user reattachments are retained in private
+history. Docling is
+compiled and runtime-gated as an experiment and has no default-selection
+authority. The exact API, privacy, retention, and limitation contract is in
+[Deep Reader and research memory](deep-reader-and-research-memory.md).
+
+All nine server/Helm Plan 03 controls and all ten mobile Plan 03 build
+controls default off. Repository implementation and synthetic fixtures do not
+authorize rollout. Representative parser, human Passport/visual, live-model,
+live-telemetry, privacy/legal, signed-device, accessibility, staging rollback,
+and release-approval evidence remains `not_ready`. Mobile private research
+bodies are ordinary Drift/SQLite text protected by the OS app sandbox, device
+access controls, platform file protection, and configured backup policy;
+SQLCipher is deferred pending a reviewed threat model and migration/recovery
+design.
+
 The migration must preserve the capability-publication and reader-transition
 invariants documented below: metadata/abstract prefetch is permitted, but PDF
 preparation remains a committed move to Introduction or an explicit retry.
@@ -55,6 +114,7 @@ flowchart LR
   M --> D[("Drift / SQLite public cache")]
   M --> T[("Drift account library + outbox")]
   M --> C[("Drift comment pages, drafts, and blocks")]
+  M --> R[("Drift document + private research cache")]
   M --> S["Platform secure storage"]
   A --> P[("PostgreSQL + pgvector")]
   A -->|"idempotent enqueue"| J[("jobs table")]
@@ -138,6 +198,9 @@ only when its version matches the latest locally known paper.
 - Chat retrieval always filters by the active paper and generation.
 - Model-returned chunk and citation-context IDs are accepted only when they were
   in the supplied evidence set.
+- Private mobile research rows are not application-layer encrypted; no current
+  architecture or release document may describe the Drift database as
+  SQLCipher-backed or encrypted at rest by Pakperk.
 - Reference links require a confidence of at least `0.90`; ambiguous candidates
   stay readable but unlinked.
 - Admin ingestion is a local worker command rather than an unrestricted public

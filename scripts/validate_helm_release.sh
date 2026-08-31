@@ -103,9 +103,19 @@ overlong_dns_host="$(python3 -c 'print(".".join(["a"] * 126 + ["app"]))')"
   --set deletionWorker.retryMaxSeconds=11 \
   --set deletionLedger.retentionDays=400 \
   --set deletionLedger.securityRetentionDays=400 \
+  --set api.paperSearchMinQueryChars=1 \
+  --set api.paperSearchMaxQueryChars=300 \
+  --set api.paperSearchMaxResults=10 \
+  --set api.paperSearchPositiveCacheTtlSeconds=2592000 \
+  --set api.paperSearchNegativeCacheTtlSeconds=86400 \
+  --set api.paperImportAccountLimitPerMinute=10000 \
+  --set api.paperSearchAccountLimitPerMinute=10000 \
+  --set api.readingFeedDefaultLimit=1 \
+  --set api.readingFeedMaxLimit=50 \
+  --set api.readingFeedCursorTtlSeconds=604800 \
   --set-json "api.trustedProxyCidrs=$trusted_proxy_boundary_json" \
   --set-string migration.confirmBackupId=pitr-20260801T020000Z-a7f9 \
-  --set migration.expectedVersion=10 \
+  --set migration.expectedVersion=24 \
   --set-json 'metadataSync.manifestJson="{\"papers\":[{\"arxiv_id\":\"2401.12345v2\"}]}"' \
   >/dev/null
 "$helm_bin" template pakperk "$chart" \
@@ -240,9 +250,24 @@ binding_variant_paths+=(
   --set features.accounts=false \
   --set features.library=false \
   --set features.libraryWrites=false \
+  --set features.paperResolution=false \
+  --set features.paperTitleSearch=false \
+  --set features.libraryImportWrites=false \
+  --set features.readingFeed=false \
+  --set features.toReadFirstEnforcement=false \
   --set features.comments=false \
   --set features.commentCreation=false \
   --set features.accountDeletion=false \
+  --set features.libraryV2=false \
+  --set features.researchProfiles=false \
+  --set features.recommendations=false \
+  --set features.recommendationEvents=false \
+  --set features.searchLookup=false \
+  --set features.searchExplore=false \
+  --set features.savedQueries=false \
+  --set features.readingBriefs=false \
+  --set features.subscriptions=false \
+  --set features.notifications=false \
   --set deletionWorker.enabled=false \
   --set-string releaseEvidence.moderationReadinessId= \
   --set-string releaseEvidence.accountDeletionE2eId= \
@@ -269,6 +294,40 @@ for required in \
   'ACCOUNT_DELETION_PROVIDER_IDENTITY_KEYS_FILE' \
   'ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE' \
   'API_CURSOR_ENCRYPTION_KEYS_FILE' \
+  'PAPER_RESOLUTION_ENABLED' \
+  'PAPER_TITLE_SEARCH_ENABLED' \
+  'LIBRARY_IMPORT_WRITES_ENABLED' \
+  'READING_FEED_ENABLED' \
+  'TO_READ_FIRST_ENFORCEMENT_ENABLED' \
+  'LIBRARY_V2_ENABLED' \
+  'RESEARCH_PROFILES_ENABLED' \
+  'RECOMMENDATIONS_ENABLED' \
+  'RECOMMENDATION_EVENTS_ENABLED' \
+  'SEARCH_LOOKUP_ENABLED' \
+  'SEARCH_EXPLORE_ENABLED' \
+  'SAVED_QUERIES_ENABLED' \
+  'READING_BRIEFS_ENABLED' \
+  'SUBSCRIPTIONS_ENABLED' \
+  'NOTIFICATIONS_ENABLED' \
+  'DEEP_READER_ENABLED' \
+  'PAPER_PASSPORT_ENABLED' \
+  'SEMANTIC_FACETS_ENABLED' \
+  'VISUAL_OBJECTS_ENABLED' \
+  'ASSISTANT_V2_ENABLED' \
+  'ANNOTATIONS_ENABLED' \
+  'RESEARCH_MEMORY_ENABLED' \
+  'VERSION_DIFF_ENABLED' \
+  'DOCLING_EXPERIMENT_ENABLED' \
+  'PAPER_SEARCH_MIN_QUERY_CHARS' \
+  'PAPER_SEARCH_MAX_QUERY_CHARS' \
+  'PAPER_SEARCH_MAX_RESULTS' \
+  'PAPER_SEARCH_POSITIVE_CACHE_TTL_SECONDS' \
+  'PAPER_SEARCH_NEGATIVE_CACHE_TTL_SECONDS' \
+  'PAPER_IMPORT_ACCOUNT_LIMIT_PER_MINUTE' \
+  'PAPER_SEARCH_ACCOUNT_LIMIT_PER_MINUTE' \
+  'READING_FEED_DEFAULT_LIMIT' \
+  'READING_FEED_MAX_LIMIT' \
+  'READING_FEED_CURSOR_TTL_SECONDS' \
   'PAKPERK_MIGRATION_BACKUP_ID'; do
   grep -Fq "$required" "$rendered"
 done
@@ -321,10 +380,10 @@ grep -Fq 'documentVersion: "2026-08-01"' "$production_rendered"
 grep -Fq 'name: CURRENT_TERMS_VERSION, value: "2026-08-01"' "$production_rendered"
 grep -Fq 'name: CURRENT_COMMUNITY_GUIDELINES_VERSION, value: "2026-08-01"' "$production_rendered"
 grep -Fq 'app.kubernetes.io/component: alert-policy' "$production_rendered"
-grep -Fq 'pakperk.app/alert-policy-sha256: "sha256:1b708d5d63988f0bbb26a6649633d1f1f5b096b0bd52338508142c9afb97140b"' "$production_rendered"
+grep -Fq 'pakperk.app/alert-policy-sha256: "sha256:1332fab6e5ab0ef0a98a0b74e3d4285ae10764885be9b80e4a6697fb4d42dc46"' "$production_rendered"
 grep -Fq 'app.kubernetes.io/component: release-evidence' "$production_rendered"
 grep -Fq 'legalReviewId: "sha256:f89d44fee80d431539b2b3c4df101f00d5ad0aa0af150e9963d2d9f20b0565c2"' "$production_rendered"
-grep -Fq 'alertPolicySha256: "sha256:1b708d5d63988f0bbb26a6649633d1f1f5b096b0bd52338508142c9afb97140b"' "$production_rendered"
+grep -Fq 'alertPolicySha256: "sha256:1332fab6e5ab0ef0a98a0b74e3d4285ae10764885be9b80e4a6697fb4d42dc46"' "$production_rendered"
 grep -Fq 'pakperk.app/release-binding-schema: "1"' "$production_rendered"
 grep -Fq 'imageIdentities.json:' "$production_rendered"
 grep -Fq 'chartIdentity.json:' "$production_rendered"
@@ -1091,15 +1150,15 @@ expect_template_rejection \
   --set deletionLedger.securityRetentionDays=400
 expect_template_rejection \
   "a migration version different from the release binary" \
-  "at '/migration/expectedVersion': maximum:" \
+  "at '/migration/expectedVersion': minimum:" \
   --values "$fixture" \
-  --set migration.expectedVersion=11
+  --set migration.expectedVersion=10
 expect_template_rejection \
   "a migration version different from the release binary with schema validation bypassed" \
-  "migration.expectedVersion must match embedded migration version 10" \
+  "migration.expectedVersion must match embedded migration version 24" \
   --values "$fixture" \
   --skip-schema-validation \
-  --set migration.expectedVersion=11
+  --set migration.expectedVersion=10
 expect_template_rejection \
   "a placeholder migration backup ID accepted by the old chart" \
   "migration.confirmBackupId must identify a verified real backup" \
@@ -1193,6 +1252,152 @@ expect_template_rejection \
   --set features.comments=false \
   --set features.commentCreation=false
 expect_template_rejection \
+  "paper title search without paper resolution" \
+  "features.paperTitleSearch requires features.accounts and features.paperResolution" \
+  --values "$fixture" \
+  --set features.paperResolution=false \
+  --set features.libraryImportWrites=false
+expect_template_rejection \
+  "library imports without library writes" \
+  "features.libraryImportWrites requires features.accounts, features.library, features.libraryWrites, and features.paperResolution" \
+  --values "$fixture" \
+  --set features.libraryWrites=false
+expect_template_rejection \
+  "the reading feed without the library" \
+  "features.readingFeed requires features.accounts and features.library" \
+  --values "$fixture" \
+  --set features.library=false \
+  --set features.libraryWrites=false \
+  --set features.libraryImportWrites=false
+expect_template_rejection \
+  "to-read-first enforcement without the reading feed" \
+  "features.toReadFirstEnforcement requires features.readingFeed" \
+  --values "$fixture" \
+  --set features.readingFeed=false
+expect_template_rejection \
+  "library v2 without its account library" \
+  "features.libraryV2 requires features.accounts and features.library" \
+  --values "$fixture" \
+  --set features.library=false \
+  --set features.libraryWrites=false \
+  --set features.libraryImportWrites=false \
+  --set features.readingFeed=false \
+  --set features.toReadFirstEnforcement=false \
+  --set features.recommendations=false \
+  --set features.readingBriefs=false \
+  --set features.subscriptions=false \
+  --set features.notifications=false
+expect_template_rejection \
+  "research profiles without accounts" \
+  "features.researchProfiles requires features.accounts" \
+  --values "$fixture" \
+  --set features.accounts=false \
+  --set features.library=false \
+  --set features.libraryWrites=false \
+  --set features.paperTitleSearch=false \
+  --set features.libraryImportWrites=false \
+  --set features.readingFeed=false \
+  --set features.toReadFirstEnforcement=false \
+  --set features.comments=false \
+  --set features.commentCreation=false \
+  --set features.accountDeletion=false \
+  --set features.libraryV2=false \
+  --set features.recommendations=false \
+  --set features.savedQueries=false \
+  --set features.readingBriefs=false \
+  --set features.subscriptions=false \
+  --set features.notifications=false
+expect_template_rejection \
+  "recommendations without reading-feed authority" \
+  "features.recommendations requires features.accounts, features.library, and features.readingFeed" \
+  --values "$fixture" \
+  --set features.readingFeed=false \
+  --set features.toReadFirstEnforcement=false \
+  --set features.readingBriefs=false \
+  --set features.subscriptions=false \
+  --set features.notifications=false
+expect_template_rejection \
+  "explore without lookup" \
+  "features.searchExplore requires features.searchLookup" \
+  --values "$fixture" \
+  --set features.searchLookup=false
+expect_template_rejection \
+  "saved queries without explore" \
+  "features.savedQueries requires features.accounts and features.searchExplore" \
+  --values "$fixture" \
+  --set features.searchExplore=false
+expect_template_rejection \
+  "reading briefs without reading-feed authority" \
+  "features.readingBriefs requires features.readingFeed" \
+  --values "$fixture" \
+  --set features.readingFeed=false \
+  --set features.toReadFirstEnforcement=false \
+  --set features.recommendations=false \
+  --set features.subscriptions=false \
+  --set features.notifications=false
+expect_template_rejection \
+  "subscriptions without reading-feed authority" \
+  "features.subscriptions requires features.accounts, features.library, and features.readingFeed" \
+  --values "$fixture" \
+  --set features.readingFeed=false \
+  --set features.toReadFirstEnforcement=false \
+  --set features.recommendations=false \
+  --set features.readingBriefs=false
+expect_template_rejection \
+  "notifications without subscriptions" \
+  "features.notifications requires features.subscriptions" \
+  --values "$fixture" \
+  --set features.subscriptions=false
+expect_template_rejection \
+  "Paper Passport without Deep Reader" \
+  "features.paperPassport requires features.deepReader" \
+  --values "$fixture" \
+  --set features.paperPassport=true
+expect_template_rejection \
+  "annotations without Deep Reader" \
+  "features.annotations requires features.accounts and features.deepReader" \
+  --values "$fixture" \
+  --set features.annotations=true
+expect_template_rejection \
+  "research memory without annotations" \
+  "features.researchMemory requires features.accounts, features.deepReader, and features.annotations" \
+  --values "$fixture" \
+  --set features.deepReader=true \
+  --set features.researchMemory=true
+expect_template_rejection \
+  "a paper-search minimum query length above its maximum" \
+  "api.paperSearchMinQueryChars must not exceed api.paperSearchMaxQueryChars" \
+  --values "$fixture" \
+  --set api.paperSearchMinQueryChars=4 \
+  --set api.paperSearchMaxQueryChars=3
+expect_template_rejection \
+  "a paper-search negative cache TTL above its positive cache TTL" \
+  "api.paperSearchNegativeCacheTtlSeconds must not exceed api.paperSearchPositiveCacheTtlSeconds" \
+  --values "$fixture" \
+  --set api.paperSearchPositiveCacheTtlSeconds=1 \
+  --set api.paperSearchNegativeCacheTtlSeconds=2
+expect_template_rejection \
+  "a paper-search result limit above the runtime maximum" \
+  "at '/api/paperSearchMaxResults': maximum:" \
+  --values "$fixture" \
+  --set api.paperSearchMaxResults=11
+expect_template_rejection \
+  "a reading-feed default limit above its maximum" \
+  "api.readingFeedDefaultLimit must not exceed api.readingFeedMaxLimit" \
+  --values "$fixture" \
+  --set api.readingFeedDefaultLimit=21 \
+  --set api.readingFeedMaxLimit=20
+expect_template_rejection \
+  "a reading-feed page limit above the wire-contract maximum" \
+  "at '/api/readingFeedMaxLimit': maximum:" \
+  --values "$fixture" \
+  --set api.readingFeedMaxLimit=51
+expect_template_rejection \
+  "a zero reading-feed cursor TTL" \
+  "at '/api/readingFeedCursorTtlSeconds': minimum:" \
+  --values "$fixture" \
+  --set api.readingFeedCursorTtlSeconds=0
+expect_template_rejection \
   "a latent moderation endpoint with the rules provider" \
   "api.commentModerationUrl must be empty when api.commentModerationProvider=rules" \
   --values "$fixture" \
@@ -1280,6 +1485,13 @@ expect_template_rejection \
   --values "$production_fixture" \
   --set-string releaseEvidence.strictContentReviewId=
 expect_template_rejection \
+  "a production Deep Reader release without its complete evidence bundle" \
+  "production Deep Reader features require an immutable complete Deep Reader release-evidence bundle ID" \
+  --values "$fixture" \
+  --values "$production_fixture" \
+  --set features.deepReader=true \
+  --set-string releaseEvidence.deepReaderReleaseId=
+expect_template_rejection \
   "production comments without moderation-readiness evidence" \
   "production comments require an immutable moderation-readiness evidence ID" \
   --values "$fixture" \
@@ -1301,6 +1513,16 @@ expect_template_rejection \
   --set features.comments=false \
   --set features.commentCreation=false \
   --set features.accountDeletion=false \
+  --set features.libraryV2=false \
+  --set features.researchProfiles=false \
+  --set features.recommendations=false \
+  --set features.recommendationEvents=false \
+  --set features.searchLookup=false \
+  --set features.searchExplore=false \
+  --set features.savedQueries=false \
+  --set features.readingBriefs=false \
+  --set features.subscriptions=false \
+  --set features.notifications=false \
   --set deletionWorker.enabled=false
 expect_template_rejection \
   "production account deletion without provider E2E evidence" \
@@ -1332,12 +1554,12 @@ expect_template_rejection \
   "the packaged alert policy is production-only and cannot be enabled for staging" \
   --values "$fixture" \
   --set alerting.enabled=true \
-  --set-string alerting.policySha256=sha256:1b708d5d63988f0bbb26a6649633d1f1f5b096b0bd52338508142c9afb97140b
+  --set-string alerting.policySha256=sha256:1332fab6e5ab0ef0a98a0b74e3d4285ae10764885be9b80e4a6697fb4d42dc46
 expect_template_rejection \
   "a disabled alert policy with a stale digest" \
   "alerting.policySha256 must be empty when alerting.enabled=false" \
   --values "$fixture" \
-  --set-string alerting.policySha256=sha256:1b708d5d63988f0bbb26a6649633d1f1f5b096b0bd52338508142c9afb97140b
+  --set-string alerting.policySha256=sha256:1332fab6e5ab0ef0a98a0b74e3d4285ae10764885be9b80e4a6697fb4d42dc46
 expect_template_rejection \
   "an alert-policy digest that does not match the packaged contract" \
   "alerting.policySha256 must pin the exact packaged provider-neutral alert policy" \
@@ -1404,9 +1626,24 @@ fi
   --set features.accounts=false \
   --set features.library=false \
   --set features.libraryWrites=false \
+  --set features.paperResolution=false \
+  --set features.paperTitleSearch=false \
+  --set features.libraryImportWrites=false \
+  --set features.readingFeed=false \
+  --set features.toReadFirstEnforcement=false \
   --set features.comments=false \
   --set features.commentCreation=false \
   --set features.accountDeletion=false \
+  --set features.libraryV2=false \
+  --set features.researchProfiles=false \
+  --set features.recommendations=false \
+  --set features.recommendationEvents=false \
+  --set features.searchLookup=false \
+  --set features.searchExplore=false \
+  --set features.savedQueries=false \
+  --set features.readingBriefs=false \
+  --set features.subscriptions=false \
+  --set features.notifications=false \
   --set deletionWorker.enabled=false >"$temporary_dir/guest-only.yaml"
 grep -Fq 'app.kubernetes.io/component: api' "$temporary_dir/guest-only.yaml"
 grep -Fq 'app.kubernetes.io/component: site' "$temporary_dir/guest-only.yaml"

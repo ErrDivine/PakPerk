@@ -71,7 +71,11 @@ pub(super) const PAPER_SUMMARY_BY_ID: &str = r"
         processing.metadata_ready,
         processing.introduction_ready,
         processing.chat_ready,
-        processing.connections_ready
+        processing.connections_ready,
+        processing.visual_objects_ready,
+        processing.terms_ready,
+        processing.semantic_facets_ready,
+        processing.paper_passport_ready
     FROM papers AS p
     JOIN paper_processing AS processing ON processing.paper_id = p.id
     WHERE p.id = $1
@@ -86,6 +90,10 @@ pub(super) const PROCESSING_SELECT: &str = r"
         introduction_ready,
         chat_ready,
         connections_ready,
+        visual_objects_ready,
+        terms_ready,
+        semantic_facets_ready,
+        paper_passport_ready,
         retryable,
         last_error_category,
         last_error_code,
@@ -171,6 +179,10 @@ pub(super) struct PaperSummaryRow {
     pub(super) introduction_ready: bool,
     pub(super) chat_ready: bool,
     pub(super) connections_ready: bool,
+    pub(super) visual_objects_ready: bool,
+    pub(super) terms_ready: bool,
+    pub(super) semantic_facets_ready: bool,
+    pub(super) paper_passport_ready: bool,
 }
 
 #[derive(Debug, FromRow)]
@@ -209,6 +221,10 @@ impl TryFrom<PaperSummaryRow> for PaperSummary {
                 introduction: row.introduction_ready,
                 chat: row.chat_ready,
                 connections: row.connections_ready,
+                visual_objects: row.visual_objects_ready,
+                terms: row.terms_ready,
+                semantic_facets: row.semantic_facets_ready,
+                paper_passport: row.paper_passport_ready,
             },
         })
     }
@@ -224,6 +240,10 @@ pub(super) struct ProcessingRow {
     pub(super) introduction_ready: bool,
     pub(super) chat_ready: bool,
     pub(super) connections_ready: bool,
+    pub(super) visual_objects_ready: bool,
+    pub(super) terms_ready: bool,
+    pub(super) semantic_facets_ready: bool,
+    pub(super) paper_passport_ready: bool,
     pub(super) retryable: bool,
     pub(super) last_error_category: Option<String>,
     pub(super) last_error_code: Option<String>,
@@ -246,6 +266,10 @@ impl TryFrom<ProcessingRow> for ProcessingState {
             introduction: row.introduction_ready,
             chat: row.chat_ready,
             connections: row.connections_ready,
+            visual_objects: row.visual_objects_ready,
+            terms: row.terms_ready,
+            semantic_facets: row.semantic_facets_ready,
+            paper_passport: row.paper_passport_ready,
         };
         if !capabilities.valid_for_stage(stage) {
             return Err(DbError::InvalidData(format!(

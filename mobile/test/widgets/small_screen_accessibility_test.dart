@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/core/models/reader_state.dart';
 import 'package:pakperk/core/providers.dart';
+import 'package:pakperk/core/widgets/paper_stage_indicator.dart';
 import 'package:pakperk/features/paper_reader/paper_reader.dart';
 
 import '../support/fakes.dart';
@@ -58,13 +59,35 @@ void main() {
       for (final stage in PaperStage.values) {
         expect(find.byKey(ValueKey('stage-${stage.name}')), findsOneWidget);
       }
+      expect(
+        find.byKey(const ValueKey('stage-indicator-scroll')),
+        findsOneWidget,
+      );
+      final stageTops = PaperStage.values
+          .map(
+            (stage) => tester
+                .getTopLeft(find.byKey(ValueKey('stage-${stage.name}')))
+                .dy,
+          )
+          .toSet();
+      expect(stageTops, hasLength(1));
+      expect(
+        tester.getSize(find.byType(PaperStageIndicator)).height,
+        lessThan(100),
+      );
 
-      await tester.tap(find.byKey(const ValueKey('stage-introduction')));
+      final introduction = find.byKey(const ValueKey('stage-introduction'));
+      await tester.ensureVisible(introduction);
+      await tester.pump();
+      await tester.tap(introduction);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.text('1 Introduction'), findsOneWidget);
 
-      await tester.tap(find.byKey(const ValueKey('stage-connections')));
+      final connections = find.byKey(const ValueKey('stage-connections'));
+      await tester.ensureVisible(connections);
+      await tester.pump();
+      await tester.tap(connections);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.text('KEY CONNECTIONS'), findsOneWidget);

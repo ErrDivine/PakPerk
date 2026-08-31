@@ -15,6 +15,7 @@ import 'package:pakperk/core/auth/auth.dart';
 import 'package:pakperk/core/cache/drift_local_store.dart';
 import 'package:pakperk/core/database/app_database.dart';
 import 'package:pakperk/core/database/library_dao.dart';
+import 'package:pakperk/core/document/visual_asset_repository.dart';
 import 'package:pakperk/core/library/library_api.dart';
 import 'package:pakperk/core/library/library_models.dart';
 import 'package:pakperk/core/models/paper.dart';
@@ -54,6 +55,7 @@ void main() {
       final tokens = MemorySecureTokenStore(storedRecord(accountId: _accountA));
       final accountAdapter = _BlockingAccountAdapter(accountId: _accountB);
       final libraryRemote = _AccountBLibraryRemote();
+      final visualAssets = _RecordingVisualAssetCache();
       final delegate = _StartupDelegate();
       final container = ProviderContainer(
         overrides: [
@@ -65,6 +67,7 @@ void main() {
           oidcClientProvider.overrideWithValue(oidc),
           secureTokenStoreProvider.overrideWithValue(tokens),
           libraryApiProvider.overrideWithValue(libraryRemote),
+          visualAssetCacheProvider.overrideWithValue(visualAssets),
           ...accountApplicationOverrides(delegate),
         ],
       );
@@ -138,6 +141,7 @@ void main() {
         isEmpty,
         reason: 'account A outbox work must never be sent with B credentials',
       );
+      expect(visualAssets.clearedAccounts, [_accountA]);
       expect(libraryRemote.listCalls, greaterThanOrEqualTo(1));
       expect(libraryRemote.changesCalls, greaterThanOrEqualTo(1));
 
@@ -313,6 +317,7 @@ final class _AccountBLibraryRemote implements LibraryRemoteDataSource {
     required String paperId,
     required String operationId,
     required int expectedAuthEpoch,
+    LibrarySaveSourceKind? saveSourceKind,
   }) async {
     mutationOperationIds.add(operationId);
     return LibraryMutationResult(item);
@@ -327,4 +332,41 @@ final class _AccountBLibraryRemote implements LibraryRemoteDataSource {
     mutationOperationIds.add(operationId);
     return LibraryMutationResult(item);
   }
+}
+
+final class _RecordingVisualAssetCache implements VisualAssetCache {
+  final List<String> clearedAccounts = [];
+
+  @override
+  Future<void> clearAccount(String accountId) async {
+    clearedAccounts.add(accountId);
+  }
+
+  @override
+  Future<void> clearAll() async {}
+
+  @override
+  Future<VisualAssetPayload?> read(VisualAssetRequest request) async => null;
+
+  @override
+  void release(VisualAssetRequest request) {}
+
+  @override
+  void retain(VisualAssetRequest request) {}
+
+  @override
+  Future<void> setPersistentPin(
+    VisualAssetRequest request,
+    VisualAssetPersistentPin pin,
+    bool enabled,
+  ) async {}
+
+  @override
+  Future<void> setPaperSaved(VisualAssetPaperScope scope, bool saved) async {}
+
+  @override
+  Future<void> write(
+    VisualAssetRequest request,
+    VisualAssetPayload payload,
+  ) async {}
 }

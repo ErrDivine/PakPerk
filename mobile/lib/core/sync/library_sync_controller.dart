@@ -77,6 +77,43 @@ final class LibrarySyncController extends StateNotifier<LibrarySyncStatus> {
 
   Future<void> onForeground() => refresh();
 
+  /// Reconciles presentation status after an account-scoped terminal notice
+  /// is dismissed. This performs no remote work and cannot grant sync
+  /// authority; it only prevents a stale controller issue from reappearing
+  /// after the durable failure row has gone away.
+  Future<void> acknowledgeActionFailureDismissal({
+    required String accountId,
+    required int authEpoch,
+  }) {
+    _validateScope(accountId: accountId, authEpoch: authEpoch);
+    final scope = _active;
+    if (scope == null ||
+        scope.accountId != accountId ||
+        scope.authEpoch != authEpoch) {
+      return Future<void>.value();
+    }
+    final displayGuard = _repository.displayScopeGuard(
+      accountId: accountId,
+      authEpoch: authEpoch,
+    );
+    return _serialize(() async {
+      if (!_isActive(scope) || !displayGuard()) return;
+      final pendingCount = await _repository.pendingCount(accountId);
+      if (!_isActive(scope) || !displayGuard()) return;
+      final issue = await _repository.latestSyncIssue(accountId);
+      if (!_isActive(scope) || !displayGuard()) return;
+      state = LibrarySyncStatus(
+        phase: issue != null
+            ? LibrarySyncPhase.failed
+            : pendingCount > 0
+            ? LibrarySyncPhase.pending
+            : LibrarySyncPhase.idle,
+        pendingCount: pendingCount,
+        issue: issue,
+      );
+    });
+  }
+
   void stop() {
     _generation += 1;
     _active = null;
@@ -108,9 +145,10 @@ final class LibrarySyncController extends StateNotifier<LibrarySyncStatus> {
     if (!_isRunnable(scope)) return;
     _wakeup?.cancel();
     _wakeup = null;
-    final initialPendingCount = await _repository.pendingCount(scope.accountId);
+    final initialSnapshot = await _repository.outboxSnapshot(scope.accountId);
+    final initialPendingCount = initialSnapshot.pendingCount;
     if (!_isRunnable(scope)) return;
-    _recordBacklog(initialPendingCount);
+    _recordBacklog(initialSnapshot);
     state = LibrarySyncStatus(
       phase: LibrarySyncPhase.syncing,
       pendingCount: initialPendingCount,
@@ -129,9 +167,10 @@ final class LibrarySyncController extends StateNotifier<LibrarySyncStatus> {
         );
       }
       if (!_isRunnable(scope)) return;
-      final pendingCount = await _repository.pendingCount(scope.accountId);
+      final finalSnapshot = await _repository.outboxSnapshot(scope.accountId);
+      final pendingCount = finalSnapshot.pendingCount;
       if (!_isRunnable(scope)) return;
-      _recordBacklog(pendingCount);
+      _recordBacklog(finalSnapshot);
       state = LibrarySyncStatus(
         phase: drained.issue != null
             ? LibrarySyncPhase.failed
@@ -160,9 +199,10 @@ final class LibrarySyncController extends StateNotifier<LibrarySyncStatus> {
       // Its transaction rolled back and the replacement scope owns recovery.
     } on ApiException catch (error) {
       if (!_isRunnable(scope)) return;
-      final pendingCount = await _repository.pendingCount(scope.accountId);
+      final snapshot = await _repository.outboxSnapshot(scope.accountId);
+      final pendingCount = snapshot.pendingCount;
       if (!_isRunnable(scope)) return;
-      _recordBacklog(pendingCount);
+      _recordBacklog(snapshot);
       state = LibrarySyncStatus(
         phase: LibrarySyncPhase.failed,
         pendingCount: pendingCount,
@@ -176,9 +216,10 @@ final class LibrarySyncController extends StateNotifier<LibrarySyncStatus> {
       _schedule(scope, await _repository.nextAttemptAt(scope.accountId));
     } on Object {
       if (!_isRunnable(scope)) return;
-      final pendingCount = await _repository.pendingCount(scope.accountId);
+      final snapshot = await _repository.outboxSnapshot(scope.accountId);
+      final pendingCount = snapshot.pendingCount;
       if (!_isRunnable(scope)) return;
-      _recordBacklog(pendingCount);
+      _recordBacklog(snapshot);
       state = LibrarySyncStatus(
         phase: LibrarySyncPhase.failed,
         pendingCount: pendingCount,
@@ -194,10 +235,24 @@ final class LibrarySyncController extends StateNotifier<LibrarySyncStatus> {
     return operation;
   }
 
-  void _recordBacklog(int pendingCount) {
+  void _recordBacklog(LibraryOutboxSnapshot snapshot) {
+    final now = _clock().toUtc();
     emitTelemetry(_telemetry, PakPerkTelemetryEvent.libraryOutboxBacklog, {
-      'pending_count': pendingCount,
+      'pending_count': snapshot.pendingCount,
+      'oldest_age_bucket': telemetryDurationBucket(
+        snapshot.oldestCreatedAt == null
+            ? null
+            : now.difference(snapshot.oldestCreatedAt!),
+        none: snapshot.pendingCount == 0,
+      ),
     });
+    final oldestSave = snapshot.oldestSaveCreatedAt;
+    if (oldestSave != null) {
+      emitTelemetry(_telemetry, PakPerkTelemetryEvent.pendingIntentAge, {
+        'intent_kind': 'save',
+        'age_bucket': telemetryDurationBucket(now.difference(oldestSave)),
+      });
+    }
   }
 
   void _schedule(_ActiveLibraryScope scope, DateTime? nextAttemptAt) {

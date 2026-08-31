@@ -11,8 +11,8 @@ use domain::{
     ConnectionsResponse, FailureCategory, FeedPage, Introduction, IntroductionCitation,
     IntroductionCitationReference, IntroductionDetection, IntroductionParagraph, KeyConnection,
     OverallProcessingState, Paper, PaperId, PaperMetadata, PaperSummary, ParsedPaper,
-    ProcessingError, ProcessingGeneration, ProcessingStage, ProcessingState,
-    ReferenceResolutionStatus, RelationType, SectionKind,
+    PreparationTriggerKind, ProcessingError, ProcessingGeneration, ProcessingStage,
+    ProcessingState, ReferenceResolutionStatus, RelationType, SectionKind,
 };
 use jobs::JobKind;
 use opaque_cursor::OpaqueCursorCodec;
@@ -29,13 +29,27 @@ use crate::{CursorError, FeedCursor};
 
 mod account_deletion;
 mod accounts;
+mod assistant_v2;
 mod chat;
 mod comments;
+mod discovery_search;
+mod document_reader;
+mod engagement;
+mod interactions;
 mod library;
+mod library_v2;
 mod moderation;
+mod paper_imports;
 mod papers;
+mod passport;
 mod rate_limits;
+mod reading_feed;
+mod recommendation_jobs;
+mod recommendations;
+mod research_memory;
+mod research_profiles;
 mod rows;
+mod version_diff;
 
 pub use account_deletion::{
     AccountDeletionFailure, AccountDeletionRepository, AccountDeletionRequest,
@@ -45,6 +59,10 @@ pub use account_deletion::{
     StoredAccountDeletionStatus, StoredDeletionIdentityVerification,
 };
 pub use accounts::{AccountRepository, ProfilePatch, ProfileUpdateOutcome};
+pub use assistant_v2::{
+    AssistantContextRepository, AssistantEvidenceFeedbackOutcome, AssistantRetentionCleanup,
+    AssistantRetrievalContext, AssistantSession, RetrievedAssistantBlock,
+};
 pub use comments::{
     CommentCreateOutcome, CommentCreatePrecondition, CommentCreateResolution,
     CommentDeleteResolution, CommentEditResolution, CommentMutationOutcome, CommentReadOutcome,
@@ -52,10 +70,26 @@ pub use comments::{
     StoredReport, StoredUserReport, UserBlockOutcome, UserBlockResolution, UserReportOutcome,
     UserReportResolution, UserUnblockResolution,
 };
+pub use discovery_search::DiscoverySearchRepository;
+pub use document_reader::{
+    CurrentDocument, DOCUMENT_BLOCK_PAGE_DEFAULT, DOCUMENT_BLOCK_PAGE_MAX, DocumentBlockPage,
+    DocumentBlockQuery, DocumentPersistOutcome, DocumentRepository, VisualObjectReference,
+};
+pub use engagement::{DeferredDiscoveryMetrics, EngagementRepository};
+pub use interactions::{
+    InteractionEventType, InteractionFeedMode, InteractionPrincipal, MAX_INTERACTION_BATCH,
+    PaperInteractionBatchOutcome, PaperInteractionBatchRequest, PaperInteractionRepository,
+    PaperInteractionRepositoryError, PaperInteractionWrite,
+};
 pub use library::{
-    LibraryChangesOutcome, LibraryMutationIntent, LibraryMutationOutcome,
-    LibraryOperationResolution, LibraryReadOutcome, LibraryRepository, StoredLibraryChangesPage,
-    StoredLibraryPage,
+    LibraryChangesOutcome, LibraryItemFilter, LibraryItemMutation, LibraryMutationIntent,
+    LibraryMutationOutcome, LibraryOperationResolution, LibraryReadOutcome, LibraryRepository,
+    StoredLibraryChangesPage, StoredLibraryPage,
+};
+pub use library_v2::{
+    LibraryCollectionIntent, LibraryItemTagWrite, LibraryListItemWrite, LibraryListWrite,
+    LibraryTagWrite, LibraryV2MutationOutcome, LibraryV2ReadOutcome, StoredLibraryLists,
+    StoredLibraryTags, StoredLibraryV2ChangesPage,
 };
 pub use moderation::{
     AdminCommentAction, AdminCommentOutcome, AdminReportOutcome, AdminReportResolution,
@@ -64,9 +98,50 @@ pub use moderation::{
     StoredReportAgeMetrics, StoredReportQueuePage, StoredReportQueueRecord,
     StoredUserReportInspection, StoredUserReportQueuePage, StoredUserReportQueueRecord,
 };
+pub use paper_imports::{
+    PaperImportFinalization, PaperImportFinalizeOutcome, PaperImportFingerprint,
+    PaperImportInputKind, PaperImportReadOutcome, PaperImportRepository, PaperImportReserveOutcome,
+    PaperImportStatus, StoredPaperImportOperation,
+};
+pub use passport::{
+    ArtifactPersistOutcome, AssistantHistoryRole, AssistantMessage, AssistantThread,
+    CurrentPassport, CurrentSemanticSpans, EnrichmentCapability, FeedbackEvaluationOutcome,
+    PassportRepository,
+};
 pub use rate_limits::{
     RateLimitConfigError, RateLimitDecision, RateLimitRepository, RateLimitRequest,
 };
+pub use reading_feed::ReadingFeedRepository;
+pub use recommendation_jobs::{
+    ClaimedRecommendationGeneration, RecommendationGenerationCleanup,
+    RecommendationGenerationEnqueue, RecommendationGenerationEnqueueOutcome,
+    RecommendationGenerationJobState, RecommendationGenerationRepository,
+    RecommendationGenerationRepositoryError, RecommendationGenerationRetryOutcome,
+    SavedSearchRecommendationContext,
+};
+pub use recommendations::{
+    RecommendationBatchBlockOutcome, RecommendationBatchBlockRequest,
+    RecommendationBatchPersistOutcome, RecommendationBatchPersistRequest,
+    RecommendationBatchRepository, RecommendationBatchRepositoryError,
+    RecommendationBatchServeOutcome, RecommendationBatchServeRequest,
+    RecommendationExplanationReadOutcome, RecommendationFeedbackContext,
+    RecommendationFeedbackOutcome, RecommendationFeedbackReason, RecommendationFeedbackType,
+    RecommendationFeedbackWrite, RecommendationRetentionCleanup, StoredRecommendationBatchStatus,
+    StoredRecommendationCandidate,
+};
+pub use research_memory::{
+    ObservedAnnotationReanchor, PendingAnnotationReanchor, ResearchAnnotationImport,
+    ResearchAnnotationImportOutcome, ResearchAnnotationImportResult, ResearchArtifactExport,
+    ResearchArtifactExportPage, ResearchExportAssistantEvidenceFeedback,
+    ResearchExportAssistantMessage, ResearchExportAssistantThread, ResearchExportLibraryItem,
+    ResearchExportManifest, ResearchExportManifestPaper, ResearchExportPaper,
+    ResearchExportPrivateProvenance, ResearchMemoryRepository, ResearchMutationOutcome,
+    ResearchReadOutcome, StoredAnnotationConflict, StoredAnnotationConflictPage,
+    StoredAnnotationPage, StoredCheckpoints, StoredEvidenceCardPage, StoredMemoryPage,
+    StoredReanchorAttempt,
+};
+pub use research_profiles::ResearchProfileRepository;
+pub use version_diff::{VersionDiffRepository, VersionDiffSourceSide, VersionDiffSourceTarget};
 
 use rows::{
     CapabilityToPublish, CapabilityTransition, ChatTurnRow, CitationContextRow,
@@ -177,6 +252,10 @@ pub enum DbError {
     StaleGeneration,
     #[error("requested chat thread is not owned by this session and paper")]
     InvalidChatThread,
+    #[error("assistant context is not ready for the requested paper generation and scope")]
+    AssistantContextNotReady,
+    #[error("requested assistant thread is not owned by this principal, paper, and generation")]
+    InvalidAssistantThread,
     #[error("verified identity has a durable account-deletion tombstone")]
     IdentityTombstoned,
 }
@@ -338,6 +417,31 @@ impl Database {
     }
 
     #[must_use]
+    pub fn documents(&self) -> DocumentRepository {
+        DocumentRepository::with_cursor_codec(self.pool.clone(), self.cursor_codec.clone())
+    }
+
+    #[must_use]
+    pub fn assistant_context(&self) -> AssistantContextRepository {
+        AssistantContextRepository::new(self.pool.clone())
+    }
+
+    #[must_use]
+    pub fn passports(&self) -> PassportRepository {
+        PassportRepository::new(self.pool.clone())
+    }
+
+    #[must_use]
+    pub fn version_diffs(&self) -> VersionDiffRepository {
+        VersionDiffRepository::new(self.pool.clone())
+    }
+
+    #[must_use]
+    pub fn research_memory(&self) -> ResearchMemoryRepository {
+        ResearchMemoryRepository::with_cursor_codec(self.pool.clone(), self.cursor_codec.clone())
+    }
+
+    #[must_use]
     pub fn accounts(&self) -> AccountRepository {
         AccountRepository::new(self.pool.clone())
     }
@@ -350,6 +454,46 @@ impl Database {
     #[must_use]
     pub fn library(&self) -> LibraryRepository {
         LibraryRepository::with_cursor_codec(self.pool.clone(), self.cursor_codec.clone())
+    }
+
+    #[must_use]
+    pub fn paper_imports(&self) -> PaperImportRepository {
+        PaperImportRepository::new(self.pool.clone())
+    }
+
+    #[must_use]
+    pub fn reading_feed(&self) -> ReadingFeedRepository {
+        ReadingFeedRepository::new(self.pool.clone())
+    }
+
+    #[must_use]
+    pub fn recommendation_batches(&self) -> RecommendationBatchRepository {
+        RecommendationBatchRepository::new(self.pool.clone())
+    }
+
+    #[must_use]
+    pub fn recommendation_generation(&self) -> RecommendationGenerationRepository {
+        RecommendationGenerationRepository::new(self.pool.clone())
+    }
+
+    #[must_use]
+    pub fn paper_interactions(&self) -> PaperInteractionRepository {
+        PaperInteractionRepository::new(self.pool.clone())
+    }
+
+    #[must_use]
+    pub fn research_profiles(&self) -> ResearchProfileRepository {
+        ResearchProfileRepository::new(self.pool.clone())
+    }
+
+    #[must_use]
+    pub fn discovery_search(&self) -> DiscoverySearchRepository {
+        DiscoverySearchRepository::with_cursor_codec(self.pool.clone(), self.cursor_codec.clone())
+    }
+
+    #[must_use]
+    pub fn engagement(&self) -> EngagementRepository {
+        EngagementRepository::new(self.pool.clone())
     }
 
     #[must_use]
@@ -900,6 +1044,10 @@ mod tests {
             introduction_ready,
             chat_ready,
             connections_ready,
+            visual_objects_ready: false,
+            terms_ready: false,
+            semantic_facets_ready: false,
+            paper_passport_ready: false,
             retryable: false,
             last_error_category: None,
             last_error_code: None,

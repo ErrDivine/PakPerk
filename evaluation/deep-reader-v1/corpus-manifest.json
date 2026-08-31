@@ -1,0 +1,85 @@
+{
+  "schema_version": "deep-reader-evaluation-v1",
+  "corpus_id": "deep-reader-synthetic-contract-v1",
+  "purpose": "contract_validation_only_not_representative_benchmark",
+  "classification": "repository_synthetic_contract_fixture",
+  "rights_review_status": "not_ready",
+  "human_ground_truth_status": "not_ready",
+  "required_document_classes": [
+    "two_column",
+    "nested_sections",
+    "equation_heavy",
+    "dense_tables",
+    "multi_panel_figures",
+    "malformed_references",
+    "scanned_or_image_heavy",
+    "long_appendix",
+    "unusual_headings",
+    "older_arxiv"
+  ],
+  "documents": [
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "source_kind": "synthetic",
+      "source_path": "evaluation/deep-reader-v1/sources/synthetic_structured_paper_v1.tei.xml",
+      "source_sha256": "sha256:b650c3b310541a626070f7a75c2543043bcc207029867f18836bc93751048616",
+      "document_classes": [
+        "nested_sections",
+        "equation_heavy",
+        "dense_tables",
+        "multi_panel_figures",
+        "unusual_headings"
+      ],
+      "label_set_id": "synthetic-structured-labels-v1",
+      "allowed_adapters": [
+        "grobid",
+        "docling-experimental"
+      ]
+    }
+  ],
+  "thresholds": {
+    "parser": {
+      "min_block_precision_basis_points": 9500,
+      "min_block_recall_basis_points": 9500,
+      "min_block_order_basis_points": 9500,
+      "min_paragraph_boundary_precision_basis_points": 9500,
+      "min_paragraph_boundary_recall_basis_points": 9500,
+      "min_section_path_basis_points": 9500,
+      "min_introduction_precision_basis_points": 9500,
+      "min_introduction_recall_basis_points": 9500,
+      "min_citation_precision_basis_points": 9500,
+      "min_citation_recall_basis_points": 9500,
+      "min_visual_precision_basis_points": 9500,
+      "min_visual_recall_basis_points": 9500,
+      "min_page_mapping_basis_points": 9500,
+      "min_source_navigation_basis_points": 10000,
+      "max_replacement_characters_per_million": 100,
+      "max_duplicate_content_hash_count": 0,
+      "max_missing_labeled_block_count": 0,
+      "max_optional_latency_ratio_basis_points": 15000,
+      "max_optional_memory_ratio_basis_points": 15000
+    },
+    "passport": {
+      "min_evidence_precision_basis_points": 9500,
+      "min_missing_field_abstention_basis_points": 9500,
+      "min_status_accuracy_basis_points": 9500
+    },
+    "assistant": {
+      "max_invented_evidence_ids": 0,
+      "max_unsupported_citation_basis_points": 500,
+      "min_method_detail_baseline_basis_points": 10000
+    },
+    "visual": {
+      "min_object_precision_basis_points": 9500,
+      "min_object_recall_basis_points": 9500,
+      "min_table_structure_basis_points": 9500,
+      "min_source_navigation_basis_points": 10000
+    }
+  },
+  "protected_evidence": {
+    "human_domain": "not_ready",
+    "legal_review": "not_ready",
+    "live_model": "not_ready",
+    "signed_device": "not_ready"
+  }
+}

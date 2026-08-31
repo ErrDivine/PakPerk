@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+  <teiHeader>
+    <fileDesc>
+      <titleStmt><title>Synthetic Deep Reader Contract Fixture</title></titleStmt>
+      <publicationStmt><p>Generated exclusively for repository tests.</p></publicationStmt>
+      <sourceDesc><p>No third-party paper content is present.</p></sourceDesc>
+    </fileDesc>
+  </teiHeader>
+  <text>
+    <body>
+      <div xml:id="intro">
+        <head>Introduction</head>
+        <p xml:id="intro-p1">Synthetic Unicode alpha α cites <ref type="bibr" target="#b0">[1]</ref>.</p>
+      </div>
+      <div xml:id="methods">
+        <head>Methods</head>
+        <p xml:id="methods-p1">A deterministic synthetic procedure produces bounded observations.</p>
+        <figure xml:id="fig-1"><head>Figure 1</head><figDesc>Synthetic figure caption.</figDesc></figure>
+        <table xml:id="table-1"><row><cell>Header</cell></row><row><cell>Value</cell></row></table>
+        <formula xml:id="eq-1">x = 1</formula>
+      </div>
+    </body>
+    <back>
+      <listBibl>
+        <biblStruct xml:id="b0"><monogr><title>Synthetic reference</title></monogr></biblStruct>
+      </listBibl>
+    </back>
+  </text>
+</TEI>

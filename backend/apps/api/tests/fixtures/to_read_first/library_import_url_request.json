@@ -1,0 +1,9 @@
+{
+  "operation_id": "0198f500-0000-7000-8000-000000000010",
+  "source": {
+    "kind": "arxiv_url",
+    "value": "https://arxiv.org/abs/1706.03762"
+  },
+  "target_state": "inbox",
+  "save_source_kind": "arxiv_url"
+}

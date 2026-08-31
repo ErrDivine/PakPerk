@@ -36,11 +36,12 @@
         <h2>Read papers</h2>
         <ol class="steps">
           <li>Use <strong>Read</strong> for the paper feed and reader. Move vertically for the next or previous paper.</li>
-          <li>Move horizontally, or use the labeled controls, between <strong>Abstract</strong>, <strong>Introduction</strong>, and <strong>Connections</strong>. Chat opens separately from Introduction.</li>
+          <li>Move horizontally, or use the labeled controls, between <strong>Abstract</strong>, <strong>Introduction + Assistant</strong>, and <strong>Connections</strong>. When Deep Reader is enabled, <strong>Skim</strong>, <strong>Read</strong>, and <strong>Inspect</strong> change the current paper's depth without adding horizontal pages.</li>
           <li>Use the arXiv action to inspect the original record. Pakperk does not replace the source paper and is not affiliated with arXiv.</li>
         </ol>
         <p>The first committed move into Introduction can start preparation. In a strict release, Introduction, Chat, or Connections may be unavailable—even online—when a paper's license or prepared capabilities do not permit derived content. Cached metadata and the original arXiv link remain available.</p>
         <p>Pakperk opens cached metadata before refreshing it. Offline, strict content policy may hide cached derived material that cannot be revalidated; this is a rights-protection boundary, not necessarily a loading failure.</p>
+        <p>Deep Reader, Passport, visual objects, assistant v2, annotations, research memory, and version comparison are staged, default-off capabilities. Generated fields and answers must link to exact source blocks. A missing or unsupported result is shown as unavailable or not found; the original source remains available.</p>
 
         <h2>Accounts and To Read</h2>
         <p>Use <strong>You</strong> for account features when they are enabled. Sign-in happens in the system browser. A public handle contains 3–30 lowercase ASCII letters, digits, or underscores and can be set only once.</p>
@@ -62,6 +63,7 @@
           <li><strong>Clear all data</strong> signs out and removes local papers, saves, drafts, pending changes, settings, reading position, and the anonymous device identity. Data already synchronized to your account remains on the server.</li>
           <li><strong>Delete account</strong> is a separate server-side action that removes the provider identity, Pakperk profile, To Read data, comments, blocks, reports, and pending account-owned work. Clearing local data alone does not delete server data.</li>
         </ul>
+        <p>When private research features are enabled, annotations, note conflicts, evidence cards, checkpoints, memory items, cached versions, and pending research work are stored account-scoped in Drift. Those bodies are ordinary SQLite text, not application-layer encrypted. Local protection depends on the device passcode/access controls, OS app sandbox and file protection, and backup policy. Authentication refresh/session material remains separate in platform secure storage.</p>
 
         <h2>Account deletion and support</h2>
         <p>Use the in-app deletion control or the <a href="/account-deletion/">public deletion route</a>. A recent sign-in is required. If deletion stalls, use the built-in support action; it includes a validated request identifier when available. Retain an operation ID only if the app or site shows one, and never send a password or token.</p>

@@ -59,8 +59,21 @@ void main() {
         )
         .toList(growable: false);
     expect(backlog, isNotEmpty);
-    expect(backlog.first.$2, const {'pending_count': 1});
-    expect(backlog.last.$2, const {'pending_count': 0});
+    expect(backlog.first.$2, const {
+      'pending_count': 1,
+      'oldest_age_bucket': 'lt_100ms',
+    });
+    expect(backlog.last.$2, const {
+      'pending_count': 0,
+      'oldest_age_bucket': 'none',
+    });
+    final pendingAge = harness.telemetry.events.firstWhere(
+      (event) => event.$1 == PakPerkTelemetryEvent.pendingIntentAge,
+    );
+    expect(pendingAge.$2, const {
+      'intent_kind': 'save',
+      'age_bucket': 'lt_100ms',
+    });
   });
 
   test('stop cancels scheduled retry and stale callbacks are inert', () async {
@@ -114,6 +127,64 @@ void main() {
 
     expect(harness.controller.state.phase, LibrarySyncPhase.idle);
   });
+
+  test('remote operation conflicts emit only the closed boundary', () async {
+    final harness = await _SyncHarness.create(operationConflict: true);
+    addTearDown(harness.close);
+    await harness.repository.setSaved(
+      accountId: _accountId,
+      authEpoch: 3,
+      paperId: samplePaper.paperId,
+      saved: true,
+      paper: samplePaper,
+    );
+
+    await harness.controller.start(accountId: _accountId, authEpoch: 3);
+
+    final conflict = harness.telemetry.events.singleWhere(
+      (event) => event.$1 == PakPerkTelemetryEvent.librarySyncConflict,
+    );
+    expect(conflict.$2, const {'boundary': 'remote_operation'});
+  });
+
+  test('dismissing the final action alert clears stale sync status', () async {
+    final harness = await _SyncHarness.create(terminalFailure: true);
+    addTearDown(harness.close);
+    await harness.repository.setSaved(
+      accountId: _accountId,
+      authEpoch: 3,
+      paperId: samplePaper.paperId,
+      saved: true,
+      paper: samplePaper,
+    );
+    await harness.controller.start(accountId: _accountId, authEpoch: 3);
+
+    final failure =
+        (await harness.repository.watchActionFailureAlerts(_accountId).first)
+            .single;
+    expect(harness.controller.state.issue, isNotNull);
+    expect(
+      await harness.repository.dismissActionFailure(
+        accountId: _accountId,
+        authEpoch: 3,
+        operationId: failure.operationId,
+      ),
+      isTrue,
+    );
+    expect(harness.controller.state.issue, isNotNull);
+
+    await harness.controller.acknowledgeActionFailureDismissal(
+      accountId: _accountId,
+      authEpoch: 3,
+    );
+
+    expect(harness.controller.state.phase, LibrarySyncPhase.idle);
+    expect(harness.controller.state.issue, isNull);
+    expect(
+      await harness.repository.watchActionFailureAlerts(_accountId).first,
+      isEmpty,
+    );
+  });
 }
 
 final class _SyncHarness {
@@ -138,7 +209,11 @@ final class _SyncHarness {
   DateTime get now => _clock.value;
   set now(DateTime value) => _clock.value = value;
 
-  static Future<_SyncHarness> create({bool alwaysOffline = false}) async {
+  static Future<_SyncHarness> create({
+    bool alwaysOffline = false,
+    bool terminalFailure = false,
+    bool operationConflict = false,
+  }) async {
     final database = PakPerkDatabase(NativeDatabase.memory());
     final clock = _MutableClock(DateTime.utc(2026, 7, 31, 12));
     final dao = LibraryDao(
@@ -146,7 +221,11 @@ final class _SyncHarness {
       clock: () => clock.value,
       operationId: () => _operationId,
     );
-    final remote = _RetryThenSuccessRemote(alwaysOffline: alwaysOffline);
+    final remote = _RetryThenSuccessRemote(
+      alwaysOffline: alwaysOffline,
+      terminalFailure: terminalFailure,
+      operationConflict: operationConflict,
+    );
     final repository = LibraryRepository(
       local: dao,
       remote: remote,
@@ -167,6 +246,7 @@ final class _SyncHarness {
         repository: repository,
         retryPolicy: OutboxRetryPolicy(jitter: () => 0),
         clock: () => clock.value,
+        telemetry: RedactingTelemetrySink(telemetry),
       ),
       clock: () => clock.value,
       telemetry: RedactingTelemetrySink(telemetry),
@@ -231,9 +311,15 @@ final class _FakeWakeup implements LibrarySyncWakeup {
 }
 
 final class _RetryThenSuccessRemote implements LibraryRemoteDataSource {
-  _RetryThenSuccessRemote({required this.alwaysOffline});
+  _RetryThenSuccessRemote({
+    required this.alwaysOffline,
+    this.terminalFailure = false,
+    this.operationConflict = false,
+  });
 
   final bool alwaysOffline;
+  final bool terminalFailure;
+  final bool operationConflict;
   int saveCalls = 0;
 
   @override
@@ -241,8 +327,23 @@ final class _RetryThenSuccessRemote implements LibraryRemoteDataSource {
     required String paperId,
     required String operationId,
     required int expectedAuthEpoch,
+    LibrarySaveSourceKind? saveSourceKind,
   }) async {
     saveCalls += 1;
+    if (operationConflict) {
+      throw const ApiException(
+        code: 'LIBRARY_OPERATION_CONFLICT',
+        message: 'Conflict.',
+        statusCode: 409,
+      );
+    }
+    if (terminalFailure) {
+      throw const ApiException(
+        code: 'PAPER_NOT_FOUND',
+        message: 'Unavailable.',
+        statusCode: 404,
+      );
+    }
     if (alwaysOffline || saveCalls == 1) {
       throw const ApiException(
         code: 'NETWORK_UNAVAILABLE',

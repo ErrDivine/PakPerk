@@ -6,10 +6,17 @@ import '../core/account/current_account_controller.dart';
 import '../core/account/account_profile.dart';
 import '../core/cache/drift_local_store.dart';
 import '../core/database/library_dao.dart';
+import '../core/database/library_v2_dao.dart';
 import '../core/library/library_api.dart';
+import '../core/library/library_action_failure.dart';
 import '../core/library/library_models.dart';
 import '../core/library/library_repository.dart';
+import '../core/library/library_v2_api.dart';
+import '../core/library/library_v2_models.dart';
+import '../core/paper_resolution/paper_resolution_api.dart';
 import '../core/providers.dart';
+import '../core/reading_feed/reading_feed_api.dart';
+import '../core/recommendations/recommendation_interaction_api.dart';
 import '../core/sync/library_sync_controller.dart';
 import '../core/sync/outbox_controller.dart';
 import 'account_providers.dart';
@@ -26,6 +33,27 @@ final libraryApiProvider = Provider<LibraryRemoteDataSource>(
   (ref) => LibraryApi(ref.watch(pakPerkDioProvider)),
 );
 
+final libraryV2DaoProvider = Provider<LibraryV2Dao>(
+  (ref) => LibraryV2Dao(ref.watch(libraryDaoProvider).database),
+);
+
+final libraryV2ApiProvider = Provider<LibraryV2RemoteDataSource>(
+  (ref) => LibraryV2Api(ref.watch(pakPerkDioProvider)),
+);
+
+final paperResolutionApiProvider = Provider<PaperResolutionRemoteDataSource>(
+  (ref) => PaperResolutionApi(ref.watch(pakPerkDioProvider)),
+);
+
+final readingFeedApiProvider = Provider<ReadingFeedRemoteDataSource>(
+  (ref) => ReadingFeedApi(ref.watch(pakPerkDioProvider)),
+);
+
+final recommendationInteractionApiProvider =
+    Provider<RecommendationInteractionRemoteDataSource>(
+      (ref) => RecommendationInteractionApi(ref.watch(pakPerkDioProvider)),
+    );
+
 final libraryRepositoryProvider = Provider<LibraryRepository>(
   (ref) => LibraryRepository(
     local: ref.watch(libraryDaoProvider),
@@ -36,6 +64,10 @@ final libraryRepositoryProvider = Provider<LibraryRepository>(
     },
     verifiedScope: () => ref.read(verifiedLibraryScopeProvider),
     localMutationScope: () => ref.read(libraryMutationScopeProvider),
+    v2Local: ref.watch(libraryV2DaoProvider),
+    v2Remote: ref.watch(libraryV2ApiProvider),
+    libraryV2Enabled: ref.watch(featureFlagsProvider).libraryV2Enabled,
+    telemetry: ref.watch(telemetrySinkProvider),
   ),
 );
 
@@ -113,6 +145,36 @@ final toReadItemsProvider = StreamProvider.autoDispose
       return ref.watch(libraryRepositoryProvider).watchToRead(scope.accountId);
     });
 
+final libraryItemsProvider = StreamProvider.autoDispose
+    .family<List<LibraryListItem>, ActiveLibraryScope>((ref, scope) {
+      return ref
+          .watch(libraryRepositoryProvider)
+          .watchLibraryItems(scope.accountId);
+    });
+
+final libraryActionFailureAlertsProvider = StreamProvider.autoDispose
+    .family<List<LibraryActionFailure>, ActiveLibraryScope>((ref, scope) {
+      return ref
+          .watch(libraryRepositoryProvider)
+          .watchActionFailureAlerts(scope.accountId);
+    });
+
+final libraryListsV2Provider = StreamProvider.autoDispose
+    .family<List<LibraryV2LocalList>, ActiveLibraryScope>((ref, scope) {
+      if (!ref.watch(featureFlagsProvider).libraryV2Enabled) {
+        return Stream.value(const []);
+      }
+      return ref.watch(libraryRepositoryProvider).watchListsV2(scope.accountId);
+    });
+
+final libraryTagsV2Provider = StreamProvider.autoDispose
+    .family<List<LibraryV2LocalTag>, ActiveLibraryScope>((ref, scope) {
+      if (!ref.watch(featureFlagsProvider).libraryV2Enabled) {
+        return Stream.value(const []);
+      }
+      return ref.watch(libraryRepositoryProvider).watchTagsV2(scope.accountId);
+    });
+
 final libraryPendingCountProvider = StreamProvider.autoDispose
     .family<int, ActiveLibraryScope>((ref, scope) {
       return ref
@@ -120,9 +182,128 @@ final libraryPendingCountProvider = StreamProvider.autoDispose
           .watchPendingCount(scope.accountId);
     });
 
+final libraryPendingIntentsProvider = StreamProvider.autoDispose
+    .family<LibraryPendingIntentCounts, ActiveLibraryScope>((ref, scope) {
+      return ref
+          .watch(libraryRepositoryProvider)
+          .watchPendingIntents(scope.accountId);
+    });
+
+final librarySyncCheckpointProvider = StreamProvider.autoDispose
+    .family<LibrarySyncCheckpoint, ActiveLibraryScope>((ref, scope) {
+      return ref
+          .watch(libraryRepositoryProvider)
+          .watchSyncCheckpoint(scope.accountId);
+    });
+
+/// Ephemeral, account-fenced bridge from a successful final queue-removal
+/// acknowledgement to reading-feed server confirmation. Raw account identity
+/// and timestamps remain on-device and are never telemetry attributes.
+final class LibraryFinalCompletionAcknowledgement {
+  const LibraryFinalCompletionAcknowledgement({
+    required this.accountId,
+    required this.authEpoch,
+    required this.sequence,
+    required this.acknowledgedAt,
+  });
+
+  final String accountId;
+  final int authEpoch;
+  final int sequence;
+  final DateTime acknowledgedAt;
+}
+
+final class LibraryFinalCompletionAcknowledgementController
+    extends StateNotifier<LibraryFinalCompletionAcknowledgement?> {
+  LibraryFinalCompletionAcknowledgementController() : super(null);
+
+  int _sequence = 0;
+
+  void publish({
+    required String accountId,
+    required int authEpoch,
+    required DateTime acknowledgedAt,
+  }) {
+    state = LibraryFinalCompletionAcknowledgement(
+      accountId: accountId,
+      authEpoch: authEpoch,
+      sequence: ++_sequence,
+      acknowledgedAt: acknowledgedAt.toUtc(),
+    );
+  }
+
+  void end(int sequence) {
+    if (state?.sequence == sequence) state = null;
+  }
+
+  void clear() => state = null;
+}
+
+final libraryFinalCompletionAcknowledgementProvider =
+    StateNotifierProvider<
+      LibraryFinalCompletionAcknowledgementController,
+      LibraryFinalCompletionAcknowledgement?
+    >((_) => LibraryFinalCompletionAcknowledgementController());
+
+/// Ephemeral start marker for the narrow interval before a save intent has a
+/// durable local queue projection. It is account/auth fenced and carries no
+/// paper identity.
+final class LibrarySaveIntentSignal {
+  const LibrarySaveIntentSignal({
+    required this.accountId,
+    required this.authEpoch,
+    required this.sequence,
+    required this.startedAt,
+  });
+
+  final String accountId;
+  final int authEpoch;
+  final int sequence;
+  final DateTime startedAt;
+}
+
+final class LibrarySaveIntentSignalController
+    extends StateNotifier<LibrarySaveIntentSignal?> {
+  LibrarySaveIntentSignalController() : super(null);
+
+  int _sequence = 0;
+
+  int begin({
+    required String accountId,
+    required int authEpoch,
+    DateTime? startedAt,
+  }) {
+    final sequence = ++_sequence;
+    state = LibrarySaveIntentSignal(
+      accountId: accountId,
+      authEpoch: authEpoch,
+      sequence: sequence,
+      startedAt: (startedAt ?? DateTime.now()).toUtc(),
+    );
+    return sequence;
+  }
+
+  void end(int sequence) {
+    if (state?.sequence == sequence) state = null;
+  }
+
+  void clear() => state = null;
+}
+
+final librarySaveIntentSignalProvider =
+    StateNotifierProvider<
+      LibrarySaveIntentSignalController,
+      LibrarySaveIntentSignal?
+    >((_) => LibrarySaveIntentSignalController());
+
 final libraryOutboxControllerProvider = Provider<LibraryOutboxController>(
-  (ref) =>
-      LibraryOutboxController(repository: ref.watch(libraryRepositoryProvider)),
+  (ref) => LibraryOutboxController(
+    repository: ref.watch(libraryRepositoryProvider),
+    telemetry: ref.watch(telemetrySinkProvider),
+    onFinalCompletionAcknowledged: ref
+        .watch(libraryFinalCompletionAcknowledgementProvider.notifier)
+        .publish,
+  ),
 );
 
 final librarySyncControllerProvider =
@@ -144,8 +325,12 @@ final libraryRuntimeProvider = Provider<void>((ref) {
     next,
   ) {
     if (next == null) {
+      ref.read(libraryFinalCompletionAcknowledgementProvider.notifier).clear();
+      ref.read(librarySaveIntentSignalProvider.notifier).clear();
       controller.stop();
     } else if (next != previous) {
+      ref.read(libraryFinalCompletionAcknowledgementProvider.notifier).clear();
+      ref.read(librarySaveIntentSignalProvider.notifier).clear();
       unawaited(
         controller.start(accountId: next.accountId, authEpoch: next.authEpoch),
       );

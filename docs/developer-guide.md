@@ -8,12 +8,14 @@ tracked in the [completion audit](production-v0.0-completion-audit.md).
 
 ## Current status
 
-The repository implementation is a dark-launch candidate. Guest
-reading, optional accounts, To Read synchronization, comments and moderation,
-account deletion, telemetry, deployment, release automation, and evidence
-validators are implemented. The checked-in production configuration keeps
-accounts, library, and comments off until the corresponding protected staging,
-operations, legal, device, signing, and store gates pass.
+The repository implementation is a dark-launch candidate. Guest reading,
+optional accounts, To Read synchronization, comments and moderation, account
+deletion, queue-first discovery, normalized-document/Passport/assistant APIs,
+private research artifacts, telemetry, deployment, release automation, and
+evidence validators are implemented behind fail-closed controls. The checked-in
+production configuration keeps every optional Plan 02 and Plan 03 capability
+off until the corresponding protected staging, operations, human-domain,
+privacy/legal, signed-device, accessibility, signing, and store gates pass.
 
 Source checks do not authorize a public rollout. Do not turn an unchecked item
 in the completion audit into a passing claim without its required immutable
@@ -131,17 +133,103 @@ All production capabilities are independent fail-closed switches:
 | `ACCOUNTS_ENABLED` | registers account verification/profile behavior |
 | `LIBRARY_ENABLED` | requires accounts; enables To Read reads |
 | `LIBRARY_WRITES_ENABLED` | requires library; enables save/remove mutations |
+| `LIBRARY_V2_ENABLED` | requires accounts and library; registers five-state Library, list, tag, note, and unified change-feed routes |
 | `COMMENTS_ENABLED` | requires accounts; registers public discussion and safety routes |
 | `COMMENT_CREATION_ENABLED` | requires comments; enables only new comment publication |
 | `ACCOUNT_DELETION_ENABLED` | requires accounts and the complete worker/ledger/provider boundary |
+| `PAPER_RESOLUTION_ENABLED` | enables authenticated resolution consumers without changing the public exact-paper route |
+| `PAPER_TITLE_SEARCH_ENABLED` | requires accounts and paper resolution; registers bounded title search |
+| `LIBRARY_IMPORT_WRITES_ENABLED` | requires accounts, library, library writes, and paper resolution; enables exact import writes |
+| `READING_FEED_ENABLED` | requires accounts and library; registers `GET /v1/me/reading-feed` and may persist the minimal authority-bound Recent fallback when the queue is proven empty |
+| `TO_READ_FIRST_ENFORCEMENT_ENABLED` | requires reading feed; changes the authenticated response policy from `shadow` to `strict` without changing route registration |
+| `RESEARCH_PROFILES_ENABLED` | requires accounts; registers future-discovery profile/interests/reset/export routes without queue authority |
+| `RECOMMENDATIONS_ENABLED` | requires accounts, library, and reading feed; enables advanced recommendation modes, profile-aware reasons, explanations, and feedback. It is not required for the reading feed's minimal authority-bound Recent fallback |
+| `RECOMMENDATION_EVENTS_ENABLED` | optional independent closed event ingestion; product and queue state never depend on it |
+| `SEARCH_LOOKUP_ENABLED` | registers public deterministic metadata-only Lookup and at-most-eight local topic-vocabulary suggestions |
+| `SEARCH_EXPLORE_ENABLED` | requires Lookup; registers bounded explicit Explore with partial-source diagnostics |
+| `SAVED_QUERIES_ENABLED` | requires accounts and Explore; stores account-owned query definitions only |
+| `READING_BRIEFS_ENABLED` | requires reading feed; creates queue or discovery briefs through the same gate |
+| `SUBSCRIPTIONS_ENABLED` | requires accounts, library, and reading feed; stores private explicit discovery subscriptions |
+| `NOTIFICATIONS_ENABLED` | requires subscriptions; enables queue-aware in-app notification work; push/email remain unavailable |
+| `DEEP_READER_ENABLED` | registers the normalized outline/block/object boundary; it does not enable subordinate Plan 03 routes by itself |
+| `PAPER_PASSPORT_ENABLED` | requires Deep Reader; enables evidence-linked Passport fields and feedback |
+| `SEMANTIC_FACETS_ENABLED` | requires Deep Reader; enables source-linked terms and semantic spans |
+| `VISUAL_OBJECTS_ENABLED` | requires Deep Reader; enables source-linked figure/table/equation metadata and an authenticated selectable-variant raster route when an operator-owned asset store is configured. The worker accepts only an exact operator-reviewed, generation-scoped PNG source, re-encodes ancillary-metadata-free responsive variants, hash-binds and atomically publishes the complete set, and leaves missing or untrusted sources on caption/original-page fallback. It never infers parser-coordinate crops. Mobile renders equations from exact maintained source: SmartMath sanitization/input repair is disabled, and malformed LaTeX or unsupported MathML falls back to selectable exact source. Generated accessibility descriptions remain capability-unavailable pending a reviewed persisted draft schema |
+| `ASSISTANT_V2_ENABLED` | requires Deep Reader; enables generation-scoped, evidence-ID-validated assistant requests and provenance |
+| `ANNOTATIONS_ENABLED` | requires accounts and Deep Reader; enables private annotations, retained conflicts, re-anchoring, evidence cards, checkpoints, and export/delete surfaces |
+| `RESEARCH_MEMORY_ENABLED` | requires accounts, Deep Reader, and annotations; enables private reviewable memory without Library authority |
+| `VERSION_DIFF_ENABLED` | requires Deep Reader; enables bounded generation-aware structural diffs |
+| `DOCLING_EXPERIMENT_ENABLED` | requires Deep Reader; authorizes only an evaluated experiment and never selects Docling as the default parser by itself |
 
 The mobile build has compile-time `PAKPERK_ACCOUNTS_ENABLED`,
-`PAKPERK_LIBRARY_ENABLED`, and `PAKPERK_COMMENTS_ENABLED` capabilities. Library
-writes, comment creation, and account deletion remain independent server-side
-operational switches. Backend and mobile values must still describe a
-compatible deployed product. Turning comment creation off must leave reading,
-reporting, blocking, author removal, and moderation available. Turning library
-writes off must leave library reads available.
+`PAKPERK_LIBRARY_ENABLED`, `PAKPERK_COMMENTS_ENABLED`,
+`PAKPERK_PAPER_TITLE_SEARCH_ENABLED`,
+`PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED`, `PAKPERK_READING_FEED_ENABLED`, and
+`PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED`, plus the ten Plan 02 capabilities
+`PAKPERK_LIBRARY_V2_ENABLED`, `PAKPERK_RECOMMENDATIONS_ENABLED`,
+`PAKPERK_RECOMMENDATION_EVENTS_ENABLED`,
+`PAKPERK_SEARCH_LOOKUP_ENABLED`, `PAKPERK_SEARCH_EXPLORE_ENABLED`,
+`PAKPERK_SAVED_QUERIES_ENABLED`, `PAKPERK_RESEARCH_PROFILES_ENABLED`,
+`PAKPERK_READING_BRIEFS_ENABLED`, `PAKPERK_SUBSCRIPTIONS_ENABLED`, and
+`PAKPERK_NOTIFICATIONS_ENABLED`. The ten Plan 03 mobile controls are
+`PAKPERK_DEEP_READER_ENABLED`, `PAKPERK_PAPER_PASSPORT_ENABLED`,
+`PAKPERK_SEMANTIC_FACETS_ENABLED`, `PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED`,
+`PAKPERK_READING_CHECKPOINTS_ENABLED`, `PAKPERK_ANNOTATIONS_ENABLED`,
+`PAKPERK_EVIDENCE_CARDS_ENABLED`, `PAKPERK_RESEARCH_MEMORY_ENABLED`, and
+`PAKPERK_VERSION_DIFF_ENABLED`, and `PAKPERK_ASSISTANT_V2_ENABLED`; every
+checked-in environment keeps them false. Deep Reader requires accounts,
+Library, reading feed, and To Read First enforcement. Passport, facets, visuals,
+checkpoints, version diff, and assistant v2 require Deep Reader; annotations
+require Deep Reader, evidence cards require annotations, and research memory
+requires evidence cards. Library writes, Docling selection, comment creation,
+and account deletion remain independent server-side operational switches rather
+than additional mobile build flags. Backend and mobile values must still
+describe a compatible deployed product. A mobile build with reading
+feed on and enforcement off computes only privacy-safe shadow decisions while
+continuing to render public discovery. Turning comment creation off must leave
+reading, reporting, blocking, author removal, and moderation available. Turning
+library writes off must leave library reads available.
+
+### Exercise To Read First flags locally
+
+The Compose `api` and `worker` services load the repository-root `.env` through
+`env_file`; `.env.example` is only the default-off template. For the guest stack
+or resolution-only checks, edit `.env` and recreate the API so the process sees
+the new values:
+
+```bash
+docker compose up -d --force-recreate api
+```
+
+Use dependency order locally: resolution first; title search and import as
+separate toggles; reading feed next; Library v2 and research profiles; Lookup,
+Explore, and saved queries; recommendation/event evaluation; reading briefs;
+subscriptions; notifications; enforcement last.
+`PAPER_TITLE_SEARCH_ENABLED` needs accounts and resolution.
+`LIBRARY_IMPORT_WRITES_ENABLED` needs accounts, library, library writes, and
+resolution. `READING_FEED_ENABLED` needs accounts and library, and
+`TO_READ_FIRST_ENFORCEMENT_ENABLED` needs the reading feed.
+Recommendation and engagement dependencies are listed in the table above;
+startup rejects every invalid combination. See
+[Plan 02 discovery and library](discovery-and-library.md) before enabling a
+surface, because a healthy route is not evidence that queue, retention, or
+privacy gates passed.
+
+Exercise Plan 03 only after the Plan 02 dependency chain is valid. Follow the
+[Deep Reader rollout](runbooks/deep-reader-rollout.md): migrate from schema 18
+through migrations 19–24 with every Plan 03 switch false, enable Deep Reader
+before subordinate capabilities, and keep Docling last and canary-only. Local
+routes, fixtures, or generated reports never satisfy the protected parser,
+human-domain, live-model, privacy/legal, signed-device, accessibility, staging,
+or release-approval gates; their current release state is `not_ready`.
+
+The reference account issuer is public at `localhost`, so account-backed To
+Read First checks must follow
+[Enable reference accounts locally](#enable-reference-accounts-locally): stop
+the Compose API, start the `accounts` profile, source the same `.env`, and run
+the API on the host. Do not point the mobile client at a container-only issuer
+alias. Local `.env` changes and Compose results are developer checks, not
+protected staging evidence and never authorize production enablement.
 
 Production also requires `FULLTEXT_POLICY=strict`,
 `PAKPERK_FULLTEXT_POLICY=strict`, `RUN_MIGRATIONS=false` for every long-running

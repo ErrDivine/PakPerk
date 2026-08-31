@@ -475,12 +475,22 @@ printf '%s stdout F %s\n' "$timestamp" \
 printf '%s stdout F %s\n' "$timestamp" \
   '{"timestamp":"2026-07-31T00:00:00.000000Z","level":"ERROR","message":"external deletion ledger failed verification","target":"account_deletion::worker"}' \
   >>"$log_file"
+printf '%s stdout F %s\n' "$timestamp" \
+  '{"timestamp":"2026-07-31T00:00:00.000000Z","level":"ERROR","message":"authenticated reading feed could not prove queue authority","target":"pakperk_api::routes::reading_feed"}' \
+  >>"$log_file"
+printf '%s stdout F %s\n' "$timestamp" \
+  '{"timestamp":"2026-07-31T00:00:00.000000Z","level":"ERROR","message":"authenticated reading feed could not prove queue authority","target":"account_deletion::worker"}' \
+  >>"$log_file"
+printf '%s stdout F %s\n' "$timestamp" \
+  '{"timestamp":"2026-07-31T00:00:00.000000Z","level":"ERROR","message":"external deletion ledger failed verification","target":"pakperk_api::routes::reading_feed"}' \
+  >>"$log_file"
 
 exported=0
 for _ in $(seq 1 30); do
   docker logs "$container_id" >"$temporary_dir/collector.log" 2>&1
   if grep -Fq 'Body: Str(pakperk_backend_log)' "$temporary_dir/collector.log" \
     && grep -Fq 'Body: Str(external deletion ledger failed verification)' "$temporary_dir/collector.log" \
+    && grep -Fq 'Body: Str(authenticated reading feed could not prove queue authority)' "$temporary_dir/collector.log" \
     && grep -Fq 'Body: Str(otlp_log_body_redacted)' "$temporary_dir/collector.log" \
     && grep -Fq 'Body: Str(startup_ready)' "$temporary_dir/collector.log" \
     && grep -Fq 'direct OTLP trace sentinel' "$temporary_dir/collector.log" \
@@ -503,6 +513,12 @@ grep -Fq 'pakperk-backend-stdout' "$temporary_dir/collector.log"
 grep -Fq 'deployment.environment.name: Str(staging)' "$temporary_dir/collector.log"
 grep -Fq 'code.namespace: Str(pakperk_structured_fixture)' "$temporary_dir/collector.log"
 grep -Fq 'code.namespace: Str(account_deletion::worker)' "$temporary_dir/collector.log"
+grep -Fq 'code.namespace: Str(pakperk_api::routes::reading_feed)' "$temporary_dir/collector.log"
+if [[ "$(grep -Fc 'Body: Str(external deletion ledger failed verification)' "$temporary_dir/collector.log")" -ne 1 ]] || \
+   [[ "$(grep -Fc 'Body: Str(authenticated reading feed could not prove queue authority)' "$temporary_dir/collector.log")" -ne 1 ]]; then
+  echo "Collector did not preserve exactly one copy of each reviewed backend alert body." >&2
+  exit 1
+fi
 forbidden_pattern='protected-content-sentinel|protected-token-sentinel|hostile-interpolated-message-secret-sentinel|structured-stdout-message-secret-sentinel|spoofed-service-secret-sentinel|spoofed-environment-secret-sentinel|direct-otlp-body-secret-sentinel|structured-body-secret-sentinel|spoofed-mobile-body-secret-sentinel|sensitive-(log|trace|metric)-(signal|resource)-[0-9]+-sentinel|comment\.body|authorization|log\.file\.path'
 if grep -Eq "$forbidden_pattern" "$temporary_dir/collector.log"; then
   echo "Collector exported a protected stdout or direct-OTLP field." >&2

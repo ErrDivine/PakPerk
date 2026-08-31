@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,7 +8,7 @@ import 'package:sqlite3/sqlite3.dart' as sqlite;
 
 void main() {
   test(
-    'frozen v3 upgrades through flat comments v6 without losing library rows',
+    'frozen v3 upgrades through Library v2 without losing legacy rows',
     () async {
       final raw = sqlite.sqlite3.openInMemory();
       raw.execute(_schemaV3);
@@ -57,13 +59,19 @@ void main() {
       final database = PakPerkDatabase(NativeDatabase.opened(raw));
       addTearDown(database.close);
 
-      expect(database.schemaVersion, 6);
+      expect(database.schemaVersion, 10);
       final tables = await database
           .customSelect("SELECT name FROM sqlite_master WHERE type = 'table'")
           .get();
       expect(
         tables.map((row) => row.read<String>('name')),
-        contains('library_sync_states'),
+        containsAll(const {
+          'library_sync_states',
+          'library_custom_lists',
+          'library_tags',
+          'library_list_memberships',
+          'library_tag_memberships',
+        }),
       );
       final libraryColumns = await database
           .customSelect('PRAGMA table_info(library_items)')
@@ -78,6 +86,17 @@ void main() {
           'canonical_deleted',
           'canonical_saved_at',
           'canonical_removed_at',
+          'private_note',
+          'save_source_kind',
+          'reminder_at',
+          'reviewed_at',
+          'archived_at',
+          'canonical_list_state',
+          'canonical_private_note',
+          'canonical_save_source_kind',
+          'canonical_reminder_at',
+          'canonical_reviewed_at',
+          'canonical_archived_at',
         }),
       );
       final outboxColumns = await database
@@ -173,7 +192,7 @@ void main() {
     },
   );
 
-  test('v6 account-owned schema has no credential or reply columns', () async {
+  test('v9 account-owned schema has no credential or reply columns', () async {
     final database = PakPerkDatabase(NativeDatabase.memory());
     addTearDown(database.close);
     final tables = await database
@@ -211,7 +230,7 @@ void main() {
   });
 
   test(
-    'frozen v4 upgrades to v6, scopes drafts, and removes reply metadata',
+    'frozen v4 upgrades to v9, scopes drafts, and removes reply metadata',
     () async {
       final raw = sqlite.sqlite3.openInMemory();
       raw.execute(_schemaV3);
@@ -255,7 +274,7 @@ void main() {
       final database = PakPerkDatabase(NativeDatabase.opened(raw));
       addTearDown(database.close);
 
-      expect(database.schemaVersion, 6);
+      expect(database.schemaVersion, 10);
       final cached = await database.select(database.cachedCommentPages).get();
       expect(cached, hasLength(1));
       expect(cached.single.viewerAccountId, isNull);
@@ -292,6 +311,34 @@ void main() {
       );
     },
   );
+
+  test('frozen v7 adds nullable visible and canonical reminders', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'pakperk-reminder-migration-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/library.sqlite');
+    final current = PakPerkDatabase.atPath(NativeDatabase(file), file.path);
+    await current.customSelect('SELECT 1').get();
+    await current.close();
+
+    final raw = sqlite.sqlite3.open(file.path);
+    raw.execute('ALTER TABLE library_items DROP COLUMN reminder_at');
+    raw.execute('ALTER TABLE library_items DROP COLUMN canonical_reminder_at');
+    raw.execute('PRAGMA user_version = 7');
+    raw.close();
+
+    final upgraded = PakPerkDatabase.atPath(NativeDatabase(file), file.path);
+    addTearDown(upgraded.close);
+    final columns = await upgraded
+        .customSelect('PRAGMA table_info(library_items)')
+        .get();
+    expect(
+      columns.map((row) => row.read<String>('name')),
+      containsAll(const {'reminder_at', 'canonical_reminder_at'}),
+    );
+    expect(upgraded.schemaVersion, 10);
+  });
 }
 
 const _accountId = '018f47a6-4b56-7f4c-8c7a-e2656e820001';

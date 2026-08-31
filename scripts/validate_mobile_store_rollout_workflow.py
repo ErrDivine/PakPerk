@@ -17,7 +17,7 @@ DEFAULT_CHECK = ROOT / "scripts/check.sh"
 CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 DOWNLOAD_ACTION = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
 UPLOAD_ACTION = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
-EXPECTED_WORKFLOW_SHA256 = "f35f29bd2e0aa25c85d7dfd302c32ed07a5f50d3dfe49ee91ea25215f3c68c03"
+EXPECTED_WORKFLOW_SHA256 = "3c2600ddb369cc846bda9ca88ae217f648fb42cb725bb993095b8b1938f50e1b"
 EXPECTED_HELPERS = {
     "capture_mobile_credentialed_runtime.py": "2d51f03bd21f2afa2af0396e801e0e950172210814a229ca50df67c5a8d135cd",
     "extract_mobile_store_client.py": "f1f2b989dd433223114c85451147404ad4e65992d1f5a86ed3f3c6937ea1fd3a",
@@ -28,7 +28,7 @@ EXPECTED_HELPERS = {
     "prepare_mobile_credentialed_upload.py": "b6c4597b55db335fc46af14e0ba9c6969e99ca8ec29d43c817d699045fe12498",
     "prepare_mobile_store_client.sh": "2346df0d861df39b5b0b6f580b6afb49648e9d7f6468c22dd47948f84a0ec076",
     "validate_mobile_signed_release_run.py": "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93",
-    "validate_mobile_store_candidate.py": "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107",
+    "validate_mobile_store_candidate.py": "b9be3edb7d8486db5d4e4e86757340c76a8902278d4f977242d95a51c5ca172e",
     "validate_mobile_store_client.py": "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf",
 }
 TRANSFER_HELPERS = {

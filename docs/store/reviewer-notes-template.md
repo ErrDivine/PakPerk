@@ -17,7 +17,19 @@ chat.
 - Community Guidelines: `[published HTTPS URL]`
 - Support: `[published HTTPS URL and monitored contact]`
 - Web account deletion: `[published HTTPS URL]`
-- Feature state: `accounts=[on/off], library=[on/off], comments=[on/off]`
+- Feature state: `accounts=[on/off], library=[on/off], comments=[on/off], Plan
+  03 Deep Reader/Passport/facets/visuals/checkpoints/annotations/evidence/memory/
+  version diff/Assistant v2=[all off]`
+- Candidate feature binding: `[schema-v6 SHA-256 plus exact states for all 24
+  To Read First, Plan 02, and Plan 03 mobile flags from the schema-v4
+  candidate/provenance manifests]`
+
+The repository contract now binds all ten Plan 03 mobile controls and defines
+their protected schema-v6 signed-device/private-research scenarios. Keep every
+Plan 03 feature off in a store candidate until a complete exact-candidate run
+passes and the remaining product, privacy/legal, human, live-model, staging, and
+release-owner gates close. Do not describe the checked validator or an
+undispatched workflow as Plan 03 evidence; execution remains `not_ready`.
 
 Reviewer credentials are stored only in the portal's protected review fields.
 For the first exact walkthrough, the disposable account must have a verified
@@ -112,11 +124,15 @@ onboarding steps blocks `reviewerFlowId` and store submission.
   release owner]`
 - Reviewer / UTC date: `[name or controlled identifier + timestamp]`
 - Signed artifact digest and SBOM digest: `[release evidence references]`
-- Physical-device acceptance evidence: `[schema-v3 controlled evidence
-  reference covering all 22 ordered scenarios / 141 assertions / 78 metrics,
+- Physical-device acceptance evidence: `[schema-v6 controlled evidence
+  reference covering all 42 ordered scenarios / 317 assertions / 254 metrics,
   the exact source-bound app-link origin, two-device removal, invalid refresh,
-  links, protection, cache bounds, and light/dark; not a statement or
-  repository-only result]`
+  links, protection, cache bounds, light/dark, To Read First authority/rollout,
+  Add Paper resolution/retry, Plan 02 Search/Profile/Why/Brief/Alerts, and all ten
+  Plan 03 reader/research scenarios; not a statement or repository-only result]`
+- Plan 03 signed-device evidence: `[not_ready; do not submit a candidate with a
+  Plan 03 mobile control enabled until the exact v6 device run and every
+  implementation/privacy/external gate are passed]`
 - Deletion completion/reference: `[controlled evidence reference; no token,
   email, comment body, or provider subject]`
 - Reviewer-account lifecycle/reference: `[controlled creation, expiry,

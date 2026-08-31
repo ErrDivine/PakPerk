@@ -1,15 +1,16 @@
 # Backend staging load and latency gate
 
 **Owner:** service owner. **Approvers:** release manager and database owner;
-privacy/safety owner as an additional approver when authenticated comments or
-library data are exercised.
+privacy/safety owner as an additional approver when any authenticated account
+fixture is exercised.
 
 `scripts/run_backend_load.py` is an opt-in, bounded HTTP load gate for a
 reviewed staging deployment. It always exercises guest feed pagination and
 guest paper metadata, and it can add authenticated library reads, the first
-published-comments page, and explicitly authorized library mutations. Normal
-CI runs only its deterministic loopback contract tests; CI never calls a live
-environment.
+published-comments page, authoritative queue/recommendation reading feeds,
+title search, explicitly authorized library mutations, and explicitly
+confirmed idempotent paper-import replays. Normal CI runs only its deterministic
+loopback contract tests; CI never calls a live environment.
 
 This tool is not authorized for production. Obtain deployment-owner approval,
 confirm staging capacity and rate-limit headroom, and use only synthetic papers
@@ -99,6 +100,50 @@ entire discussion. Response bodies are validated in memory and discarded;
 tokens, URLs, category values, paper IDs, titles, comments, and other response
 content are never printed or serialized into evidence.
 
+## Plan 02 queue, search, and import fixtures
+
+All four Plan 02 scenarios are dispatch-default-off. `reading_feed_queue` uses
+a dedicated protected synthetic account whose server-authoritative response is
+`to_read`; `reading_feed_recommendations` uses a different protected account
+whose response is server-confirmed `recommendations`. Each token is supplied
+through its own owner-only regular file, never through an argument or retained
+artifact, and each request uses a bounded page size of 20. Their default
+p50/p95/p99 limits are 350/700/1,400 ms with at most 1% errors. These are two
+separate authority fixtures; one account or token must never stand in for both.
+
+`paper_title_search` sends only the protected normalized query loaded from an
+owner-only regular file to `POST /v1/me/paper-searches` with `limit=8`. One
+private preflight warms and validates the bounded response. Measured search
+requests are capped at nine so the preflight plus measurements cannot exceed
+the configured ten-per-minute account limit; the protected workflow therefore
+requires a scenario sample floor of at most nine. Its default p50/p95/p99
+limits are 500/1,000/2,000 ms with at most 1% errors.
+
+`paper_import_replay` is a write-capable, default-off replay check. It requires
+all of `--allow-paper-import-replays`, a canonical UUID operation ID, the
+protected bearer-token file, and an owner-only regular file containing one
+canonical arXiv ID. The preflight and every measured request send that same
+operation ID in both the body and `Idempotency-Key`; every measured response
+must bind that operation as the canonical saved item with a self-consistent
+paper and sync-revision contract. The
+CLI reserves one request from the configured twenty-per-minute account limit,
+so its hard maximum is 19; the protected workflow narrows the measured cap to
+5 or 10 and additionally requires the exact dispatch confirmation
+`RUN_DEDICATED_STAGING_PAPER_IMPORT_REPLAYS`. Its default p50/p95/p99 limits are
+350/700/1,400 ms with at most 1% errors. An unseeded operation can create one
+durable staging import, so reviewers must verify the disposable fixture and
+cleanup state before and after the run.
+
+The workflow creates all token/query/import fixture files with mode `0600`,
+unsets the source secrets/variables after materialization, removes the files on
+exit, and packages only the content-free aggregate evidence. That evidence
+sets `private_fixture_content_recorded=false`; it contains no token, query,
+title, URL, arXiv ID, operation ID, account identity, result metadata, or
+cursor. Repository loopback tests prove these limits and redaction contracts,
+but no checked-in artifact proves that this protected workload has run against
+the release candidate. A live protected staging result, topology/database
+context, immutable artifact digest, and accountable approvals remain required.
+
 ## Explicit mutation gate
 
 Library mutation load is off by default and requires all of
@@ -143,8 +188,12 @@ nearest-rank successful-request p50, p95, and p99 latency. Defaults are:
 | Warm feed page | 250 ms | 500 ms | 1,000 ms | 1% |
 | Cached metadata | 125 ms | 250 ms | 500 ms | 1% |
 | Library page | 250 ms | 500 ms | 1,000 ms | 1% |
+| Reading feed, active queue | 350 ms | 700 ms | 1,400 ms | 1% |
+| Reading feed, recommendations | 350 ms | 700 ms | 1,400 ms | 1% |
+| Paper title search | 500 ms | 1,000 ms | 2,000 ms | 1% |
 | First comments page | 350 ms | 700 ms | 1,400 ms | 1% |
 | Library mutation | 250 ms | 500 ms | 1,000 ms | 1% |
+| Paper import replay | 350 ms | 700 ms | 1,400 ms | 1% |
 
 Override an explicit scenario with a repeated
 `--threshold NAME=P50_MS,P95_MS,P99_MS,ERROR_RATE`; for example,

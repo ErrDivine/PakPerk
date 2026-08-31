@@ -25,6 +25,16 @@ enum ProcessingStage {
   }
 }
 
+enum PreparationTrigger {
+  introductionTransition('introduction_transition'),
+  inspectEvidence('inspect_evidence'),
+  explicitPrepare('explicit_prepare');
+
+  const PreparationTrigger(this.wireValue);
+
+  final String wireValue;
+}
+
 class PaperProcessingState {
   const PaperProcessingState({
     required this.paperId,

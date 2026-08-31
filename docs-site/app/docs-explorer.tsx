@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { docs as documents } from "./generated/docs";
 
 type Document = (typeof documents)[number];
@@ -77,15 +78,17 @@ export function DocsExplorer({ initialContent }: { initialContent: DocumentConte
     const params = new URLSearchParams(window.location.search);
     const requestedLanguage = params.get("lang");
     const storedLanguage = window.localStorage.getItem("pakperk-docs-language");
-    if (requestedLanguage === "zh" || (!requestedLanguage && storedLanguage === "zh")) {
-      setLanguage("zh");
-    }
     const requestedDoc = params.get("doc");
-    if (requestedDoc && documents.some((document) => document.id === requestedDoc)) {
-      setSelectedId(requestedDoc);
-    }
     const section = params.get("section");
-    if (section) requestAnimationFrame(() => document.getElementById(section)?.scrollIntoView());
+    const initializationFrame = requestAnimationFrame(() => {
+      if (requestedLanguage === "zh" || (!requestedLanguage && storedLanguage === "zh")) {
+        setLanguage("zh");
+      }
+      if (requestedDoc && documents.some((document) => document.id === requestedDoc)) {
+        setSelectedId(requestedDoc);
+      }
+      if (section) document.getElementById(section)?.scrollIntoView();
+    });
 
     const handleShortcut = (event: KeyboardEvent) => {
       if (event.key === "/" && !isTypingTarget(event.target)) {
@@ -98,8 +101,11 @@ export function DocsExplorer({ initialContent }: { initialContent: DocumentConte
       }
     };
     window.addEventListener("keydown", handleShortcut);
-    return () => window.removeEventListener("keydown", handleShortcut);
-  }, [documents]);
+    return () => {
+      cancelAnimationFrame(initializationFrame);
+      window.removeEventListener("keydown", handleShortcut);
+    };
+  }, []);
 
   useEffect(() => {
     if (content.id === selectedId) return;
@@ -138,7 +144,7 @@ export function DocsExplorer({ initialContent }: { initialContent: DocumentConte
         : `${document.title} ${document.summary} ${document.path}`;
       return haystack.toLocaleLowerCase(language === "zh" ? "zh-CN" : "en-US").includes(normalized);
     });
-  }, [documents, language, query]);
+  }, [language, query]);
 
   const groupedDocuments = useMemo(() => {
     const groups = new Map<string, Document[]>();
@@ -155,7 +161,7 @@ export function DocsExplorer({ initialContent }: { initialContent: DocumentConte
   const nextDocument = selectedIndex < documents.length - 1 ? documents[selectedIndex + 1] : undefined;
   const toc = language === "zh" ? selectedDocument.tocZh : selectedDocument.toc;
 
-  function selectDocument(id: string, section?: string) {
+  const selectDocument = useCallback((id: string, section?: string) => {
     setSelectedId(id);
     setMenuOpen(false);
     setQuery("");
@@ -169,7 +175,23 @@ export function DocsExplorer({ initialContent }: { initialContent: DocumentConte
       if (section) document.getElementById(section)?.scrollIntoView({ behavior: "smooth" });
       else window.scrollTo({ top: 0, behavior: "smooth" });
     });
-  }
+  }, [language]);
+
+  useEffect(() => {
+    const article = articleRef.current;
+    if (!article) return;
+
+    const handleArticleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      const link = target.closest<HTMLAnchorElement>("a[data-doc-link]");
+      if (!link) return;
+      event.preventDefault();
+      selectDocument(link.dataset.docLink || "", link.dataset.docSection);
+    };
+
+    article.addEventListener("click", handleArticleClick);
+    return () => article.removeEventListener("click", handleArticleClick);
+  }, [selectDocument]);
 
   function switchLanguage() {
     const nextLanguage = language === "en" ? "zh" : "en";
@@ -179,14 +201,6 @@ export function DocsExplorer({ initialContent }: { initialContent: DocumentConte
     params.set("lang", nextLanguage);
     params.set("doc", selectedDocument.id);
     window.history.replaceState(null, "", `?${params.toString()}`);
-  }
-
-  function handleArticleClick(event: React.MouseEvent<HTMLElement>) {
-    const target = event.target as HTMLElement;
-    const link = target.closest<HTMLAnchorElement>("a[data-doc-link]");
-    if (!link) return;
-    event.preventDefault();
-    selectDocument(link.dataset.docLink || "", link.dataset.docSection);
   }
 
   return (
@@ -202,12 +216,12 @@ export function DocsExplorer({ initialContent }: { initialContent: DocumentConte
         >
           <span aria-hidden="true">{menuOpen ? "×" : "≡"}</span>
         </button>
-        <a className="wordmark" href="/" aria-label="Pakperk Docs home">
+        <Link className="wordmark" href="/" aria-label="Pakperk Docs home">
           <span className="mark" aria-hidden="true">P</span>
           <span>Pakperk</span>
           <span className="wordmark-divider">/</span>
           <span className="wordmark-section">Docs</span>
-        </a>
+        </Link>
         <div className="header-meta">
           <span className="sync-indicator"><i />{t.synced}</span>
           <button
@@ -283,7 +297,7 @@ export function DocsExplorer({ initialContent }: { initialContent: DocumentConte
       {menuOpen && <button className="sidebar-scrim" aria-label={t.closeMenu} onClick={() => setMenuOpen(false)} />}
 
       <main className="document-stage" id="document-content">
-        <article ref={articleRef} className="document" onClick={handleArticleClick}>
+        <article ref={articleRef} className="document">
           <header className="document-header">
             <div className="document-path">
               <span>{language === "zh" ? selectedDocument.categoryLabel.zh : selectedDocument.categoryLabel.en}</span>

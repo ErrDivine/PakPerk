@@ -1,7 +1,82 @@
+use std::{fmt, str::FromStr};
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::{PaperId, ProcessingGeneration};
+
+/// Auditable provenance for demand-driven document preparation.
+///
+/// This enum is deliberately closed: metadata surfaces such as imports,
+/// reading-feed prefetch, recommendations, notifications, and Abstract-card
+/// rendering cannot be represented as an approved trigger. Callers must carry
+/// one of these values through every downstream document job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreparationTriggerKind {
+    IntroductionTransition,
+    InspectEvidence,
+    ExplicitPrepare,
+    ApprovedReprocessing,
+    /// Additive migration default for jobs inserted by a rolling-deploy pod
+    /// that predates trigger provenance. New code must never select it.
+    LegacyIntroductionTransition,
+}
+
+impl PreparationTriggerKind {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::IntroductionTransition => "introduction_transition",
+            Self::InspectEvidence => "inspect_evidence",
+            Self::ExplicitPrepare => "explicit_prepare",
+            Self::ApprovedReprocessing => "approved_reprocessing",
+            Self::LegacyIntroductionTransition => "legacy_introduction_transition",
+        }
+    }
+
+    /// Only deliberate reader actions may cross the public API boundary.
+    #[must_use]
+    pub const fn is_public_user_trigger(self) -> bool {
+        matches!(
+            self,
+            Self::IntroductionTransition | Self::InspectEvidence | Self::ExplicitPrepare
+        )
+    }
+
+    /// Rolling-deploy compatibility rows may be consumed, but new code must
+    /// always provide provenance that identifies a deliberate current action.
+    #[must_use]
+    pub const fn is_approved_for_new_enqueue(self) -> bool {
+        !matches!(self, Self::LegacyIntroductionTransition)
+    }
+}
+
+impl fmt::Display for PreparationTriggerKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl FromStr for PreparationTriggerKind {
+    type Err = PreparationTriggerKindParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "introduction_transition" => Ok(Self::IntroductionTransition),
+            "inspect_evidence" => Ok(Self::InspectEvidence),
+            "explicit_prepare" => Ok(Self::ExplicitPrepare),
+            "approved_reprocessing" => Ok(Self::ApprovedReprocessing),
+            "legacy_introduction_transition" => Ok(Self::LegacyIntroductionTransition),
+            _ => Err(PreparationTriggerKindParseError),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("unknown or unapproved preparation trigger")]
+pub struct PreparationTriggerKindParseError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(clippy::struct_excessive_bools)] // Mirrors the stable capability-oriented API contract.
@@ -14,6 +89,14 @@ pub struct Capabilities {
     pub chat: bool,
     #[serde(default)]
     pub connections: bool,
+    #[serde(default)]
+    pub visual_objects: bool,
+    #[serde(default)]
+    pub terms: bool,
+    #[serde(default)]
+    pub semantic_facets: bool,
+    #[serde(default)]
+    pub paper_passport: bool,
 }
 
 impl Default for Capabilities {
@@ -34,6 +117,10 @@ impl Capabilities {
             introduction: false,
             chat: false,
             connections: false,
+            visual_objects: false,
+            terms: false,
+            semantic_facets: false,
+            paper_passport: false,
         }
     }
 
@@ -48,7 +135,13 @@ impl Capabilities {
     /// committed capability.
     #[must_use]
     pub const fn valid_for_stage(self, stage: ProcessingStage) -> bool {
-        if !self.metadata || ((self.chat || self.connections) && !self.introduction) {
+        let any_enrichment =
+            self.visual_objects || self.terms || self.semantic_facets || self.paper_passport;
+        if !self.metadata
+            || ((self.chat || self.connections || any_enrichment) && !self.introduction)
+            || (self.semantic_facets && !self.terms)
+            || (self.paper_passport && !self.semantic_facets)
+        {
             return false;
         }
         match stage {
@@ -56,7 +149,9 @@ impl Capabilities {
             | ProcessingStage::Queued
             | ProcessingStage::FetchingLicense
             | ProcessingStage::FetchingPdf
-            | ProcessingStage::ParsingPdf => !self.introduction && !self.chat && !self.connections,
+            | ProcessingStage::ParsingPdf => {
+                !self.introduction && !self.chat && !self.connections && !any_enrichment
+            }
             ProcessingStage::IntroductionReady => {
                 self.introduction && !self.chat && !self.connections
             }
@@ -196,6 +291,40 @@ mod tests {
     }
 
     #[test]
+    fn preparation_triggers_reject_metadata_only_origins() {
+        for denied in [
+            "manual_import",
+            "queue_save",
+            "reading_feed_prefetch",
+            "recommendation_generation",
+            "abstract_display",
+            "notification_evaluation",
+        ] {
+            assert!(
+                denied.parse::<PreparationTriggerKind>().is_err(),
+                "accepted forbidden origin {denied}"
+            );
+        }
+    }
+
+    #[test]
+    fn public_preparation_triggers_are_an_explicit_subset() {
+        assert!(PreparationTriggerKind::IntroductionTransition.is_public_user_trigger());
+        assert!(PreparationTriggerKind::InspectEvidence.is_public_user_trigger());
+        assert!(PreparationTriggerKind::ExplicitPrepare.is_public_user_trigger());
+        assert!(!PreparationTriggerKind::ApprovedReprocessing.is_public_user_trigger());
+        assert!(!PreparationTriggerKind::LegacyIntroductionTransition.is_public_user_trigger());
+        assert!(PreparationTriggerKind::ApprovedReprocessing.is_approved_for_new_enqueue());
+        assert!(
+            !PreparationTriggerKind::LegacyIntroductionTransition.is_approved_for_new_enqueue()
+        );
+        assert_eq!(
+            PreparationTriggerKind::IntroductionTransition.to_string(),
+            "introduction_transition"
+        );
+    }
+
+    #[test]
     fn omitted_capabilities_default_to_metadata_only() {
         let capabilities: Capabilities = serde_json::from_str("{}").unwrap();
         assert_eq!(capabilities, Capabilities::metadata_only());
@@ -219,6 +348,10 @@ mod tests {
                 introduction: true,
                 chat: false,
                 connections: true,
+                visual_objects: false,
+                terms: false,
+                semantic_facets: false,
+                paper_passport: false,
             }
             .valid_for_stage(ProcessingStage::IndexingChat)
         );
@@ -228,6 +361,10 @@ mod tests {
                 introduction: true,
                 chat: true,
                 connections: false,
+                visual_objects: false,
+                terms: false,
+                semantic_facets: false,
+                paper_passport: false,
             }
             .valid_for_stage(ProcessingStage::ResolvingReferences)
         );
@@ -237,6 +374,10 @@ mod tests {
                 introduction: false,
                 chat: true,
                 connections: false,
+                visual_objects: false,
+                terms: false,
+                semantic_facets: false,
+                paper_passport: false,
             }
             .valid_for_stage(ProcessingStage::IndexingChat)
         );

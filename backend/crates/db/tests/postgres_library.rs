@@ -69,7 +69,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 paper_ids[0],
                 first_operation,
                 LibraryMutationIntent::Save,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -84,7 +84,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 paper_ids[0],
                 first_operation,
                 LibraryMutationIntent::Save,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -98,7 +98,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 paper_ids[0],
                 first_operation,
                 LibraryMutationIntent::Remove,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -111,7 +111,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 paper_ids[1],
                 first_operation,
                 LibraryMutationIntent::Save,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -127,7 +127,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 paper_ids[0],
                 second_operation,
                 LibraryMutationIntent::Save,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -146,7 +146,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 paper_ids[0],
                 remove_operation,
                 LibraryMutationIntent::Remove,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -161,7 +161,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 paper_ids[0],
                 first_operation,
                 LibraryMutationIntent::Save,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -179,7 +179,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 paper_ids[0],
                 Uuid::now_v7(),
                 LibraryMutationIntent::Save,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -195,7 +195,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 paper_ids[1],
                 Uuid::now_v7(),
                 LibraryMutationIntent::Remove,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -223,7 +223,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 paper_ids[2],
                 first_operation,
                 LibraryMutationIntent::Save,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -240,7 +240,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
     );
     let other_page = found_page(
         repository
-            .list(other.id, LibraryState::ToRead, None, 20)
+            .list(other.id, LibraryState::Inbox, None, 20)
             .await
             .unwrap(),
     );
@@ -249,7 +249,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
     assert_eq!(other_page.sync_revision, 1);
     assert!(matches!(
         repository
-            .list(suspended.id, LibraryState::ToRead, None, 20)
+            .list(suspended.id, LibraryState::Inbox, None, 20)
             .await
             .unwrap(),
         LibraryReadOutcome::Inactive(AccountStatus::Suspended)
@@ -261,7 +261,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 paper_ids[2],
                 Uuid::now_v7(),
                 LibraryMutationIntent::Save,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -274,7 +274,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 paper_ids[2],
                 Uuid::now_v7(),
                 LibraryMutationIntent::Save,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -287,7 +287,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 Uuid::now_v7(),
                 Uuid::now_v7(),
                 LibraryMutationIntent::Save,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -305,7 +305,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                     *paper_id,
                     Uuid::now_v7(),
                     LibraryMutationIntent::Save,
-                    LibraryState::ToRead,
+                    LibraryState::Inbox,
                 )
                 .await
                 .unwrap(),
@@ -324,7 +324,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
     );
     let first_page = found_page(
         repository
-            .list(owner.id, LibraryState::ToRead, None, 2)
+            .list(owner.id, LibraryState::Inbox, None, 2)
             .await
             .unwrap(),
     );
@@ -355,7 +355,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 post_fence_paper,
                 Uuid::now_v7(),
                 LibraryMutationIntent::Remove,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -370,7 +370,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
     while let Some(encoded) = next_cursor {
         let page = found_page(
             repository
-                .list(owner.id, LibraryState::ToRead, Some(&encoded), 2)
+                .list(owner.id, LibraryState::Inbox, Some(&encoded), 2)
                 .await
                 .unwrap(),
         );
@@ -459,7 +459,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                         race_paper,
                         Uuid::now_v7(),
                         intent,
-                        LibraryState::ToRead,
+                        LibraryState::Inbox,
                     )
                     .await
                     .unwrap(),
@@ -510,7 +510,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                         duplicate_paper,
                         duplicate_operation,
                         LibraryMutationIntent::Save,
-                        LibraryState::ToRead,
+                        LibraryState::Inbox,
                     )
                     .await
                     .unwrap(),
@@ -553,7 +553,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
             conflict_paper,
             conflict_operation,
             LibraryMutationIntent::Save,
-            LibraryState::ToRead,
+            LibraryState::Inbox,
         )
         .await
         .unwrap()
@@ -565,7 +565,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 conflict_paper,
                 conflict_operation,
                 LibraryMutationIntent::Remove,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap()
@@ -596,7 +596,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 Uuid::now_v7(),
                 missing_operation,
                 LibraryMutationIntent::Save,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -659,7 +659,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
             revision,
             last_operation_id
         )
-        VALUES ($1, $2, 'to_read', statement_timestamp(), statement_timestamp(), $3, $4)
+        VALUES ($1, $2, 'inbox', statement_timestamp(), statement_timestamp(), $3, $4)
         ",
     )
     .bind(cleanup_race_user.id.into_inner())
@@ -705,7 +705,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 cleanup_race_paper,
                 Uuid::now_v7(),
                 LibraryMutationIntent::Remove,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -803,7 +803,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 lock_order_paper,
                 Uuid::now_v7(),
                 LibraryMutationIntent::Remove,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -901,7 +901,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 lock_order_paper,
                 Uuid::now_v7(),
                 LibraryMutationIntent::Save,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
     });
@@ -940,7 +940,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 cleanup_paper,
                 cleanup_save,
                 LibraryMutationIntent::Save,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -953,7 +953,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 cleanup_paper,
                 cleanup_remove,
                 LibraryMutationIntent::Remove,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -1003,7 +1003,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
                 cleanup_paper,
                 cleanup_save,
                 LibraryMutationIntent::Save,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),

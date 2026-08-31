@@ -96,6 +96,24 @@ String _routeClass(String method, List<String> segments) {
   if (_matches(segments, const ['health', 'ready'])) return 'health';
   if (segments.isEmpty || segments.first != 'v1') return 'unknown';
   if (segments.length >= 2 && segments[1] == 'feed') return 'feed';
+  if (segments.length >= 2 && segments[1] == 'search') return 'search';
+  if (segments.length >= 2 && segments[1] == 'library') return 'library';
+  if (segments.length >= 2 && segments[1] == 'events') return 'events';
+  if (segments.length >= 2 && segments[1] == 'discovery') {
+    if (segments.length >= 3 && segments[2] == 'profile') return 'profile';
+    if (segments.length >= 3 && segments[2] == 'batches') {
+      return 'recommendations';
+    }
+    return 'unknown';
+  }
+  if (segments.length >= 2 &&
+      const {
+        'subscriptions',
+        'notifications',
+        'notification-preferences',
+      }.contains(segments[1])) {
+    return 'engagement';
+  }
   if (segments.length >= 2 && segments[1] == 'papers') {
     if (segments.length >= 3 && segments[2] == 'by-arxiv') {
       return 'paper';
@@ -117,6 +135,9 @@ String _routeClass(String method, List<String> segments) {
     if (segments.length < 3) return 'account';
     return switch (segments[2]) {
       'library' => 'library',
+      'reading-feed' => 'reading_feed',
+      'paper-searches' => 'search',
+      'reading-briefs' => 'engagement',
       'comments' => 'comments',
       'blocked-users' => 'moderation',
       'deletion-verification' => 'account_deletion',

@@ -1,0 +1,171 @@
+{
+  "schema_version": 2,
+  "fixture_id": "empty_queue_edge_cases_v2",
+  "queue_decision": {
+    "active_count": 0,
+    "library_revision": 84,
+    "proven_empty": true
+  },
+  "profile": {
+    "personalization_enabled": true,
+    "categories": ["cs.CL"],
+    "topics": ["retrieval"],
+    "authors": ["Alex Kim"],
+    "feedback_categories": ["cs.LG"],
+    "inferred_categories": [],
+    "historical_seeds": [
+      {
+        "paper_id": "00000000-0000-0000-0000-000000000199",
+        "title": "Archived evaluation seed",
+        "state": "archived",
+        "topics": ["retrieval", "evaluation"],
+        "embedding": [1.0, 0.0]
+      }
+    ]
+  },
+  "documents": [
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000101",
+      "arxiv_id": "2608.10001v1",
+      "title": "Auditable Retrieval Evaluation",
+      "authors": ["Alex Kim"],
+      "primary_category": "cs.CL",
+      "topics": ["retrieval", "evaluation"],
+      "embedding": [0.99, 0.01],
+      "citation_neighbors": ["00000000-0000-0000-0000-000000000199"],
+      "metadata_completeness": 1.0,
+      "published_at": "2026-08-15T12:00:00Z",
+      "relevance_grade": 3,
+      "cold_start": false
+    },
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000102",
+      "arxiv_id": "2608.10001v2",
+      "title": "Auditable Retrieval Evaluation, Revised",
+      "authors": ["Alex Kim"],
+      "primary_category": "cs.CL",
+      "topics": ["retrieval", "evaluation"],
+      "embedding": [0.995, 0.005],
+      "citation_neighbors": ["00000000-0000-0000-0000-000000000199"],
+      "metadata_completeness": 1.0,
+      "published_at": "2026-08-18T12:00:00Z",
+      "relevance_grade": 3,
+      "cold_start": false
+    },
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000103",
+      "arxiv_id": "2608.10003v1",
+      "title": "Optimization Beyond Language Models",
+      "authors": ["Alex Kim"],
+      "primary_category": "cs.LG",
+      "topics": ["optimization"],
+      "embedding": [0.85, 0.15],
+      "citation_neighbors": [],
+      "metadata_completeness": 0.95,
+      "published_at": "2026-08-17T12:00:00Z",
+      "relevance_grade": 2,
+      "cold_start": true
+    },
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000104",
+      "arxiv_id": "2608.10004v1",
+      "title": "Sparse Metadata for Emerging Mathematics",
+      "authors": ["Priya Shah"],
+      "primary_category": "math.OC",
+      "topics": [],
+      "embedding": [0.6, 0.8],
+      "citation_neighbors": [],
+      "metadata_completeness": 0.7,
+      "published_at": "2026-08-16T12:00:00Z",
+      "relevance_grade": 1,
+      "cold_start": true
+    },
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000105",
+      "arxiv_id": "2608.10005v1",
+      "title": "Retrieval-Like Words in an Unrelated Optics Abstract",
+      "authors": ["Morgan Lee"],
+      "primary_category": "physics.optics",
+      "topics": ["optics"],
+      "embedding": [-1.0, 0.0],
+      "citation_neighbors": [],
+      "metadata_completeness": 0.9,
+      "published_at": "2026-08-14T12:00:00Z",
+      "relevance_grade": 0,
+      "cold_start": false
+    },
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000106",
+      "arxiv_id": "2608.10006v1",
+      "title": "Uncertainty Calibration",
+      "authors": ["Lin Researcher"],
+      "primary_category": "stat.ML",
+      "topics": ["uncertainty", "calibration"],
+      "embedding": [0.75, 0.25],
+      "citation_neighbors": [],
+      "metadata_completeness": 0.9,
+      "published_at": "2026-08-13T12:00:00Z",
+      "relevance_grade": 1,
+      "cold_start": true
+    }
+  ],
+  "expected_candidate_pool_ids": [
+    "00000000-0000-0000-0000-000000000101",
+    "00000000-0000-0000-0000-000000000102",
+    "00000000-0000-0000-0000-000000000103",
+    "00000000-0000-0000-0000-000000000104",
+    "00000000-0000-0000-0000-000000000105",
+    "00000000-0000-0000-0000-000000000106"
+  ],
+  "expected_unique_ranked_base_arxiv_ids": 4,
+  "evaluation_k": 4,
+  "covered_cases": [
+    "author_name_ambiguity",
+    "curated_explicit_profile",
+    "expected_candidate_pool",
+    "inactive_historical_seed_reasons",
+    "misleading_title",
+    "negative_feedback",
+    "sparse_categories",
+    "version_duplicates"
+  ],
+  "negative_feedback_paper_ids": [
+    "00000000-0000-0000-0000-000000000103"
+  ],
+  "resource_evaluation": {
+    "usage": {
+      "measurement_source": "injected",
+      "latency_micros": 6000,
+      "estimated_cost_microusd": 0,
+      "generator_invocations": 7,
+      "generator_document_work_units": 42,
+      "external_requests": 0
+    },
+    "budget": {
+      "max_latency_micros": 12000,
+      "max_estimated_cost_microusd": 0,
+      "max_generator_invocations": 7,
+      "max_generator_document_work_units": 42,
+      "max_external_requests": 0
+    }
+  },
+  "small_profile_change": {
+    "categories": [],
+    "topics": ["calibration"],
+    "authors": []
+  },
+  "thresholds": {
+    "min_recall_at_k": 0.5,
+    "min_ndcg_at_k": 0.6,
+    "min_catalog_coverage": 0.6,
+    "min_topic_coverage": 0.5,
+    "min_intra_list_diversity": 0.3,
+    "min_novelty": 0.5,
+    "max_author_concentration": 0.5,
+    "max_category_concentration": 0.5,
+    "min_cold_start_coverage": 0.33,
+    "explanation_correctness": 1.0,
+    "negative_feedback_response": 1.0,
+    "min_ranking_stability": 0.6
+  }
+}

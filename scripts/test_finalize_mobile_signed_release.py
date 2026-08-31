@@ -342,6 +342,45 @@ class FinalizeMobileSignedReleaseTests(unittest.TestCase):
                 (fixture.output / "mobile-signed-release-outcome.json").is_file()
             )
 
+    def test_candidate_feature_evidence_must_match_provenance(self) -> None:
+        for key in ("sha256", *finalizer.MOBILE_FEATURE_FLAG_KEYS):
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as directory:
+                fixture = Fixture(pathlib.Path(directory))
+                candidate_path = (
+                    fixture.candidate_root / "evidence/mobile-candidate.json"
+                )
+                candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+                feature_evidence = candidate["mobile_feature_evidence"]
+                feature_evidence[key] = (
+                    "4" * 64
+                    if key == "sha256"
+                    else not feature_evidence[key]
+                )
+                raw = finalizer.canonical_json_bytes(candidate)
+                candidate_path.write_bytes(raw)
+                fixture.arguments.candidate_id = (
+                    "sha256:" + hashlib.sha256(raw).hexdigest()
+                )
+                receipt = finalizer.generate(fixture.arguments)
+                self.assertIn("candidate_validation_failed", receipt["errors"])
+
+    def test_each_bound_mobile_dependency_is_fail_closed(self) -> None:
+        for feature, dependencies in finalizer.MOBILE_FEATURE_DEPENDENCIES:
+            for dependency in dependencies:
+                with self.subTest(feature=feature, dependency=dependency):
+                    value = candidate_fixtures.valid_mobile_feature_evidence()
+                    value[feature] = True
+                    value[dependency] = False
+                    validated = finalizer._mobile_feature_evidence(
+                        value, "candidate mobile feature evidence"
+                    )
+                    with self.assertRaisesRegex(
+                        finalizer.FinalizationError, "dependency graph"
+                    ):
+                        finalizer._validate_mobile_feature_dependencies(
+                            validated, "candidate mobile feature evidence"
+                        )
+
     def test_all_immutable_artifact_ids_must_be_distinct(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             fixture = Fixture(pathlib.Path(directory))

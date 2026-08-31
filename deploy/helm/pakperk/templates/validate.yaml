@@ -179,6 +179,9 @@
 {{- if and (eq .Values.environment "production") (ne .Values.policy.fulltext "strict") -}}
 {{- fail "production requires policy.fulltext=strict" -}}
 {{- end -}}
+{{- if and .Values.visualAssets.existingClaim (not (and .Values.features.accounts .Values.features.visualObjects .Values.paperWorker.enabled)) -}}
+{{- fail "visualAssets.existingClaim requires accounts, visualObjects, and paperWorker.enabled" -}}
+{{- end -}}
 {{- if and (eq .Values.environment "production") (ne (int .Values.deletionWorker.recoverableBackupDays) 35) -}}
 {{- fail "production privacy schedule requires deletionWorker.recoverableBackupDays=35" -}}
 {{- end -}}
@@ -231,6 +234,10 @@
 {{- if not .Values.alerting.enabled -}}
 {{- fail "production requires the packaged alert policy" -}}
 {{- end -}}
+{{- $deepReaderFeatureEnabled := or .Values.features.deepReader .Values.features.paperPassport .Values.features.semanticFacets .Values.features.visualObjects .Values.features.assistantV2 .Values.features.annotations .Values.features.researchMemory .Values.features.versionDiff .Values.features.doclingExperiment -}}
+{{- if and $deepReaderFeatureEnabled (not (regexMatch $digest .Values.releaseEvidence.deepReaderReleaseId)) -}}
+{{- fail "production Deep Reader features require an immutable complete Deep Reader release-evidence bundle ID" -}}
+{{- end -}}
 {{- $evidenceByGate := dict "legal review" .Values.releaseEvidence.legalReviewId "app-reviewer flow" .Values.releaseEvidence.reviewerFlowId "strict content review" .Values.releaseEvidence.strictContentReviewId -}}
 {{- range $gate, $evidenceId := $evidenceByGate -}}
 {{- if not (regexMatch $digest $evidenceId) -}}
@@ -255,7 +262,7 @@
 {{- end -}}
 {{- end -}}
 {{- $placeholderEvidenceIds := list (printf "sha256:%s" (repeat 64 "0")) (printf "sha256:%s" (repeat 64 "a")) (printf "sha256:%s" (repeat 64 "b")) (printf "sha256:%s" (repeat 64 "c")) (printf "sha256:%s" (repeat 64 "f")) -}}
-{{- range $gate, $evidenceId := dict "legalReviewId" .Values.releaseEvidence.legalReviewId "moderationReadinessId" .Values.releaseEvidence.moderationReadinessId "accountDeletionE2eId" .Values.releaseEvidence.accountDeletionE2eId "restoreDrillId" .Values.releaseEvidence.restoreDrillId "reviewerFlowId" .Values.releaseEvidence.reviewerFlowId "strictContentReviewId" .Values.releaseEvidence.strictContentReviewId -}}
+{{- range $gate, $evidenceId := dict "legalReviewId" .Values.releaseEvidence.legalReviewId "moderationReadinessId" .Values.releaseEvidence.moderationReadinessId "accountDeletionE2eId" .Values.releaseEvidence.accountDeletionE2eId "restoreDrillId" .Values.releaseEvidence.restoreDrillId "reviewerFlowId" .Values.releaseEvidence.reviewerFlowId "strictContentReviewId" .Values.releaseEvidence.strictContentReviewId "deepReaderReleaseId" .Values.releaseEvidence.deepReaderReleaseId -}}
 {{- if and (not (empty $evidenceId)) (has $evidenceId $placeholderEvidenceIds) -}}
 {{- fail (printf "production releaseEvidence.%s cannot use an obvious placeholder digest" $gate) -}}
 {{- end -}}
@@ -282,6 +289,75 @@
 {{- end -}}
 {{- if and .Values.features.libraryWrites (not .Values.features.library) -}}
 {{- fail "features.libraryWrites requires features.library" -}}
+{{- end -}}
+{{- if and .Values.features.paperTitleSearch (not (and .Values.features.accounts .Values.features.paperResolution)) -}}
+{{- fail "features.paperTitleSearch requires features.accounts and features.paperResolution" -}}
+{{- end -}}
+{{- if and .Values.features.libraryImportWrites (not (and .Values.features.accounts .Values.features.library .Values.features.libraryWrites .Values.features.paperResolution)) -}}
+{{- fail "features.libraryImportWrites requires features.accounts, features.library, features.libraryWrites, and features.paperResolution" -}}
+{{- end -}}
+{{- if and .Values.features.readingFeed (not (and .Values.features.accounts .Values.features.library)) -}}
+{{- fail "features.readingFeed requires features.accounts and features.library" -}}
+{{- end -}}
+{{- if and .Values.features.toReadFirstEnforcement (not .Values.features.readingFeed) -}}
+{{- fail "features.toReadFirstEnforcement requires features.readingFeed" -}}
+{{- end -}}
+{{- if and .Values.features.libraryV2 (not (and .Values.features.accounts .Values.features.library)) -}}
+{{- fail "features.libraryV2 requires features.accounts and features.library" -}}
+{{- end -}}
+{{- if and .Values.features.researchProfiles (not .Values.features.accounts) -}}
+{{- fail "features.researchProfiles requires features.accounts" -}}
+{{- end -}}
+{{- if and .Values.features.recommendations (not (and .Values.features.accounts .Values.features.library .Values.features.readingFeed)) -}}
+{{- fail "features.recommendations requires features.accounts, features.library, and features.readingFeed" -}}
+{{- end -}}
+{{- if and .Values.features.searchExplore (not .Values.features.searchLookup) -}}
+{{- fail "features.searchExplore requires features.searchLookup" -}}
+{{- end -}}
+{{- if and .Values.features.savedQueries (not (and .Values.features.accounts .Values.features.searchExplore)) -}}
+{{- fail "features.savedQueries requires features.accounts and features.searchExplore" -}}
+{{- end -}}
+{{- if and .Values.features.readingBriefs (not .Values.features.readingFeed) -}}
+{{- fail "features.readingBriefs requires features.readingFeed" -}}
+{{- end -}}
+{{- if and .Values.features.subscriptions (not (and .Values.features.accounts .Values.features.library .Values.features.readingFeed)) -}}
+{{- fail "features.subscriptions requires features.accounts, features.library, and features.readingFeed" -}}
+{{- end -}}
+{{- if and .Values.features.notifications (not .Values.features.subscriptions) -}}
+{{- fail "features.notifications requires features.subscriptions" -}}
+{{- end -}}
+{{- if and .Values.features.paperPassport (not .Values.features.deepReader) -}}
+{{- fail "features.paperPassport requires features.deepReader" -}}
+{{- end -}}
+{{- if and .Values.features.semanticFacets (not .Values.features.deepReader) -}}
+{{- fail "features.semanticFacets requires features.deepReader" -}}
+{{- end -}}
+{{- if and .Values.features.visualObjects (not .Values.features.deepReader) -}}
+{{- fail "features.visualObjects requires features.deepReader" -}}
+{{- end -}}
+{{- if and .Values.features.assistantV2 (not .Values.features.deepReader) -}}
+{{- fail "features.assistantV2 requires features.deepReader" -}}
+{{- end -}}
+{{- if and .Values.features.annotations (not (and .Values.features.accounts .Values.features.deepReader)) -}}
+{{- fail "features.annotations requires features.accounts and features.deepReader" -}}
+{{- end -}}
+{{- if and .Values.features.researchMemory (not (and .Values.features.accounts .Values.features.deepReader .Values.features.annotations)) -}}
+{{- fail "features.researchMemory requires features.accounts, features.deepReader, and features.annotations" -}}
+{{- end -}}
+{{- if and .Values.features.versionDiff (not .Values.features.deepReader) -}}
+{{- fail "features.versionDiff requires features.deepReader" -}}
+{{- end -}}
+{{- if and .Values.features.doclingExperiment (not .Values.features.deepReader) -}}
+{{- fail "features.doclingExperiment requires features.deepReader" -}}
+{{- end -}}
+{{- if gt (int .Values.api.paperSearchMinQueryChars) (int .Values.api.paperSearchMaxQueryChars) -}}
+{{- fail "api.paperSearchMinQueryChars must not exceed api.paperSearchMaxQueryChars" -}}
+{{- end -}}
+{{- if gt (int .Values.api.paperSearchNegativeCacheTtlSeconds) (int .Values.api.paperSearchPositiveCacheTtlSeconds) -}}
+{{- fail "api.paperSearchNegativeCacheTtlSeconds must not exceed api.paperSearchPositiveCacheTtlSeconds" -}}
+{{- end -}}
+{{- if gt (int .Values.api.readingFeedDefaultLimit) (int .Values.api.readingFeedMaxLimit) -}}
+{{- fail "api.readingFeedDefaultLimit must not exceed api.readingFeedMaxLimit" -}}
 {{- end -}}
 {{- if and .Values.features.comments (not .Values.features.accounts) -}}
 {{- fail "features.comments requires features.accounts" -}}
@@ -454,8 +530,8 @@
 {{- fail "migration.confirmBackupId must identify a verified real backup" -}}
 {{- end -}}
 {{- end -}}
-{{- if ne (int .Values.migration.expectedVersion) 10 -}}
-{{- fail "migration.expectedVersion must match embedded migration version 10" -}}
+{{- if ne (int .Values.migration.expectedVersion) 24 -}}
+{{- fail "migration.expectedVersion must match embedded migration version 24" -}}
 {{- end -}}
 {{- end -}}
 {{- if .Values.metadataSync.enabled -}}

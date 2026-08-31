@@ -24,12 +24,20 @@ class PaperCapabilities {
     this.introduction = false,
     this.chat = false,
     this.connections = false,
+    this.visualObjects = false,
+    this.terms = false,
+    this.semanticFacets = false,
+    this.paperPassport = false,
   });
 
   final bool metadata;
   final bool introduction;
   final bool chat;
   final bool connections;
+  final bool visualObjects;
+  final bool terms;
+  final bool semanticFacets;
+  final bool paperPassport;
 
   bool get allReady => introduction && chat && connections;
 
@@ -40,6 +48,10 @@ class PaperCapabilities {
       introduction: value['introduction'] as bool? ?? false,
       chat: value['chat'] as bool? ?? false,
       connections: value['connections'] as bool? ?? false,
+      visualObjects: value['visual_objects'] as bool? ?? false,
+      terms: value['terms'] as bool? ?? false,
+      semanticFacets: value['semantic_facets'] as bool? ?? false,
+      paperPassport: value['paper_passport'] as bool? ?? false,
     );
   }
 
@@ -48,6 +60,10 @@ class PaperCapabilities {
     'introduction': introduction,
     'chat': chat,
     'connections': connections,
+    'visual_objects': visualObjects,
+    'terms': terms,
+    'semantic_facets': semanticFacets,
+    'paper_passport': paperPassport,
   };
 }
 

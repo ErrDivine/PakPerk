@@ -3,15 +3,45 @@ use std::{
     sync::OnceLock,
 };
 
-use domain::{ChatAnswer, ChatEvidence, RelationType, SectionKind, SuggestedFollowUp};
+use domain::{
+    ASSISTANT_ANSWER_MAX_SCALARS, AssistantAnswer, AssistantAnswerStatus, AssistantClaim,
+    AssistantClaimSupport, AssistantEvidenceReference, ChatAnswer, ChatEvidence, RelationType,
+    SectionKind, SuggestedFollowUp, assistant_text_contains_link,
+};
 use regex::Regex;
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
-    CHAT_PROMPT_VERSION, ChatCompletionRequest, RELATIONSHIP_PROMPT_VERSION, RelationshipRequest,
-    RelationshipSummary, ValidationError,
+    ASSISTANT_V2_PROMPT_VERSION, AssistantCompletionRequest, CHAT_PROMPT_VERSION,
+    ChatCompletionRequest, RELATIONSHIP_PROMPT_VERSION, RelationshipRequest, RelationshipSummary,
+    ValidationError,
 };
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawAssistantAnswer {
+    answer: String,
+    status: AssistantAnswerStatus,
+    claims: Vec<RawAssistantClaim>,
+    limitations: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawAssistantClaim {
+    text: String,
+    support: AssistantClaimSupport,
+    evidence: Vec<RawAssistantEvidence>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawAssistantEvidence {
+    block_id: Uuid,
+    start: u32,
+    end: u32,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -43,6 +73,130 @@ struct RawRelationship {
     summary: String,
     confidence: f32,
     evidence_context_ids: Vec<Uuid>,
+}
+
+/// Validates claim-level assistant output against the exact blocks supplied to
+/// the provider. Provider-supplied page/section metadata is never trusted;
+/// response locators are rebuilt from the retrieved records.
+pub fn validate_assistant_output(
+    json: &str,
+    request: &AssistantCompletionRequest,
+    provenance_id: Uuid,
+    model_id: Option<String>,
+    provider_request_id: Option<String>,
+) -> Result<AssistantAnswer, ValidationError> {
+    let raw: RawAssistantAnswer =
+        serde_json::from_str(json).map_err(|_| ValidationError::InvalidJson)?;
+    let rendered_answer = raw.answer.trim();
+    if rendered_answer.is_empty()
+        || rendered_answer.chars().count() > ASSISTANT_ANSWER_MAX_SCALARS
+        || rendered_answer.split_whitespace().count() > 800
+        || contains_html(rendered_answer)
+        || contains_unsafe_markdown(rendered_answer)
+        || assistant_text_contains_link(rendered_answer)
+        || raw.claims.len() > 16
+        || raw.limitations.len() > 1
+    {
+        return Err(ValidationError::InvalidAssistantAnswer);
+    }
+    if (raw.status == AssistantAnswerStatus::NotFound && !raw.claims.is_empty())
+        || (raw.status != AssistantAnswerStatus::NotFound && raw.claims.is_empty())
+    {
+        return Err(ValidationError::InvalidAssistantAnswer);
+    }
+
+    let trusted = request
+        .evidence
+        .iter()
+        .map(|evidence| (evidence.block_id, evidence))
+        .collect::<HashMap<_, _>>();
+    let mut claims = Vec::with_capacity(raw.claims.len());
+    for raw_claim in raw.claims {
+        let text = raw_claim.text.trim();
+        if text.is_empty()
+            || text.chars().count() > 1_200
+            || contains_html(text)
+            || contains_unsafe_markdown(text)
+            || assistant_text_contains_link(text)
+            || raw_claim.evidence.is_empty()
+            || raw_claim.evidence.len() > 8
+        {
+            return Err(ValidationError::InvalidAssistantClaim);
+        }
+        let mut seen = HashSet::new();
+        let mut evidence = Vec::with_capacity(raw_claim.evidence.len());
+        for source in raw_claim.evidence {
+            let trusted = trusted
+                .get(&source.block_id)
+                .ok_or(ValidationError::InvalidAssistantEvidence)?;
+            if source.start >= source.end
+                || scalar_slice(&trusted.text, source.start, source.end)
+                    .is_none_or(|selected| selected.trim().is_empty())
+            {
+                return Err(ValidationError::InvalidAssistantEvidence);
+            }
+            if seen.insert((source.block_id, source.start, source.end)) {
+                evidence.push(AssistantEvidenceReference {
+                    block_id: source.block_id,
+                    start: source.start,
+                    end: source.end,
+                    page_start: trusted.page_start,
+                    section: trusted.section_heading.clone(),
+                });
+            }
+        }
+        if evidence.is_empty() {
+            return Err(ValidationError::InvalidAssistantEvidence);
+        }
+        claims.push(AssistantClaim {
+            text: text.to_owned(),
+            support: raw_claim.support,
+            evidence,
+        });
+    }
+
+    let mut limitations = Vec::with_capacity(raw.limitations.len());
+    for limitation in raw.limitations {
+        let limitation = limitation.trim();
+        if limitation.is_empty()
+            || limitation.chars().count() > 600
+            || contains_html(limitation)
+            || contains_unsafe_markdown(limitation)
+            || assistant_text_contains_link(limitation)
+        {
+            return Err(ValidationError::InvalidAssistantAnswer);
+        }
+        limitations.push(limitation.to_owned());
+    }
+
+    let answer = AssistantAnswer {
+        answer: rendered_answer.to_owned(),
+        status: raw.status,
+        claims,
+        limitations,
+        provenance_id,
+        model_id,
+        provider_request_id,
+        prompt_version: ASSISTANT_V2_PROMPT_VERSION.into(),
+    };
+    if !answer.has_valid_rendered_contract() {
+        return Err(ValidationError::InvalidAssistantAnswer);
+    }
+    Ok(answer)
+}
+
+fn scalar_slice(value: &str, start: u32, end: u32) -> Option<String> {
+    let start = usize::try_from(start).ok()?;
+    let end = usize::try_from(end).ok()?;
+    if start >= end {
+        return None;
+    }
+    let selected = value
+        .chars()
+        .skip(start)
+        .take(end - start)
+        .collect::<String>();
+    (selected.chars().count() == end - start).then_some(selected)
 }
 
 /// Parse strict structured output, discard invented IDs, and rebuild every
@@ -647,10 +801,231 @@ fn unsafe_markdown_regex() -> &'static Regex {
 
 #[cfg(test)]
 mod tests {
-    use domain::SectionKind;
+    use domain::{
+        AssistantAnswerStatus, AssistantAnswerStyle, AssistantRequest, AssistantScope,
+        AssistantScopeKind, SectionKind,
+    };
 
     use super::*;
-    use crate::{EvidenceExcerpt, RelationshipContext};
+    use crate::{
+        AssistantCompletionRequest, BlockEvidenceExcerpt, EvidenceExcerpt, RelationshipContext,
+    };
+
+    fn assistant_request(text: &str) -> AssistantCompletionRequest {
+        let paper_id = Uuid::now_v7();
+        AssistantCompletionRequest {
+            paper_title: "Unicode fixture".to_owned(),
+            request: AssistantRequest {
+                paper_id,
+                generation: 3,
+                question: "What method is reported?".to_owned(),
+                scope: AssistantScope {
+                    kind: AssistantScopeKind::Paper,
+                    section_kinds: vec![SectionKind::Method],
+                    object_ids: Vec::new(),
+                    selection: None,
+                    passport_field: None,
+                },
+                answer_style: AssistantAnswerStyle::Concise,
+                thread_id: None,
+            },
+            recent_turns: Vec::new(),
+            evidence: vec![BlockEvidenceExcerpt {
+                block_id: Uuid::now_v7(),
+                paper_id,
+                generation: 3,
+                section_heading: Some("Methods".to_owned()),
+                page_start: Some(7),
+                text: text.to_owned(),
+            }],
+        }
+    }
+
+    #[test]
+    fn assistant_rebuilds_trusted_locators_and_validates_unicode_scalar_ranges() {
+        let request = assistant_request("α🙂 method result");
+        let output = serde_json::json!({
+            "answer": "A method is reported.",
+            "status": "supported",
+            "claims": [{
+                "text": "A method is reported.",
+                "support": "direct",
+                "evidence": [{
+                    "block_id": request.evidence[0].block_id,
+                    "start": 3,
+                    "end": 9
+                }]
+            }],
+            "limitations": []
+        });
+        let answer = validate_assistant_output(
+            &output.to_string(),
+            &request,
+            Uuid::now_v7(),
+            Some("fixture-model".to_owned()),
+            None,
+        )
+        .unwrap();
+        let evidence = &answer.claims[0].evidence[0];
+        assert_eq!(evidence.page_start, Some(7));
+        assert_eq!(evidence.section.as_deref(), Some("Methods"));
+        assert_eq!(
+            scalar_slice(&request.evidence[0].text, 3, 9).unwrap(),
+            "method"
+        );
+    }
+
+    #[test]
+    fn assistant_rejects_invented_ids_and_out_of_bounds_ranges() {
+        let request = assistant_request("trusted method text");
+        for evidence in [
+            serde_json::json!({
+                "block_id": Uuid::now_v7(),
+                "start": 0,
+                "end": 7
+            }),
+            serde_json::json!({
+                "block_id": request.evidence[0].block_id,
+                "start": 0,
+                "end": 999
+            }),
+        ] {
+            let output = serde_json::json!({
+                "answer": "Unsupported claim.",
+                "status": "supported",
+                "claims": [{
+                    "text": "Unsupported claim.",
+                    "support": "direct",
+                    "evidence": [evidence]
+                }],
+                "limitations": []
+            });
+            assert_eq!(
+                validate_assistant_output(
+                    &output.to_string(),
+                    &request,
+                    Uuid::now_v7(),
+                    None,
+                    None,
+                )
+                .unwrap_err(),
+                ValidationError::InvalidAssistantEvidence
+            );
+        }
+    }
+
+    #[test]
+    fn assistant_rejects_extra_answer_statement_without_a_claim_record() {
+        let request = assistant_request("A supported method is reported.");
+        let output = serde_json::json!({
+            "answer": "A supported method is reported.\n\nIt beats every competing method.",
+            "status": "supported",
+            "claims": [{
+                "text": "A supported method is reported.",
+                "support": "direct",
+                "evidence": [{
+                    "block_id": request.evidence[0].block_id,
+                    "start": 0,
+                    "end": 31
+                }]
+            }],
+            "limitations": []
+        });
+
+        assert_eq!(
+            validate_assistant_output(&output.to_string(), &request, Uuid::now_v7(), None, None,)
+                .unwrap_err(),
+            ValidationError::InvalidAssistantAnswer
+        );
+    }
+
+    #[test]
+    fn assistant_rejects_provider_authored_https_link_even_when_claim_fenced() {
+        let request = assistant_request("A supported method is reported.");
+        let linked_claim = "A supported method is reported at https://invented.example/source.";
+        let output = serde_json::json!({
+            "answer": linked_claim,
+            "status": "supported",
+            "claims": [{
+                "text": linked_claim,
+                "support": "direct",
+                "evidence": [{
+                    "block_id": request.evidence[0].block_id,
+                    "start": 0,
+                    "end": 31
+                }]
+            }],
+            "limitations": []
+        });
+
+        assert_eq!(
+            validate_assistant_output(&output.to_string(), &request, Uuid::now_v7(), None, None,)
+                .unwrap_err(),
+            ValidationError::InvalidAssistantAnswer
+        );
+    }
+
+    #[test]
+    fn assistant_not_found_is_a_normal_claim_free_state() {
+        let request = assistant_request("no answer here");
+        let output = serde_json::json!({
+            "answer": "Not found in this paper.",
+            "status": "not_found",
+            "claims": [],
+            "limitations": []
+        });
+        let answer =
+            validate_assistant_output(&output.to_string(), &request, Uuid::now_v7(), None, None)
+                .unwrap();
+        assert_eq!(answer.status, AssistantAnswerStatus::NotFound);
+        assert!(answer.claims.is_empty());
+
+        let mut invalid = output;
+        invalid["claims"] = serde_json::json!([{
+            "text": "A hidden claim.",
+            "support": "direct",
+            "evidence": [{
+                "block_id": request.evidence[0].block_id,
+                "start": 0,
+                "end": 2
+            }]
+        }]);
+        assert_eq!(
+            validate_assistant_output(&invalid.to_string(), &request, Uuid::now_v7(), None, None,)
+                .unwrap_err(),
+            ValidationError::InvalidAssistantAnswer
+        );
+    }
+
+    #[test]
+    fn assistant_partial_uses_only_closed_non_claim_limitation_metadata() {
+        let request = assistant_request("A supported method is reported.");
+        let mut output = serde_json::json!({
+            "answer": "A supported method is reported.",
+            "status": "partial",
+            "claims": [{
+                "text": "A supported method is reported.",
+                "support": "direct",
+                "evidence": [{
+                    "block_id": request.evidence[0].block_id,
+                    "start": 0,
+                    "end": 31
+                }]
+            }],
+            "limitations": ["Only claim-backed portions of the requested answer are shown."]
+        });
+
+        validate_assistant_output(&output.to_string(), &request, Uuid::now_v7(), None, None)
+            .unwrap();
+
+        output["limitations"] =
+            serde_json::json!(["The paper did not test this method in deployment."]);
+        assert_eq!(
+            validate_assistant_output(&output.to_string(), &request, Uuid::now_v7(), None, None,)
+                .unwrap_err(),
+            ValidationError::InvalidAssistantAnswer
+        );
+    }
 
     #[test]
     fn discards_invented_chat_sources_and_rebuilds_trusted_badges() {

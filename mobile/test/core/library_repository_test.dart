@@ -5,10 +5,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/core/api/api_exception.dart';
 import 'package:pakperk/core/database/app_database.dart';
 import 'package:pakperk/core/database/library_dao.dart';
+import 'package:pakperk/core/database/library_v2_dao.dart';
 import 'package:pakperk/core/library/library_api.dart';
 import 'package:pakperk/core/library/library_models.dart';
 import 'package:pakperk/core/library/library_repository.dart';
 import 'package:pakperk/core/models/paper.dart';
+import 'package:pakperk/core/telemetry/telemetry.dart';
 
 import '../support/fakes.dart';
 
@@ -479,6 +481,52 @@ void main() {
     expect(outbox.operationId, _operation1);
     expect(outbox.state, 'in_flight');
   });
+
+  test('local revision conflicts emit the closed sync boundary', () async {
+    final database = PakPerkDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final legacy = LibraryDao(database);
+    await legacy.applyFullSnapshot(
+      accountId: _accountId,
+      entries: const [],
+      syncRevision: 9,
+      scopeGuard: () => true,
+    );
+    final telemetry = _RecordingTelemetry();
+    final scope = _Scope();
+    final repository = LibraryRepository(
+      local: legacy,
+      remote: _FakeRemote(),
+      sessionScope: () => (accountId: scope.accountId, authEpoch: scope.epoch),
+      verifiedScope: () => (accountId: scope.accountId, authEpoch: scope.epoch),
+      v2Local: LibraryV2Dao(
+        database,
+        operationId: () => _operation1,
+        clock: () => DateTime.utc(2026, 8, 28),
+      ),
+      libraryV2Enabled: true,
+      telemetry: RedactingTelemetrySink(telemetry),
+    );
+
+    await expectLater(
+      repository.upsertTagV2(
+        accountId: _accountId,
+        authEpoch: 7,
+        tagId: null,
+        name: 'Methods',
+        expectedRevision: 8,
+      ),
+      throwsA(isA<LibraryRevisionConflict>()),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      telemetry.events.single.$1,
+      PakPerkTelemetryEvent.librarySyncConflict,
+    );
+    expect(telemetry.events.single.$2, const {'boundary': 'local_revision'});
+    expect(await database.select(database.syncOutbox).get(), isEmpty);
+  });
 }
 
 LibraryRepository _repository(
@@ -565,7 +613,24 @@ final class _FakeRemote implements LibraryRemoteDataSource {
     required String paperId,
     required String operationId,
     required int expectedAuthEpoch,
+    LibrarySaveSourceKind? saveSourceKind,
   }) => throw UnimplementedError();
+}
+
+final class _RecordingTelemetry implements TelemetrySink {
+  final events = <(String, Map<String, Object?>)>[];
+
+  @override
+  Future<void> event(String name, Map<String, Object?> attributes) async {
+    events.add((name, Map.unmodifiable(attributes)));
+  }
+
+  @override
+  Future<void> error(
+    Object error,
+    StackTrace stack, {
+    Map<String, Object?> context = const {},
+  }) async {}
 }
 
 LibraryCanonicalItem _canonical({

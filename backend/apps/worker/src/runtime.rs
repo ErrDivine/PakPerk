@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     path::Path,
     sync::Arc,
     time::{Duration, Instant},
@@ -10,21 +10,41 @@ use arxiv_client::{
     ArxivClient, ArxivError, MAX_EXACT_IDS_PER_REQUEST, NormalizedArxivId, normalize_arxiv_id,
 };
 use chrono::{Datelike as _, Utc};
-use db::{Database, DbError, PaperRepository, VerificationMetrics};
-use document_model::{DocumentError, detect_introduction, parse_tei};
+use db::{
+    Database, DbError, DocumentRepository, EnrichmentCapability, PaperRepository,
+    PassportRepository, ResearchMemoryRepository, ResearchMutationOutcome, VerificationMetrics,
+    VersionDiffRepository,
+};
+use document_ingestion::{
+    GrobidAdapter, ParseError, ParseInput, ParsePayload, ScholarlyDocumentParser,
+};
+use document_model::{DetectedIntroduction, DocumentError, detect_introduction, parse_tei};
 use domain::{
-    CitationContext, Connection, FailureCategory, Paper, PaperMetadata, ParsedSection,
-    ProcessingStage, Reference, ReferenceResolutionStatus,
+    AnnotationAnchorStatus, ArtifactConfidenceStatus, CitationContext, Connection,
+    DefinitionStatus, DiffConfidenceStatus, DocumentBlock, DocumentBlockKind, DocumentTerm,
+    FailureCategory, FigureExtractionStatus, NormalizedDocument, PAPER_PASSPORT_SCHEMA_VERSION,
+    Paper, PaperMetadata, PaperPassport, ParsedPaper, ParsedSection, PassportField,
+    PassportFieldKey, PassportFieldStatus, PassportStatus, ProcessingStage, ProvenanceActivityType,
+    ProvenanceArtifactType, ProvenanceParameter, ProvenanceParameters, ProvenanceRecord,
+    ReanchorStrategy, Reference, ReferenceResolutionStatus, SEMANTIC_FACET_SCHEMA_VERSION,
+    SemanticDensity, SemanticFacet, SemanticSpan, SemanticSpanSourceKind, SemanticSupportStatus,
+    TermKind, TermOccurrence, VERSION_DIFF_ALGORITHM_VERSION, VERSION_DIFF_SCHEMA_VERSION,
+    VersionDiffStatus, normalize_term,
 };
 use grobid_client::{GrobidClient, GrobidError};
-use jobs::{ClaimedJob, JobFailure, JobKind, JobQueue, QueueError};
+use jobs::{ClaimedJob, JobFailure, JobIdentity, JobKind, JobQueue, QueueError};
 use llm_provider::{
     DeterministicProvider, EmbeddingProvider, EmbeddingRequest, OpenAiCompatibleProvider,
     ProviderError, RelationshipContext, RelationshipProvider, RelationshipRequest,
 };
 use observability::{
-    OperationClass, OperationOutcome, PaperJobStage, record_operation, record_paper_job_stage,
-    sanitized_detail,
+    AnnotationReanchorMetricOutcome, AnnotationReanchorMetricStrategy, OperationClass,
+    OperationOutcome, PaperJobStage, ParsedObjectClass, ParserAdapterClass, ParserAnomalyClass,
+    ParserOutcome, PassportFieldClass, PassportFieldOutcome, VersionDiffMetricOperation,
+    VersionDiffMetricOutcome, VersionDiffUncertainty, VisualObjectClass, VisualObjectOperation,
+    VisualObjectOutcome, record_annotation_reanchor, record_operation, record_paper_job_stage,
+    record_parsed_object_count, record_parser_anomaly, record_parser_run,
+    record_passport_field_status, record_version_diff, record_visual_object, sanitized_detail,
 };
 use retrieval::{
     ChunkingConfig, KeyReferenceSignals, MatchDecision, ParagraphChunker, ResolutionSignals,
@@ -32,6 +52,7 @@ use retrieval::{
     resolution_decision_for_title,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::sync::watch;
 use tracing::{error, info, instrument, warn};
@@ -41,9 +62,31 @@ use crate::{
     cli::{Cli, Command},
     config::{WorkerConfig, WorkerModelConfig},
     evaluation::{ContentEvaluationSummary, validate_content_evaluation_files},
+    visual_derivatives::{
+        VisualDerivativeError, VisualDerivativeOutcome, VisualDerivativePipeline,
+    },
 };
 
 const NEGATIVE_EXACT_ARXIV_CACHE_TTL: Duration = Duration::from_secs(15 * 60);
+const TERMS_ARTIFACT_VERSION: &str = "terms-v1";
+const VISUALS_ARTIFACT_VERSION: &str = "visuals-v1";
+const ANNOTATION_REANCHOR_ARTIFACT_VERSION: &str = "annotation-reanchor-v1";
+const ANNOTATION_REANCHOR_PAGE_SIZE: u32 = 200;
+type ExtractedTermOccurrences = Vec<(Uuid, u32, u32)>;
+type ExtractedTerms = BTreeMap<String, (String, ExtractedTermOccurrences)>;
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ComparePaperVersionsPayload {
+    from_generation: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReanchorPassOutcome {
+    Applied,
+    ReviewRequired,
+    Skipped,
+}
 
 trait WorkerModelProvider: EmbeddingProvider + RelationshipProvider {}
 
@@ -52,10 +95,15 @@ impl<T> WorkerModelProvider for T where T: EmbeddingProvider + RelationshipProvi
 pub struct Worker {
     config: WorkerConfig,
     papers: PaperRepository,
+    documents: DocumentRepository,
+    passports: PassportRepository,
+    research_memory: ResearchMemoryRepository,
+    version_diffs: VersionDiffRepository,
     queue: JobQueue,
     arxiv: ArxivClient,
     grobid: GrobidClient,
     model: Arc<dyn WorkerModelProvider>,
+    visual_derivatives: Option<VisualDerivativePipeline>,
 }
 
 impl Worker {
@@ -88,13 +136,30 @@ impl Worker {
                 Arc::new(OpenAiCompatibleProvider::new(*config)?)
             }
         };
+        let visual_derivatives = config
+            .visual_assets
+            .as_ref()
+            .map(|visual_assets| {
+                VisualDerivativePipeline::new(
+                    &visual_assets.directory,
+                    visual_assets.maximum_source_bytes,
+                    visual_assets.maximum_derivative_bytes,
+                )
+            })
+            .transpose()
+            .context("could not initialize visual derivative storage")?;
         let queue = JobQueue::new(database.pool().clone());
         Ok(Self {
             papers: database.papers(),
+            documents: database.documents(),
+            passports: database.passports(),
+            research_memory: database.research_memory(),
+            version_diffs: database.version_diffs(),
             queue,
             arxiv,
             grobid,
             model,
+            visual_derivatives,
             config,
         })
     }
@@ -215,13 +280,7 @@ impl Worker {
             warn!(job_id = %job.id, error.kind = "task_join", "lease heartbeat task failed");
         }
 
-        let outcome = match &result {
-            Ok(()) => OperationOutcome::Success,
-            Err(PipelineError::Database(DbError::StaleGeneration)) => OperationOutcome::Rejected,
-            Err(_) => OperationOutcome::RetryableFailure,
-        };
-        record_operation(OperationClass::PaperJob, outcome, started.elapsed());
-        record_paper_job_stage(paper_job_stage(job.kind), outcome, started.elapsed());
+        record_claimed_job_metrics(job.kind, &result, started.elapsed());
 
         match result {
             Ok(()) => {
@@ -255,25 +314,44 @@ impl Worker {
                     .await
                 {
                     Ok(auto_requeued) => {
-                        let publish = if auto_requeued {
-                            self.papers
-                                .mark_retry_scheduled(
-                                    job.paper_id,
-                                    job.generation,
-                                    retry_stage(job.kind),
-                                    &failure,
-                                )
-                                .await
-                        } else {
-                            self.papers
-                                .mark_failure(
-                                    job.paper_id,
-                                    job.generation,
-                                    &failure,
-                                    failure.automatically_retryable(),
-                                )
-                                .await
-                        };
+                        let publish =
+                            if let Some(capability) = enrichment_capability_for_job(job.kind) {
+                                if auto_requeued {
+                                    Ok(())
+                                } else {
+                                    self.passports
+                                        .mark_enrichment_failed(
+                                            job.paper_id,
+                                            job.generation,
+                                            capability,
+                                            artifact_version_for_job(job.kind),
+                                            failure_category_name(failure.category),
+                                            &failure.code,
+                                            &failure.message,
+                                        )
+                                        .await
+                                }
+                            } else if is_core_job(job.kind) && auto_requeued {
+                                self.papers
+                                    .mark_retry_scheduled(
+                                        job.paper_id,
+                                        job.generation,
+                                        retry_stage(job.kind),
+                                        &failure,
+                                    )
+                                    .await
+                            } else if is_core_job(job.kind) {
+                                self.papers
+                                    .mark_failure(
+                                        job.paper_id,
+                                        job.generation,
+                                        &failure,
+                                        failure.automatically_retryable(),
+                                    )
+                                    .await
+                            } else {
+                                Ok(())
+                            };
                         if let Err(_error) = publish {
                             warn!(job_id = %job.id, error.kind = "database", "could not publish processing failure");
                         }
@@ -333,9 +411,22 @@ impl Worker {
     )]
     async fn execute_job(&self, job: &ClaimedJob) -> Result<(), PipelineError> {
         match job.kind {
-            JobKind::PrepareDocument => self.prepare_document(job).await,
+            JobKind::PrepareCoreDocument | JobKind::PrepareDocument => {
+                self.prepare_document(job).await
+            }
+            JobKind::EnrichVisualObjects => self.enrich_visual_objects(job).await,
+            JobKind::ExtractTerms => self.extract_terms(job).await,
+            JobKind::BuildFacetedSpans => self.build_faceted_spans(job).await,
+            JobKind::BuildPaperPassport => self.build_paper_passport(job).await,
+            JobKind::ComparePaperVersions => self.compare_paper_versions(job).await,
             JobKind::IndexChat => self.index_chat(job).await,
             JobKind::ResolveConnections => self.resolve_connections(job).await,
+            JobKind::ReanchorAnnotations => self.reanchor_annotations(job).await,
+            JobKind::RegenerateAccessibilityDescriptions => {
+                Err(PipelineError::CapabilityUnavailable(
+                    "accessibility descriptions have no approved persisted draft schema",
+                ))
+            }
         }
     }
 
@@ -348,7 +439,9 @@ impl Worker {
         if processing.generation != job.generation {
             return Err(PipelineError::Database(DbError::StaleGeneration));
         }
-        if processing.capabilities.introduction {
+        if processing.capabilities.introduction
+            && self.documents.provenance(job.paper_id).await?.is_some()
+        {
             self.enqueue_downstream(job).await?;
             return Ok(());
         }
@@ -369,6 +462,7 @@ impl Worker {
             .fulltext_policy
             .allows_derived_content(paper.metadata.license_uri.as_ref())
         {
+            self.purge_policy_denied_visual_assets(job.paper_id).await;
             return Err(PipelineError::PolicyDenied);
         }
 
@@ -392,8 +486,38 @@ impl Worker {
         self.papers
             .set_stage(job.paper_id, job.generation, ProcessingStage::ParsingPdf)
             .await?;
+        let (parsed, introduction, normalized) = self
+            .parse_downloaded_document(
+                job,
+                paper.metadata.arxiv_id.version,
+                downloaded.path.as_ref(),
+            )
+            .await?;
+        self.papers
+            .persist_parsed_document(
+                job.paper_id,
+                job.generation,
+                &parsed,
+                &introduction.source_section_ids,
+                introduction.detection,
+                &self.config.parser_version,
+            )
+            .await?;
+        self.documents.persist_document(&normalized).await?;
+        drop(downloaded);
+
+        self.enqueue_downstream(job).await?;
+        Ok(())
+    }
+
+    async fn parse_downloaded_document(
+        &self,
+        job: &ClaimedJob,
+        arxiv_version: u32,
+        pdf_path: &Path,
+    ) -> Result<(ParsedPaper, DetectedIntroduction, NormalizedDocument), PipelineError> {
         let grobid_started = Instant::now();
-        let tei_result = self.grobid.process_fulltext_file(&downloaded.path).await;
+        let tei_result = self.grobid.process_fulltext_file(pdf_path).await;
         match &tei_result {
             Ok(tei) => info!(
                 metric.name = "grobid_parse",
@@ -414,45 +538,883 @@ impl Worker {
                 "GROBID full-text parsing failed"
             ),
         }
-        let tei = tei_result?;
-        let parsed = parse_tei(&tei)?;
-        let introduction = detect_introduction(&parsed)?;
-        self.papers
-            .persist_parsed_document(
-                job.paper_id,
-                job.generation,
-                &parsed,
-                &introduction.source_section_ids,
-                introduction.detection,
-                &self.config.parser_version,
-            )
-            .await?;
-        drop(downloaded);
-
-        self.enqueue_downstream(job).await?;
-        Ok(())
+        let tei = match tei_result {
+            Ok(tei) => tei,
+            Err(error) => {
+                record_parser_run(
+                    ParserAdapterClass::Grobid,
+                    grobid_parser_outcome(&error),
+                    grobid_started.elapsed(),
+                );
+                return Err(error.into());
+            }
+        };
+        let parsed = match parse_tei(&tei) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                record_parser_run(
+                    ParserAdapterClass::Grobid,
+                    ParserOutcome::DocumentFailure,
+                    grobid_started.elapsed(),
+                );
+                return Err(error.into());
+            }
+        };
+        let introduction = match detect_introduction(&parsed) {
+            Ok(introduction) => introduction,
+            Err(error) => {
+                record_parser_run(
+                    ParserAdapterClass::Grobid,
+                    ParserOutcome::DocumentFailure,
+                    grobid_started.elapsed(),
+                );
+                return Err(error.into());
+            }
+        };
+        let adapter = match GrobidAdapter::new(self.config.parser_version.clone()) {
+            Ok(adapter) => adapter,
+            Err(error) => {
+                record_parser_run(
+                    ParserAdapterClass::Grobid,
+                    parse_adapter_outcome(&error),
+                    grobid_started.elapsed(),
+                );
+                return Err(error.into());
+            }
+        };
+        let normalized_result = adapter
+            .parse(ParseInput {
+                paper_id: job.paper_id,
+                generation: job.generation,
+                arxiv_version,
+                payload: ParsePayload::GrobidTei(tei),
+            })
+            .await;
+        let normalized = match normalized_result {
+            Ok(document) => document,
+            Err(error) => {
+                record_parser_run(
+                    ParserAdapterClass::Grobid,
+                    parse_adapter_outcome(&error),
+                    grobid_started.elapsed(),
+                );
+                return Err(error.into());
+            }
+        };
+        record_parser_run(
+            ParserAdapterClass::Grobid,
+            ParserOutcome::Success,
+            grobid_started.elapsed(),
+        );
+        record_normalized_document_metrics(&normalized);
+        Ok((parsed, introduction, normalized))
     }
 
     async fn enqueue_downstream(&self, job: &ClaimedJob) -> Result<(), PipelineError> {
         self.queue
-            .enqueue_once(
-                job.paper_id,
-                job.generation,
+            .enqueue_follow_up(
+                job,
                 JobKind::IndexChat,
+                &JobIdentity::legacy(),
                 serde_json::json!({}),
                 5,
             )
             .await?;
         self.queue
-            .enqueue_once(
-                job.paper_id,
-                job.generation,
+            .enqueue_follow_up(
+                job,
                 JobKind::ResolveConnections,
+                &JobIdentity::legacy(),
                 serde_json::json!({}),
                 5,
             )
             .await?;
+        let visual_identity = JobIdentity::for_artifact(
+            "grobid",
+            &self.config.parser_version,
+            None,
+            VISUALS_ARTIFACT_VERSION,
+            None,
+        )?;
+        self.queue
+            .enqueue_follow_up(
+                job,
+                JobKind::EnrichVisualObjects,
+                &visual_identity,
+                serde_json::json!({}),
+                3,
+            )
+            .await?;
+        let term_identity = JobIdentity::for_artifact(
+            "grobid",
+            &self.config.parser_version,
+            None,
+            TERMS_ARTIFACT_VERSION,
+            None,
+        )?;
+        self.queue
+            .enqueue_follow_up(
+                job,
+                JobKind::ExtractTerms,
+                &term_identity,
+                serde_json::json!({}),
+                3,
+            )
+            .await?;
+        self.enqueue_version_comparison(job).await?;
         Ok(())
+    }
+
+    async fn enqueue_version_comparison(&self, job: &ClaimedJob) -> Result<(), PipelineError> {
+        let versions = self
+            .version_diffs
+            .versions(job.paper_id)
+            .await?
+            .ok_or(PipelineError::PaperMissing)?;
+        let current = versions
+            .iter()
+            .find(|version| version.generation == job.generation)
+            .ok_or(PipelineError::DocumentNotReady)?;
+        if job.generation > 1 {
+            let source_generation =
+                u64::try_from(job.generation - 1).map_err(|_| PipelineError::InvalidJobPayload)?;
+            let reanchor_identity = JobIdentity::for_artifact(
+                &current.parser.parser_id,
+                &current.parser.parser_version,
+                Some(ANNOTATION_REANCHOR_ARTIFACT_VERSION),
+                ANNOTATION_REANCHOR_ARTIFACT_VERSION,
+                Some(source_generation),
+            )?;
+            self.queue
+                .enqueue_follow_up(
+                    job,
+                    JobKind::ReanchorAnnotations,
+                    &reanchor_identity,
+                    serde_json::json!({}),
+                    3,
+                )
+                .await?;
+        }
+        let Some(previous) = versions
+            .iter()
+            .find(|version| version.generation < job.generation)
+        else {
+            return Ok(());
+        };
+        let previous_generation =
+            u64::try_from(previous.generation).map_err(|_| PipelineError::InvalidJobPayload)?;
+        let identity = JobIdentity::for_artifact(
+            &current.parser.parser_id,
+            &current.parser.parser_version,
+            Some(VERSION_DIFF_ALGORITHM_VERSION),
+            VERSION_DIFF_SCHEMA_VERSION,
+            Some(previous_generation),
+        )?;
+        self.queue
+            .enqueue_follow_up(
+                job,
+                JobKind::ComparePaperVersions,
+                &identity,
+                serde_json::json!({ "from_generation": previous.generation }),
+                3,
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn reanchor_annotations(&self, job: &ClaimedJob) -> Result<(), PipelineError> {
+        let current = self
+            .documents
+            .provenance(job.paper_id)
+            .await?
+            .ok_or(PipelineError::DocumentNotReady)?;
+        if current.generation != job.generation {
+            return Err(PipelineError::Database(DbError::StaleGeneration));
+        }
+
+        let mut applied = 0_u64;
+        let mut review_required = 0_u64;
+        let mut skipped = 0_u64;
+        // A second bounded sweep catches a principal operation that began
+        // before the version transition and committed behind the first keyset
+        // cursor. Foreground writes cannot create a stale-generation anchor
+        // after the generation fence has advanced.
+        for _sweep in 0..2 {
+            let mut after = None;
+            loop {
+                let targets = self
+                    .research_memory
+                    .pending_annotation_reanchors(
+                        job.paper_id,
+                        job.generation,
+                        after,
+                        ANNOTATION_REANCHOR_PAGE_SIZE,
+                    )
+                    .await?;
+                if targets.is_empty() {
+                    break;
+                }
+                let target_count = targets.len();
+                for target in &targets {
+                    match self
+                        .reanchor_one_annotation(
+                            target.user_id,
+                            target.annotation_id,
+                            target.base_revision,
+                            job.generation,
+                        )
+                        .await?
+                    {
+                        ReanchorPassOutcome::Applied => applied = applied.saturating_add(1),
+                        ReanchorPassOutcome::ReviewRequired => {
+                            review_required = review_required.saturating_add(1);
+                        }
+                        ReanchorPassOutcome::Skipped => skipped = skipped.saturating_add(1),
+                    }
+                }
+                after = targets
+                    .last()
+                    .map(|target| (target.user_id, target.annotation_id));
+                if target_count < ANNOTATION_REANCHOR_PAGE_SIZE as usize {
+                    break;
+                }
+            }
+        }
+        if !self
+            .research_memory
+            .pending_annotation_reanchors(job.paper_id, job.generation, None, 1)
+            .await?
+            .is_empty()
+        {
+            record_annotation_reanchor(
+                AnnotationReanchorMetricStrategy::NoMatch,
+                AnnotationReanchorMetricOutcome::Failure,
+            );
+            return Err(PipelineError::Database(DbError::InvalidData(
+                "annotation reanchor pass raced a principal edit".to_owned(),
+            )));
+        }
+        info!(
+            metric.name = "annotation_reanchor",
+            paper_id = %job.paper_id,
+            generation = job.generation,
+            applied,
+            review_required,
+            skipped,
+            "completed bounded annotation reanchor pass"
+        );
+        Ok(())
+    }
+
+    async fn reanchor_one_annotation(
+        &self,
+        user_id: Uuid,
+        annotation_id: Uuid,
+        base_revision: i64,
+        to_generation: i32,
+    ) -> Result<ReanchorPassOutcome, PipelineError> {
+        let operation_id = stable_artifact_uuid(
+            annotation_id,
+            to_generation,
+            "annotation-reanchor-operation",
+            ANNOTATION_REANCHOR_ARTIFACT_VERSION,
+        );
+        let outcome = self
+            .research_memory
+            .reanchor_annotation_observed(
+                user_id.into(),
+                annotation_id,
+                operation_id,
+                base_revision,
+                to_generation,
+            )
+            .await
+            .inspect_err(|_| record_reanchor_failure())?;
+        let outcome = match outcome {
+            ResearchMutationOutcome::RevisionConflict { current_revision } => {
+                // A foreground edit won the first optimistic check. Retry once
+                // against that exact revision; another race is a safe skip.
+                self.research_memory
+                    .reanchor_annotation_observed(
+                        user_id.into(),
+                        annotation_id,
+                        operation_id,
+                        current_revision,
+                        to_generation,
+                    )
+                    .await
+                    .inspect_err(|_| record_reanchor_failure())?
+            }
+            outcome => outcome,
+        };
+        match outcome {
+            ResearchMutationOutcome::Applied { value, .. } => {
+                record_annotation_reanchor(
+                    annotation_reanchor_metric_strategy(value.strategy),
+                    annotation_reanchor_metric_outcome(value.result),
+                );
+                if value.annotation.anchor_status == AnnotationAnchorStatus::Anchored
+                    && value.annotation.generation == to_generation
+                {
+                    Ok(ReanchorPassOutcome::Applied)
+                } else {
+                    Ok(ReanchorPassOutcome::ReviewRequired)
+                }
+            }
+            ResearchMutationOutcome::AccountNotFound
+            | ResearchMutationOutcome::Inactive(_)
+            | ResearchMutationOutcome::PaperNotFound
+            | ResearchMutationOutcome::ArtifactNotFound
+            | ResearchMutationOutcome::StaleGeneration
+            | ResearchMutationOutcome::RevisionConflict { .. }
+            | ResearchMutationOutcome::AnnotationConflict(_) => {
+                record_annotation_reanchor(
+                    AnnotationReanchorMetricStrategy::NoMatch,
+                    AnnotationReanchorMetricOutcome::Skipped,
+                );
+                Ok(ReanchorPassOutcome::Skipped)
+            }
+            ResearchMutationOutcome::IdempotencyConflict => {
+                record_reanchor_failure();
+                Err(PipelineError::Database(DbError::InvalidData(
+                    "annotation reanchor operation identity conflict".to_owned(),
+                )))
+            }
+        }
+    }
+
+    async fn enrich_visual_objects(&self, job: &ClaimedJob) -> Result<(), PipelineError> {
+        self.passports
+            .mark_enrichment_running(
+                job.paper_id,
+                job.generation,
+                EnrichmentCapability::VisualObjects,
+                VISUALS_ARTIFACT_VERSION,
+            )
+            .await?;
+        let document = self
+            .documents
+            .provenance(job.paper_id)
+            .await?
+            .ok_or(PipelineError::DocumentNotReady)?;
+        if document.generation != job.generation {
+            return Err(PipelineError::Database(DbError::StaleGeneration));
+        }
+        let current_figures = self
+            .documents
+            .figures(job.paper_id)
+            .await?
+            .ok_or(PipelineError::DocumentNotReady)?;
+        if current_figures.generation != job.generation {
+            return Err(PipelineError::Database(DbError::StaleGeneration));
+        }
+        self.publish_visual_derivatives(&current_figures.value)
+            .await?;
+        let mut inputs = current_figures
+            .value
+            .iter()
+            .map(|figure| figure.id)
+            .collect::<Vec<_>>();
+        inputs.extend(
+            self.documents
+                .tables(job.paper_id)
+                .await?
+                .into_iter()
+                .flat_map(|current| current.value)
+                .map(|table| table.id),
+        );
+        inputs.extend(
+            self.documents
+                .equations(job.paper_id)
+                .await?
+                .into_iter()
+                .flat_map(|current| current.value)
+                .map(|equation| equation.id),
+        );
+        inputs.sort_unstable();
+        inputs.dedup();
+        inputs.truncate(128);
+        let provenance = shared_provenance(
+            stable_artifact_uuid(
+                job.paper_id,
+                job.generation,
+                "visual-provenance",
+                VISUALS_ARTIFACT_VERSION,
+            ),
+            stable_artifact_uuid(
+                job.paper_id,
+                job.generation,
+                "visual-artifact",
+                VISUALS_ARTIFACT_VERSION,
+            ),
+            job,
+            ProvenanceArtifactType::VisualObjects,
+            ProvenanceActivityType::VisualExtraction,
+            &document.provenance.parser_id,
+            &document.provenance.parser_version,
+            VISUALS_ARTIFACT_VERSION,
+            inputs,
+        );
+        self.passports
+            .persist_shared_provenance(&provenance)
+            .await?;
+        self.passports
+            .mark_enrichment_ready(
+                job.paper_id,
+                job.generation,
+                EnrichmentCapability::VisualObjects,
+                VISUALS_ARTIFACT_VERSION,
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn publish_visual_derivatives(
+        &self,
+        figures: &[domain::DocumentFigure],
+    ) -> Result<(), PipelineError> {
+        for figure in figures.iter().take(128) {
+            let outcome = if let Some(pipeline) = self.visual_derivatives.clone() {
+                let paper_id = figure.paper_id;
+                let generation = figure.generation;
+                let figure_id = figure.id;
+                tokio::task::spawn_blocking(move || {
+                    pipeline.generate(paper_id, generation, figure_id)
+                })
+                .await
+                .map_err(|_| PipelineError::VisualDerivativeTask)??
+            } else {
+                let mut caption_only = figure.clone();
+                caption_only.asset_key = None;
+                caption_only.width = None;
+                caption_only.height = None;
+                caption_only.extraction_status = FigureExtractionStatus::CaptionOnly;
+                self.documents
+                    .publish_figure_asset_state(&caption_only)
+                    .await?;
+                continue;
+            };
+            match outcome {
+                VisualDerivativeOutcome::Generated(generated) => {
+                    // The pipeline returns only after all three required files
+                    // have been atomically written and hashed. Publish the
+                    // database pointer last so readers cannot observe a
+                    // partially generated responsive set.
+                    let mut ready = figure.clone();
+                    ready.asset_key = Some(generated.primary_key);
+                    ready.width = Some(generated.width);
+                    ready.height = Some(generated.height);
+                    ready.extraction_status = FigureExtractionStatus::Ready;
+                    self.documents.publish_figure_asset_state(&ready).await?;
+                    self.garbage_collect_figure_assets(figure, ready.asset_key.as_deref())
+                        .await;
+                    info!(
+                        paper_id = %figure.paper_id,
+                        generation = figure.generation,
+                        figure_id = %figure.id,
+                        derivative_variants = generated.variants.len(),
+                        derivative_primary_width = generated.width,
+                        derivative_primary_height = generated.height,
+                        "published bounded responsive figure derivatives"
+                    );
+                }
+                VisualDerivativeOutcome::CaptionOnly(reason) => {
+                    let mut caption_only = figure.clone();
+                    caption_only.asset_key = None;
+                    caption_only.width = None;
+                    caption_only.height = None;
+                    caption_only.extraction_status = FigureExtractionStatus::CaptionOnly;
+                    self.documents
+                        .publish_figure_asset_state(&caption_only)
+                        .await?;
+                    self.garbage_collect_figure_assets(figure, None).await;
+                    info!(
+                        paper_id = %figure.paper_id,
+                        generation = figure.generation,
+                        figure_id = %figure.id,
+                        outcome = "caption_only",
+                        reason = reason.as_str(),
+                        "figure derivative source was unavailable or untrusted"
+                    );
+                }
+            }
+        }
+        if let Some(first) = figures.first() {
+            self.garbage_collect_visual_generations(first.paper_id, first.generation)
+                .await;
+        }
+        Ok(())
+    }
+
+    async fn garbage_collect_figure_assets(
+        &self,
+        figure: &domain::DocumentFigure,
+        active_primary_key: Option<&str>,
+    ) {
+        let Some(pipeline) = self.visual_derivatives.clone() else {
+            return;
+        };
+        let paper_id = figure.paper_id;
+        let generation = figure.generation;
+        let figure_id = figure.id;
+        let active_primary_key = active_primary_key.map(str::to_owned);
+        match tokio::task::spawn_blocking(move || {
+            pipeline.garbage_collect_after_publish(
+                paper_id,
+                generation,
+                figure_id,
+                active_primary_key.as_deref(),
+            )
+        })
+        .await
+        {
+            Ok(Ok(removed)) if removed > 0 => info!(
+                paper_id = %paper_id,
+                generation,
+                figure_id = %figure_id,
+                removed,
+                "removed superseded or abandoned figure derivative sets"
+            ),
+            Ok(Ok(_)) => {}
+            Ok(Err(error)) => warn!(
+                paper_id = %paper_id,
+                generation,
+                figure_id = %figure_id,
+                error = %error,
+                "bounded figure derivative cleanup did not complete"
+            ),
+            Err(error) => warn!(
+                paper_id = %paper_id,
+                generation,
+                figure_id = %figure_id,
+                error = %error,
+                "figure derivative cleanup task did not complete"
+            ),
+        }
+    }
+
+    async fn garbage_collect_visual_generations(&self, paper_id: Uuid, generation: i32) {
+        let Some(pipeline) = self.visual_derivatives.clone() else {
+            return;
+        };
+        match tokio::task::spawn_blocking(move || {
+            pipeline.garbage_collect_superseded_generations(paper_id, generation)
+        })
+        .await
+        {
+            Ok(Ok(removed)) if removed > 0 => info!(
+                paper_id = %paper_id,
+                generation,
+                removed,
+                "removed retained superseded visual generations"
+            ),
+            Ok(Ok(_)) => {}
+            Ok(Err(error)) => warn!(
+                paper_id = %paper_id,
+                generation,
+                error = %error,
+                "bounded visual generation cleanup did not complete"
+            ),
+            Err(error) => warn!(
+                paper_id = %paper_id,
+                generation,
+                error = %error,
+                "visual generation cleanup task did not complete"
+            ),
+        }
+    }
+
+    async fn purge_policy_denied_visual_assets(&self, paper_id: Uuid) {
+        let Some(pipeline) = self.visual_derivatives.clone() else {
+            return;
+        };
+        match tokio::task::spawn_blocking(move || pipeline.purge_policy_denied_paper(paper_id))
+            .await
+        {
+            Ok(Ok(removed)) => info!(
+                paper_id = %paper_id,
+                removed,
+                "purged visual bytes after derived-content policy denial"
+            ),
+            Ok(Err(error)) => warn!(
+                paper_id = %paper_id,
+                error = %error,
+                "bounded policy-denied visual purge did not complete"
+            ),
+            Err(error) => warn!(
+                paper_id = %paper_id,
+                error = %error,
+                "policy-denied visual purge task did not complete"
+            ),
+        }
+    }
+
+    async fn extract_terms(&self, job: &ClaimedJob) -> Result<(), PipelineError> {
+        self.passports
+            .mark_enrichment_running(
+                job.paper_id,
+                job.generation,
+                EnrichmentCapability::Terms,
+                TERMS_ARTIFACT_VERSION,
+            )
+            .await?;
+        let document = self
+            .documents
+            .current_blocks_for_enrichment(job.paper_id)
+            .await?
+            .ok_or(PipelineError::DocumentNotReady)?;
+        if document.generation != job.generation {
+            return Err(PipelineError::Database(DbError::StaleGeneration));
+        }
+        let (terms, occurrences) =
+            extract_deterministic_terms(job.paper_id, job.generation, &document.value);
+        let inputs = document
+            .value
+            .iter()
+            .filter(|block| {
+                occurrences
+                    .iter()
+                    .any(|occurrence| occurrence.block_id == block.id)
+            })
+            .take(128)
+            .map(|block| block.id)
+            .collect::<Vec<_>>();
+        let provenance = shared_provenance(
+            stable_artifact_uuid(
+                job.paper_id,
+                job.generation,
+                "terms-provenance",
+                TERMS_ARTIFACT_VERSION,
+            ),
+            stable_artifact_uuid(
+                job.paper_id,
+                job.generation,
+                "terms-artifact",
+                TERMS_ARTIFACT_VERSION,
+            ),
+            job,
+            ProvenanceArtifactType::Terms,
+            ProvenanceActivityType::TermExtraction,
+            &document.provenance.parser_id,
+            &document.provenance.parser_version,
+            TERMS_ARTIFACT_VERSION,
+            inputs,
+        );
+        self.passports
+            .replace_terms(
+                job.paper_id,
+                job.generation,
+                &provenance,
+                &terms,
+                &occurrences,
+                TERMS_ARTIFACT_VERSION,
+            )
+            .await?;
+        let identity = JobIdentity::for_artifact(
+            &document.provenance.parser_id,
+            &document.provenance.parser_version,
+            None,
+            SEMANTIC_FACET_SCHEMA_VERSION,
+            None,
+        )?;
+        self.queue
+            .enqueue_follow_up(
+                job,
+                JobKind::BuildFacetedSpans,
+                &identity,
+                serde_json::json!({}),
+                3,
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn build_faceted_spans(&self, job: &ClaimedJob) -> Result<(), PipelineError> {
+        self.passports
+            .mark_enrichment_running(
+                job.paper_id,
+                job.generation,
+                EnrichmentCapability::SemanticFacets,
+                SEMANTIC_FACET_SCHEMA_VERSION,
+            )
+            .await?;
+        let document = self
+            .documents
+            .current_blocks_for_enrichment(job.paper_id)
+            .await?
+            .ok_or(PipelineError::DocumentNotReady)?;
+        if document.generation != job.generation {
+            return Err(PipelineError::Database(DbError::StaleGeneration));
+        }
+        let spans = build_deterministic_spans(job.paper_id, job.generation, &document.value);
+        let mut inputs = spans
+            .iter()
+            .map(|span| span.block_id)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        inputs.sort_unstable();
+        let provenance_id = stable_artifact_uuid(
+            job.paper_id,
+            job.generation,
+            "facets-provenance",
+            SEMANTIC_FACET_SCHEMA_VERSION,
+        );
+        let spans = spans
+            .into_iter()
+            .map(|mut span| {
+                span.provenance_id = provenance_id;
+                span
+            })
+            .collect::<Vec<_>>();
+        let provenance = shared_provenance(
+            provenance_id,
+            stable_artifact_uuid(
+                job.paper_id,
+                job.generation,
+                "facets-artifact",
+                SEMANTIC_FACET_SCHEMA_VERSION,
+            ),
+            job,
+            ProvenanceArtifactType::SemanticSpans,
+            ProvenanceActivityType::SemanticClassification,
+            &document.provenance.parser_id,
+            &document.provenance.parser_version,
+            SEMANTIC_FACET_SCHEMA_VERSION,
+            inputs,
+        );
+        self.passports
+            .replace_semantic_spans(
+                job.paper_id,
+                job.generation,
+                &provenance,
+                &spans,
+                SEMANTIC_FACET_SCHEMA_VERSION,
+            )
+            .await?;
+        let identity = JobIdentity::for_artifact(
+            &document.provenance.parser_id,
+            &document.provenance.parser_version,
+            None,
+            PAPER_PASSPORT_SCHEMA_VERSION,
+            None,
+        )?;
+        self.queue
+            .enqueue_follow_up(
+                job,
+                JobKind::BuildPaperPassport,
+                &identity,
+                serde_json::json!({}),
+                3,
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn build_paper_passport(&self, job: &ClaimedJob) -> Result<(), PipelineError> {
+        self.passports
+            .mark_enrichment_running(
+                job.paper_id,
+                job.generation,
+                EnrichmentCapability::PaperPassport,
+                PAPER_PASSPORT_SCHEMA_VERSION,
+            )
+            .await?;
+        let document = self
+            .documents
+            .current_blocks_for_enrichment(job.paper_id)
+            .await?
+            .ok_or(PipelineError::DocumentNotReady)?;
+        if document.generation != job.generation {
+            return Err(PipelineError::Database(DbError::StaleGeneration));
+        }
+        let existing = self.passports.current_passport(job.paper_id).await?;
+        let (passport, provenance) = build_deterministic_passport(
+            job,
+            &document.provenance,
+            &document.value,
+            existing.as_ref().map(|current| &current.passport),
+        );
+        self.passports
+            .publish_passport(&passport, &provenance, PAPER_PASSPORT_SCHEMA_VERSION)
+            .await?;
+        for field in &passport.fields {
+            record_passport_field_status(
+                passport_field_class(field.key),
+                passport_field_outcome(field.status),
+            );
+        }
+        Ok(())
+    }
+
+    async fn compare_paper_versions(&self, job: &ClaimedJob) -> Result<(), PipelineError> {
+        let started = Instant::now();
+        let payload = serde_json::from_value::<ComparePaperVersionsPayload>(job.payload.clone())
+            .map_err(|_| PipelineError::InvalidJobPayload)?;
+        if payload.from_generation <= 0 || payload.from_generation >= job.generation {
+            return Err(PipelineError::InvalidJobPayload);
+        }
+        match self
+            .version_diffs
+            .compare_and_persist(job.paper_id, payload.from_generation, job.generation)
+            .await
+        {
+            Ok(diff) => {
+                let outcome = match diff.status {
+                    VersionDiffStatus::Ready => VersionDiffMetricOutcome::Ready,
+                    VersionDiffStatus::Partial => VersionDiffMetricOutcome::Partial,
+                    VersionDiffStatus::Pending => VersionDiffMetricOutcome::NotReady,
+                    VersionDiffStatus::Failed => VersionDiffMetricOutcome::Failure,
+                };
+                let uncertainty = if diff.parser_change_uncertainty {
+                    VersionDiffUncertainty::ParserChange
+                } else if diff
+                    .items
+                    .iter()
+                    .any(|item| item.confidence_status != DiffConfidenceStatus::Supported)
+                {
+                    VersionDiffUncertainty::ItemLevel
+                } else {
+                    VersionDiffUncertainty::None
+                };
+                record_version_diff(
+                    VersionDiffMetricOperation::Build,
+                    outcome,
+                    uncertainty,
+                    started.elapsed(),
+                    u64::try_from(diff.items.len()).unwrap_or(u64::MAX),
+                );
+                Ok(())
+            }
+            Err(error) => {
+                if let Err(_failure_error) = self
+                    .version_diffs
+                    .mark_failed(
+                        job.paper_id,
+                        payload.from_generation,
+                        job.generation,
+                        "VERSION_DIFF_COMPARISON_FAILED",
+                    )
+                    .await
+                {
+                    warn!(
+                        job_id = %job.id,
+                        paper_id = %job.paper_id,
+                        generation = job.generation,
+                        error.kind = "database",
+                        "could not publish version-comparison failure"
+                    );
+                }
+                record_version_diff(
+                    VersionDiffMetricOperation::Build,
+                    VersionDiffMetricOutcome::Failure,
+                    VersionDiffUncertainty::None,
+                    started.elapsed(),
+                    0,
+                );
+                Err(error.into())
+            }
+        }
     }
 
     async fn index_chat(&self, job: &ClaimedJob) -> Result<(), PipelineError> {
@@ -1221,9 +2183,166 @@ impl Worker {
 
 const fn paper_job_stage(kind: JobKind) -> PaperJobStage {
     match kind {
+        JobKind::PrepareCoreDocument => PaperJobStage::PrepareCoreDocument,
+        JobKind::EnrichVisualObjects => PaperJobStage::EnrichVisualObjects,
+        JobKind::ExtractTerms => PaperJobStage::ExtractTerms,
+        JobKind::BuildPaperPassport => PaperJobStage::BuildPaperPassport,
+        JobKind::BuildFacetedSpans => PaperJobStage::BuildFacetedSpans,
+        JobKind::ReanchorAnnotations => PaperJobStage::ReanchorAnnotations,
+        JobKind::ComparePaperVersions => PaperJobStage::ComparePaperVersions,
+        JobKind::RegenerateAccessibilityDescriptions => {
+            PaperJobStage::RegenerateAccessibilityDescriptions
+        }
         JobKind::PrepareDocument => PaperJobStage::PrepareDocument,
         JobKind::IndexChat => PaperJobStage::IndexChat,
         JobKind::ResolveConnections => PaperJobStage::ResolveConnections,
+    }
+}
+
+const fn annotation_reanchor_metric_strategy(
+    strategy: Option<ReanchorStrategy>,
+) -> AnnotationReanchorMetricStrategy {
+    match strategy {
+        Some(ReanchorStrategy::StableBlockExact) => {
+            AnnotationReanchorMetricStrategy::StableBlockExact
+        }
+        Some(ReanchorStrategy::QuoteContext) => AnnotationReanchorMetricStrategy::QuoteContext,
+        Some(ReanchorStrategy::FuzzyHighThreshold) => {
+            AnnotationReanchorMetricStrategy::FuzzyHighThreshold
+        }
+        Some(ReanchorStrategy::Manual) => AnnotationReanchorMetricStrategy::Manual,
+        None => AnnotationReanchorMetricStrategy::NoMatch,
+    }
+}
+
+const fn annotation_reanchor_metric_outcome(
+    outcome: AnnotationAnchorStatus,
+) -> AnnotationReanchorMetricOutcome {
+    match outcome {
+        AnnotationAnchorStatus::Anchored => AnnotationReanchorMetricOutcome::Anchored,
+        AnnotationAnchorStatus::Uncertain => AnnotationReanchorMetricOutcome::Uncertain,
+        AnnotationAnchorStatus::Orphaned => AnnotationReanchorMetricOutcome::Orphaned,
+    }
+}
+
+fn record_reanchor_failure() {
+    record_annotation_reanchor(
+        AnnotationReanchorMetricStrategy::NoMatch,
+        AnnotationReanchorMetricOutcome::Failure,
+    );
+}
+
+fn record_claimed_job_metrics(
+    kind: JobKind,
+    result: &Result<(), PipelineError>,
+    duration: Duration,
+) {
+    let outcome = match result {
+        Ok(()) => OperationOutcome::Success,
+        Err(PipelineError::Database(DbError::StaleGeneration)) => OperationOutcome::Rejected,
+        Err(_) => OperationOutcome::RetryableFailure,
+    };
+    record_operation(OperationClass::PaperJob, outcome, duration);
+    record_paper_job_stage(paper_job_stage(kind), outcome, duration);
+    if kind == JobKind::EnrichVisualObjects {
+        record_visual_object(
+            VisualObjectOperation::Extraction,
+            VisualObjectClass::Aggregate,
+            visual_job_outcome(result),
+        );
+    }
+}
+
+fn record_normalized_document_metrics(document: &domain::NormalizedDocument) {
+    for (object, count) in [
+        (ParsedObjectClass::Block, document.blocks.len()),
+        (ParsedObjectClass::Figure, document.figures.len()),
+        (ParsedObjectClass::Table, document.tables.len()),
+        (ParsedObjectClass::Equation, document.equations.len()),
+    ] {
+        record_parsed_object_count(
+            ParserAdapterClass::Grobid,
+            object,
+            u64::try_from(count).unwrap_or(u64::MAX),
+        );
+    }
+    if !document
+        .blocks
+        .iter()
+        .any(|block| block.kind == DocumentBlockKind::Heading)
+    {
+        record_parser_anomaly(ParserAdapterClass::Grobid, ParserAnomalyClass::NoHeading);
+    }
+    if document.figures.is_empty() && document.tables.is_empty() && document.equations.is_empty() {
+        record_parser_anomaly(
+            ParserAdapterClass::Grobid,
+            ParserAnomalyClass::NoVisualObjects,
+        );
+    }
+    if document.blocks.len() > 5_000 {
+        record_parser_anomaly(
+            ParserAdapterClass::Grobid,
+            ParserAnomalyClass::LargeDocument,
+        );
+    }
+}
+
+const fn grobid_parser_outcome(error: &GrobidError) -> ParserOutcome {
+    match error {
+        GrobidError::Transport(_) | GrobidError::ReadPdf(_) | GrobidError::HttpStatus { .. } => {
+            ParserOutcome::TemporaryFailure
+        }
+        GrobidError::EmptyDocument
+        | GrobidError::TeiTooLarge { .. }
+        | GrobidError::PdfTooLarge { .. }
+        | GrobidError::InvalidUtf8 => ParserOutcome::DocumentFailure,
+        GrobidError::InvalidConfiguration(_) => ParserOutcome::ValidationFailure,
+    }
+}
+
+const fn parse_adapter_outcome(error: &ParseError) -> ParserOutcome {
+    match error {
+        ParseError::AdapterUnavailable(_) => ParserOutcome::TemporaryFailure,
+        ParseError::Grobid(_) | ParseError::InvalidOutput => ParserOutcome::DocumentFailure,
+        ParseError::InvalidInput(_)
+        | ParseError::AdapterDisabled(_)
+        | ParseError::Validation(_) => ParserOutcome::ValidationFailure,
+    }
+}
+
+const fn visual_job_outcome(result: &Result<(), PipelineError>) -> VisualObjectOutcome {
+    match result {
+        Ok(()) => VisualObjectOutcome::Success,
+        Err(PipelineError::Database(DbError::StaleGeneration)) => {
+            VisualObjectOutcome::StaleGeneration
+        }
+        Err(PipelineError::DocumentNotReady) => VisualObjectOutcome::NotReady,
+        Err(_) => VisualObjectOutcome::Failure,
+    }
+}
+
+const fn passport_field_class(field: PassportFieldKey) -> PassportFieldClass {
+    match field {
+        PassportFieldKey::ResearchQuestion => PassportFieldClass::ResearchQuestion,
+        PassportFieldKey::Contribution => PassportFieldClass::Contribution,
+        PassportFieldKey::Method => PassportFieldClass::Method,
+        PassportFieldKey::DataOrSample => PassportFieldClass::DataOrSample,
+        PassportFieldKey::Evaluation => PassportFieldClass::Evaluation,
+        PassportFieldKey::MainResult => PassportFieldClass::MainResult,
+        PassportFieldKey::Limitations => PassportFieldClass::Limitations,
+        PassportFieldKey::AssumptionsScope => PassportFieldClass::AssumptionsScope,
+        PassportFieldKey::CodeResources => PassportFieldClass::CodeResources,
+        PassportFieldKey::PublicationStatus => PassportFieldClass::PublicationStatus,
+    }
+}
+
+const fn passport_field_outcome(status: PassportFieldStatus) -> PassportFieldOutcome {
+    match status {
+        PassportFieldStatus::Supported => PassportFieldOutcome::Supported,
+        PassportFieldStatus::Inferred => PassportFieldOutcome::Inferred,
+        PassportFieldStatus::Conflicting => PassportFieldOutcome::Conflicting,
+        PassportFieldStatus::NotFound => PassportFieldOutcome::NotFound,
+        PassportFieldStatus::NotApplicable => PassportFieldOutcome::NotApplicable,
     }
 }
 
@@ -1253,9 +2372,73 @@ async fn shutdown_signal() {
 
 fn retry_stage(kind: JobKind) -> ProcessingStage {
     match kind {
-        JobKind::PrepareDocument => ProcessingStage::Queued,
         JobKind::IndexChat => ProcessingStage::IndexingChat,
         JobKind::ResolveConnections => ProcessingStage::ResolvingReferences,
+        JobKind::PrepareCoreDocument
+        | JobKind::PrepareDocument
+        | JobKind::EnrichVisualObjects
+        | JobKind::ExtractTerms
+        | JobKind::BuildPaperPassport
+        | JobKind::BuildFacetedSpans
+        | JobKind::ReanchorAnnotations
+        | JobKind::ComparePaperVersions
+        | JobKind::RegenerateAccessibilityDescriptions => ProcessingStage::Queued,
+    }
+}
+
+const fn is_core_job(kind: JobKind) -> bool {
+    matches!(
+        kind,
+        JobKind::PrepareCoreDocument
+            | JobKind::PrepareDocument
+            | JobKind::IndexChat
+            | JobKind::ResolveConnections
+    )
+}
+
+const fn enrichment_capability_for_job(kind: JobKind) -> Option<EnrichmentCapability> {
+    match kind {
+        JobKind::EnrichVisualObjects => Some(EnrichmentCapability::VisualObjects),
+        JobKind::ExtractTerms => Some(EnrichmentCapability::Terms),
+        JobKind::BuildFacetedSpans => Some(EnrichmentCapability::SemanticFacets),
+        JobKind::BuildPaperPassport => Some(EnrichmentCapability::PaperPassport),
+        JobKind::RegenerateAccessibilityDescriptions => {
+            Some(EnrichmentCapability::AccessibilityDescriptions)
+        }
+        JobKind::PrepareCoreDocument
+        | JobKind::ReanchorAnnotations
+        | JobKind::ComparePaperVersions
+        | JobKind::PrepareDocument
+        | JobKind::IndexChat
+        | JobKind::ResolveConnections => None,
+    }
+}
+
+const fn artifact_version_for_job(kind: JobKind) -> &'static str {
+    match kind {
+        JobKind::EnrichVisualObjects => VISUALS_ARTIFACT_VERSION,
+        JobKind::ExtractTerms => TERMS_ARTIFACT_VERSION,
+        JobKind::BuildFacetedSpans => SEMANTIC_FACET_SCHEMA_VERSION,
+        JobKind::BuildPaperPassport => PAPER_PASSPORT_SCHEMA_VERSION,
+        JobKind::RegenerateAccessibilityDescriptions => "accessibility-v1",
+        JobKind::PrepareCoreDocument
+        | JobKind::ReanchorAnnotations
+        | JobKind::ComparePaperVersions
+        | JobKind::PrepareDocument
+        | JobKind::IndexChat
+        | JobKind::ResolveConnections => "legacy-v1",
+    }
+}
+
+const fn failure_category_name(category: FailureCategory) -> &'static str {
+    match category {
+        FailureCategory::ExternalTemporary => "external_temporary",
+        FailureCategory::ExternalPermanent => "external_permanent",
+        FailureCategory::ParserTemporary => "parser_temporary",
+        FailureCategory::ParserDocument => "parser_document",
+        FailureCategory::ModelTemporary => "model_temporary",
+        FailureCategory::Validation => "validation",
+        FailureCategory::Internal => "internal",
     }
 }
 
@@ -1383,6 +2566,439 @@ fn relationship_context_priority(context: &CitationContext) -> usize {
         }
 }
 
+#[allow(clippy::too_many_arguments)] // Every bounded PROV field remains explicit at synthesis sites.
+fn shared_provenance(
+    id: Uuid,
+    artifact_id: Uuid,
+    job: &ClaimedJob,
+    artifact_type: ProvenanceArtifactType,
+    activity_type: ProvenanceActivityType,
+    parser_id: &str,
+    parser_version: &str,
+    schema_version: &str,
+    input_entity_ids: Vec<Uuid>,
+) -> ProvenanceRecord {
+    let mut parameters = BTreeMap::new();
+    parameters.insert(
+        "deterministic".to_owned(),
+        ProvenanceParameter::Boolean(true),
+    );
+    ProvenanceRecord {
+        id,
+        artifact_type,
+        artifact_id,
+        paper_id: job.paper_id,
+        generation: job.generation,
+        activity_type,
+        parser_id: Some(parser_id.to_owned()),
+        parser_version: Some(parser_version.to_owned()),
+        model_provider: None,
+        model_id: None,
+        prompt_or_schema_version: Some(schema_version.to_owned()),
+        input_entity_ids,
+        parameters: ProvenanceParameters(parameters),
+        principal: None,
+        created_at: Utc::now(),
+        superseded_by: None,
+    }
+}
+
+fn stable_artifact_uuid(paper_id: Uuid, generation: i32, label: &str, version: &str) -> Uuid {
+    let mut digest = Sha256::new();
+    digest.update(paper_id.as_bytes());
+    digest.update(generation.to_be_bytes());
+    digest.update(label.len().to_be_bytes());
+    digest.update(label.as_bytes());
+    digest.update(version.len().to_be_bytes());
+    digest.update(version.as_bytes());
+    let digest = digest.finalize();
+    let mut bytes = [0_u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    // RFC 9562 variant with a deterministic, application-defined v8 payload.
+    bytes[6] = (bytes[6] & 0x0f) | 0x80;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    Uuid::from_bytes(bytes)
+}
+
+fn extract_deterministic_terms(
+    paper_id: Uuid,
+    generation: i32,
+    blocks: &[DocumentBlock],
+) -> (Vec<DocumentTerm>, Vec<TermOccurrence>) {
+    let mut found = ExtractedTerms::new();
+    for block in blocks {
+        let characters = block.text.chars().collect::<Vec<_>>();
+        let mut cursor = 0_usize;
+        while cursor < characters.len() {
+            while cursor < characters.len() && !characters[cursor].is_alphanumeric() {
+                cursor += 1;
+            }
+            let start = cursor;
+            while cursor < characters.len()
+                && (characters[cursor].is_alphanumeric() || characters[cursor] == '-')
+            {
+                cursor += 1;
+            }
+            if start == cursor {
+                continue;
+            }
+            let token = characters[start..cursor].iter().collect::<String>();
+            let letter_count = token
+                .chars()
+                .filter(|character| character.is_alphabetic())
+                .count();
+            let uppercase_count = token
+                .chars()
+                .filter(|character| character.is_uppercase())
+                .count();
+            if !(2..=16).contains(&token.chars().count())
+                || letter_count < 2
+                || uppercase_count != letter_count
+                || token == "THE"
+            {
+                continue;
+            }
+            let normalized = normalize_term(&token);
+            if normalized.is_empty() || found.len() >= 256 && !found.contains_key(&normalized) {
+                continue;
+            }
+            let Ok(start_offset) = u32::try_from(start) else {
+                continue;
+            };
+            let Ok(end_offset) = u32::try_from(cursor) else {
+                continue;
+            };
+            let occurrences = &mut found
+                .entry(normalized)
+                .or_insert_with(|| (token.clone(), Vec::new()))
+                .1;
+            if occurrences.len() < 64 {
+                occurrences.push((block.id, start_offset, end_offset));
+            }
+        }
+    }
+
+    let mut terms = Vec::with_capacity(found.len());
+    let mut occurrences = Vec::new();
+    for (normalized, (display, term_occurrences)) in found {
+        let term_id = stable_artifact_uuid(
+            paper_id,
+            generation,
+            &format!("term:{normalized}:acronym"),
+            TERMS_ARTIFACT_VERSION,
+        );
+        terms.push(DocumentTerm {
+            id: term_id,
+            paper_id,
+            generation,
+            normalized_term: normalized,
+            display_term: display,
+            kind: TermKind::Acronym,
+            canonical_topic_id: None,
+            definition_status: DefinitionStatus::NotFound,
+        });
+        let mut per_block_ordinal = HashMap::<Uuid, u32>::new();
+        for (block_id, start_offset, end_offset) in term_occurrences {
+            let ordinal = per_block_ordinal.entry(block_id).or_default();
+            occurrences.push(TermOccurrence {
+                term_id,
+                block_id,
+                paper_id,
+                generation,
+                start_offset,
+                end_offset,
+                occurrence_ordinal: *ordinal,
+            });
+            *ordinal = ordinal.saturating_add(1);
+        }
+    }
+    (terms, occurrences)
+}
+
+fn build_deterministic_spans(
+    paper_id: Uuid,
+    generation: i32,
+    blocks: &[DocumentBlock],
+) -> Vec<SemanticSpan> {
+    let mut spans = Vec::new();
+    for block in blocks {
+        if spans.len() >= 128 || block.kind == DocumentBlockKind::Heading {
+            continue;
+        }
+        let Some((facet, density)) = classify_block(block) else {
+            continue;
+        };
+        let Ok(end_offset) = u32::try_from(block.text.chars().count()) else {
+            continue;
+        };
+        if end_offset == 0 {
+            continue;
+        }
+        let ordinal = u32::try_from(spans.len()).unwrap_or(u32::MAX);
+        spans.push(SemanticSpan {
+            id: stable_artifact_uuid(
+                paper_id,
+                generation,
+                &format!("facet:{}:{ordinal}:{}", block.id, facet.as_str()),
+                SEMANTIC_FACET_SCHEMA_VERSION,
+            ),
+            paper_id,
+            generation,
+            block_id: block.id,
+            ordinal,
+            start_offset: 0,
+            end_offset,
+            facet,
+            minimum_density: density,
+            source_kind: SemanticSpanSourceKind::Deterministic,
+            confidence_basis_points: 8_000,
+            support_status: SemanticSupportStatus::Supported,
+            provenance_id: Uuid::nil(),
+            created_at: Utc::now(),
+        });
+    }
+    spans
+}
+
+fn classify_block(block: &DocumentBlock) -> Option<(SemanticFacet, SemanticDensity)> {
+    if block.kind == DocumentBlockKind::TheoremDefinition {
+        return Some((SemanticFacet::Definition, SemanticDensity::Detailed));
+    }
+    let section = block.section_path.join(" ").to_ascii_lowercase();
+    let text = block.text.to_ascii_lowercase();
+    if section.contains("limitation") || text.contains(" limitation") {
+        Some((SemanticFacet::Limitation, SemanticDensity::Key))
+    } else if section.contains("result") || section.contains("conclusion") {
+        Some((SemanticFacet::Result, SemanticDensity::Key))
+    } else if section.contains("method") || section.contains("approach") {
+        Some((SemanticFacet::Method, SemanticDensity::Detailed))
+    } else if text.contains("future work") || text.contains("future research") {
+        Some((SemanticFacet::FutureWork, SemanticDensity::Detailed))
+    } else if section.contains("abstract") || section.contains("introduction") {
+        Some((SemanticFacet::Objective, SemanticDensity::Key))
+    } else if text.contains("we show")
+        || text.contains("we demonstrate")
+        || text.contains("we find")
+    {
+        Some((SemanticFacet::Claim, SemanticDensity::Detailed))
+    } else if section.contains("experiment") || text.contains("evidence") {
+        Some((SemanticFacet::Evidence, SemanticDensity::Detailed))
+    } else {
+        None
+    }
+}
+
+#[allow(clippy::too_many_lines)] // One pass keeps each field and its exact evidence record paired.
+fn build_deterministic_passport(
+    job: &ClaimedJob,
+    document_provenance: &domain::DocumentProvenanceSummary,
+    blocks: &[DocumentBlock],
+    existing: Option<&PaperPassport>,
+) -> (PaperPassport, Vec<ProvenanceRecord>) {
+    let now = Utc::now();
+    let passport_id = existing.map_or_else(
+        || {
+            stable_artifact_uuid(
+                job.paper_id,
+                job.generation,
+                "passport",
+                PAPER_PASSPORT_SCHEMA_VERSION,
+            )
+        },
+        |passport| passport.id,
+    );
+    let mut fields = Vec::with_capacity(PassportFieldKey::ALL.len());
+    let mut records = Vec::with_capacity(PassportFieldKey::ALL.len() + 1);
+    for key in PassportFieldKey::ALL {
+        let source = select_passport_source(key, blocks);
+        let existing_field =
+            existing.and_then(|passport| passport.fields.iter().find(|field| field.key == key));
+        let field_id = existing_field.map_or_else(
+            || {
+                stable_artifact_uuid(
+                    job.paper_id,
+                    job.generation,
+                    &format!("passport-field:{}", key.as_str()),
+                    PAPER_PASSPORT_SCHEMA_VERSION,
+                )
+            },
+            |field| field.id,
+        );
+        let (value_text, status, source_block_ids, confidence_status) = if let Some(block) = source
+        {
+            (
+                Some(source_excerpt(&block.text)),
+                PassportFieldStatus::Supported,
+                vec![block.id],
+                ArtifactConfidenceStatus::Supported,
+            )
+        } else if key == PassportFieldKey::PublicationStatus {
+            (
+                None,
+                PassportFieldStatus::NotApplicable,
+                Vec::new(),
+                ArtifactConfidenceStatus::Uncertain,
+            )
+        } else {
+            (
+                None,
+                PassportFieldStatus::NotFound,
+                Vec::new(),
+                ArtifactConfidenceStatus::Uncertain,
+            )
+        };
+        let source_fingerprint = source_block_ids
+            .iter()
+            .map(Uuid::to_string)
+            .collect::<Vec<_>>()
+            .join(":");
+        let provenance_id = stable_artifact_uuid(
+            job.paper_id,
+            job.generation,
+            &format!(
+                "passport-field-provenance:{}:{source_fingerprint}:{}",
+                key.as_str(),
+                value_text.as_deref().unwrap_or("none")
+            ),
+            PAPER_PASSPORT_SCHEMA_VERSION,
+        );
+        let field = PassportField {
+            id: field_id,
+            key,
+            value_text,
+            value_json: None,
+            status,
+            source_block_ids: source_block_ids.clone(),
+            confidence_status,
+            provenance_id,
+            created_at: existing_field.map_or(now, |field| field.created_at),
+        };
+        records.push(shared_provenance(
+            provenance_id,
+            field_id,
+            job,
+            ProvenanceArtifactType::PaperPassportField,
+            ProvenanceActivityType::PassportSynthesis,
+            &document_provenance.parser_id,
+            &document_provenance.parser_version,
+            PAPER_PASSPORT_SCHEMA_VERSION,
+            source_block_ids,
+        ));
+        fields.push(field);
+    }
+    let passport_status = if fields.iter().all(|field| {
+        matches!(
+            field.status,
+            PassportFieldStatus::Supported | PassportFieldStatus::NotApplicable
+        )
+    }) {
+        PassportStatus::Ready
+    } else {
+        PassportStatus::Partial
+    };
+    let mut aggregate_inputs = fields
+        .iter()
+        .flat_map(|field| field.source_block_ids.iter().copied())
+        .collect::<Vec<_>>();
+    aggregate_inputs.sort_unstable();
+    aggregate_inputs.dedup();
+    let aggregate_fingerprint = aggregate_inputs
+        .iter()
+        .map(Uuid::to_string)
+        .collect::<Vec<_>>()
+        .join(":");
+    let passport_provenance_id = stable_artifact_uuid(
+        job.paper_id,
+        job.generation,
+        &format!("passport-provenance:{aggregate_fingerprint}"),
+        PAPER_PASSPORT_SCHEMA_VERSION,
+    );
+    records.push(shared_provenance(
+        passport_provenance_id,
+        passport_id,
+        job,
+        ProvenanceArtifactType::PaperPassport,
+        ProvenanceActivityType::PassportSynthesis,
+        &document_provenance.parser_id,
+        &document_provenance.parser_version,
+        PAPER_PASSPORT_SCHEMA_VERSION,
+        aggregate_inputs,
+    ));
+    (
+        PaperPassport {
+            id: passport_id,
+            paper_id: job.paper_id,
+            generation: job.generation,
+            schema_version: PAPER_PASSPORT_SCHEMA_VERSION.to_owned(),
+            status: passport_status,
+            parser_id: document_provenance.parser_id.clone(),
+            model_id: None,
+            prompt_version: None,
+            provenance_id: passport_provenance_id,
+            fields,
+            created_at: existing.map_or(now, |passport| passport.created_at),
+            updated_at: now,
+        },
+        records,
+    )
+}
+
+fn select_passport_source(
+    key: PassportFieldKey,
+    blocks: &[DocumentBlock],
+) -> Option<&DocumentBlock> {
+    let matches = |block: &&DocumentBlock, cues: &[&str]| {
+        let haystack =
+            format!("{} {}", block.section_path.join(" "), block.text).to_ascii_lowercase();
+        cues.iter().any(|cue| haystack.contains(cue))
+    };
+    let cues: &[&str] = match key {
+        PassportFieldKey::ResearchQuestion => &["research question", "objective", "we aim"],
+        PassportFieldKey::Contribution => &["contribution", "we propose", "we present"],
+        PassportFieldKey::Method => &["method", "approach", "methodology"],
+        PassportFieldKey::DataOrSample => &["dataset", "data set", "sample", "participants"],
+        PassportFieldKey::Evaluation => &["evaluation", "experiment", "benchmark"],
+        PassportFieldKey::MainResult => &["results", "we find", "we show", "outperform"],
+        PassportFieldKey::Limitations => &["limitation", "threats to validity"],
+        PassportFieldKey::AssumptionsScope => &["assumption", "scope", "under the condition"],
+        PassportFieldKey::CodeResources => &["github", "source code", "code is available"],
+        PassportFieldKey::PublicationStatus => return None,
+    };
+    blocks
+        .iter()
+        .filter(|block| block.kind != DocumentBlockKind::Heading)
+        .find(|block| matches(block, cues))
+        .or_else(|| {
+            matches!(
+                key,
+                PassportFieldKey::ResearchQuestion | PassportFieldKey::Contribution
+            )
+            .then(|| {
+                blocks.iter().find(|block| {
+                    block.kind != DocumentBlockKind::Heading
+                        && block.section_path.iter().any(|section| {
+                            matches!(
+                                section.to_ascii_lowercase().as_str(),
+                                "abstract" | "introduction"
+                            )
+                        })
+                })
+            })
+            .flatten()
+        })
+}
+
+fn source_excerpt(value: &str) -> String {
+    let mut output = String::new();
+    for character in value.chars().take(600) {
+        output.push(character);
+        if matches!(character, '.' | '!' | '?') && output.chars().count() >= 40 {
+            break;
+        }
+    }
+    output.trim().to_owned()
+}
+
 #[derive(Debug, Error)]
 enum PipelineError {
     #[error(transparent)]
@@ -1396,9 +3012,15 @@ enum PipelineError {
     #[error(transparent)]
     Document(#[from] DocumentError),
     #[error(transparent)]
+    Parser(#[from] ParseError),
+    #[error(transparent)]
     Provider(#[from] ProviderError),
     #[error(transparent)]
     Retrieval(#[from] RetrievalError),
+    #[error(transparent)]
+    VisualDerivative(#[from] VisualDerivativeError),
+    #[error("visual derivative task did not complete")]
+    VisualDerivativeTask,
     #[error("temporary PDF storage failed")]
     Io(#[from] std::io::Error),
     #[error("paper metadata disappeared")]
@@ -1411,6 +3033,12 @@ enum PipelineError {
     MissingReferenceTitle,
     #[error("reference resolution confidence {0} is below the automatic-link threshold")]
     UnsafeResolutionConfidence(f32),
+    #[error("current normalized document is not ready")]
+    DocumentNotReady,
+    #[error("job payload is invalid for this job kind")]
+    InvalidJobPayload,
+    #[error("worker capability is unavailable: {0}")]
+    CapabilityUnavailable(&'static str),
 }
 
 fn pipeline_error_kind(error: &PipelineError) -> &'static str {
@@ -1420,14 +3048,20 @@ fn pipeline_error_kind(error: &PipelineError) -> &'static str {
         PipelineError::Arxiv(_) => "arxiv",
         PipelineError::Grobid(error) => grobid_error_kind(error),
         PipelineError::Document(_) => "document",
+        PipelineError::Parser(_) => "document_ingestion",
         PipelineError::Provider(error) => provider_error_kind(error),
         PipelineError::Retrieval(_) => "retrieval",
+        PipelineError::VisualDerivative(_) => "visual_derivative_storage",
+        PipelineError::VisualDerivativeTask => "visual_derivative_task",
         PipelineError::Io(_) => "io",
         PipelineError::PaperMissing => "paper_missing",
         PipelineError::PolicyDenied => "policy_denied",
         PipelineError::NoChatCorpus => "no_chat_corpus",
         PipelineError::MissingReferenceTitle => "missing_reference_title",
         PipelineError::UnsafeResolutionConfidence(_) => "unsafe_resolution_confidence",
+        PipelineError::DocumentNotReady => "document_not_ready",
+        PipelineError::InvalidJobPayload => "invalid_job_payload",
+        PipelineError::CapabilityUnavailable(_) => "capability_unavailable",
     }
 }
 
@@ -1435,8 +3069,11 @@ fn queue_error_kind(error: &QueueError) -> &'static str {
     match error {
         QueueError::Sql(_) => "queue_sql",
         QueueError::UnknownJobKind(_) => "unknown_job_kind",
+        QueueError::UnknownPreparationTrigger(_) => "unknown_preparation_trigger",
+        QueueError::UnapprovedPreparationTrigger(_) => "unapproved_preparation_trigger",
         QueueError::LeaseLost => "lease_lost",
         QueueError::DurationOverflow => "duration_overflow",
+        QueueError::InvalidIdentity => "invalid_identity",
     }
 }
 
@@ -1497,7 +3134,10 @@ fn pipeline_failure(error: &PipelineError) -> JobFailure {
             "GROBID_UNAVAILABLE",
             "The document parser is temporarily unavailable.",
         ),
-        PipelineError::Grobid(_) | PipelineError::Document(_) | PipelineError::NoChatCorpus => (
+        PipelineError::Grobid(_)
+        | PipelineError::Document(_)
+        | PipelineError::Parser(_)
+        | PipelineError::NoChatCorpus => (
             FailureCategory::ParserDocument,
             "DOCUMENT_EXTRACTION_FAILED",
             "The paper could not be extracted reliably.",
@@ -1514,15 +3154,24 @@ fn pipeline_failure(error: &PipelineError) -> JobFailure {
         ),
         PipelineError::PaperMissing
         | PipelineError::MissingReferenceTitle
-        | PipelineError::UnsafeResolutionConfidence(_) => (
+        | PipelineError::UnsafeResolutionConfidence(_)
+        | PipelineError::InvalidJobPayload => (
             FailureCategory::Validation,
             "INVALID_PIPELINE_STATE",
             "The paper pipeline encountered invalid persisted input.",
         ),
+        PipelineError::CapabilityUnavailable(_) => (
+            FailureCategory::Validation,
+            "CAPABILITY_UNAVAILABLE",
+            "The requested enrichment capability is not enabled by this release.",
+        ),
         PipelineError::Database(_)
         | PipelineError::Queue(_)
         | PipelineError::Retrieval(_)
-        | PipelineError::Io(_) => (
+        | PipelineError::VisualDerivative(_)
+        | PipelineError::VisualDerivativeTask
+        | PipelineError::Io(_)
+        | PipelineError::DocumentNotReady => (
             FailureCategory::Internal,
             "INTERNAL_PIPELINE_ERROR",
             "The paper pipeline encountered a temporary internal error.",
@@ -1816,6 +3465,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn annotation_reanchor_metric_mapping_is_closed_and_content_free() {
+        assert_eq!(
+            annotation_reanchor_metric_strategy(Some(ReanchorStrategy::StableBlockExact)),
+            AnnotationReanchorMetricStrategy::StableBlockExact
+        );
+        assert_eq!(
+            annotation_reanchor_metric_strategy(Some(ReanchorStrategy::QuoteContext)),
+            AnnotationReanchorMetricStrategy::QuoteContext
+        );
+        assert_eq!(
+            annotation_reanchor_metric_strategy(Some(ReanchorStrategy::FuzzyHighThreshold)),
+            AnnotationReanchorMetricStrategy::FuzzyHighThreshold
+        );
+        assert_eq!(
+            annotation_reanchor_metric_strategy(None),
+            AnnotationReanchorMetricStrategy::NoMatch
+        );
+        assert_eq!(
+            annotation_reanchor_metric_outcome(AnnotationAnchorStatus::Anchored),
+            AnnotationReanchorMetricOutcome::Anchored
+        );
+        assert_eq!(
+            annotation_reanchor_metric_outcome(AnnotationAnchorStatus::Uncertain),
+            AnnotationReanchorMetricOutcome::Uncertain
+        );
+        assert_eq!(
+            annotation_reanchor_metric_outcome(AnnotationAnchorStatus::Orphaned),
+            AnnotationReanchorMetricOutcome::Orphaned
+        );
+    }
+
+    #[test]
     fn title_similarity_rewards_exact_normalized_match() {
         assert!(
             (title_similarity("Attention Is All You Need", "Attention is all you need!") - 1.0)
@@ -1961,5 +3642,167 @@ mod tests {
                 byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'
             }));
         }
+    }
+
+    #[test]
+    fn version_comparison_payload_is_bounded_and_closed() {
+        let payload = serde_json::from_value::<ComparePaperVersionsPayload>(
+            serde_json::json!({ "from_generation": 4 }),
+        )
+        .unwrap();
+        assert_eq!(payload.from_generation, 4);
+        assert!(
+            serde_json::from_value::<ComparePaperVersionsPayload>(
+                serde_json::json!({ "from_generation": 4, "question": "private" }),
+            )
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<ComparePaperVersionsPayload>(
+                serde_json::json!({ "from_generation": "4" }),
+            )
+            .is_err()
+        );
+    }
+
+    fn enrichment_block(
+        paper_id: Uuid,
+        generation: i32,
+        ordinal: u32,
+        section: &str,
+        text: &str,
+    ) -> DocumentBlock {
+        DocumentBlock {
+            id: stable_artifact_uuid(
+                paper_id,
+                generation,
+                &format!("test-block-{ordinal}"),
+                "test-v1",
+            ),
+            paper_id,
+            generation,
+            stable_key: format!("test-block-{ordinal}"),
+            ordinal,
+            section_path: vec![section.to_owned()],
+            kind: DocumentBlockKind::Paragraph,
+            text: text.to_owned(),
+            content_hash: domain::content_hash(text),
+            page_start: Some(1),
+            page_end: Some(1),
+            source_locator: None,
+            inline_spans: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn deterministic_term_offsets_use_unicode_scalars() {
+        let paper_id = Uuid::now_v7();
+        let block = enrichment_block(paper_id, 2, 0, "Methods", "🦀 We compare BERT with GPT.");
+        let (terms, occurrences) = extract_deterministic_terms(paper_id, 2, &[block]);
+        assert_eq!(terms.len(), 2);
+        let bert = terms
+            .iter()
+            .find(|term| term.display_term == "BERT")
+            .unwrap();
+        let occurrence = occurrences
+            .iter()
+            .find(|occurrence| occurrence.term_id == bert.id)
+            .unwrap();
+        assert_eq!((occurrence.start_offset, occurrence.end_offset), (13, 17));
+    }
+
+    #[test]
+    fn deterministic_facets_are_bounded_and_source_linked() {
+        let paper_id = Uuid::now_v7();
+        let result = enrichment_block(
+            paper_id,
+            3,
+            0,
+            "Results",
+            "We show a consistent improvement.",
+        );
+        let spans = build_deterministic_spans(paper_id, 3, std::slice::from_ref(&result));
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].block_id, result.id);
+        assert_eq!(spans[0].facet, SemanticFacet::Result);
+        assert_eq!(
+            spans[0].end_offset,
+            u32::try_from(result.text.chars().count()).unwrap()
+        );
+    }
+
+    #[test]
+    fn deterministic_passport_has_all_fields_and_exact_field_provenance() {
+        let paper_id = Uuid::now_v7();
+        let blocks = vec![
+            enrichment_block(
+                paper_id,
+                4,
+                0,
+                "Introduction",
+                "Our objective is to test queue-first reading.",
+            ),
+            enrichment_block(
+                paper_id,
+                4,
+                1,
+                "Methods",
+                "Our method evaluates BERT on a benchmark dataset.",
+            ),
+            enrichment_block(
+                paper_id,
+                4,
+                2,
+                "Limitations",
+                "A limitation is the small sample.",
+            ),
+        ];
+        let job = ClaimedJob {
+            id: Uuid::now_v7(),
+            kind: JobKind::BuildPaperPassport,
+            paper_id,
+            generation: 4,
+            preparation_trigger: domain::PreparationTriggerKind::InspectEvidence,
+            identity: JobIdentity::legacy(),
+            attempt: 1,
+            max_attempts: 3,
+            payload: serde_json::json!({}),
+            lease_expires_at: Utc::now(),
+        };
+        let document_provenance = domain::DocumentProvenanceSummary {
+            arxiv_version: 2,
+            parser_id: "grobid".to_owned(),
+            parser_version: "0.8".to_owned(),
+            schema_version: domain::DOCUMENT_SCHEMA_VERSION.to_owned(),
+            document_hash: "0".repeat(64),
+            generated_at: Utc::now(),
+        };
+        let (passport, records) =
+            build_deterministic_passport(&job, &document_provenance, &blocks, None);
+        passport.validate().unwrap();
+        assert_eq!(passport.fields.len(), PassportFieldKey::ALL.len());
+        assert_eq!(records.len(), passport.fields.len() + 1);
+        for field in &passport.fields {
+            let provenance = records
+                .iter()
+                .find(|record| record.id == field.provenance_id)
+                .unwrap();
+            assert_eq!(provenance.input_entity_ids, field.source_block_ids);
+        }
+    }
+
+    #[test]
+    fn unavailable_accessibility_generation_is_terminal_and_never_ready() {
+        let failure = pipeline_failure(&PipelineError::CapabilityUnavailable(
+            "no persisted draft schema",
+        ));
+
+        assert_eq!(failure.category, FailureCategory::Validation);
+        assert_eq!(failure.code, "CAPABILITY_UNAVAILABLE");
+        assert!(!failure.automatically_retryable());
+        assert_eq!(
+            enrichment_capability_for_job(JobKind::RegenerateAccessibilityDescriptions),
+            Some(EnrichmentCapability::AccessibilityDescriptions),
+        );
     }
 }

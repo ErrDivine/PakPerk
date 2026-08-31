@@ -608,8 +608,117 @@ jobs:
               or source_binding["build_number"] != os.environ["PAKPERK_BUILD_NUMBER"]
           ):
               raise SystemExit("source binding identity does not match the protected run")
+          if set(candidate_binding) != {
+              "manifest_id",
+              "provenance_id",
+              "signed_workflow",
+              "strict_full_text",
+              "mobile_feature_evidence",
+              "android",
+              "ios",
+          }:
+              raise SystemExit("candidate binding does not match its closed key contract")
+          mobile_feature_evidence = candidate_binding["mobile_feature_evidence"]
+          if (
+              not isinstance(mobile_feature_evidence, dict)
+              or set(mobile_feature_evidence) != {
+                  "schema",
+                  "sha256",
+                  "paperTitleSearch",
+                  "libraryImportWrites",
+                  "readingFeed",
+                  "toReadFirstEnforcement",
+                  "libraryV2",
+                  "recommendations",
+                  "recommendationEvents",
+                  "searchLookup",
+                  "searchExplore",
+                  "savedQueries",
+                  "researchProfiles",
+                  "readingBriefs",
+                  "subscriptions",
+                  "notifications",
+                  "deepReader",
+                  "paperPassport",
+                  "semanticFacets",
+                  "documentVisualObjects",
+                  "readingCheckpoints",
+                  "annotations",
+                  "evidenceCards",
+                  "researchMemory",
+                  "versionDiff",
+                  "assistantV2",
+              }
+              or type(mobile_feature_evidence["schema"]) is not int
+              or mobile_feature_evidence["schema"] != 6
+              or not isinstance(mobile_feature_evidence["sha256"], str)
+              or len(mobile_feature_evidence["sha256"]) != 64
+              or any(
+                  character not in "0123456789abcdef"
+                  for character in mobile_feature_evidence["sha256"]
+              )
+              or any(
+                  type(mobile_feature_evidence[key]) is not bool
+                  for key in (
+                      "paperTitleSearch",
+                      "libraryImportWrites",
+                      "readingFeed",
+                      "toReadFirstEnforcement",
+                      "libraryV2",
+                      "recommendations",
+                      "recommendationEvents",
+                      "searchLookup",
+                      "searchExplore",
+                      "savedQueries",
+                      "researchProfiles",
+                      "readingBriefs",
+                      "subscriptions",
+                      "notifications",
+                      "deepReader",
+                      "paperPassport",
+                      "semanticFacets",
+                      "documentVisualObjects",
+                      "readingCheckpoints",
+                      "annotations",
+                      "evidenceCards",
+                      "researchMemory",
+                      "versionDiff",
+                      "assistantV2",
+                  )
+              )
+              or any(
+                  mobile_feature_evidence[key] is not True
+                  for key in (
+                      "paperTitleSearch",
+                      "libraryImportWrites",
+                      "readingFeed",
+                      "toReadFirstEnforcement",
+                      "libraryV2",
+                      "recommendations",
+                      "recommendationEvents",
+                      "searchLookup",
+                      "searchExplore",
+                      "savedQueries",
+                      "researchProfiles",
+                      "readingBriefs",
+                      "subscriptions",
+                      "notifications",
+                      "deepReader",
+                      "paperPassport",
+                      "semanticFacets",
+                      "documentVisualObjects",
+                      "readingCheckpoints",
+                      "annotations",
+                      "evidenceCards",
+                      "researchMemory",
+                      "versionDiff",
+                      "assistantV2",
+                  )
+              )
+          ):
+              raise SystemExit("candidate mobile feature evidence is invalid")
           request = {
-              "schema": 3,
+              "schema": 6,
               "source_revision": os.environ["REQUESTED_REVISION"],
               "candidate_id": os.environ["CANDIDATE_ID"],
               "candidate": candidate_binding,
@@ -617,6 +726,7 @@ jobs:
               "app_version": source_binding["app_version"],
               "build_number": source_binding["build_number"],
               "environment": "staging",
+              "mobile_feature_evidence": mobile_feature_evidence,
               "api_origin": source_binding["api_origin"],
               "app_link_origin": source_binding["app_link_origin"],
               "oidc_issuer": source_binding["oidc_issuer"],
@@ -628,16 +738,33 @@ jobs:
                   "not_before": os.environ["RUN_NOT_BEFORE"],
               },
               "acceptance_contract": {
-                  "schema": 3,
-                  "scenario_count": 22,
-                  "assertion_count": 141,
-                  "metric_count": 78,
-                  "sha256": "f1a01b2ce342530d1a867fbe8c643ea3082d711bedbb725868171d76ee4198c4",
+                  "schema": 6,
+                  "scenario_count": 42,
+                  "assertion_count": 317,
+                  "metric_count": 254,
+                  "sha256": "7483820afc6b2111f4886177dd120e72ab8ca47164757ca1eda9e10f64d70ad5",
               },
               "performance_metric_rules": {
                   "cold_cache_launch": {
                       "cached_first_readable_frame_p95_ms": ["range", 1, 1500],
                       "opening_transition_ms": ["range", 1, 700],
+                  },
+                  "plan03_reader_queue_and_large_document_safety": {
+                      "large_document_fixture_blocks": ["eq", 2000, None],
+                      "large_document_minimum_blocks_traversed_per_device": ["eq", 2000, None],
+                      "large_document_minimum_pages_traversed_per_device": ["min", 20, None],
+                      "large_document_minimum_page_fetch_samples_per_device": ["min", 20, None],
+                      "large_document_minimum_frame_samples_per_device": ["min", 120, None],
+                      "large_document_minimum_scroll_window_seconds_per_device": ["min", 30, None],
+                      "large_document_requested_page_size_blocks": ["eq", 100, None],
+                      "large_document_peak_retained_blocks": ["range", 1, 2000],
+                      "large_document_worst_device_first_page_ms": ["range", 1, 1000],
+                      "large_document_worst_device_page_fetch_p95_ms": ["range", 1, 750],
+                      "large_document_worst_device_scroll_frame_p95_us": ["range", 1, 16667],
+                      "large_document_worst_device_scroll_frame_max_us": ["range", 1, 50000],
+                      "large_document_worst_device_missed_frame_ratio_basis_points": ["range", 0, 100],
+                      "large_document_worst_device_peak_rss_growth_mib": ["range", 0, 96],
+                      "large_document_worst_device_maximum_live_block_widgets": ["range", 1, 80],
                   },
               },
               "device_identity_hash_contract": {
@@ -677,6 +804,26 @@ jobs:
                   "light_dark_appearance",
                   "root_navigation_safe_area",
                   "hardware_keyboard_navigation",
+                  "to_read_first_queue_authority",
+                  "to_read_first_fail_closed_mutations",
+                  "to_read_first_account_scope_rollout",
+                  "add_paper_exact_and_title_selection",
+                  "add_paper_failure_retry_idempotency",
+                  "plan02_search_lookup_explore_saved_queries",
+                  "plan02_research_profile_personalization",
+                  "plan02_why_and_feedback",
+                  "plan02_reading_brief_progress_authority",
+                  "plan02_subscription_notification_safety",
+                  "plan03_deep_reader_document_navigation",
+                  "plan03_passport_evidence_navigation",
+                  "plan03_semantic_facets_definition_context",
+                  "plan03_visual_objects_source_integrity",
+                  "plan03_checkpoint_library_isolation",
+                  "plan03_annotation_evidence_durability",
+                  "plan03_research_memory_isolation",
+                  "plan03_version_diff_reanchor_safety",
+                  "plan03_assistant_evidence_integrity",
+                  "plan03_reader_queue_and_large_document_safety",
               ],
           }
           serialized = (

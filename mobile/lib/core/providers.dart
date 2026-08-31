@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
@@ -9,6 +12,7 @@ import 'cache/demo_asset_store.dart';
 import 'cache/feed_cache_persistence.dart';
 import 'cache/local_store.dart';
 import 'content_policy.dart';
+import 'document/visual_asset_repository.dart';
 import 'models/reader_state.dart';
 import 'repository/paper_repository.dart';
 import 'telemetry/otlp_http_telemetry_sink.dart';
@@ -94,6 +98,19 @@ final transportNetworkStatusProvider = Provider<TransportNetworkStatus>((ref) {
   final status = TransportNetworkStatus();
   ref.onDispose(status.dispose);
   return status;
+});
+
+/// Raster derivatives have a separate bounded cache so account deletion,
+/// generation fencing, and visual-object LRU pressure cannot be confused with
+/// the document-text cache.
+final visualAssetCacheProvider = Provider<VisualAssetCache>((ref) {
+  return FileVisualAssetCache(
+    rootDirectory: () async {
+      final support = await getApplicationSupportDirectory();
+      return Directory('${support.path}/visual-assets-v1');
+    },
+    telemetry: ref.watch(telemetrySinkProvider),
+  );
 });
 
 final apiClientProvider = Provider<ApiClient>((ref) {

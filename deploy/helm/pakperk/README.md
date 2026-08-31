@@ -69,7 +69,7 @@ must cover security retention; and deletion steps are capped at 1,800 seconds.
 Paper categories use the runtime arXiv category grammar, the contact must be a
 real monitored non-placeholder address, and model IDs are limited to the
 provider's 128-character safe identifier grammar. The migration Job is pinned
-to embedded migration version `10` and accepts only a bounded, non-placeholder
+to embedded migration version `24` and accepts only a bounded, non-placeholder
 backup ID. Metadata sync accepts a bounded five-field numeric/wildcard Cron
 schedule and a JSON object of 1 to 2,000 canonical arXiv IDs no larger than
 1,048,000 bytes; the ConfigMap uses a quoted scalar that preserves those bytes
@@ -94,6 +94,48 @@ secrets. Include every moderation-provider address in
 `networkPolicy.apiHttpsCidrs`; the adapter has no redirect support and treats
 transport, status, response-size, and response-schema failures as unavailable,
 which leaves content pending review rather than publishing it.
+
+`visualAssets.existingClaim` is optional and empty by default. When set, chart
+validation requires accounts, `features.visualObjects`, and the paper worker.
+The API mounts the claim read-only while the worker mounts it read/write at
+`/var/lib/pakperk/visual-assets`. Because the worker and every topology-spread
+API replica mount the same claim, the pre-provisioned volume must support
+multi-node `ReadWriteMany` access and its root must be writable by UID/GID
+`10001`; a single-node `ReadWriteOnce` claim is not a valid production
+configuration. An operator-controlled importer may place a
+reviewed PNG at the exact
+`sources/{paper_uuid}/g{generation}/{figure_uuid}.png` key. The worker accepts
+no parser-provided path, rejects linked/non-regular/oversized/malformed or
+hostile-dimension inputs, decodes the bounded pixels, and re-encodes
+metadata-free `small`, `medium`, and `large` PNGs beneath the matching
+`generated/` generation key. It records each variant's SHA-256 in a bounded
+manifest, content-addresses the set by that manifest, writes the manifest and
+all three files atomically, then publishes the large key and dimensions to
+PostgreSQL.
+The authenticated API accepts only the closed responsive variant selector,
+revalidates the manifest hash, selected file hash, key scope, byte limit, PNG
+dimensions, generation, and figure/aspect binding, and returns a checksum-bound
+private response. Missing
+or rejected sources clear stale asset metadata and retain caption/original-page
+fallback. The worker does not infer a crop from unnormalized parser coordinates
+and does not claim that the source PNG association is trustworthy merely
+because a parser named it. Supplying a claim is not visual-quality, rights,
+accessibility, device, or release evidence.
+
+The worker keeps content-addressed replacements immutable, removes abandoned
+staging directories after one hour, and garbage-collects superseded sets and
+paper generations after a seven-day safety window with hard traversal/removal
+budgets. A full-text policy denial triggers an immediate, symlink-safe bounded
+purge of that paper's reviewed-source and generated namespaces. Operators must
+alert on cleanup warnings because exceeding a hard budget deliberately fails
+closed for manual inspection instead of recursively following unexpected
+storage contents.
+
+Accessibility-description regeneration remains capability-gated in this
+release: a queued legacy job terminates with `CAPABILITY_UNAVAILABLE` and can
+never mark the capability ready because no reviewed persisted draft schema is
+present. Figure semantics continue to use the sourced caption as their honest
+fallback; the worker does not relabel captions as generated alt text.
 
 Render the structural fixture with the repository-pinned validation command:
 

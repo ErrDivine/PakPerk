@@ -1,4 +1,10 @@
-use std::{fs, io::Read as _, path::Path, str::FromStr, time::Duration};
+use std::{
+    fs,
+    io::Read as _,
+    path::{Path, PathBuf},
+    str::FromStr,
+    time::Duration,
+};
 
 use anyhow::{Context as _, Result};
 use arxiv_client::ArxivClientConfig;
@@ -20,6 +26,59 @@ pub enum WorkerEnvironment {
     Development,
     Staging,
     Production,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkerVisualAssetConfig {
+    pub directory: PathBuf,
+    pub maximum_source_bytes: usize,
+    pub maximum_derivative_bytes: usize,
+}
+
+impl WorkerVisualAssetConfig {
+    const DEFAULT_MAXIMUM_SOURCE_BYTES: usize = 32 * 1024 * 1024;
+    const MAXIMUM_CONFIGURED_SOURCE_BYTES: usize = 64 * 1024 * 1024;
+    const DEFAULT_MAXIMUM_DERIVATIVE_BYTES: usize = 8 * 1024 * 1024;
+    const MAXIMUM_CONFIGURED_DERIVATIVE_BYTES: usize = 8 * 1024 * 1024;
+
+    fn from_env() -> Result<Option<Self>> {
+        let Some(raw_directory) = std::env::var_os("VISUAL_ASSET_DIRECTORY") else {
+            return Ok(None);
+        };
+        if raw_directory.is_empty() {
+            return Ok(None);
+        }
+        let config = Self {
+            directory: PathBuf::from(raw_directory),
+            maximum_source_bytes: env_parse(
+                "VISUAL_ASSET_SOURCE_MAX_BYTES",
+                Self::DEFAULT_MAXIMUM_SOURCE_BYTES,
+            )?,
+            maximum_derivative_bytes: env_parse(
+                "VISUAL_ASSET_MAX_BYTES",
+                Self::DEFAULT_MAXIMUM_DERIVATIVE_BYTES,
+            )?,
+        };
+        config.validate()?;
+        Ok(Some(config))
+    }
+
+    fn validate(&self) -> Result<()> {
+        if !self.directory.is_absolute() {
+            anyhow::bail!("VISUAL_ASSET_DIRECTORY must be an absolute path");
+        }
+        if self.maximum_source_bytes == 0
+            || self.maximum_source_bytes > Self::MAXIMUM_CONFIGURED_SOURCE_BYTES
+        {
+            anyhow::bail!("VISUAL_ASSET_SOURCE_MAX_BYTES must be between 1 and 67108864");
+        }
+        if self.maximum_derivative_bytes == 0
+            || self.maximum_derivative_bytes > Self::MAXIMUM_CONFIGURED_DERIVATIVE_BYTES
+        {
+            anyhow::bail!("VISUAL_ASSET_MAX_BYTES must be between 1 and 8388608");
+        }
+        Ok(())
+    }
 }
 
 impl WorkerEnvironment {
@@ -75,6 +134,10 @@ pub struct WorkerConfig {
     pub parser_version: String,
     pub model: WorkerModelConfig,
     pub relationship_minimum_confidence: f32,
+    /// Optional shared private root. Its `sources/` subtree is an
+    /// operator-controlled ingest boundary; only re-encoded `generated/`
+    /// descendants are ever published to the API.
+    pub visual_assets: Option<WorkerVisualAssetConfig>,
 }
 
 impl WorkerConfig {
@@ -194,6 +257,7 @@ impl WorkerConfig {
                 "RELATIONSHIP_MINIMUM_CONFIDENCE",
                 0.55_f32,
             )?,
+            visual_assets: WorkerVisualAssetConfig::from_env()?,
         };
         config.validate(demo_mode)?;
         Ok(config)
@@ -227,6 +291,9 @@ impl WorkerConfig {
         }
         if !(0.0..=1.0).contains(&self.relationship_minimum_confidence) {
             anyhow::bail!("RELATIONSHIP_MINIMUM_CONFIDENCE must be between 0 and 1");
+        }
+        if let Some(visual_assets) = &self.visual_assets {
+            visual_assets.validate()?;
         }
         validate_service_url(self.environment, "GROBID_URL", &self.grobid.base_url)?;
         validate_deployment_policy(

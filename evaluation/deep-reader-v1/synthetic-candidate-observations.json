@@ -1,0 +1,382 @@
+{
+  "schema_version": "deep-reader-evaluation-v1",
+  "candidate_id": "repository-contract-candidate-v1",
+  "scope": "synthetic_repository_fixture",
+  "measurement_kind": "synthetic",
+  "parser_runs": [
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "adapter_id": "grobid",
+      "adapter_version": "0.9.0-crf",
+      "status": "succeeded",
+      "blocks": [
+        {
+          "block_id": "block-introduction-heading",
+          "kind": "heading",
+          "section_path": ["section-introduction"],
+          "is_introduction": true,
+          "page": 1,
+          "source_locator_present": true,
+          "content_sha256": "sha256:a77b03c333355b8c77d0c9ccde5ef9208c7cc209ab550022f53b5304f743e2a2",
+          "text_scalar_count": 12,
+          "replacement_character_count": 0
+        },
+        {
+          "block_id": "block-introduction-paragraph",
+          "kind": "paragraph",
+          "section_path": ["section-introduction"],
+          "is_introduction": true,
+          "page": 1,
+          "source_locator_present": true,
+          "content_sha256": "sha256:99522f044eff37dc1dbf134bd47b030b3b3df1953e05ab6ef3a25e270add652b",
+          "text_scalar_count": 34,
+          "replacement_character_count": 0
+        },
+        {
+          "block_id": "block-methods-heading",
+          "kind": "heading",
+          "section_path": ["section-methods"],
+          "is_introduction": false,
+          "page": 2,
+          "source_locator_present": true,
+          "content_sha256": "sha256:241d14a74b9ab9e391a86d9c33bd0dec6292decc8aaf7d5f928b6f2503f808cd",
+          "text_scalar_count": 7,
+          "replacement_character_count": 0
+        },
+        {
+          "block_id": "block-methods-paragraph",
+          "kind": "paragraph",
+          "section_path": ["section-methods"],
+          "is_introduction": false,
+          "page": 2,
+          "source_locator_present": true,
+          "content_sha256": "sha256:e6af5330c0c739469e7137159696921de479db3f98e3f8d2679e899c4e7fe28a",
+          "text_scalar_count": 62,
+          "replacement_character_count": 0
+        },
+        {
+          "block_id": "block-figure-caption",
+          "kind": "figure_context",
+          "section_path": ["section-methods"],
+          "is_introduction": false,
+          "page": 2,
+          "source_locator_present": true,
+          "content_sha256": "sha256:807a54acbc804659c77efb9bff32d13294bbf1db820159751222d1153d1b982b",
+          "text_scalar_count": 25,
+          "replacement_character_count": 0
+        },
+        {
+          "block_id": "block-table-caption",
+          "kind": "table_context",
+          "section_path": ["section-methods"],
+          "is_introduction": false,
+          "page": 3,
+          "source_locator_present": true,
+          "content_sha256": "sha256:6a058a875097653b704211566bbf87063c12e9c18aeb1232654ab3316eea10b3",
+          "text_scalar_count": 23,
+          "replacement_character_count": 0
+        },
+        {
+          "block_id": "block-equation-context",
+          "kind": "equation_context",
+          "section_path": ["section-methods"],
+          "is_introduction": false,
+          "page": 3,
+          "source_locator_present": true,
+          "content_sha256": "sha256:7013e2c09b7f6a79f1e3ec4a0785f81214df9b38f603be4332af843fb2bf4cd3",
+          "text_scalar_count": 5,
+          "replacement_character_count": 0
+        }
+      ],
+      "citations": [
+        {
+          "mention_id": "citation-mention-1",
+          "source_block_id": "block-introduction-paragraph",
+          "target_id": "reference-b0"
+        }
+      ],
+      "visual_objects": [
+        {
+          "object_id": "figure-1",
+          "kind": "figure",
+          "caption_id": "caption-figure-1",
+          "structure_sha256": null
+        },
+        {
+          "object_id": "table-1",
+          "kind": "table",
+          "caption_id": "caption-table-1",
+          "structure_sha256": "sha256:1c2799dd3eaa1dbf3d7b6be5165c7f9daf0cb3a0ddd774557511650476f25bab"
+        },
+        {
+          "object_id": "equation-1",
+          "kind": "equation",
+          "caption_id": "caption-equation-1",
+          "structure_sha256": null
+        }
+      ],
+      "resource": {
+        "wall_time_ms": 100,
+        "peak_rss_bytes": 67108864
+      },
+      "failure_class": null,
+      "fallback_action": "none"
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "adapter_id": "docling-experimental",
+      "adapter_version": "experimental-contract-v1",
+      "status": "adapter_disabled",
+      "blocks": [],
+      "citations": [],
+      "visual_objects": [],
+      "resource": null,
+      "failure_class": "feature_disabled",
+      "fallback_action": "use_grobid"
+    }
+  ],
+  "passport_predictions": [
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "field_key": "research_question",
+      "predicted_status": "supported",
+      "evidence_block_ids": ["block-introduction-paragraph"]
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "field_key": "contribution",
+      "predicted_status": "inferred",
+      "evidence_block_ids": ["block-introduction-paragraph", "block-methods-paragraph"]
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "field_key": "method",
+      "predicted_status": "supported",
+      "evidence_block_ids": ["block-methods-paragraph"]
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "field_key": "data_or_sample",
+      "predicted_status": "not_applicable",
+      "evidence_block_ids": []
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "field_key": "evaluation",
+      "predicted_status": "supported",
+      "evidence_block_ids": ["block-methods-paragraph"]
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "field_key": "main_result",
+      "predicted_status": "supported",
+      "evidence_block_ids": ["block-methods-paragraph"]
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "field_key": "limitations",
+      "predicted_status": "not_found",
+      "evidence_block_ids": []
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "field_key": "assumptions_scope",
+      "predicted_status": "conflicting",
+      "evidence_block_ids": ["block-introduction-paragraph", "block-methods-paragraph"]
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "field_key": "code_resources",
+      "predicted_status": "not_found",
+      "evidence_block_ids": []
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "field_key": "publication_status",
+      "predicted_status": "not_applicable",
+      "evidence_block_ids": []
+    }
+  ],
+  "assistant_predictions": [
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "case_id": "assistant-direct-fact",
+      "status": "supported",
+      "claims": [
+        {
+          "claim_id": "claim-direct-fact",
+          "support": "direct",
+          "evidence_block_ids": ["block-introduction-paragraph"]
+        }
+      ],
+      "latency_ms": 10,
+      "cost_microusd": 0
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "case_id": "assistant-method-detail",
+      "status": "supported",
+      "claims": [
+        {
+          "claim_id": "claim-method-detail",
+          "support": "direct",
+          "evidence_block_ids": ["block-methods-paragraph"]
+        }
+      ],
+      "latency_ms": 10,
+      "cost_microusd": 0
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "case_id": "assistant-result-comparison",
+      "status": "supported",
+      "claims": [
+        {
+          "claim_id": "claim-result-comparison",
+          "support": "direct",
+          "evidence_block_ids": ["block-methods-paragraph", "block-table-caption"]
+        }
+      ],
+      "latency_ms": 10,
+      "cost_microusd": 0
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "case_id": "assistant-limitation",
+      "status": "not_found",
+      "claims": [],
+      "latency_ms": 5,
+      "cost_microusd": 0
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "case_id": "assistant-unsupported",
+      "status": "not_found",
+      "claims": [],
+      "latency_ms": 5,
+      "cost_microusd": 0
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "case_id": "assistant-ambiguous",
+      "status": "partial",
+      "claims": [
+        {
+          "claim_id": "claim-ambiguous-bounded",
+          "support": "inferred",
+          "evidence_block_ids": ["block-methods-paragraph"]
+        }
+      ],
+      "latency_ms": 10,
+      "cost_microusd": 0
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "case_id": "assistant-figure-table",
+      "status": "supported",
+      "claims": [
+        {
+          "claim_id": "claim-visual-scope",
+          "support": "direct",
+          "evidence_block_ids": ["block-figure-caption"]
+        }
+      ],
+      "latency_ms": 10,
+      "cost_microusd": 0
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "case_id": "assistant-equation-symbol",
+      "status": "supported",
+      "claims": [
+        {
+          "claim_id": "claim-equation-symbol",
+          "support": "direct",
+          "evidence_block_ids": ["block-equation-context"]
+        }
+      ],
+      "latency_ms": 10,
+      "cost_microusd": 0
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "case_id": "assistant-adversarial-prompt",
+      "status": "supported",
+      "claims": [
+        {
+          "claim_id": "claim-adversarial-grounded",
+          "support": "direct",
+          "evidence_block_ids": ["block-methods-paragraph"]
+        }
+      ],
+      "latency_ms": 10,
+      "cost_microusd": 0
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "case_id": "assistant-stale-generation",
+      "status": "rejected_stale_generation",
+      "claims": [],
+      "latency_ms": 1,
+      "cost_microusd": 0
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "case_id": "assistant-conflicting-evidence",
+      "status": "partial",
+      "claims": [
+        {
+          "claim_id": "claim-conflict-preserved",
+          "support": "inferred",
+          "evidence_block_ids": ["block-introduction-paragraph", "block-methods-paragraph"]
+        }
+      ],
+      "latency_ms": 10,
+      "cost_microusd": 0
+    }
+  ],
+  "visual_predictions": [
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "object_id": "figure-1",
+      "kind": "figure",
+      "caption_id": "caption-figure-1",
+      "structure_sha256": null,
+      "source_navigation": {
+        "page": 2,
+        "source_block_ids": ["block-figure-caption"],
+        "original_locator_present": true
+      }
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "object_id": "table-1",
+      "kind": "table",
+      "caption_id": "caption-table-1",
+      "structure_sha256": "sha256:1c2799dd3eaa1dbf3d7b6be5165c7f9daf0cb3a0ddd774557511650476f25bab",
+      "source_navigation": {
+        "page": 3,
+        "source_block_ids": ["block-table-caption"],
+        "original_locator_present": true
+      }
+    },
+    {
+      "fixture_id": "synthetic-structured-paper-v1",
+      "object_id": "equation-1",
+      "kind": "equation",
+      "caption_id": "caption-equation-1",
+      "structure_sha256": null,
+      "source_navigation": {
+        "page": 3,
+        "source_block_ids": ["block-equation-context"],
+        "original_locator_present": true
+      }
+    }
+  ],
+  "protected_evidence": {
+    "human_domain": "not_ready",
+    "legal_review": "not_ready",
+    "live_model": "not_ready",
+    "signed_device": "not_ready"
+  }
+}

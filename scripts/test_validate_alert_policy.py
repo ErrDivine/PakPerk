@@ -16,6 +16,8 @@ from validate_alert_policy import (
     _tracked_backend_rust_sources,
     _validate_ledger_alert_sources,
     _validate_ledger_worker_emission,
+    _validate_reading_feed_alert_emission,
+    _validate_reading_feed_alert_sources,
     validate_policy,
 )
 
@@ -74,6 +76,16 @@ def main() -> int:
             lambda policy: policy["spec"]["rules"][0]["signal"]["filters"].update(
                 {"authorization": "present"}
             ),
+            "selects protected data",
+            directory,
+        )
+        _expect_rejected(
+            baseline,
+            lambda policy: next(
+                rule
+                for rule in policy["spec"]["rules"]
+                if rule["id"] == "reading-feed-authority-unavailable"
+            )["signal"]["filters"].update({"cursor": "present"}),
             "selects protected data",
             directory,
         )
@@ -150,6 +162,38 @@ def main() -> int:
         else:
             raise AssertionError(
                 "validator accepted a second-file spoof of the ledger alert"
+            )
+
+        reading_feed_source = (
+            PROJECT_ROOT / "backend/apps/api/src/routes/reading_feed.rs"
+        ).read_text(encoding="utf-8")
+        moved_reading_feed_branch = reading_feed_source.replace(
+            'error.kind = "reading_feed_authority",',
+            'error.kind = "reading_feed_policy_lookup",',
+            1,
+        )
+        try:
+            _validate_reading_feed_alert_emission(moved_reading_feed_branch)
+        except PolicyError as error:
+            assert "fail-closed branch" in str(error), error
+        else:
+            raise AssertionError(
+                "validator accepted the reading-feed alert outside its fail-closed branch"
+            )
+
+        backend_sources = _tracked_backend_rust_sources()
+        backend_sources["backend/apps/spoofed-feed/src/main.rs"] = (
+            'fn main() {\n'
+            '    tracing::error!("authenticated reading feed could not prove queue authority");\n'
+            '}\n'
+        )
+        try:
+            _validate_reading_feed_alert_sources(backend_sources)
+        except PolicyError as error:
+            assert "across tracked backend Rust sources" in str(error), error
+        else:
+            raise AssertionError(
+                "validator accepted a second-file spoof of the reading-feed alert"
             )
 
     print("Alert-policy validator regression tests passed.")

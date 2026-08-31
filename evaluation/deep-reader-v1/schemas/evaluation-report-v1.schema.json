@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pakperk.invalid/schemas/deep-reader/evaluation-report-v1.schema.json",
+  "title": "Pakperk Deep Reader repository evaluation report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "classification",
+    "corpus_id",
+    "candidate_id",
+    "scope",
+    "input_sha256",
+    "repository_contract_status",
+    "release_status",
+    "protected_evidence",
+    "areas",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {"const": "deep-reader-evaluation-report-v1"},
+    "classification": {"const": "repository_evaluation_not_release_evidence"},
+    "corpus_id": {"$ref": "common-v1.schema.json#/$defs/safeId"},
+    "candidate_id": {"$ref": "common-v1.schema.json#/$defs/safeId"},
+    "scope": {"const": "synthetic_repository_fixture"},
+    "input_sha256": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["corpus", "labels", "observations"],
+      "properties": {
+        "corpus": {"$ref": "common-v1.schema.json#/$defs/sha256"},
+        "labels": {"$ref": "common-v1.schema.json#/$defs/sha256"},
+        "observations": {"$ref": "common-v1.schema.json#/$defs/sha256"}
+      }
+    },
+    "repository_contract_status": {"enum": ["passed", "failed"]},
+    "release_status": {"const": "not_ready"},
+    "protected_evidence": {
+      "$ref": "common-v1.schema.json#/$defs/protectedEvidence"
+    },
+    "areas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parser", "passport", "assistant", "visual"],
+      "properties": {
+        "parser": {"$ref": "#/$defs/parserArea"},
+        "passport": {"$ref": "#/$defs/passportArea"},
+        "assistant": {"$ref": "#/$defs/assistantArea"},
+        "visual": {"$ref": "#/$defs/visualArea"}
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 16,
+      "items": {"type": "string", "minLength": 1, "maxLength": 4096}
+    }
+  },
+  "$defs": {
+    "areaStatus": {
+      "type": "object",
+      "required": ["repository_status", "release_status"],
+      "properties": {
+        "repository_status": {"enum": ["passed", "failed"]},
+        "release_status": {"const": "not_ready"}
+      }
+    },
+    "parserArea": {
+      "allOf": [
+        {"$ref": "#/$defs/areaStatus"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository_status",
+            "release_status",
+            "representative_corpus_status",
+            "covered_document_classes",
+            "missing_document_classes",
+            "runs",
+            "adapter_comparisons",
+            "failure_distribution"
+          ],
+          "properties": {
+            "repository_status": {"enum": ["passed", "failed"]},
+            "release_status": {"const": "not_ready"},
+            "representative_corpus_status": {"const": "not_ready"},
+            "covered_document_classes": {"$ref": "common-v1.schema.json#/$defs/idList"},
+            "missing_document_classes": {"$ref": "common-v1.schema.json#/$defs/idList"},
+            "runs": {"type": "array", "maxItems": 512, "items": {"type": "object"}},
+            "adapter_comparisons": {"type": "array", "maxItems": 128, "items": {"type": "object"}},
+            "failure_distribution": {"type": "array", "maxItems": 128, "items": {"type": "object"}}
+          }
+        }
+      ]
+    },
+    "passportArea": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_status",
+        "release_status",
+        "human_field_correctness_status",
+        "metrics"
+      ],
+      "properties": {
+        "repository_status": {"enum": ["passed", "failed"]},
+        "release_status": {"const": "not_ready"},
+        "human_field_correctness_status": {"const": "not_ready"},
+        "metrics": {"type": "object", "minProperties": 6, "maxProperties": 6}
+      }
+    },
+    "assistantArea": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_status",
+        "release_status",
+        "live_model_status",
+        "human_method_detail_review_status",
+        "metrics"
+      ],
+      "properties": {
+        "repository_status": {"enum": ["passed", "failed"]},
+        "release_status": {"const": "not_ready"},
+        "live_model_status": {"const": "not_ready"},
+        "human_method_detail_review_status": {"const": "not_ready"},
+        "metrics": {"type": "object", "minProperties": 9, "maxProperties": 9}
+      }
+    },
+    "visualArea": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_status",
+        "release_status",
+        "human_precision_review_status",
+        "signed_device_navigation_status",
+        "metrics"
+      ],
+      "properties": {
+        "repository_status": {"enum": ["passed", "failed"]},
+        "release_status": {"const": "not_ready"},
+        "human_precision_review_status": {"const": "not_ready"},
+        "signed_device_navigation_status": {"const": "not_ready"},
+        "metrics": {"type": "object", "minProperties": 10, "maxProperties": 10}
+      }
+    }
+  }
+}

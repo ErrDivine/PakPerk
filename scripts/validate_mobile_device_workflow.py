@@ -7,6 +7,7 @@ import pathlib
 import re
 import sys
 
+import validate_flutter_physical_device as physical_device
 import validate_flutter_toolchain as flutter_toolchain
 
 
@@ -57,6 +58,10 @@ def validate(workflow: pathlib.Path = WORKFLOW) -> None:
         "3.12.2",
     ):
         raise RuntimeError("reviewed Flutter device-lane identity changed without review")
+    if physical_device.ALLOWED_TARGETS != frozenset(
+        {"android-arm", "android-arm64", "android-x64", "ios"}
+    ):
+        raise RuntimeError("reviewed physical mobile target set changed without review")
 
     source = workflow.read_text(encoding="utf-8")
     trigger_end = source.index("\npermissions:")
@@ -106,7 +111,10 @@ def validate(workflow: pathlib.Path = WORKFLOW) -> None:
         'flutter --version --machine >"$RUNNER_TEMP/flutter-toolchain.json"',
         "python3 scripts/validate_flutter_toolchain.py",
         "flutter pub get --enforce-lockfile",
-        "flutter test integration_test/production_verification_test.dart",
+        "flutter drive",
+        "--driver=test_driver/integration_test.dart",
+        "--target=integration_test/production_verification_test.dart",
+        "--flavor prod --dart-define-from-file=config/prod.json",
         "--profile -d \"$PAKPERK_MOBILE_DEVICE_ID\"",
         '"flutter_toolchain": os.environ.get(',
         '"PAKPERK_FLUTTER_TOOLCHAIN_OUTCOME", "unknown"',
@@ -136,6 +144,73 @@ def validate(workflow: pathlib.Path = WORKFLOW) -> None:
     ):
         _require(toolchain_step, fragment, "Flutter identity step")
 
+    physical_preflight_step = _step_block(
+        source, "Verify the exact protected device is connected"
+    )
+    for fragment in (
+        "shell: bash",
+        'PAKPERK_MOBILE_DEVICE_ID: ${{ secrets.PAKPERK_MOBILE_DEVICE_ID }}',
+        'PAKPERK_SOURCE_REVISION: ${{ inputs.source_revision }}',
+        'echo "::add-mask::$PAKPERK_MOBILE_DEVICE_ID"',
+        '[[ "$PAKPERK_MOBILE_DEVICE_ID" =~ ^[A-Za-z0-9._:-]{1,128}$ ]]',
+        'flutter devices --machine >"$RUNNER_TEMP/flutter-devices.json"',
+        'python3 - "$RUNNER_TEMP/flutter-devices.json" '
+        '"$RUNNER_TEMP/device-evidence.json" <<\'PY\'',
+        "source, destination = map(pathlib.Path, sys.argv[1:])",
+        'expected = os.environ["PAKPERK_MOBILE_DEVICE_ID"]',
+        'devices = json.loads(source.read_text(encoding="utf-8"))',
+        "if not isinstance(devices, list):",
+        "if not all(isinstance(device, dict) for device in devices):",
+        'matches = [device for device in devices if device.get("id") == expected]',
+        "if len(matches) != 1:",
+        "selected = matches[0]",
+        'if selected.get("isSupported") is not True:',
+        'if selected.get("emulator") is not False:',
+        'allowed_targets = {"android-arm", "android-arm64", "android-x64", "ios"}',
+        "if target not in allowed_targets:",
+        '"source_revision": os.environ["PAKPERK_SOURCE_REVISION"]',
+        '"target_platform": target',
+        '"emulator": False',
+        '"supported": True',
+    ):
+        _require(physical_preflight_step, fragment, "physical-device preflight")
+    preflight_positions = tuple(
+        physical_preflight_step.index(fragment)
+        for fragment in (
+            'flutter devices --machine >"$RUNNER_TEMP/flutter-devices.json"',
+            'devices = json.loads(source.read_text(encoding="utf-8"))',
+            'matches = [device for device in devices if device.get("id") == expected]',
+            "selected = matches[0]",
+            'if selected.get("isSupported") is not True:',
+            'if selected.get("emulator") is not False:',
+            "if target not in allowed_targets:",
+            "evidence = {",
+            "destination.write_text(",
+        )
+    )
+    if preflight_positions != tuple(sorted(preflight_positions)):
+        raise RuntimeError(
+            "physical-device preflight must validate the selected live Flutter "
+            "device before recording evidence"
+        )
+
+    device_test_step = _step_block(
+        source, "Run deterministic production contract in profile mode"
+    )
+    for fragment in (
+        "id: device-test",
+        "working-directory: mobile",
+        'PAKPERK_MOBILE_DEVICE_ID: ${{ secrets.PAKPERK_MOBILE_DEVICE_ID }}',
+        'echo "::add-mask::$PAKPERK_MOBILE_DEVICE_ID"',
+        "flutter drive \\",
+        "--driver=test_driver/integration_test.dart",
+        "--target=integration_test/production_verification_test.dart",
+        "--flavor prod --dart-define-from-file=config/prod.json",
+        '--profile -d "$PAKPERK_MOBILE_DEVICE_ID"',
+        '| tee "$RUNNER_TEMP/mobile-device-integration.log"',
+    ):
+        _require(device_test_step, fragment, "profile physical-device test")
+
     source_gate = _step_block(source, "Verify exact reviewed main source")
     for fragment in (
         'DISPATCH_REF: ${{ github.ref }}',
@@ -157,6 +232,9 @@ def validate(workflow: pathlib.Path = WORKFLOW) -> None:
         "- name: Verify and record the exact reviewed Flutter SDK"
     )
     dependencies_position = source.index("- name: Resolve locked Flutter dependencies")
+    physical_preflight_position = source.index(
+        "- name: Verify the exact protected device is connected"
+    )
     device_test_position = source.index(
         "- name: Run deterministic production contract in profile mode"
     )
@@ -166,10 +244,12 @@ def validate(workflow: pathlib.Path = WORKFLOW) -> None:
         < setup_position
         < toolchain_position
         < dependencies_position
+        < physical_preflight_position
         < device_test_position
     ):
         raise RuntimeError(
-            "source and Flutter identities must be verified before dependencies or tests"
+            "source and Flutter identities must be verified before dependencies, "
+            "then the physical device must be verified before its test"
         )
 
     boundary_step = _step_block(source, "Record the exact verification boundary")

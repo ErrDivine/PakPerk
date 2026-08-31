@@ -1,4 +1,4 @@
-use std::{str::FromStr as _, time::Instant};
+use std::time::Instant;
 
 use axum::{
     Extension, Json,
@@ -25,7 +25,7 @@ use crate::{
     routes::support::apply_summary_policy,
 };
 
-const DEFAULT_PAGE_LIMIT: u32 = 50;
+pub(super) const DEFAULT_PAGE_LIMIT: u32 = 50;
 const MAX_IDEMPOTENCY_KEY_BYTES: usize = 64;
 
 #[utoipa::path(
@@ -149,7 +149,7 @@ pub(crate) async fn library_changes(
     request_body(
         content = LibrarySaveBody,
         description = "Strict To Read save intent; unknown fields are rejected",
-        example = json!({"operation_id":"0198f4da-383f-77f0-9404-e6d6614d26e1","state":"to_read"})
+        example = json!({"operation_id":"0198f4da-383f-77f0-9404-e6d6614d26e1","state":"to_read","save_source_kind":"discovery"})
     ),
     responses(
         (status = 200, description = "Canonical current library record; exact replays return the same current record", body = crate::openapi::LibraryMutationEnvelopeSchema, headers(("Cache-Control" = String, description = "Always private, no-store"))),
@@ -182,9 +182,24 @@ pub(crate) async fn save_library_item(
         ));
     }
     let started = Instant::now();
-    let result = library_service(&state, request_id)?
-        .save(principal.user_id, paper_id, operation_id, body.state.into())
-        .await;
+    let service = library_service(&state, request_id)?;
+    let result = if let Some(save_source_kind) = body.save_source_kind {
+        service
+            .put_item_v2(
+                principal.user_id,
+                paper_id,
+                operation_id,
+                body.state.into(),
+                None,
+                Some(save_source_kind.into()),
+            )
+            .await
+    } else {
+        // Preserve the exact v0.0 idempotency fingerprint for old clients.
+        service
+            .save(principal.user_id, paper_id, operation_id, body.state.into())
+            .await
+    };
     record_operation(
         OperationClass::LibraryMutation,
         library_mutation_outcome(&result),
@@ -257,7 +272,7 @@ pub(crate) async fn remove_library_item(
     Ok(Json(LibraryMutationEnvelope::from(result.item)))
 }
 
-fn library_service(
+pub(super) fn library_service(
     state: &AppState,
     request_id: RequestId,
 ) -> Result<&library::LibraryService, ApiError> {
@@ -272,7 +287,10 @@ fn library_service(
     })
 }
 
-fn require_library_writes(state: &AppState, request_id: RequestId) -> Result<(), ApiError> {
+pub(super) fn require_library_writes(
+    state: &AppState,
+    request_id: RequestId,
+) -> Result<(), ApiError> {
     if state.feature_flags().library_writes {
         return Ok(());
     }
@@ -289,9 +307,9 @@ fn required_library_state(
     value: Option<&str>,
     request_id: RequestId,
 ) -> Result<LibraryState, ApiError> {
-    value
-        .and_then(|value| LibraryState::from_str(value).ok())
-        .ok_or_else(|| {
+    match value {
+        Some("to_read") => Ok(LibraryState::Inbox),
+        _ => Err({
             ApiError::new(
                 request_id,
                 StatusCode::BAD_REQUEST,
@@ -299,10 +317,14 @@ fn required_library_state(
                 "state is required and must be to_read.",
                 false,
             )
-        })
+        }),
+    }
 }
 
-fn idempotency_key(headers: &HeaderMap, request_id: RequestId) -> Result<Uuid, ApiError> {
+pub(super) fn idempotency_key(
+    headers: &HeaderMap,
+    request_id: RequestId,
+) -> Result<Uuid, ApiError> {
     let mut values = headers.get_all("idempotency-key").iter();
     let Some(value) = values.next() else {
         return Err(invalid_idempotency_key(request_id));
@@ -333,11 +355,17 @@ fn invalid_idempotency_key(request_id: RequestId) -> ApiError {
     )
 }
 
-fn library_service_error(request_id: RequestId, error_value: &LibraryServiceError) -> ApiError {
+#[allow(clippy::too_many_lines)]
+pub(super) fn library_service_error(
+    request_id: RequestId,
+    error_value: &LibraryServiceError,
+) -> ApiError {
     use LibraryServiceError::{
         AccountNotFound, Deleted, DeletionPending, IdempotencyConflict, InvalidAfterRevision,
-        InvalidCleanupBatch, InvalidCursor, InvalidLimit, InvalidOperationId,
-        InvalidRateLimitPolicy, PaperNotFound, RateLimited, Storage, Suspended, SyncResetRequired,
+        InvalidCleanupBatch, InvalidCursor, InvalidDescription, InvalidLimit, InvalidName,
+        InvalidOperationId, InvalidPrivateNote, InvalidRateLimitPolicy, InvalidReminder,
+        ListNotFound, MembershipNotFound, NameConflict, PaperNotFound, RateLimited, Storage,
+        Suspended, SyncResetRequired, TagNotFound,
     };
 
     match error_value {
@@ -384,6 +412,62 @@ fn library_service_error(request_id: RequestId, error_value: &LibraryServiceErro
             "The requested paper is not in the metadata cache.",
             false,
         ),
+        ListNotFound => ApiError::new(
+            request_id,
+            StatusCode::NOT_FOUND,
+            "LIBRARY_LIST_NOT_FOUND",
+            "The requested library list was not found.",
+            false,
+        ),
+        TagNotFound => ApiError::new(
+            request_id,
+            StatusCode::NOT_FOUND,
+            "LIBRARY_TAG_NOT_FOUND",
+            "The requested library tag was not found.",
+            false,
+        ),
+        MembershipNotFound => ApiError::new(
+            request_id,
+            StatusCode::NOT_FOUND,
+            "LIBRARY_MEMBERSHIP_NOT_FOUND",
+            "The requested library membership was not found.",
+            false,
+        ),
+        NameConflict => ApiError::new(
+            request_id,
+            StatusCode::CONFLICT,
+            "LIBRARY_NAME_CONFLICT",
+            "A library list or tag already uses that name.",
+            false,
+        ),
+        InvalidPrivateNote => ApiError::new(
+            request_id,
+            StatusCode::BAD_REQUEST,
+            "INVALID_LIBRARY_NOTE",
+            "The private note must be a trimmed single line of at most 500 characters.",
+            false,
+        ),
+        InvalidReminder => ApiError::new(
+            request_id,
+            StatusCode::BAD_REQUEST,
+            "INVALID_LIBRARY_REMINDER",
+            "The reminder must be a future timestamp for an active library item.",
+            false,
+        ),
+        InvalidName => ApiError::new(
+            request_id,
+            StatusCode::BAD_REQUEST,
+            "INVALID_LIBRARY_NAME",
+            "The list or tag name is invalid.",
+            false,
+        ),
+        InvalidDescription => ApiError::new(
+            request_id,
+            StatusCode::BAD_REQUEST,
+            "INVALID_LIBRARY_DESCRIPTION",
+            "The description or membership note is invalid.",
+            false,
+        ),
         IdempotencyConflict => ApiError::new(
             request_id,
             StatusCode::CONFLICT,
@@ -421,7 +505,9 @@ fn library_service_error(request_id: RequestId, error_value: &LibraryServiceErro
     }
 }
 
-fn library_mutation_outcome<T>(result: &Result<T, LibraryServiceError>) -> OperationOutcome {
+pub(super) fn library_mutation_outcome<T>(
+    result: &Result<T, LibraryServiceError>,
+) -> OperationOutcome {
     match result {
         Ok(_) => OperationOutcome::Success,
         Err(LibraryServiceError::Storage(_) | LibraryServiceError::RateLimited { .. }) => {
@@ -431,7 +517,7 @@ fn library_mutation_outcome<T>(result: &Result<T, LibraryServiceError>) -> Opera
     }
 }
 
-async fn mask_paper_summaries(
+pub(super) async fn mask_paper_summaries(
     state: &AppState,
     request_id: RequestId,
     items: &mut [domain::SavedLibraryPaper],
@@ -580,7 +666,7 @@ mod tests {
         let request_id = RequestId(Uuid::nil());
         assert_eq!(
             required_library_state(Some("to_read"), request_id).unwrap(),
-            LibraryState::ToRead
+            LibraryState::Inbox
         );
         for value in [None, Some("To_Read"), Some("saved"), Some("")] {
             let error = required_library_state(value, request_id).unwrap_err();
@@ -818,6 +904,7 @@ mod tests {
             Json(LibrarySaveBody {
                 operation_id,
                 state: crate::dto::LibraryStateBody::ToRead,
+                save_source_kind: None,
             }),
         )
         .await
@@ -837,6 +924,7 @@ mod tests {
             Json(LibrarySaveBody {
                 operation_id: Uuid::now_v7(),
                 state: crate::dto::LibraryStateBody::ToRead,
+                save_source_kind: None,
             }),
         )
         .await
@@ -965,6 +1053,7 @@ mod tests {
                 comments: false,
                 comment_creation: false,
                 account_deletion: false,
+                ..FeatureFlags::default()
             },
             accounts: Some(AccountFeatureConfig {
                 oidc: auth::OidcVerifierConfig::new(
@@ -990,6 +1079,9 @@ mod tests {
             }),
             comments: None,
             account_deletion: None,
+            visual_assets: None,
+            paper_resolution: crate::config::PaperResolutionFeatureConfig::default(),
+            reading_feed: crate::config::ReadingFeedFeatureConfig::default(),
             request_origin: crate::config::RequestOriginConfig::for_local_development(
                 "library-route-request-origin-secret-0123456789",
             )
@@ -1034,9 +1126,14 @@ mod tests {
         SavedLibraryPaper {
             item: LibraryItem {
                 paper_id,
-                state: LibraryState::ToRead,
+                state: LibraryState::Inbox,
+                private_note: None,
+                save_source_kind: None,
+                reminder_at: None,
                 saved_at: now,
                 updated_at: now,
+                reviewed_at: None,
+                archived_at: None,
                 removed_at: None,
                 revision: 42,
                 last_operation_id: Uuid::now_v7(),

@@ -124,6 +124,38 @@ class StagingBackendLoadWorkflowTests(unittest.TestCase):
         )
         self._assert_rejected(source)
 
+    def test_paper_import_cap_allowlist_must_precede_arithmetic(self) -> None:
+        source = self._replace(
+            self._source(),
+            '          case "$MAX_IMPORT_REQUESTS" in\n',
+            '          case "20" in\n',
+        )
+        self._assert_rejected(source)
+
+    def test_paper_import_cap_cannot_consume_the_preflight_reserve(self) -> None:
+        source = self._replace(
+            self._source(),
+            '          case "$MAX_IMPORT_REQUESTS" in\n            5|10) ;;',
+            '          case "$MAX_IMPORT_REQUESTS" in\n            5|10|20) ;;',
+        )
+        self._assert_rejected(source)
+
+    def test_paper_search_cap_cannot_consume_the_account_quota(self) -> None:
+        source = self._replace(
+            self._source(),
+            "            --max-paper-search-requests 9\n",
+            "            --max-paper-search-requests 10\n",
+        )
+        self._assert_rejected(source)
+
+    def test_paper_import_confirmation_cannot_be_weakened(self) -> None:
+        source = self._replace(
+            self._source(),
+            '"RUN_DEDICATED_STAGING_PAPER_IMPORT_REPLAYS"',
+            '""',
+        )
+        self._assert_rejected(source)
+
     def test_optional_source_revision_is_rejected(self) -> None:
         source = self._replace(
             self._source(),
@@ -353,6 +385,26 @@ class StagingBackendLoadWorkflowTests(unittest.TestCase):
         )
         self._assert_rejected(source)
 
+    def test_reading_feed_fixtures_cannot_share_a_token(self) -> None:
+        source = self._replace(
+            self._source(),
+            "          STAGING_READING_RECOMMENDATION_TOKEN: "
+            "${{ secrets.PAKPERK_STAGING_LOAD_READING_RECOMMENDATION_TOKEN }}\n",
+            "          STAGING_READING_RECOMMENDATION_TOKEN: "
+            "${{ secrets.PAKPERK_STAGING_LOAD_READING_QUEUE_TOKEN }}\n",
+        )
+        self._assert_rejected(source)
+
+    def test_private_search_query_cannot_move_to_job_environment(self) -> None:
+        source = self._replace(
+            self._source(),
+            "      STAGING_API_ORIGIN: ${{ vars.PAKPERK_STAGING_API_ORIGIN }}\n",
+            "      STAGING_PAPER_SEARCH_QUERY: "
+            "${{ secrets.PAKPERK_STAGING_LOAD_PAPER_SEARCH_QUERY }}\n"
+            "      STAGING_API_ORIGIN: ${{ vars.PAKPERK_STAGING_API_ORIGIN }}\n",
+        )
+        self._assert_rejected(source)
+
     def test_runner_failure_masking_is_rejected(self) -> None:
         source = self._replace(
             self._source(),
@@ -387,7 +439,10 @@ class StagingBackendLoadWorkflowTests(unittest.TestCase):
     def test_token_cleanup_trap_is_required(self) -> None:
         source = self._replace(
             self._source(),
-            'trap \'if [[ -f "$token_file" ]]; then chmod u+w "$token_file"; rm -f "$token_file"; fi\' EXIT',
+            'trap \'for private_file in "$token_file" "$queue_token_file" '
+            '"$recommendation_token_file" "$search_query_file" '
+            '"$import_source_file"; do if [[ -f "$private_file" ]]; then '
+            'chmod u+w "$private_file"; rm -f "$private_file"; fi; done\' EXIT',
             "trap true EXIT",
         )
         self._assert_rejected(source)

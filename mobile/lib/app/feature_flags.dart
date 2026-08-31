@@ -26,18 +26,90 @@ class FeatureFlags {
     required this.library,
     required this.comments,
     required this.openingMotion,
+    this.paperTitleSearch = false,
+    this.libraryImportWrites = false,
+    this.readingFeed = false,
+    this.toReadFirstEnforcement = false,
+    this.recommendationsEnabled = false,
+    this.recommendationEventsEnabled = false,
+    this.libraryV2Enabled = false,
+    this.searchLookupEnabled = false,
+    this.searchExploreEnabled = false,
+    this.savedQueriesEnabled = false,
+    this.researchProfilesEnabled = false,
+    this.readingBriefsEnabled = false,
+    this.subscriptionsEnabled = false,
+    this.notificationsEnabled = false,
+    this.deepReader = false,
+    this.paperPassport = false,
+    this.semanticFacets = false,
+    this.documentVisualObjects = false,
+    this.readingCheckpoints = false,
+    this.annotations = false,
+    this.evidenceCards = false,
+    this.researchMemory = false,
+    this.versionDiff = false,
+    this.assistantV2 = false,
   });
 
   const FeatureFlags.disabled()
     : accounts = false,
       library = false,
       comments = false,
-      openingMotion = false;
+      openingMotion = false,
+      paperTitleSearch = false,
+      libraryImportWrites = false,
+      readingFeed = false,
+      toReadFirstEnforcement = false,
+      recommendationsEnabled = false,
+      recommendationEventsEnabled = false,
+      libraryV2Enabled = false,
+      searchLookupEnabled = false,
+      searchExploreEnabled = false,
+      savedQueriesEnabled = false,
+      researchProfilesEnabled = false,
+      readingBriefsEnabled = false,
+      subscriptionsEnabled = false,
+      notificationsEnabled = false,
+      deepReader = false,
+      paperPassport = false,
+      semanticFacets = false,
+      documentVisualObjects = false,
+      readingCheckpoints = false,
+      annotations = false,
+      evidenceCards = false,
+      researchMemory = false,
+      versionDiff = false,
+      assistantV2 = false;
 
   final bool accounts;
   final bool library;
   final bool comments;
   final bool openingMotion;
+  final bool paperTitleSearch;
+  final bool libraryImportWrites;
+  final bool readingFeed;
+  final bool toReadFirstEnforcement;
+  final bool recommendationsEnabled;
+  final bool recommendationEventsEnabled;
+  final bool libraryV2Enabled;
+  final bool searchLookupEnabled;
+  final bool searchExploreEnabled;
+  final bool savedQueriesEnabled;
+  final bool researchProfilesEnabled;
+  final bool readingBriefsEnabled;
+  final bool subscriptionsEnabled;
+  final bool notificationsEnabled;
+  final bool deepReader;
+  final bool paperPassport;
+  final bool semanticFacets;
+  final bool documentVisualObjects;
+  final bool readingCheckpoints;
+  final bool annotations;
+  final bool evidenceCards;
+  final bool researchMemory;
+  final bool versionDiff;
+  final bool assistantV2;
 
   @override
   bool operator ==(Object other) {
@@ -45,11 +117,64 @@ class FeatureFlags {
         other.accounts == accounts &&
         other.library == library &&
         other.comments == comments &&
-        other.openingMotion == openingMotion;
+        other.openingMotion == openingMotion &&
+        other.paperTitleSearch == paperTitleSearch &&
+        other.libraryImportWrites == libraryImportWrites &&
+        other.readingFeed == readingFeed &&
+        other.toReadFirstEnforcement == toReadFirstEnforcement &&
+        other.recommendationsEnabled == recommendationsEnabled &&
+        other.recommendationEventsEnabled == recommendationEventsEnabled &&
+        other.libraryV2Enabled == libraryV2Enabled &&
+        other.searchLookupEnabled == searchLookupEnabled &&
+        other.searchExploreEnabled == searchExploreEnabled &&
+        other.savedQueriesEnabled == savedQueriesEnabled &&
+        other.researchProfilesEnabled == researchProfilesEnabled &&
+        other.readingBriefsEnabled == readingBriefsEnabled &&
+        other.subscriptionsEnabled == subscriptionsEnabled &&
+        other.notificationsEnabled == notificationsEnabled &&
+        other.deepReader == deepReader &&
+        other.paperPassport == paperPassport &&
+        other.semanticFacets == semanticFacets &&
+        other.documentVisualObjects == documentVisualObjects &&
+        other.readingCheckpoints == readingCheckpoints &&
+        other.annotations == annotations &&
+        other.evidenceCards == evidenceCards &&
+        other.researchMemory == researchMemory &&
+        other.versionDiff == versionDiff &&
+        other.assistantV2 == assistantV2;
   }
 
   @override
-  int get hashCode => Object.hash(accounts, library, comments, openingMotion);
+  int get hashCode => Object.hashAll([
+    accounts,
+    library,
+    comments,
+    openingMotion,
+    paperTitleSearch,
+    libraryImportWrites,
+    readingFeed,
+    toReadFirstEnforcement,
+    recommendationsEnabled,
+    recommendationEventsEnabled,
+    libraryV2Enabled,
+    searchLookupEnabled,
+    searchExploreEnabled,
+    savedQueriesEnabled,
+    researchProfilesEnabled,
+    readingBriefsEnabled,
+    subscriptionsEnabled,
+    notificationsEnabled,
+    deepReader,
+    paperPassport,
+    semanticFacets,
+    documentVisualObjects,
+    readingCheckpoints,
+    annotations,
+    evidenceCards,
+    researchMemory,
+    versionDiff,
+    assistantV2,
+  ]);
 }
 
 class AppBuildConfig {
@@ -83,6 +208,37 @@ class AppBuildConfig {
   static const _libraryEnabledKey = 'PAKPERK_LIBRARY_ENABLED';
   static const _commentsEnabledKey = 'PAKPERK_COMMENTS_ENABLED';
   static const _openingMotionEnabledKey = 'PAKPERK_OPENING_MOTION_ENABLED';
+  static const _paperTitleSearchEnabledKey =
+      'PAKPERK_PAPER_TITLE_SEARCH_ENABLED';
+  static const _libraryImportWritesEnabledKey =
+      'PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED';
+  static const _readingFeedEnabledKey = 'PAKPERK_READING_FEED_ENABLED';
+  static const _toReadFirstEnforcementEnabledKey =
+      'PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED';
+  static const _recommendationsEnabledKey = 'PAKPERK_RECOMMENDATIONS_ENABLED';
+  static const _recommendationEventsEnabledKey =
+      'PAKPERK_RECOMMENDATION_EVENTS_ENABLED';
+  static const _libraryV2EnabledKey = 'PAKPERK_LIBRARY_V2_ENABLED';
+  static const _searchLookupEnabledKey = 'PAKPERK_SEARCH_LOOKUP_ENABLED';
+  static const _searchExploreEnabledKey = 'PAKPERK_SEARCH_EXPLORE_ENABLED';
+  static const _savedQueriesEnabledKey = 'PAKPERK_SAVED_QUERIES_ENABLED';
+  static const _researchProfilesEnabledKey =
+      'PAKPERK_RESEARCH_PROFILES_ENABLED';
+  static const _readingBriefsEnabledKey = 'PAKPERK_READING_BRIEFS_ENABLED';
+  static const _subscriptionsEnabledKey = 'PAKPERK_SUBSCRIPTIONS_ENABLED';
+  static const _notificationsEnabledKey = 'PAKPERK_NOTIFICATIONS_ENABLED';
+  static const _deepReaderEnabledKey = 'PAKPERK_DEEP_READER_ENABLED';
+  static const _paperPassportEnabledKey = 'PAKPERK_PAPER_PASSPORT_ENABLED';
+  static const _semanticFacetsEnabledKey = 'PAKPERK_SEMANTIC_FACETS_ENABLED';
+  static const _documentVisualObjectsEnabledKey =
+      'PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED';
+  static const _readingCheckpointsEnabledKey =
+      'PAKPERK_READING_CHECKPOINTS_ENABLED';
+  static const _annotationsEnabledKey = 'PAKPERK_ANNOTATIONS_ENABLED';
+  static const _evidenceCardsEnabledKey = 'PAKPERK_EVIDENCE_CARDS_ENABLED';
+  static const _researchMemoryEnabledKey = 'PAKPERK_RESEARCH_MEMORY_ENABLED';
+  static const _versionDiffEnabledKey = 'PAKPERK_VERSION_DIFF_ENABLED';
+  static const _assistantV2EnabledKey = 'PAKPERK_ASSISTANT_V2_ENABLED';
   static const _oidcIssuerUrlKey = 'PAKPERK_OIDC_ISSUER_URL';
   static const _oidcClientIdKey = 'PAKPERK_OIDC_CLIENT_ID';
   static const _oidcRedirectUriKey = 'PAKPERK_OIDC_REDIRECT_URI';
@@ -136,6 +292,102 @@ class AppBuildConfig {
     ),
     _openingMotionEnabledKey: const String.fromEnvironment(
       _openingMotionEnabledKey,
+      defaultValue: 'false',
+    ),
+    _paperTitleSearchEnabledKey: const String.fromEnvironment(
+      _paperTitleSearchEnabledKey,
+      defaultValue: 'false',
+    ),
+    _libraryImportWritesEnabledKey: const String.fromEnvironment(
+      _libraryImportWritesEnabledKey,
+      defaultValue: 'false',
+    ),
+    _readingFeedEnabledKey: const String.fromEnvironment(
+      _readingFeedEnabledKey,
+      defaultValue: 'false',
+    ),
+    _toReadFirstEnforcementEnabledKey: const String.fromEnvironment(
+      _toReadFirstEnforcementEnabledKey,
+      defaultValue: 'false',
+    ),
+    _recommendationsEnabledKey: const String.fromEnvironment(
+      _recommendationsEnabledKey,
+      defaultValue: 'false',
+    ),
+    _recommendationEventsEnabledKey: const String.fromEnvironment(
+      _recommendationEventsEnabledKey,
+      defaultValue: 'false',
+    ),
+    _libraryV2EnabledKey: const String.fromEnvironment(
+      _libraryV2EnabledKey,
+      defaultValue: 'false',
+    ),
+    _searchLookupEnabledKey: const String.fromEnvironment(
+      _searchLookupEnabledKey,
+      defaultValue: 'false',
+    ),
+    _searchExploreEnabledKey: const String.fromEnvironment(
+      _searchExploreEnabledKey,
+      defaultValue: 'false',
+    ),
+    _savedQueriesEnabledKey: const String.fromEnvironment(
+      _savedQueriesEnabledKey,
+      defaultValue: 'false',
+    ),
+    _researchProfilesEnabledKey: const String.fromEnvironment(
+      _researchProfilesEnabledKey,
+      defaultValue: 'false',
+    ),
+    _readingBriefsEnabledKey: const String.fromEnvironment(
+      _readingBriefsEnabledKey,
+      defaultValue: 'false',
+    ),
+    _subscriptionsEnabledKey: const String.fromEnvironment(
+      _subscriptionsEnabledKey,
+      defaultValue: 'false',
+    ),
+    _notificationsEnabledKey: const String.fromEnvironment(
+      _notificationsEnabledKey,
+      defaultValue: 'false',
+    ),
+    _deepReaderEnabledKey: const String.fromEnvironment(
+      _deepReaderEnabledKey,
+      defaultValue: 'false',
+    ),
+    _paperPassportEnabledKey: const String.fromEnvironment(
+      _paperPassportEnabledKey,
+      defaultValue: 'false',
+    ),
+    _semanticFacetsEnabledKey: const String.fromEnvironment(
+      _semanticFacetsEnabledKey,
+      defaultValue: 'false',
+    ),
+    _documentVisualObjectsEnabledKey: const String.fromEnvironment(
+      _documentVisualObjectsEnabledKey,
+      defaultValue: 'false',
+    ),
+    _readingCheckpointsEnabledKey: const String.fromEnvironment(
+      _readingCheckpointsEnabledKey,
+      defaultValue: 'false',
+    ),
+    _annotationsEnabledKey: const String.fromEnvironment(
+      _annotationsEnabledKey,
+      defaultValue: 'false',
+    ),
+    _evidenceCardsEnabledKey: const String.fromEnvironment(
+      _evidenceCardsEnabledKey,
+      defaultValue: 'false',
+    ),
+    _researchMemoryEnabledKey: const String.fromEnvironment(
+      _researchMemoryEnabledKey,
+      defaultValue: 'false',
+    ),
+    _versionDiffEnabledKey: const String.fromEnvironment(
+      _versionDiffEnabledKey,
+      defaultValue: 'false',
+    ),
+    _assistantV2EnabledKey: const String.fromEnvironment(
+      _assistantV2EnabledKey,
       defaultValue: 'false',
     ),
     _oidcIssuerUrlKey: const String.fromEnvironment(_oidcIssuerUrlKey),
@@ -225,6 +477,39 @@ class AppBuildConfig {
       library: _parseBool(values, _libraryEnabledKey),
       comments: _parseBool(values, _commentsEnabledKey),
       openingMotion: _parseBool(values, _openingMotionEnabledKey),
+      paperTitleSearch: _parseBool(values, _paperTitleSearchEnabledKey),
+      libraryImportWrites: _parseBool(values, _libraryImportWritesEnabledKey),
+      readingFeed: _parseBool(values, _readingFeedEnabledKey),
+      toReadFirstEnforcement: _parseBool(
+        values,
+        _toReadFirstEnforcementEnabledKey,
+      ),
+      recommendationsEnabled: _parseBool(values, _recommendationsEnabledKey),
+      recommendationEventsEnabled: _parseBool(
+        values,
+        _recommendationEventsEnabledKey,
+      ),
+      libraryV2Enabled: _parseBool(values, _libraryV2EnabledKey),
+      searchLookupEnabled: _parseBool(values, _searchLookupEnabledKey),
+      searchExploreEnabled: _parseBool(values, _searchExploreEnabledKey),
+      savedQueriesEnabled: _parseBool(values, _savedQueriesEnabledKey),
+      researchProfilesEnabled: _parseBool(values, _researchProfilesEnabledKey),
+      readingBriefsEnabled: _parseBool(values, _readingBriefsEnabledKey),
+      subscriptionsEnabled: _parseBool(values, _subscriptionsEnabledKey),
+      notificationsEnabled: _parseBool(values, _notificationsEnabledKey),
+      deepReader: _parseBool(values, _deepReaderEnabledKey),
+      paperPassport: _parseBool(values, _paperPassportEnabledKey),
+      semanticFacets: _parseBool(values, _semanticFacetsEnabledKey),
+      documentVisualObjects: _parseBool(
+        values,
+        _documentVisualObjectsEnabledKey,
+      ),
+      readingCheckpoints: _parseBool(values, _readingCheckpointsEnabledKey),
+      annotations: _parseBool(values, _annotationsEnabledKey),
+      evidenceCards: _parseBool(values, _evidenceCardsEnabledKey),
+      researchMemory: _parseBool(values, _researchMemoryEnabledKey),
+      versionDiff: _parseBool(values, _versionDiffEnabledKey),
+      assistantV2: _parseBool(values, _assistantV2EnabledKey),
     );
     if (features.library && !features.accounts) {
       throw BuildConfigurationException(
@@ -234,6 +519,122 @@ class AppBuildConfig {
     if (features.comments && !features.accounts) {
       throw BuildConfigurationException(
         'Comments require the accounts feature.',
+      );
+    }
+    if (features.paperTitleSearch && !features.accounts) {
+      throw BuildConfigurationException(
+        'Paper title search requires the accounts feature.',
+      );
+    }
+    if (features.libraryImportWrites &&
+        (!features.accounts || !features.library)) {
+      throw BuildConfigurationException(
+        'Library imports require the accounts and library features.',
+      );
+    }
+    if (features.readingFeed && (!features.accounts || !features.library)) {
+      throw BuildConfigurationException(
+        'The authenticated reading feed requires accounts and library.',
+      );
+    }
+    if (features.toReadFirstEnforcement && !features.readingFeed) {
+      throw BuildConfigurationException(
+        'To Read First enforcement requires the authenticated reading feed.',
+      );
+    }
+    if (features.recommendationsEnabled &&
+        (!features.accounts || !features.library || !features.readingFeed)) {
+      throw BuildConfigurationException(
+        'Recommendation interactions require accounts, library, and the '
+        'authenticated reading feed.',
+      );
+    }
+    if (features.libraryV2Enabled &&
+        (!features.accounts || !features.library)) {
+      throw BuildConfigurationException(
+        'Library v2 requires accounts and library.',
+      );
+    }
+    if (features.searchExploreEnabled && !features.searchLookupEnabled) {
+      throw BuildConfigurationException(
+        'Explore search requires Lookup search.',
+      );
+    }
+    if (features.savedQueriesEnabled &&
+        (!features.accounts || !features.searchExploreEnabled)) {
+      throw BuildConfigurationException(
+        'Saved queries require accounts and Explore search.',
+      );
+    }
+    if (features.researchProfilesEnabled && !features.accounts) {
+      throw BuildConfigurationException(
+        'Research profiles require the accounts feature.',
+      );
+    }
+    if (features.readingBriefsEnabled && !features.readingFeed) {
+      throw BuildConfigurationException(
+        'Reading briefs require the authenticated reading feed.',
+      );
+    }
+    if (features.subscriptionsEnabled &&
+        (!features.accounts || !features.library || !features.readingFeed)) {
+      throw BuildConfigurationException(
+        'Subscriptions require accounts, library, and the authenticated '
+        'reading feed.',
+      );
+    }
+    if (features.notificationsEnabled && !features.subscriptionsEnabled) {
+      throw BuildConfigurationException('Notifications require subscriptions.');
+    }
+    if (features.deepReader &&
+        (!features.accounts ||
+            !features.library ||
+            !features.readingFeed ||
+            !features.toReadFirstEnforcement)) {
+      throw BuildConfigurationException(
+        'Deep reader requires accounts, library, reading feed, and To Read '
+        'First enforcement.',
+      );
+    }
+    if (features.paperPassport && !features.deepReader) {
+      throw BuildConfigurationException(
+        'Paper Passport requires the deep reader.',
+      );
+    }
+    if (features.semanticFacets && !features.deepReader) {
+      throw BuildConfigurationException(
+        'Semantic facets require the deep reader.',
+      );
+    }
+    if (features.documentVisualObjects && !features.deepReader) {
+      throw BuildConfigurationException(
+        'Document visual objects require the deep reader.',
+      );
+    }
+    if (features.readingCheckpoints && !features.deepReader) {
+      throw BuildConfigurationException(
+        'Reading checkpoints require the deep reader.',
+      );
+    }
+    if (features.annotations && !features.deepReader) {
+      throw BuildConfigurationException('Annotations require the deep reader.');
+    }
+    if (features.evidenceCards && !features.annotations) {
+      throw BuildConfigurationException('Evidence cards require annotations.');
+    }
+    if (features.researchMemory && !features.evidenceCards) {
+      throw BuildConfigurationException(
+        'Research memory requires evidence cards.',
+      );
+    }
+    if (features.versionDiff && !features.deepReader) {
+      throw BuildConfigurationException(
+        'Version comparison requires the deep reader.',
+      );
+    }
+    if (features.assistantV2 && !features.deepReader) {
+      throw BuildConfigurationException(
+        'Assistant v2 requires the deep reader.',
       );
     }
 

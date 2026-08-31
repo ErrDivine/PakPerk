@@ -1,0 +1,57 @@
+{
+  "enforcement": "shadow",
+  "mode": "recommendations",
+  "decision": {
+    "policy_version": "queue_first_v1",
+    "library_revision": 129,
+    "active_to_read_count": 0,
+    "queue_proven_empty": true
+  },
+  "batch_id": "0198f4d7-a4ce-7b40-8ee8-4f350350830e",
+  "batch_metadata": {
+    "profile_revision": 7,
+    "feedback_revision": 12,
+    "algorithm_version": "recommendations_v1",
+    "recommendation_policy_version": "weighted_v1"
+  },
+  "items": [
+    {
+      "paper": {
+        "paper_id": "0198f4d7-a4ce-7b40-8ee8-4f350350820d",
+        "arxiv_id": "2501.01010v1",
+        "title": "A discovery candidate",
+        "abstract": "Bounded public arXiv metadata.",
+        "authors": [
+          "Grace Researcher"
+        ],
+        "primary_category": "cs.LG",
+        "categories": [
+          "cs.LG"
+        ],
+        "published_at": "2026-01-03T00:00:00Z",
+        "updated_at": "2026-01-03T00:00:00Z",
+        "abs_url": "https://arxiv.org/abs/2501.01010v1",
+        "pdf_url": "https://arxiv.org/pdf/2501.01010v1",
+        "capabilities": {
+          "metadata": true,
+          "introduction": false,
+          "chat": false,
+          "connections": false
+        }
+      },
+      "queue": null,
+      "source": "for_you_v1",
+      "recommendation": {
+        "mode": "for_you",
+        "reason_codes": [
+          "feedback_category_affinity"
+        ],
+        "reason_label": "Based on your relevance feedback",
+        "explanation_available": true
+      }
+    }
+  ],
+  "next_cursor": null,
+  "brief": null,
+  "server_time": "2026-08-19T12:00:00Z"
+}

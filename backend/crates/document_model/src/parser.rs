@@ -67,6 +67,7 @@ impl XmlElement {
 struct InlineText {
     text: String,
     citations: Vec<CitationMarker>,
+    object_references: Vec<ObjectReferenceMarker>,
 }
 
 #[derive(Debug)]
@@ -77,11 +78,119 @@ struct CitationMarker {
     end_sentinel: Option<char>,
 }
 
+#[derive(Debug)]
+struct ObjectReferenceMarker {
+    kind: ParsedTeiObjectKind,
+    targets: Vec<String>,
+    marker: String,
+    start_sentinel: Option<char>,
+    end_sentinel: Option<char>,
+}
+
+#[derive(Debug)]
+struct NormalizedObjectReferenceMarker {
+    kind: ParsedTeiObjectKind,
+    targets: Vec<String>,
+    marker: String,
+    start: usize,
+    end: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MarkerOwner {
+    Citation(usize),
+    Object(usize),
+}
+
+/// Parser-neutral visual-object metadata extracted from one TEI document.
+///
+/// Image bytes are deliberately absent. GROBID's TEI can identify a figure
+/// and its caption, but that does not prove that a trustworthy, correctly
+/// associated derivative exists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedTeiFigure {
+    pub source_id: String,
+    pub label: String,
+    pub caption: String,
+    pub caption_available: bool,
+    pub page_number: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedTeiTableCell {
+    pub text: String,
+    pub header: bool,
+    pub row_span: u16,
+    pub column_span: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedTeiTable {
+    pub source_id: String,
+    pub label: String,
+    pub caption: String,
+    pub caption_available: bool,
+    pub rows: Vec<Vec<ParsedTeiTableCell>>,
+    pub plain_text: String,
+    pub structure_complete: bool,
+    pub page_number: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedTeiEquation {
+    pub source_id: String,
+    pub label: Option<String>,
+    pub latex: Option<String>,
+    pub mathml: Option<String>,
+    pub plain_text: Option<String>,
+    pub page_number: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParsedTeiObjectKind {
+    Figure,
+    Table,
+    Equation,
+}
+
+/// Exact reference location retained so normalization can link the paragraph
+/// block to the generation-scoped visual-object UUID.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedTeiObjectReference {
+    pub kind: ParsedTeiObjectKind,
+    pub target_source_id: String,
+    pub section_source_id: String,
+    pub paragraph_ordinal: usize,
+    pub start: usize,
+    pub end: usize,
+    pub marker: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedTeiDocument {
+    pub paper: ParsedPaper,
+    pub figures: Vec<ParsedTeiFigure>,
+    pub tables: Vec<ParsedTeiTable>,
+    pub equations: Vec<ParsedTeiEquation>,
+    pub object_references: Vec<ParsedTeiObjectReference>,
+}
+
 pub fn parse_tei(xml: &str) -> Result<ParsedPaper, DocumentError> {
     parse_tei_with_limits(xml, ParseLimits::default())
 }
 
 pub fn parse_tei_with_limits(xml: &str, limits: ParseLimits) -> Result<ParsedPaper, DocumentError> {
+    parse_tei_document_with_limits(xml, limits).map(|document| document.paper)
+}
+
+pub fn parse_tei_document(xml: &str) -> Result<ParsedTeiDocument, DocumentError> {
+    parse_tei_document_with_limits(xml, ParseLimits::default())
+}
+
+pub fn parse_tei_document_with_limits(
+    xml: &str,
+    limits: ParseLimits,
+) -> Result<ParsedTeiDocument, DocumentError> {
     if xml.trim().is_empty() {
         return Err(DocumentError::EmptyDocument);
     }
@@ -104,6 +213,7 @@ pub fn parse_tei_with_limits(xml: &str, limits: ParseLimits) -> Result<ParsedPap
         .collect::<HashSet<_>>();
     let mut sections = Vec::new();
     let mut contexts = Vec::new();
+    let mut object_references = Vec::new();
     let mut occurrences = HashMap::new();
 
     let body_paragraphs = collect_paragraphs_excluding_divs(body);
@@ -117,6 +227,7 @@ pub fn parse_tei_with_limits(xml: &str, limits: ParseLimits) -> Result<ParsedPap
             body_paragraphs,
             &mut sections,
             &mut contexts,
+            &mut object_references,
             &mut occurrences,
             &reference_ordinals,
         );
@@ -126,16 +237,25 @@ pub fn parse_tei_with_limits(xml: &str, limits: ParseLimits) -> Result<ParsedPap
         None,
         &mut sections,
         &mut contexts,
+        &mut object_references,
         &mut occurrences,
         &reference_ordinals,
     );
     contexts.retain(|context| reference_ids.contains(context.reference_source_id.as_str()));
 
-    Ok(ParsedPaper {
-        title,
-        sections,
-        references,
-        citation_contexts: contexts,
+    let (figures, tables) = extract_figures_and_tables(body);
+    let equations = extract_equations(body);
+    Ok(ParsedTeiDocument {
+        paper: ParsedPaper {
+            title,
+            sections,
+            references,
+            citation_contexts: contexts,
+        },
+        figures,
+        tables,
+        equations,
+        object_references,
     })
 }
 
@@ -311,6 +431,7 @@ fn walk_divisions(
     parent_source_id: Option<&str>,
     sections: &mut Vec<ParsedSection>,
     contexts: &mut Vec<ParsedCitationContext>,
+    object_references: &mut Vec<ParsedTeiObjectReference>,
     occurrences: &mut HashMap<String, usize>,
     reference_ordinals: &HashMap<String, usize>,
 ) {
@@ -336,6 +457,7 @@ fn walk_divisions(
                 paragraphs,
                 sections,
                 contexts,
+                object_references,
                 occurrences,
                 reference_ordinals,
             );
@@ -344,6 +466,7 @@ fn walk_divisions(
                 Some(&source_id),
                 sections,
                 contexts,
+                object_references,
                 occurrences,
                 reference_ordinals,
             );
@@ -353,6 +476,7 @@ fn walk_divisions(
                 parent_source_id,
                 sections,
                 contexts,
+                object_references,
                 occurrences,
                 reference_ordinals,
             );
@@ -370,6 +494,7 @@ fn push_section(
     paragraph_nodes: Vec<&XmlElement>,
     sections: &mut Vec<ParsedSection>,
     contexts: &mut Vec<ParsedCitationContext>,
+    object_references: &mut Vec<ParsedTeiObjectReference>,
     occurrences: &mut HashMap<String, usize>,
     reference_ordinals: &HashMap<String, usize>,
 ) {
@@ -378,7 +503,8 @@ fn push_section(
     let mut paragraphs = Vec::new();
     for node in paragraph_nodes {
         let inline = inline_text(node);
-        let (text, citations) = normalize_inline_text(&inline, reference_ordinals);
+        let (text, citations, normalized_object_references) =
+            normalize_inline_text(&inline, reference_ordinals);
         if text.is_empty() || looks_like_running_artifact(&text) {
             continue;
         }
@@ -397,6 +523,19 @@ fn push_section(
                     occurrence_ordinal: *occurrence,
                 });
                 *occurrence += 1;
+            }
+        }
+        for reference in normalized_object_references {
+            for target_source_id in reference.targets {
+                object_references.push(ParsedTeiObjectReference {
+                    kind: reference.kind,
+                    target_source_id,
+                    section_source_id: source_id.clone(),
+                    paragraph_ordinal,
+                    start: reference.start,
+                    end: reference.end,
+                    marker: reference.marker.clone(),
+                });
             }
         }
         paragraphs.push(ParsedParagraph {
@@ -448,12 +587,13 @@ fn collect_paragraphs_excluding_divs(node: &XmlElement) -> Vec<&XmlElement> {
 }
 
 fn inline_text(node: &XmlElement) -> InlineText {
-    fn walk(node: &XmlElement, text: &mut String, citations: &mut Vec<CitationMarker>) {
-        if node.name == "ref"
-            && node
-                .attribute("type")
-                .is_some_and(|kind| kind.eq_ignore_ascii_case("bibr"))
-        {
+    fn walk(
+        node: &XmlElement,
+        text: &mut String,
+        citations: &mut Vec<CitationMarker>,
+        object_references: &mut Vec<ObjectReferenceMarker>,
+    ) {
+        if node.name == "ref" {
             let marker = element_text(node);
             if let Some(targets) = node.attribute("target") {
                 let targets = targets
@@ -462,21 +602,37 @@ fn inline_text(node: &XmlElement) -> InlineText {
                     .filter(|target| !target.is_empty())
                     .collect::<Vec<_>>();
                 if !targets.is_empty() {
-                    let marker_index = citations.len();
+                    let marker_index = citations.len().saturating_add(object_references.len());
                     let (start_sentinel, end_sentinel) = citation_sentinels(marker_index)
                         .map_or((None, None), |(start, end)| (Some(start), Some(end)));
                     let annotated_marker = match (start_sentinel, end_sentinel) {
                         (Some(start), Some(end)) => format!("{start}{marker}{end}"),
                         _ => marker.clone(),
                     };
-                    citations.push(CitationMarker {
-                        targets,
-                        marker: marker.clone(),
-                        start_sentinel,
-                        end_sentinel,
-                    });
-                    push_text(text, &annotated_marker);
-                    return;
+                    if node
+                        .attribute("type")
+                        .is_some_and(|kind| kind.eq_ignore_ascii_case("bibr"))
+                    {
+                        citations.push(CitationMarker {
+                            targets,
+                            marker: marker.clone(),
+                            start_sentinel,
+                            end_sentinel,
+                        });
+                        push_text(text, &annotated_marker);
+                        return;
+                    }
+                    if let Some(kind) = parsed_object_reference_kind(node.attribute("type")) {
+                        object_references.push(ObjectReferenceMarker {
+                            kind,
+                            targets,
+                            marker: marker.clone(),
+                            start_sentinel,
+                            end_sentinel,
+                        });
+                        push_text(text, &annotated_marker);
+                        return;
+                    }
                 }
             }
             push_text(text, &marker);
@@ -485,14 +641,34 @@ fn inline_text(node: &XmlElement) -> InlineText {
         for child in &node.children {
             match child {
                 XmlContent::Text(value) => push_text(text, value),
-                XmlContent::Element(element) => walk(element, text, citations),
+                XmlContent::Element(element) => {
+                    walk(element, text, citations, object_references);
+                }
             }
         }
     }
     let mut text = String::new();
     let mut citations = Vec::new();
-    walk(node, &mut text, &mut citations);
-    InlineText { text, citations }
+    let mut object_references = Vec::new();
+    walk(node, &mut text, &mut citations, &mut object_references);
+    InlineText {
+        text,
+        citations,
+        object_references,
+    }
+}
+
+fn parsed_object_reference_kind(value: Option<&str>) -> Option<ParsedTeiObjectKind> {
+    let value = value?.to_ascii_lowercase();
+    if matches!(value.as_str(), "figure" | "fig") {
+        Some(ParsedTeiObjectKind::Figure)
+    } else if matches!(value.as_str(), "table" | "tab") {
+        Some(ParsedTeiObjectKind::Table)
+    } else if matches!(value.as_str(), "formula" | "equation" | "eq") {
+        Some(ParsedTeiObjectKind::Equation)
+    } else {
+        None
+    }
 }
 
 fn citation_sentinels(index: usize) -> Option<(char, char)> {
@@ -507,34 +683,50 @@ fn citation_sentinels(index: usize) -> Option<(char, char)> {
 fn normalize_inline_text(
     inline: &InlineText,
     reference_ordinals: &HashMap<String, usize>,
-) -> (String, Vec<ParsedCitationMarker>) {
+) -> (
+    String,
+    Vec<ParsedCitationMarker>,
+    Vec<NormalizedObjectReferenceMarker>,
+) {
     let normalized = normalize_text(&inline.text);
-    let sentinels = inline
-        .citations
-        .iter()
-        .enumerate()
-        .flat_map(|(index, citation)| {
-            citation
-                .start_sentinel
-                .map(|sentinel| (sentinel, (index, false)))
-                .into_iter()
-                .chain(
-                    citation
-                        .end_sentinel
-                        .map(|sentinel| (sentinel, (index, true))),
-                )
-        })
-        .collect::<HashMap<_, _>>();
-    let mut starts = vec![None; inline.citations.len()];
-    let mut ends = vec![None; inline.citations.len()];
+    let mut sentinels = HashMap::new();
+    for (index, citation) in inline.citations.iter().enumerate() {
+        if let Some(sentinel) = citation.start_sentinel {
+            sentinels.insert(sentinel, (MarkerOwner::Citation(index), false));
+        }
+        if let Some(sentinel) = citation.end_sentinel {
+            sentinels.insert(sentinel, (MarkerOwner::Citation(index), true));
+        }
+    }
+    for (index, reference) in inline.object_references.iter().enumerate() {
+        if let Some(sentinel) = reference.start_sentinel {
+            sentinels.insert(sentinel, (MarkerOwner::Object(index), false));
+        }
+        if let Some(sentinel) = reference.end_sentinel {
+            sentinels.insert(sentinel, (MarkerOwner::Object(index), true));
+        }
+    }
+    let mut citation_starts = vec![None; inline.citations.len()];
+    let mut citation_ends = vec![None; inline.citations.len()];
+    let mut object_starts = vec![None; inline.object_references.len()];
+    let mut object_ends = vec![None; inline.object_references.len()];
     let mut text = String::with_capacity(normalized.len());
     let mut scalar_offset = 0usize;
     for character in normalized.chars() {
-        if let Some((index, end)) = sentinels.get(&character).copied() {
-            if end {
-                ends[index] = Some(scalar_offset);
-            } else {
-                starts[index] = Some(scalar_offset);
+        if let Some((owner, end)) = sentinels.get(&character).copied() {
+            match (owner, end) {
+                (MarkerOwner::Citation(index), false) => {
+                    citation_starts[index] = Some(scalar_offset);
+                }
+                (MarkerOwner::Citation(index), true) => {
+                    citation_ends[index] = Some(scalar_offset);
+                }
+                (MarkerOwner::Object(index), false) => {
+                    object_starts[index] = Some(scalar_offset);
+                }
+                (MarkerOwner::Object(index), true) => {
+                    object_ends[index] = Some(scalar_offset);
+                }
             }
             continue;
         }
@@ -546,8 +738,8 @@ fn normalize_inline_text(
         .iter()
         .enumerate()
         .filter_map(|(index, citation)| {
-            let start = starts[index]?;
-            let end = ends[index]?;
+            let start = citation_starts[index]?;
+            let end = citation_ends[index]?;
             let reference_ordinals = citation
                 .targets
                 .iter()
@@ -561,7 +753,21 @@ fn normalize_inline_text(
             })
         })
         .collect();
-    (text, citations)
+    let object_references = inline
+        .object_references
+        .iter()
+        .enumerate()
+        .filter_map(|(index, reference)| {
+            Some(NormalizedObjectReferenceMarker {
+                kind: reference.kind,
+                targets: reference.targets.clone(),
+                marker: reference.marker.clone(),
+                start: object_starts[index]?,
+                end: object_ends[index]?,
+            })
+        })
+        .collect();
+    (text, citations, object_references)
 }
 
 fn element_text(node: &XmlElement) -> String {
@@ -609,6 +815,364 @@ fn page_range(node: &XmlElement) -> (Option<u32>, Option<u32>) {
     let mut pages = Vec::new();
     walk(node, &mut pages);
     (pages.iter().copied().min(), pages.iter().copied().max())
+}
+
+fn extract_figures_and_tables(body: &XmlElement) -> (Vec<ParsedTeiFigure>, Vec<ParsedTeiTable>) {
+    let mut nodes = Vec::new();
+    collect_named(body, &["figure"], &mut nodes);
+    let mut figures = Vec::new();
+    let mut tables = Vec::new();
+    let mut source_ids = HashSet::new();
+    for node in nodes {
+        let table_node = find_descendant(node, "table");
+        let is_table = table_node.is_some()
+            || node
+                .attribute("type")
+                .is_some_and(|value| value.eq_ignore_ascii_case("table"));
+        if is_table {
+            let ordinal = tables.len();
+            if let Some(table) = extract_table(node, table_node, ordinal, &mut source_ids) {
+                tables.push(table);
+            }
+        } else {
+            let ordinal = figures.len();
+            figures.push(extract_figure(node, ordinal, &mut source_ids));
+        }
+    }
+    (figures, tables)
+}
+
+fn extract_figure(
+    node: &XmlElement,
+    ordinal: usize,
+    source_ids: &mut HashSet<String>,
+) -> ParsedTeiFigure {
+    let source_id = visual_source_id(node, "figure", ordinal, source_ids);
+    let label = visual_label(node, "Figure", ordinal);
+    let caption = visual_caption(node);
+    let caption_available = caption.is_some();
+    ParsedTeiFigure {
+        source_id,
+        label: label.clone(),
+        caption: caption.unwrap_or(label),
+        caption_available,
+        page_number: page_range(node).0,
+    }
+}
+
+fn extract_table(
+    figure_node: &XmlElement,
+    table_node: Option<&XmlElement>,
+    ordinal: usize,
+    source_ids: &mut HashSet<String>,
+) -> Option<ParsedTeiTable> {
+    let table_node = table_node.unwrap_or(figure_node);
+    let source_id = visual_source_id(figure_node, "table", ordinal, source_ids);
+    let label = visual_label(figure_node, "Table", ordinal);
+    let caption = visual_caption(figure_node);
+    let caption_available = caption.is_some();
+    let mut structure_complete = true;
+    let mut rows = Vec::new();
+    for row in descendants_named(table_node, "row") {
+        let mut cells = Vec::new();
+        for cell in row.direct_named("cell") {
+            let (row_span, row_span_valid) = table_span(cell, &["rows", "rowspan"]);
+            let (column_span, column_span_valid) = table_span(cell, &["cols", "colspan"]);
+            structure_complete &= row_span_valid && column_span_valid;
+            cells.push(ParsedTeiTableCell {
+                text: element_text(cell),
+                header: table_cell_is_header(cell),
+                row_span,
+                column_span,
+            });
+        }
+        if cells.is_empty() {
+            structure_complete = false;
+        } else {
+            rows.push(cells);
+        }
+    }
+    let mut plain_text = rows
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(|cell| cell.text.as_str())
+                .collect::<Vec<_>>()
+                .join("\t")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    if plain_text.is_empty() {
+        plain_text = element_text(table_node);
+        structure_complete = false;
+    }
+    for note in figure_node.direct_named("note") {
+        let note = element_text(note);
+        if !note.is_empty() {
+            if !plain_text.is_empty() {
+                plain_text.push('\n');
+            }
+            plain_text.push_str(&note);
+        }
+    }
+    if plain_text.is_empty() {
+        return None;
+    }
+    Some(ParsedTeiTable {
+        source_id,
+        label: label.clone(),
+        caption: caption.unwrap_or(label),
+        caption_available,
+        rows,
+        plain_text,
+        structure_complete,
+        page_number: page_range(figure_node).0,
+    })
+}
+
+fn extract_equations(body: &XmlElement) -> Vec<ParsedTeiEquation> {
+    let mut nodes = Vec::new();
+    collect_named(body, &["formula"], &mut nodes);
+    let mut equations = Vec::new();
+    let mut source_ids = HashSet::new();
+    for node in nodes {
+        let ordinal = equations.len();
+        let label = node
+            .direct_named("label")
+            .next()
+            .map(element_text)
+            .filter(|value| valid_optional_label(value, 128));
+        let math = find_descendant(node, "math");
+        let mathml = math.and_then(sanitized_mathml);
+        let latex = math.and_then(extract_latex_annotation).or_else(|| {
+            node.attribute("notation")
+                .filter(|value| {
+                    value.eq_ignore_ascii_case("tex") || value.eq_ignore_ascii_case("latex")
+                })
+                .map(|_| element_text_excluding(node, &["label"]))
+                .filter(|value| !value.is_empty())
+        });
+        let plain_text = math
+            .map(element_text)
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                let text = element_text_excluding(node, &["label"]);
+                (!text.is_empty()).then_some(text)
+            });
+        if latex.is_none() && mathml.is_none() && plain_text.is_none() {
+            continue;
+        }
+        equations.push(ParsedTeiEquation {
+            source_id: visual_source_id(node, "equation", ordinal, &mut source_ids),
+            label,
+            latex,
+            mathml,
+            plain_text,
+            page_number: page_range(node).0,
+        });
+    }
+    equations
+}
+
+fn visual_source_id(
+    node: &XmlElement,
+    prefix: &str,
+    ordinal: usize,
+    source_ids: &mut HashSet<String>,
+) -> String {
+    let candidate = node
+        .attribute("id")
+        .map(normalize_text)
+        .filter(|value| {
+            valid_optional_label(value, 200)
+                && !value.contains(['/', '\\'])
+                && !value.contains("..")
+        })
+        .unwrap_or_else(|| format!("{prefix}-{ordinal}"));
+    if source_ids.insert(candidate.clone()) {
+        candidate
+    } else {
+        let fallback = format!("{prefix}-{ordinal}");
+        source_ids.insert(fallback.clone());
+        fallback
+    }
+}
+
+fn visual_label(node: &XmlElement, kind: &str, ordinal: usize) -> String {
+    node.direct_named("label")
+        .next()
+        .map(element_text)
+        .filter(|value| valid_optional_label(value, 128))
+        .unwrap_or_else(|| format!("{kind} {}", ordinal.saturating_add(1)))
+}
+
+fn visual_caption(node: &XmlElement) -> Option<String> {
+    node.direct_named("figDesc")
+        .chain(node.direct_named("head"))
+        .map(element_text)
+        .find(|value| !value.is_empty())
+}
+
+fn table_span(node: &XmlElement, names: &[&str]) -> (u16, bool) {
+    let Some(value) = names.iter().find_map(|name| node.attribute(name)) else {
+        return (1, true);
+    };
+    value
+        .parse::<u16>()
+        .ok()
+        .filter(|value| (1..=1_000).contains(value))
+        .map_or((1, false), |value| (value, true))
+}
+
+fn table_cell_is_header(node: &XmlElement) -> bool {
+    ["role", "type", "rend"]
+        .iter()
+        .filter_map(|name| node.attribute(name))
+        .any(|value| value.to_ascii_lowercase().contains("head"))
+}
+
+fn valid_optional_label(value: &str, maximum: usize) -> bool {
+    let count = value.chars().count();
+    count > 0 && count <= maximum && !value.contains('\0') && value == value.trim()
+}
+
+fn element_text_excluding(node: &XmlElement, excluded: &[&str]) -> String {
+    fn walk(node: &XmlElement, excluded: &[&str], output: &mut String) {
+        for child in &node.children {
+            match child {
+                XmlContent::Text(text) => push_text(output, text),
+                XmlContent::Element(element) if !excluded.contains(&element.name.as_str()) => {
+                    walk(element, excluded, output);
+                }
+                XmlContent::Element(_) => {}
+            }
+        }
+    }
+    let mut output = String::new();
+    walk(node, excluded, &mut output);
+    normalize_text(&output)
+}
+
+fn extract_latex_annotation(math: &XmlElement) -> Option<String> {
+    descendants_named(math, "annotation")
+        .into_iter()
+        .find(|annotation| {
+            annotation.attribute("encoding").is_some_and(|encoding| {
+                matches!(
+                    encoding.to_ascii_lowercase().as_str(),
+                    "application/x-tex" | "application/x-latex" | "tex" | "latex"
+                )
+            })
+        })
+        .map(element_text)
+        .filter(|value| !value.is_empty())
+}
+
+fn sanitized_mathml(math: &XmlElement) -> Option<String> {
+    const ALLOWED_ELEMENTS: &[&str] = &[
+        "annotation",
+        "math",
+        "merror",
+        "mfenced",
+        "mfrac",
+        "mi",
+        "mmultiscripts",
+        "mn",
+        "mo",
+        "mover",
+        "mpadded",
+        "mphantom",
+        "mprescripts",
+        "mroot",
+        "mrow",
+        "ms",
+        "mspace",
+        "msqrt",
+        "mstyle",
+        "msub",
+        "msubsup",
+        "msup",
+        "mtable",
+        "mtd",
+        "mtext",
+        "mtr",
+        "munder",
+        "munderover",
+        "none",
+        "semantics",
+    ];
+    const ALLOWED_ATTRIBUTES: &[&str] = &[
+        "alttext",
+        "columnalign",
+        "columnspan",
+        "display",
+        "encoding",
+        "fence",
+        "linethickness",
+        "mathvariant",
+        "rowalign",
+        "rowspan",
+        "separator",
+        "stretchy",
+    ];
+    fn write_node(
+        node: &XmlElement,
+        output: &mut String,
+        elements: &[&str],
+        attributes: &[&str],
+    ) -> bool {
+        if !elements.contains(&node.name.as_str()) {
+            return false;
+        }
+        output.push('<');
+        output.push_str(&node.name);
+        let mut allowed = node
+            .attributes
+            .iter()
+            .filter(|(name, _)| attributes.contains(&name.as_str()))
+            .collect::<Vec<_>>();
+        allowed.sort_by_key(|(name, _)| name.as_str());
+        for (name, value) in allowed {
+            output.push(' ');
+            output.push_str(name);
+            output.push_str("=\"");
+            push_xml_escaped(output, value);
+            output.push('"');
+        }
+        output.push('>');
+        for child in &node.children {
+            match child {
+                XmlContent::Text(text) => push_xml_escaped(output, text),
+                XmlContent::Element(element) => {
+                    if !write_node(element, output, elements, attributes) {
+                        return false;
+                    }
+                }
+            }
+            if output.len() > 500_000 {
+                return false;
+            }
+        }
+        output.push_str("</");
+        output.push_str(&node.name);
+        output.push('>');
+        true
+    }
+    let mut output = String::new();
+    write_node(math, &mut output, ALLOWED_ELEMENTS, ALLOWED_ATTRIBUTES).then_some(output)
+}
+
+fn push_xml_escaped(output: &mut String, value: &str) {
+    for character in value.chars() {
+        match character {
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            '"' => output.push_str("&quot;"),
+            '\'' => output.push_str("&apos;"),
+            value => output.push(value),
+        }
+    }
 }
 
 fn extract_references(root: &XmlElement) -> Vec<ParsedReference> {
@@ -951,6 +1515,82 @@ mod tests {
             paper.citation_contexts[0].section_kind,
             SectionKind::Introduction
         );
+    }
+
+    #[test]
+    fn extracts_visual_metadata_structure_math_and_exact_object_references() {
+        let xml = r##"
+            <TEI xmlns="http://www.tei-c.org/ns/1.0">
+              <text><body><div xml:id="methods">
+                <head>Methods</head>
+                <p coords="2,10,20,300,40">See
+                  <ref type="figure" target="#fig_0">Figure 1</ref>,
+                  <ref type="table" target="#tab_0">Table 1</ref>, and
+                  <ref type="formula" target="#eq_0">Equation 1</ref>.
+                </p>
+                <figure xml:id="fig_0" coords="2,10,50,300,180">
+                  <label>Figure 1</label>
+                  <figDesc>System architecture.</figDesc>
+                  <graphic type="bitmap"/>
+                </figure>
+                <figure xml:id="tab_0" type="table" coords="3,10,40,300,200">
+                  <label>Table 1</label>
+                  <figDesc>Evaluation results.</figDesc>
+                  <table>
+                    <row><cell role="head">Metric</cell><cell role="head">Value</cell></row>
+                    <row><cell rows="2">Accuracy</cell><cell>0.95</cell></row>
+                  </table>
+                  <note>Higher is better.</note>
+                </figure>
+                <formula xml:id="eq_0" coords="4,20,30,200,40">
+                  <label>(1)</label>
+                  <math display="block"><semantics><mrow><mi>E</mi><mo>=</mo><mi>m</mi><msup><mi>c</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">E=mc^2</annotation></semantics></math>
+                </formula>
+              </div></body></text>
+            </TEI>
+        "##;
+        let document = parse_tei_document(xml).unwrap();
+        assert_eq!(document.figures.len(), 1);
+        assert_eq!(document.figures[0].source_id, "fig_0");
+        assert_eq!(document.figures[0].caption, "System architecture.");
+        assert_eq!(document.figures[0].page_number, Some(2));
+
+        assert_eq!(document.tables.len(), 1);
+        let table = &document.tables[0];
+        assert_eq!(table.rows.len(), 2);
+        assert!(table.rows[0][0].header);
+        assert_eq!(table.rows[1][0].row_span, 2);
+        assert_eq!(table.rows[1][0].column_span, 1);
+        assert!(table.plain_text.contains("Metric\tValue"));
+        assert!(table.plain_text.contains("Higher is better."));
+
+        assert_eq!(document.equations.len(), 1);
+        let equation = &document.equations[0];
+        assert_eq!(equation.label.as_deref(), Some("(1)"));
+        assert_eq!(equation.latex.as_deref(), Some("E=mc^2"));
+        assert!(equation.mathml.as_deref().is_some_and(|value| {
+            value.starts_with("<math display=\"block\">")
+                && value.contains("<msup><mi>c</mi><mn>2</mn></msup>")
+        }));
+        assert!(equation.plain_text.as_deref().is_some_and(|value| {
+            value.contains('E') && value.contains('=') && value.contains('2')
+        }));
+
+        assert_eq!(document.object_references.len(), 3);
+        let paragraph = &document.paper.sections[0].paragraphs[0];
+        for reference in &document.object_references {
+            assert_eq!(reference.section_source_id, "methods");
+            assert_eq!(reference.paragraph_ordinal, 0);
+            assert_eq!(
+                paragraph
+                    .text
+                    .chars()
+                    .skip(reference.start)
+                    .take(reference.end - reference.start)
+                    .collect::<String>(),
+                reference.marker
+            );
+        }
     }
 
     #[test]

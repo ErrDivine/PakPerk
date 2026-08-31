@@ -264,12 +264,20 @@ fn feed_entity_tag(page: &FeedPage, representation: FeedRepresentation<'_>) -> F
             introduction,
             chat,
             connections,
+            visual_objects,
+            terms,
+            semantic_facets,
+            paper_passport,
         } = *capabilities;
         digest.update([
             u8::from(metadata),
             u8::from(introduction),
             u8::from(chat),
             u8::from(connections),
+            u8::from(visual_objects),
+            u8::from(terms),
+            u8::from(semantic_facets),
+            u8::from(paper_passport),
         ]);
     }
     // Cursor ciphertext is intentionally randomized on every issuance. The

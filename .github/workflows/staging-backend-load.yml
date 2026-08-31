@@ -45,6 +45,21 @@ on:
         required: true
         default: false
         type: boolean
+      include_reading_feed_queue:
+        description: Exercise the protected nonempty To Read account
+        required: true
+        default: false
+        type: boolean
+      include_reading_feed_recommendations:
+        description: Exercise the protected server-confirmed-empty recommendation account
+        required: true
+        default: false
+        type: boolean
+      include_paper_title_search:
+        description: Exercise the protected title-query cache fixture; choose a 5-sample floor
+        required: true
+        default: false
+        type: boolean
       allow_library_mutations:
         description: Explicitly allow capped writes against the protected disposable fixture
         required: true
@@ -60,6 +75,21 @@ on:
         default: "20"
         type: choice
         options: ["5", "10", "20"]
+      allow_paper_import_replays:
+        description: Explicitly allow capped replays against the protected dedicated import fixture
+        required: true
+        default: false
+        type: boolean
+      paper_import_confirmation:
+        description: For import replays, type RUN_DEDICATED_STAGING_PAPER_IMPORT_REPLAYS
+        required: false
+        type: string
+      max_paper_import_requests:
+        description: Hard measured paper-import replay cap
+        required: true
+        default: "10"
+        type: choice
+        options: ["5", "10"]
       simulated_network_delay_ms:
         description: Fixed client-side delay added to each measured request
         required: true
@@ -89,6 +119,8 @@ jobs:
       STAGING_API_ORIGIN: ${{ vars.PAKPERK_STAGING_API_ORIGIN }}
       COMMENTS_PAPER_ID: ${{ vars.PAKPERK_STAGING_LOAD_COMMENTS_PAPER_ID }}
       MUTATION_PAPER_ID: ${{ vars.PAKPERK_STAGING_LOAD_MUTATION_PAPER_ID }}
+      PAPER_IMPORT_OPERATION_ID: ${{ vars.PAKPERK_STAGING_LOAD_IMPORT_OPERATION_ID }}
+      PAPER_IMPORT_ARXIV_ID: ${{ vars.PAKPERK_STAGING_LOAD_IMPORT_ARXIV_ID }}
       REQUESTED_REVISION: ${{ inputs.source_revision }}
       EVIDENCE_ID: ${{ inputs.evidence_id }}
       DURATION_SECONDS: ${{ inputs.duration_seconds }}
@@ -97,9 +129,15 @@ jobs:
       MINIMUM_SAMPLES: ${{ inputs.minimum_samples_per_scenario }}
       INCLUDE_LIBRARY: ${{ inputs.include_authenticated_library }}
       INCLUDE_COMMENTS: ${{ inputs.include_authenticated_comments }}
+      INCLUDE_READING_QUEUE: ${{ inputs.include_reading_feed_queue }}
+      INCLUDE_READING_RECOMMENDATIONS: ${{ inputs.include_reading_feed_recommendations }}
+      INCLUDE_PAPER_SEARCH: ${{ inputs.include_paper_title_search }}
       ALLOW_MUTATIONS: ${{ inputs.allow_library_mutations }}
       MUTATION_CONFIRMATION: ${{ inputs.mutation_confirmation }}
       MAX_MUTATIONS: ${{ inputs.max_library_mutation_requests }}
+      ALLOW_IMPORT_REPLAYS: ${{ inputs.allow_paper_import_replays }}
+      IMPORT_CONFIRMATION: ${{ inputs.paper_import_confirmation }}
+      MAX_IMPORT_REQUESTS: ${{ inputs.max_paper_import_requests }}
       NETWORK_DELAY_MS: ${{ inputs.simulated_network_delay_ms }}
       PACKET_LOSS_RATE: ${{ inputs.simulated_packet_loss_rate }}
     steps:
@@ -154,6 +192,10 @@ jobs:
             5|10|20) ;;
             *) echo "max_library_mutation_requests is outside the reviewed workflow choices." >&2; exit 2 ;;
           esac
+          case "$MAX_IMPORT_REQUESTS" in
+            5|10) ;;
+            *) echo "max_paper_import_requests is outside the reviewed workflow choices." >&2; exit 2 ;;
+          esac
           case "$NETWORK_DELAY_MS" in
             0|100|250|500) ;;
             *) echo "simulated_network_delay_ms is outside the reviewed workflow choices." >&2; exit 2 ;;
@@ -162,7 +204,7 @@ jobs:
             0|0.01|0.05) ;;
             *) echo "simulated_packet_loss_rate is outside the reviewed workflow choices." >&2; exit 2 ;;
           esac
-          for boolean_input in INCLUDE_LIBRARY INCLUDE_COMMENTS ALLOW_MUTATIONS; do
+          for boolean_input in INCLUDE_LIBRARY INCLUDE_COMMENTS INCLUDE_READING_QUEUE INCLUDE_READING_RECOMMENDATIONS INCLUDE_PAPER_SEARCH ALLOW_MUTATIONS ALLOW_IMPORT_REPLAYS; do
             case "${!boolean_input}" in
               true|false) ;;
               *) echo "A boolean dispatch input is outside true or false." >&2; exit 2 ;;
@@ -176,12 +218,32 @@ jobs:
             echo "The mutation cap cannot be below the sample floor." >&2
             exit 2
           fi
+          if [[ "$ALLOW_IMPORT_REPLAYS" == "true" && "$IMPORT_CONFIRMATION" != "RUN_DEDICATED_STAGING_PAPER_IMPORT_REPLAYS" ]]; then
+            echo "Paper-import replay confirmation did not match the required phrase." >&2
+            exit 2
+          fi
+          if [[ "$ALLOW_IMPORT_REPLAYS" == "true" && "$MAX_IMPORT_REQUESTS" -lt "$MINIMUM_SAMPLES" ]]; then
+            echo "The paper-import cap cannot be below the sample floor." >&2
+            exit 2
+          fi
+          if [[ "$INCLUDE_PAPER_SEARCH" == "true" && "$MINIMUM_SAMPLES" -gt 9 ]]; then
+            echo "The paper-search sample floor exceeds its reviewed rate-limit-safe cap." >&2
+            exit 2
+          fi
           if [[ "$INCLUDE_COMMENTS" == "true" && ! "$COMMENTS_PAPER_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
             echo "The protected comments fixture is unavailable or invalid." >&2
             exit 2
           fi
           if [[ "$ALLOW_MUTATIONS" == "true" && ! "$MUTATION_PAPER_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
             echo "The protected mutation fixture is unavailable or invalid." >&2
+            exit 2
+          fi
+          if [[ "$ALLOW_IMPORT_REPLAYS" == "true" && ! "$PAPER_IMPORT_OPERATION_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+            echo "The protected import operation fixture is unavailable or invalid." >&2
+            exit 2
+          fi
+          if [[ "$ALLOW_IMPORT_REPLAYS" == "true" && ! "$PAPER_IMPORT_ARXIV_ID" =~ ^[0-9]{4}\.[0-9]{4,5}(v[1-9][0-9]*)?$ ]]; then
+            echo "The protected import source fixture is unavailable or invalid." >&2
             exit 2
           fi
 
@@ -191,12 +253,19 @@ jobs:
         shell: bash
         env:
           STAGING_LOAD_TOKEN: ${{ secrets.PAKPERK_STAGING_LOAD_TOKEN }}
+          STAGING_READING_QUEUE_TOKEN: ${{ secrets.PAKPERK_STAGING_LOAD_READING_QUEUE_TOKEN }}
+          STAGING_READING_RECOMMENDATION_TOKEN: ${{ secrets.PAKPERK_STAGING_LOAD_READING_RECOMMENDATION_TOKEN }}
+          STAGING_PAPER_SEARCH_QUERY: ${{ secrets.PAKPERK_STAGING_LOAD_PAPER_SEARCH_QUERY }}
         run: |
           evidence_dir="$RUNNER_TEMP/pakperk-backend-load-evidence"
           token_file="$RUNNER_TEMP/pakperk-backend-load-token"
+          queue_token_file="$RUNNER_TEMP/pakperk-reading-queue-token"
+          recommendation_token_file="$RUNNER_TEMP/pakperk-reading-recommendation-token"
+          search_query_file="$RUNNER_TEMP/pakperk-paper-search-query"
+          import_source_file="$RUNNER_TEMP/pakperk-paper-import-source"
           umask 077
           mkdir "$evidence_dir"
-          trap 'if [[ -f "$token_file" ]]; then chmod u+w "$token_file"; rm -f "$token_file"; fi' EXIT
+          trap 'for private_file in "$token_file" "$queue_token_file" "$recommendation_token_file" "$search_query_file" "$import_source_file"; do if [[ -f "$private_file" ]]; then chmod u+w "$private_file"; rm -f "$private_file"; fi; done' EXIT
 
           arguments=(
             --api-origin "$STAGING_API_ORIGIN"
@@ -211,11 +280,13 @@ jobs:
             --request-timeout-seconds 5
             --preflight-timeout-seconds 60
             --max-bootstrap-pages 100
+            --reading-feed-page-size 20
+            --max-paper-search-requests 9
             --simulated-network-delay-ms "$NETWORK_DELAY_MS"
             --simulated-packet-loss-rate "$PACKET_LOSS_RATE"
           )
 
-          if [[ "$INCLUDE_LIBRARY" == "true" || "$INCLUDE_COMMENTS" == "true" || "$ALLOW_MUTATIONS" == "true" ]]; then
+          if [[ "$INCLUDE_LIBRARY" == "true" || "$INCLUDE_COMMENTS" == "true" || "$INCLUDE_PAPER_SEARCH" == "true" || "$ALLOW_MUTATIONS" == "true" || "$ALLOW_IMPORT_REPLAYS" == "true" ]]; then
             if [[ -z "$STAGING_LOAD_TOKEN" ]]; then
               echo "The protected synthetic-account token is unavailable." >&2
               exit 2
@@ -225,6 +296,36 @@ jobs:
             arguments+=(--bearer-token-file "$token_file")
           fi
           unset STAGING_LOAD_TOKEN
+          if [[ "$INCLUDE_READING_QUEUE" == "true" ]]; then
+            if [[ -z "$STAGING_READING_QUEUE_TOKEN" ]]; then
+              echo "The protected nonempty-queue token is unavailable." >&2
+              exit 2
+            fi
+            printf '%s' "$STAGING_READING_QUEUE_TOKEN" >"$queue_token_file"
+            chmod 0600 "$queue_token_file"
+            arguments+=(--reading-feed-queue-token-file "$queue_token_file")
+          fi
+          unset STAGING_READING_QUEUE_TOKEN
+          if [[ "$INCLUDE_READING_RECOMMENDATIONS" == "true" ]]; then
+            if [[ -z "$STAGING_READING_RECOMMENDATION_TOKEN" ]]; then
+              echo "The protected empty-queue token is unavailable." >&2
+              exit 2
+            fi
+            printf '%s' "$STAGING_READING_RECOMMENDATION_TOKEN" >"$recommendation_token_file"
+            chmod 0600 "$recommendation_token_file"
+            arguments+=(--reading-feed-recommendation-token-file "$recommendation_token_file")
+          fi
+          unset STAGING_READING_RECOMMENDATION_TOKEN
+          if [[ "$INCLUDE_PAPER_SEARCH" == "true" ]]; then
+            if [[ -z "$STAGING_PAPER_SEARCH_QUERY" ]]; then
+              echo "The protected paper-search fixture is unavailable." >&2
+              exit 2
+            fi
+            printf '%s' "$STAGING_PAPER_SEARCH_QUERY" >"$search_query_file"
+            chmod 0600 "$search_query_file"
+            arguments+=(--paper-search-query-file "$search_query_file")
+          fi
+          unset STAGING_PAPER_SEARCH_QUERY
           if [[ "$INCLUDE_LIBRARY" == "true" ]]; then
             arguments+=(--include-library)
           fi
@@ -238,6 +339,17 @@ jobs:
               --max-library-mutation-requests "$MAX_MUTATIONS"
             )
           fi
+          if [[ "$ALLOW_IMPORT_REPLAYS" == "true" ]]; then
+            printf '%s' "$PAPER_IMPORT_ARXIV_ID" >"$import_source_file"
+            chmod 0600 "$import_source_file"
+            arguments+=(
+              --allow-paper-import-replays
+              --paper-import-operation-id "$PAPER_IMPORT_OPERATION_ID"
+              --paper-import-arxiv-id-file "$import_source_file"
+              --max-paper-import-requests "$MAX_IMPORT_REQUESTS"
+            )
+          fi
+          unset PAPER_IMPORT_ARXIV_ID PAPER_IMPORT_OPERATION_ID
 
           set +e
           python3 scripts/run_backend_load.py "${arguments[@]}"

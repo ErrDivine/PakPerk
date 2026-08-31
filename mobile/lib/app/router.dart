@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,35 +9,54 @@ import 'package:uuid/uuid.dart';
 import '../core/api/api_exception.dart';
 import '../core/api/request_cancellation.dart';
 import '../core/models/arxiv_identifier.dart';
+import '../core/models/assistant_v2.dart';
 import '../core/models/paper.dart';
 import '../core/models/reader_state.dart';
 import '../core/providers.dart';
 import '../core/telemetry/telemetry.dart';
 import '../core/widgets/responsive_reader_frame.dart';
+import '../design_system/motion.dart';
 import '../features/account/account_home_screen.dart';
 import '../features/account/account_deletion_screen.dart';
 import '../features/account/auth_flow_screen.dart';
 import '../features/chat/chat_controller.dart';
 import '../features/chat/chat_sheet.dart';
+import '../features/chat/assistant_v2_sheet.dart';
 import '../features/comments/blocked_users_screen.dart';
 import '../features/comments/comments_screen.dart';
 import '../features/comments/my_comments_screen.dart';
+import '../features/engagement/engagement_destination.dart';
 import '../features/feed/feed_screen.dart';
-import '../features/library/to_read_screen.dart';
+import '../features/library/library_destination.dart';
+import '../features/library/library_history_controller.dart';
 import '../features/legal/legal_document_screen.dart';
+import '../features/memory/memory_review_destination.dart';
 import '../features/paper_reader/paper_metadata_controller.dart';
 import '../features/paper_reader/paper_reader.dart';
+import '../features/paper_reader/paper_processing_controller.dart';
+import '../features/document_reader/reader_entry_context.dart';
 import '../features/paper_reader/reader_navigation_controller.dart';
 import '../features/placeholders/phase_one_placeholder_screens.dart';
 import '../features/settings/public_settings_screen.dart';
+import '../features/search/research_search_destination.dart';
+import '../features/research_profiles/research_profile_destination.dart';
+import 'library_providers.dart';
 
 abstract final class PakPerkRoutes {
   static const read = '/read';
+  static const readBrief = '/read/brief';
+  static const search = '/read/search';
+  static const library = '/library';
   static const you = '/you';
+
+  /// Compatibility entry point for v0.0 saved links.
   static const youLibrary = '/you/library';
   static const youComments = '/you/comments';
   static const youBlockedUsers = '/you/blocked';
   static const youSettings = '/you/settings';
+  static const youResearchProfile = '/you/research-profile';
+  static const youReadingUpdates = '/you/reading-updates';
+  static const youMemory = '/you/memory';
   static const youAccountDelete = '/you/account/delete';
   static const auth = '/auth';
   static const privacy = '/legal/privacy';
@@ -70,6 +90,9 @@ abstract final class PakPerkRoutes {
     }
     return '/arxiv/${normalized.encodedRouteSegment}';
   }
+
+  static String arxivConnections(String arxivId) =>
+      '${arxiv(arxivId)}?view=connections';
 
   /// Normalizes the registered custom-scheme form before route matching.
   /// Unknown hosts, extra path segments, and malformed IDs fail closed.
@@ -169,19 +192,43 @@ class PaperChatRouteData {
     required this.readerKey,
     required this.paperTitle,
     required this.chatEnabled,
+    this.paperVersionKey,
+    this.generation,
+    this.assistantScope = const AssistantRequestScope.paper(),
+    this.initialQuestion,
+    this.submitInitialQuestion = false,
   });
 
   final String paperId;
   final String readerKey;
   final String paperTitle;
   final bool chatEnabled;
+  final PaperVersionKey? paperVersionKey;
+  final int? generation;
+  final AssistantRequestScope assistantScope;
+  final String? initialQuestion;
+  final bool submitInitialQuestion;
+
+  String? get normalizedInitialQuestion {
+    final normalized = initialQuestion?.trim();
+    if (normalized == null ||
+        normalized.isEmpty ||
+        normalized.runes.length > 500 ||
+        normalized.contains('\u0000')) {
+      return null;
+    }
+    return normalized;
+  }
 
   bool matchesPathPaper(String pathPaperId) =>
       PakPerkRouteIdentifiers.isValidPaperId(paperId) &&
       paperId.toLowerCase() == pathPaperId.toLowerCase() &&
       readerKey.trim().isNotEmpty &&
       readerKey.length <= 256 &&
-      paperTitle.length <= 1000;
+      paperTitle.length <= 1000 &&
+      (paperVersionKey == null || paperVersionKey!.paperId == paperId) &&
+      (initialQuestion == null || normalizedInitialQuestion != null) &&
+      (!submitInitialQuestion || normalizedInitialQuestion != null);
 }
 
 class PaperCommentsRouteData {
@@ -198,6 +245,24 @@ class PaperCommentsRouteData {
       paperId.toLowerCase() == pathPaperId.toLowerCase() &&
       paperTitle.length <= 1000;
 }
+
+/// Private navigation provenance for opening the global memory review from a
+/// reader. It intentionally carries no memory body, account id, or Library
+/// state. The origin key lets a normal back action return to the exact reader
+/// stage and position retained beneath the review route.
+final class MemoryReviewRouteData {
+  const MemoryReviewRouteData({this.originReaderKey});
+
+  final String? originReaderKey;
+
+  String? get safeOriginReaderKey {
+    final value = originReaderKey?.trim();
+    return value == null || value.isEmpty || value.length > 256 ? null : value;
+  }
+}
+
+bool shouldRecordLibraryHistoryForReaderEntry(ReaderEntryContext entry) =>
+    entry.source != ReaderEntrySource.memory;
 
 /// Opens paper chat above the shell and keeps the legacy restoration bit in
 /// sync until the root route has closed.
@@ -270,15 +335,44 @@ Future<void> openPaperComments(
   );
 }
 
-/// Imperative push is intentional: it retains the You branch match below the
-/// Read destination so a normal platform back action returns to the exact
+/// Imperative push is intentional: it retains the Library branch match below
+/// the Read destination so a normal platform back action returns to the exact
 /// saved-list route. [PakPerkAppShell] derives the visible branch from the
 /// current route because go_router keeps an imperative cross-branch match on
 /// the originating branch's navigator stack.
 void openSavedPaperFromLibrary(BuildContext context, PaperSummary paper) {
   unawaited(
-    context.push<void>(PakPerkRoutes.paper(paper.paperId), extra: paper),
+    context.push<void>(
+      PakPerkRoutes.paper(paper.paperId),
+      extra: PaperRouteLaunch(
+        paper: paper,
+        entryContext: const ReaderEntryContext.library(),
+      ),
+    ),
   );
+}
+
+final class PaperRouteLaunch extends PaperSummary {
+  PaperRouteLaunch({required PaperSummary paper, required this.entryContext})
+    : super(
+        paperId: paper.paperId,
+        arxivId: paper.arxivId,
+        title: paper.title,
+        abstractText: paper.abstractText,
+        authors: paper.authors,
+        primaryCategory: paper.primaryCategory,
+        categories: paper.categories,
+        publishedAt: paper.publishedAt,
+        updatedAt: paper.updatedAt,
+        absUrl: paper.absUrl,
+        pdfUrl: paper.pdfUrl,
+        capabilities: paper.capabilities,
+      );
+
+  /// Keeps route construction typed while remaining compatible with embedders
+  /// that historically treated `state.extra` as a [PaperSummary].
+  PaperSummary get paper => this;
+  final ReaderEntryContext entryContext;
 }
 
 void closePakPerkRootRoute(
@@ -296,10 +390,12 @@ class PakPerkNavigatorKeys {
   PakPerkNavigatorKeys()
     : root = GlobalKey<NavigatorState>(debugLabel: 'pakperk-root'),
       read = GlobalKey<NavigatorState>(debugLabel: 'pakperk-read'),
+      library = GlobalKey<NavigatorState>(debugLabel: 'pakperk-library'),
       you = GlobalKey<NavigatorState>(debugLabel: 'pakperk-you');
 
   final GlobalKey<NavigatorState> root;
   final GlobalKey<NavigatorState> read;
+  final GlobalKey<NavigatorState> library;
   final GlobalKey<NavigatorState> you;
 }
 
@@ -314,9 +410,11 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
     navigatorKey: keys.root,
     restorationScopeId: 'pakperk-router',
-    initialLocation: restoredBranch == AppBranch.you
-        ? PakPerkRoutes.you
-        : PakPerkRoutes.read,
+    initialLocation: switch (restoredBranch) {
+      AppBranch.read => PakPerkRoutes.read,
+      AppBranch.library => PakPerkRoutes.library,
+      AppBranch.you => PakPerkRoutes.you,
+    },
     redirect: (_, state) => PakPerkRoutes.normalizeIncomingLink(
       state.uri,
       appLinkOrigin: appLinkOrigin,
@@ -407,15 +505,50 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                 ),
                 routes: [
                   GoRoute(
+                    path: 'brief',
+                    pageBuilder: (context, state) => MaterialPage<void>(
+                      key: state.pageKey,
+                      restorationId: 'reading-brief',
+                      child: EngagementDestination.briefOnly(
+                        onOpenPaper: (paper) =>
+                            openSavedPaperFromLibrary(context, paper),
+                      ),
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'search',
+                    pageBuilder: (context, state) => MaterialPage<void>(
+                      key: state.pageKey,
+                      restorationId: 'research-search',
+                      child: ResearchSearchDestination(
+                        onOpenPaper: (arxivId) => context.push(
+                          PakPerkRoutes.arxiv(arxivId),
+                          extra: const ReaderEntryContext.search(),
+                        ),
+                        onMapPaper: (arxivId) => context.push(
+                          PakPerkRoutes.arxivConnections(arxivId),
+                        ),
+                      ),
+                    ),
+                  ),
+                  GoRoute(
                     path: 'paper/:paperId',
                     pageBuilder: (context, state) {
                       final paperId = state.pathParameters['paperId'] ?? '';
                       final extra = state.extra;
+                      final launch = switch (extra) {
+                        final PaperRouteLaunch value => value,
+                        final PaperSummary value => PaperRouteLaunch(
+                          paper: value,
+                          entryContext: const ReaderEntryContext.external(),
+                        ),
+                        _ => null,
+                      };
                       final initialPaper =
-                          extra is PaperSummary &&
-                              extra.paperId.toLowerCase() ==
+                          launch != null &&
+                              launch.paper.paperId.toLowerCase() ==
                                   paperId.toLowerCase()
-                          ? extra
+                          ? launch.paper
                           : null;
                       return MaterialPage<void>(
                         key: state.pageKey,
@@ -426,6 +559,9 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                         child: PaperDeepLinkScreen(
                           paperId: paperId,
                           initialPaper: initialPaper,
+                          entryContext:
+                              launch?.entryContext ??
+                              const ReaderEntryContext.external(),
                         ),
                       );
                     },
@@ -437,14 +573,45 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                 pageBuilder: (_, state) {
                   final arxivId = state.pathParameters['arxivId'] ?? '';
                   final normalized = ArxivIdentifier.tryParse(arxivId);
+                  final views = state.uri.queryParametersAll['view'];
+                  final initialStage =
+                      state.uri.queryParametersAll.length == 1 &&
+                          views?.length == 1 &&
+                          views!.single == 'connections'
+                      ? PaperStage.connections
+                      : PaperStage.abstractView;
                   return MaterialPage<void>(
                     key: state.pageKey,
                     restorationId: normalized == null
                         ? 'invalid-arxiv-paper'
                         : 'arxiv-paper-${normalized.queryId.replaceAll('/', '-')}',
-                    child: ArxivDeepLinkScreen(arxivId: arxivId),
+                    child: ArxivDeepLinkScreen(
+                      arxivId: arxivId,
+                      initialStage: initialStage,
+                      entryContext: state.extra is ReaderEntryContext
+                          ? state.extra! as ReaderEntryContext
+                          : const ReaderEntryContext.external(),
+                    ),
                   );
                 },
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            navigatorKey: keys.library,
+            restorationScopeId: 'pakperk-library-branch',
+            initialLocation: PakPerkRoutes.library,
+            routes: [
+              GoRoute(
+                path: PakPerkRoutes.library,
+                pageBuilder: (context, state) => MaterialPage<void>(
+                  key: state.pageKey,
+                  restorationId: 'library-root-page',
+                  child: LibraryDestination(
+                    onOpenPaper: (paper) =>
+                        openSavedPaperFromLibrary(context, paper),
+                  ),
+                ),
               ),
             ],
           ),
@@ -461,11 +628,14 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                   child: AccountYouScreen(
                     onSignIn: () => context.push(PakPerkRoutes.auth),
                     onCompleteProfile: () => context.push(PakPerkRoutes.auth),
-                    onOpenLibrary: () => context.push(PakPerkRoutes.youLibrary),
+                    onOpenLibrary: () => context.go(PakPerkRoutes.library),
                     onOpenComments: () =>
                         context.push(PakPerkRoutes.youComments),
                     onOpenBlockedUsers: () =>
                         context.push(PakPerkRoutes.youBlockedUsers),
+                    onOpenMemory: ref.watch(featureFlagsProvider).researchMemory
+                        ? () => context.push(PakPerkRoutes.youMemory)
+                        : null,
                     onOpenSettings: () =>
                         context.push(PakPerkRoutes.youSettings),
                     onOpenPrivacy: () => context.push(PakPerkRoutes.privacy),
@@ -480,10 +650,7 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                 routes: [
                   GoRoute(
                     path: 'library',
-                    builder: (context, _) => ToReadScreen(
-                      onOpenPaper: (paper) =>
-                          openSavedPaperFromLibrary(context, paper),
-                    ),
+                    redirect: (_, __) => PakPerkRoutes.library,
                   ),
                   GoRoute(
                     path: 'comments',
@@ -504,7 +671,47 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                     builder: (context, _) => PublicSettingsScreen(
                       onOpenDeleteAccount: () =>
                           context.push(PakPerkRoutes.youAccountDelete),
+                      onOpenResearchProfile: () =>
+                          context.push(PakPerkRoutes.youResearchProfile),
+                      onOpenReadingUpdates: () =>
+                          context.push(PakPerkRoutes.youReadingUpdates),
                     ),
+                  ),
+                  GoRoute(
+                    path: 'research-profile',
+                    builder: (_, __) => const ResearchProfileDestination(),
+                  ),
+                  GoRoute(
+                    path: 'reading-updates',
+                    builder: (context, __) => EngagementDestination(
+                      onOpenPaper: (paper) =>
+                          openSavedPaperFromLibrary(context, paper),
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'memory',
+                    pageBuilder: (context, state) {
+                      final data = state.extra is MemoryReviewRouteData
+                          ? state.extra! as MemoryReviewRouteData
+                          : const MemoryReviewRouteData();
+                      return MaterialPage<void>(
+                        key: state.pageKey,
+                        restorationId: 'global-memory-review',
+                        child: MemoryReviewDestination(
+                          onOpenSource: (paper, _) {
+                            context.push<void>(
+                              PakPerkRoutes.paper(paper.paperId),
+                              extra: PaperRouteLaunch(
+                                paper: paper,
+                                entryContext: ReaderEntryContext.memory(
+                                  originReaderKey: data.safeOriginReaderKey,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    },
                   ),
                   GoRoute(
                     path: 'account/delete',
@@ -620,13 +827,15 @@ class PakPerkAppShell extends ConsumerWidget {
           routerPath: routerPath,
           shellBranchIndex: navigationShell.currentIndex,
         );
-        if (restoredBranch.index != visibleBranchIndex) {
+        if (restoredBranch.shellIndex != visibleBranchIndex) {
           final controller = ref.read(
             appRestorationControllerProvider.notifier,
           );
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (context.mounted) {
-              controller.setActiveBranch(visibleBranchIndex);
+              controller.setActiveBranch(
+                AppBranch.fromShellIndex(visibleBranchIndex).index,
+              );
             }
           });
         }
@@ -667,6 +876,11 @@ class PakPerkAppShell extends ConsumerWidget {
                         label: Text('Read'),
                       ),
                       NavigationRailDestination(
+                        icon: Icon(Icons.local_library_outlined),
+                        selectedIcon: Icon(Icons.local_library),
+                        label: Text('Library'),
+                      ),
+                      NavigationRailDestination(
                         icon: Icon(Icons.person_outline),
                         selectedIcon: Icon(Icons.person),
                         label: Text('You'),
@@ -680,22 +894,9 @@ class PakPerkAppShell extends ConsumerWidget {
         }
         return Scaffold(
           body: navigationShell,
-          bottomNavigationBar: NavigationBar(
-            key: const ValueKey<String>('primary-navigation'),
+          bottomNavigationBar: _PrimaryNavigationBar(
             selectedIndex: visibleBranchIndex,
             onDestinationSelected: selectDestination,
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.auto_stories_outlined),
-                selectedIcon: Icon(Icons.auto_stories),
-                label: 'Read',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.person_outline),
-                selectedIcon: Icon(Icons.person),
-                label: 'You',
-              ),
-            ],
           ),
         );
       },
@@ -708,27 +909,31 @@ class PakPerkAppShell extends ConsumerWidget {
     int index, {
     required int visibleBranchIndex,
   }) {
+    final branch = AppBranch.fromShellIndex(index);
     emitTelemetry(
       ref.read(telemetrySinkProvider),
       PakPerkTelemetryEvent.shellDestinationSelected,
-      {
-        'destination': index == AppBranch.read.index ? 'read' : 'you',
-        'reselected': index == visibleBranchIndex,
-      },
+      {'destination': branch.name, 'reselected': index == visibleBranchIndex},
     );
     final controller = ref.read(appRestorationControllerProvider.notifier);
     if (index == navigationShell.currentIndex &&
         index != visibleBranchIndex &&
         context.canPop()) {
-      // A saved-paper route is an imperative Read match above the retained You
-      // branch. goBranch(You) would be a no-op because the shell already owns
-      // that underlying branch, so close the cross-branch match explicitly.
+      // A saved-paper route is an imperative Read match above the retained
+      // Library/You branch. goBranch would be a no-op because the shell still
+      // owns that underlying branch, so close the match explicitly.
       context.pop();
-      controller.setActiveBranch(index);
+      controller.setActiveBranch(branch.index);
       return;
     }
     if (index == visibleBranchIndex) {
-      if (index != AppBranch.read.index) return;
+      if (branch != AppBranch.read) {
+        // Match the familiar tab-bar convention: selecting the active tab a
+        // second time returns to that tab's root without disturbing the
+        // retained state of the other branch.
+        navigationShell.goBranch(index, initialLocation: true);
+        return;
+      }
       final restoration = ref.read(appRestorationControllerProvider);
       final routerPath = GoRouter.of(
         context,
@@ -740,7 +945,88 @@ class PakPerkAppShell extends ConsumerWidget {
       return;
     }
     navigationShell.goBranch(index);
-    controller.setActiveBranch(index);
+    controller.setActiveBranch(branch.index);
+  }
+}
+
+/// A quiet, platform-like material layer around the primary destinations.
+///
+/// The NavigationBar stays in the tree so Flutter retains its tab semantics,
+/// keyboard behavior, and generous hit targets. The surrounding blur and
+/// translucent fill communicate that navigation floats above the current
+/// task. High-contrast users receive an opaque surface and defined edge.
+class _PrimaryNavigationBar extends StatelessWidget {
+  const _PrimaryNavigationBar({
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final media = MediaQuery.of(context);
+    final highContrast = media.highContrast;
+    final opaqueMaterials =
+        highContrast || platformPrefersReducedTransparency(context);
+    final surface = theme.colorScheme.surface.withValues(
+      alpha: opaqueMaterials ? 1 : .88,
+    );
+    Widget bar = ColoredBox(
+      color: surface,
+      child: NavigationBar(
+        key: const ValueKey<String>('primary-navigation'),
+        selectedIndex: selectedIndex,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        onDestinationSelected: onDestinationSelected,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.auto_stories_outlined),
+            selectedIcon: Icon(Icons.auto_stories),
+            label: 'Read',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.local_library_outlined),
+            selectedIcon: Icon(Icons.local_library),
+            label: 'Library',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'You',
+          ),
+        ],
+      ),
+    );
+    if (!opaqueMaterials) {
+      bar = BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: bar,
+      );
+    }
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: opaqueMaterials
+            ? Border(top: BorderSide(color: theme.colorScheme.outline))
+            : null,
+        boxShadow: opaqueMaterials
+            ? const []
+            : [
+                BoxShadow(
+                  color: theme.colorScheme.shadow.withValues(
+                    alpha: theme.brightness == Brightness.dark ? .28 : .1,
+                  ),
+                  blurRadius: 18,
+                  offset: const Offset(0, -6),
+                ),
+              ],
+      ),
+      child: ClipRect(child: bar),
+    );
   }
 }
 
@@ -752,11 +1038,15 @@ int pakPerkVisibleBranchIndex({
   if (routerPath == PakPerkRoutes.read ||
       routerPath.startsWith('${PakPerkRoutes.read}/') ||
       routerPath.startsWith('/arxiv/')) {
-    return AppBranch.read.index;
+    return AppBranch.read.shellIndex;
+  }
+  if (routerPath == PakPerkRoutes.library ||
+      routerPath.startsWith('${PakPerkRoutes.library}/')) {
+    return AppBranch.library.shellIndex;
   }
   if (routerPath == PakPerkRoutes.you ||
       routerPath.startsWith('${PakPerkRoutes.you}/')) {
-    return AppBranch.you.index;
+    return AppBranch.you.shellIndex;
   }
   return shellBranchIndex;
 }
@@ -768,12 +1058,25 @@ class ReadBranchNavigator extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final restoration = ref.watch(appRestorationControllerProvider);
     final readActive = ref.watch(activeAppBranchProvider) == AppBranch.read;
+    final searchEnabled = ref.watch(
+      featureFlagsProvider.select((flags) => flags.searchLookupEnabled),
+    );
+    final readingBriefsEnabled = ref.watch(
+      featureFlagsProvider.select((flags) => flags.readingBriefsEnabled),
+    );
     final pages = <Page<void>>[
-      const MaterialPage<void>(
+      MaterialPage<void>(
         key: ValueKey('feed-route'),
         name: PakPerkRoutes.read,
         restorationId: 'read-feed',
-        child: FeedScreen(),
+        child: FeedScreen(
+          onOpenBrief: readingBriefsEnabled
+              ? () => context.push(PakPerkRoutes.readBrief)
+              : null,
+          onOpenSearch: searchEnabled
+              ? () => context.push(PakPerkRoutes.search)
+              : null,
+        ),
       ),
       for (final entry in restoration.routeStack)
         MaterialPage<void>(
@@ -806,12 +1109,14 @@ class ReadBranchNavigator extends ConsumerWidget {
 class PaperDeepLinkScreen extends ConsumerStatefulWidget {
   const PaperDeepLinkScreen({
     required this.paperId,
+    required this.entryContext,
     this.initialPaper,
     super.key,
   });
 
   final String paperId;
   final PaperSummary? initialPaper;
+  final ReaderEntryContext entryContext;
 
   @override
   ConsumerState<PaperDeepLinkScreen> createState() =>
@@ -819,9 +1124,16 @@ class PaperDeepLinkScreen extends ConsumerStatefulWidget {
 }
 
 class ArxivDeepLinkScreen extends ConsumerStatefulWidget {
-  const ArxivDeepLinkScreen({required this.arxivId, super.key});
+  const ArxivDeepLinkScreen({
+    required this.arxivId,
+    required this.entryContext,
+    this.initialStage = PaperStage.abstractView,
+    super.key,
+  });
 
   final String arxivId;
+  final PaperStage initialStage;
+  final ReaderEntryContext entryContext;
 
   @override
   ConsumerState<ArxivDeepLinkScreen> createState() =>
@@ -851,6 +1163,9 @@ class _ArxivDeepLinkScreenState extends ConsumerState<ArxivDeepLinkScreen> {
       _paper = null;
       _errorMessage = null;
       if (_identifier != null) _load();
+    } else if (oldWidget.initialStage != widget.initialStage &&
+        _paper != null) {
+      _initializeReaderStage(_paper!);
     }
   }
 
@@ -876,7 +1191,11 @@ class _ArxivDeepLinkScreenState extends ConsumerState<ArxivDeepLinkScreen> {
     final paper = _paper;
     if (paper != null) {
       return PaperRouteScreen(
-        entry: PaperRouteEntry(routeId: _routeId, paper: paper),
+        entry: PaperRouteEntry(
+          routeId: _routeId,
+          paper: paper,
+          entryContext: widget.entryContext,
+        ),
         activeOverride: ref.watch(activeAppBranchProvider) == AppBranch.read,
         onBack: _close,
         onOpenLinkedPaper: _openLinkedPaper,
@@ -925,6 +1244,7 @@ class _ArxivDeepLinkScreenState extends ConsumerState<ArxivDeepLinkScreen> {
           .read(paperRepositoryProvider)
           .getPaperByArxiv(identifier.queryId, cancellation: request);
       if (!mounted || request.isCancelled) return;
+      _initializeReaderStage(result.value);
       setState(() => _paper = result.value);
     } on ApiException catch (error) {
       if (!mounted || error.cancelled || request.isCancelled) return;
@@ -941,8 +1261,25 @@ class _ArxivDeepLinkScreenState extends ConsumerState<ArxivDeepLinkScreen> {
 
   void _close() => closePakPerkRootRoute(context);
 
+  void _initializeReaderStage(PaperSummary paper) {
+    ref
+        .read(appRestorationControllerProvider.notifier)
+        .updateReader(
+          routeReaderKey(_routeId, paper),
+          (current) => current.copyWith(stageIndex: widget.initialStage.index),
+        );
+  }
+
   void _openLinkedPaper(PaperSummary paper) {
-    context.push<void>(PakPerkRoutes.paper(paper.paperId), extra: paper);
+    context.push<void>(
+      PakPerkRoutes.paper(paper.paperId),
+      extra: PaperRouteLaunch(
+        paper: paper,
+        entryContext: ReaderEntryContext.connection(
+          originReaderKey: routeReaderKey(_routeId, _paper ?? paper),
+        ),
+      ),
+    );
   }
 }
 
@@ -998,7 +1335,11 @@ class _PaperDeepLinkScreenState extends ConsumerState<PaperDeepLinkScreen> {
     final paper = _paper;
     if (paper != null) {
       return PaperRouteScreen(
-        entry: PaperRouteEntry(routeId: _routeId, paper: paper),
+        entry: PaperRouteEntry(
+          routeId: _routeId,
+          paper: paper,
+          entryContext: widget.entryContext,
+        ),
         activeOverride: ref.watch(activeAppBranchProvider) == AppBranch.read,
         onBack: _close,
         onOpenLinkedPaper: _openLinkedPaper,
@@ -1070,7 +1411,15 @@ class _PaperDeepLinkScreenState extends ConsumerState<PaperDeepLinkScreen> {
   }
 
   void _openLinkedPaper(PaperSummary paper) {
-    context.push<void>(PakPerkRoutes.paper(paper.paperId), extra: paper);
+    context.push<void>(
+      PakPerkRoutes.paper(paper.paperId),
+      extra: PaperRouteLaunch(
+        paper: paper,
+        entryContext: ReaderEntryContext.connection(
+          originReaderKey: routeReaderKey(_routeId, _paper ?? paper),
+        ),
+      ),
+    );
   }
 }
 
@@ -1104,6 +1453,45 @@ class PaperChatRouteScreen extends ConsumerWidget {
       paperId: routeData.paperId,
       readerKey: routeData.readerKey,
     );
+    final config = ref.watch(appBuildConfigProvider);
+    if (config.features.assistantV2) {
+      final generation = routeData.generation;
+      final paperVersionKey = routeData.paperVersionKey;
+      if (generation == null || generation <= 0 || paperVersionKey == null) {
+        return PhaseOnePlaceholderScreen(
+          title: 'Assistant unavailable',
+          message:
+              'This reader session does not have a current document generation.',
+          icon: Icons.chat_bubble_outline,
+          closeTooltip: 'Close assistant',
+          onClose: onClose,
+        );
+      }
+      final offline = ref
+          .watch(networkOfflineProvider)
+          .maybeWhen(data: (value) => value, orElse: () => true);
+      final currentGeneration = ref
+          .watch(paperProcessingControllerProvider(paperVersionKey))
+          .processing
+          ?.generation;
+      final generationIsCurrent = currentGeneration == generation;
+      final sheet = AssistantV2Sheet(
+        paperId: routeData.paperId,
+        readerKey: routeData.readerKey,
+        paperTitle: routeData.paperTitle,
+        generation: generation,
+        scope: routeData.assistantScope,
+        initialQuestion: routeData.normalizedInitialQuestion,
+        submitInitialQuestion: routeData.submitInitialQuestion,
+        enabled: routeData.chatEnabled && !offline && generationIsCurrent,
+        generationIsCurrent: generationIsCurrent,
+        onClose: onClose,
+      );
+      return Scaffold(
+        resizeToAvoidBottomInset: true,
+        body: protectTopInset ? SafeArea(bottom: false, child: sheet) : sheet,
+      );
+    }
     final chat = ref.watch(chatControllerProvider(args));
     final networkOffline = ref
         .watch(networkOfflineProvider)
@@ -1333,10 +1721,13 @@ class PaperRouteScreen extends ConsumerStatefulWidget {
 }
 
 class _PaperRouteScreenState extends ConsumerState<PaperRouteScreen> {
+  String? _recordedHistoryPaperId;
+
   @override
   void initState() {
     super.initState();
     _scheduleMetadataLoad(widget.entry.paper);
+    _scheduleHistoryRecord(widget.entry.paper);
   }
 
   void _scheduleMetadataLoad(PaperSummary snapshot) {
@@ -1350,11 +1741,35 @@ class _PaperRouteScreenState extends ConsumerState<PaperRouteScreen> {
     });
   }
 
+  void _scheduleHistoryRecord(PaperSummary paper) {
+    // Memory review is an explicit private resurfacing branch. Merely opening
+    // its source must not write Library history or influence automatic-feed
+    // recency; an explicit Add to To Read action remains available separately.
+    if (!shouldRecordLibraryHistoryForReaderEntry(widget.entry.entryContext)) {
+      return;
+    }
+    if (_recordedHistoryPaperId == paper.paperId) return;
+    _recordedHistoryPaperId = paper.paperId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !ref.read(featureFlagsProvider).libraryV2Enabled) return;
+      final scope = ref.read(libraryDisplayScopeProvider);
+      if (scope == null) return;
+      unawaited(
+        ref
+            .read(libraryHistoryControllerProvider(scope).notifier)
+            .record(paper),
+      );
+    });
+  }
+
   @override
   void didUpdateWidget(covariant PaperRouteScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.entry.paper.versionKey != widget.entry.paper.versionKey) {
       _scheduleMetadataLoad(widget.entry.paper);
+    }
+    if (oldWidget.entry.paper.paperId != widget.entry.paper.paperId) {
+      _scheduleHistoryRecord(widget.entry.paper);
     }
   }
 
@@ -1415,6 +1830,7 @@ class _PaperRouteScreenState extends ConsumerState<PaperRouteScreen> {
           paper: paper,
           readerKey: readerKey,
           isActive: active,
+          entryContext: widget.entry.entryContext,
           onOpenLinkedPaper: widget.onOpenLinkedPaper,
         ),
       ),

@@ -4,7 +4,7 @@
   "additionalProperties": false,
   "required": [
     "environment", "image", "siteImage", "secret", "public", "mobileAssociations", "features", "releaseEvidence", "alerting", "policy",
-    "api", "telemetryGateway", "paperWorker", "deletionWorker", "deletionLedger", "migration", "metadataSync",
+    "api", "visualAssets", "telemetryGateway", "paperWorker", "deletionWorker", "deletionLedger", "migration", "metadataSync",
     "site", "grobid", "otelCollector", "ingress", "networkPolicy", "serviceAccount"
   ],
   "properties": {
@@ -91,14 +91,47 @@
     "features": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["accounts", "library", "libraryWrites", "comments", "commentCreation", "accountDeletion"],
+      "required": [
+        "accounts", "library", "libraryWrites", "paperResolution", "paperTitleSearch",
+        "libraryImportWrites", "readingFeed", "toReadFirstEnforcement", "comments",
+        "commentCreation", "accountDeletion", "libraryV2", "researchProfiles",
+        "recommendations", "recommendationEvents", "searchLookup", "searchExplore",
+        "savedQueries", "readingBriefs", "subscriptions", "notifications",
+        "deepReader", "paperPassport", "semanticFacets", "visualObjects",
+        "assistantV2", "annotations", "researchMemory", "versionDiff",
+        "doclingExperiment"
+      ],
       "properties": {
         "accounts": { "type": "boolean" },
         "library": { "type": "boolean" },
         "libraryWrites": { "type": "boolean" },
+        "paperResolution": { "type": "boolean" },
+        "paperTitleSearch": { "type": "boolean" },
+        "libraryImportWrites": { "type": "boolean" },
+        "readingFeed": { "type": "boolean" },
+        "toReadFirstEnforcement": { "type": "boolean" },
         "comments": { "type": "boolean" },
         "commentCreation": { "type": "boolean" },
-        "accountDeletion": { "type": "boolean" }
+        "accountDeletion": { "type": "boolean" },
+        "libraryV2": { "type": "boolean" },
+        "researchProfiles": { "type": "boolean" },
+        "recommendations": { "type": "boolean" },
+        "recommendationEvents": { "type": "boolean" },
+        "searchLookup": { "type": "boolean" },
+        "searchExplore": { "type": "boolean" },
+        "savedQueries": { "type": "boolean" },
+        "readingBriefs": { "type": "boolean" },
+        "subscriptions": { "type": "boolean" },
+        "notifications": { "type": "boolean" },
+        "deepReader": { "type": "boolean" },
+        "paperPassport": { "type": "boolean" },
+        "semanticFacets": { "type": "boolean" },
+        "visualObjects": { "type": "boolean" },
+        "assistantV2": { "type": "boolean" },
+        "annotations": { "type": "boolean" },
+        "researchMemory": { "type": "boolean" },
+        "versionDiff": { "type": "boolean" },
+        "doclingExperiment": { "type": "boolean" }
       }
     },
     "releaseEvidence": {
@@ -107,7 +140,7 @@
       "additionalProperties": false,
       "required": [
         "legalReviewId", "moderationReadinessId", "accountDeletionE2eId", "restoreDrillId",
-        "reviewerFlowId", "strictContentReviewId"
+        "reviewerFlowId", "strictContentReviewId", "deepReaderReleaseId"
       ],
       "properties": {
         "legalReviewId": { "$ref": "#/definitions/evidenceIdOrEmpty" },
@@ -115,7 +148,8 @@
         "accountDeletionE2eId": { "$ref": "#/definitions/evidenceIdOrEmpty" },
         "restoreDrillId": { "$ref": "#/definitions/evidenceIdOrEmpty" },
         "reviewerFlowId": { "$ref": "#/definitions/evidenceIdOrEmpty" },
-        "strictContentReviewId": { "$ref": "#/definitions/evidenceIdOrEmpty" }
+        "strictContentReviewId": { "$ref": "#/definitions/evidenceIdOrEmpty" },
+        "deepReaderReleaseId": { "$ref": "#/definitions/evidenceIdOrEmpty" }
       }
     },
     "alerting": {
@@ -141,7 +175,17 @@
     "api": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["replicas", "commentModerationProvider", "commentModerationUrl", "commentModerationTimeoutMs", "trustedProxyCidrs", "resources", "databasePoolSize", "requestTimeoutSeconds", "chatTimeoutSeconds", "maxRequestBytes", "edgeRateLimitRps", "edgeBurstMultiplier", "edgeConnectionLimit", "terminationGracePeriodSeconds", "service", "pdb", "topologySpread"],
+      "required": [
+        "replicas", "commentModerationProvider", "commentModerationUrl", "commentModerationTimeoutMs",
+        "trustedProxyCidrs", "resources", "databasePoolSize", "requestTimeoutSeconds",
+        "chatTimeoutSeconds", "maxRequestBytes", "paperSearchMinQueryChars",
+        "paperSearchMaxQueryChars", "paperSearchMaxResults", "paperSearchPositiveCacheTtlSeconds",
+        "paperSearchNegativeCacheTtlSeconds", "paperImportAccountLimitPerMinute",
+        "paperSearchAccountLimitPerMinute", "readingFeedDefaultLimit", "readingFeedMaxLimit",
+        "readingFeedCursorTtlSeconds", "edgeRateLimitRps", "edgeBurstMultiplier",
+        "edgeConnectionLimit", "terminationGracePeriodSeconds", "service", "pdb",
+        "topologySpread"
+      ],
       "properties": {
         "replicas": { "type": "integer", "minimum": 1, "maximum": 100 },
         "commentModerationProvider": { "enum": ["rules", "http"] },
@@ -153,6 +197,16 @@
         "requestTimeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 300 },
         "chatTimeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 600 },
         "maxRequestBytes": { "type": "integer", "minimum": 1024, "maximum": 10485760 },
+        "paperSearchMinQueryChars": { "type": "integer", "minimum": 1, "maximum": 300 },
+        "paperSearchMaxQueryChars": { "type": "integer", "minimum": 1, "maximum": 300 },
+        "paperSearchMaxResults": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "paperSearchPositiveCacheTtlSeconds": { "type": "integer", "minimum": 1, "maximum": 2592000 },
+        "paperSearchNegativeCacheTtlSeconds": { "type": "integer", "minimum": 1, "maximum": 86400 },
+        "paperImportAccountLimitPerMinute": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "paperSearchAccountLimitPerMinute": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "readingFeedDefaultLimit": { "type": "integer", "minimum": 1, "maximum": 50 },
+        "readingFeedMaxLimit": { "type": "integer", "minimum": 1, "maximum": 50 },
+        "readingFeedCursorTtlSeconds": { "type": "integer", "minimum": 1, "maximum": 604800 },
         "edgeRateLimitRps": { "type": "integer", "minimum": 1, "maximum": 10000 },
         "edgeBurstMultiplier": { "type": "integer", "minimum": 1, "maximum": 10 },
         "edgeConnectionLimit": { "type": "integer", "minimum": 1, "maximum": 10000 },
@@ -165,6 +219,16 @@
           "required": ["enabled"],
           "properties": { "enabled": { "type": "boolean" } }
         }
+      }
+    },
+    "visualAssets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["existingClaim", "maximumSourceBytes", "maximumAssetBytes"],
+      "properties": {
+        "existingClaim": { "$ref": "#/definitions/kubeNameOrEmpty" },
+        "maximumSourceBytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "maximumAssetBytes": { "type": "integer", "minimum": 1, "maximum": 8388608 }
       }
     },
     "telemetryGateway": {
@@ -250,7 +314,7 @@
         "enabled": { "type": "boolean" },
         "command": { "$ref": "#/definitions/command" },
         "confirmBackupId": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{8,128}$", "minLength": 8, "maxLength": 128 },
-        "expectedVersion": { "type": "integer", "minimum": 10, "maximum": 10 },
+        "expectedVersion": { "type": "integer", "minimum": 24, "maximum": 24 },
         "activeDeadlineSeconds": { "type": "integer", "minimum": 30, "maximum": 7200 },
         "resources": { "$ref": "#/definitions/resources" }
       }

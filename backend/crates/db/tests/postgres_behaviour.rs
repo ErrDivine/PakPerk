@@ -5,7 +5,7 @@ use db::{Database, PaperRepository};
 use domain::{
     ArxivIdentifier, Author, Chunk, Connection, IntroductionDetection, PaperMetadata,
     ParsedCitationContext, ParsedPaper, ParsedParagraph, ParsedReference, ParsedSection,
-    ProcessingStage, ReferenceResolutionStatus, RelationType, SectionKind,
+    PreparationTriggerKind, ProcessingStage, ReferenceResolutionStatus, RelationType, SectionKind,
 };
 use jobs::JobQueue;
 use url::Url;
@@ -34,7 +34,17 @@ async fn postgres_prepare_leases_and_version_invalidation() {
     let mut tasks = tokio::task::JoinSet::new();
     for _ in 0..24 {
         let repository = repository.clone();
-        tasks.spawn(async move { repository.prepare(paper.id, false).await.unwrap().unwrap() });
+        tasks.spawn(async move {
+            repository
+                .prepare_with_trigger(
+                    paper.id,
+                    false,
+                    PreparationTriggerKind::IntroductionTransition,
+                )
+                .await
+                .unwrap()
+                .unwrap()
+        });
     }
     let mut enqueue_winners = 0;
     while let Some(result) = tasks.join_next().await {
@@ -51,6 +61,14 @@ async fn postgres_prepare_leases_and_version_invalidation() {
             .await
             .unwrap();
     assert_eq!(job_count, 1);
+    let recorded_trigger: String = sqlx::query_scalar(
+        "SELECT preparation_trigger_kind FROM jobs WHERE paper_id = $1 AND generation = 1",
+    )
+    .bind(paper.id)
+    .fetch_one(database.pool())
+    .await
+    .unwrap();
+    assert_eq!(recorded_trigger, "introduction_transition");
 
     let queue = JobQueue::new(database.pool().clone());
     let first = queue
@@ -58,6 +76,10 @@ async fn postgres_prepare_leases_and_version_invalidation() {
         .await
         .unwrap()
         .unwrap();
+    assert_eq!(
+        first.preparation_trigger,
+        PreparationTriggerKind::IntroductionTransition
+    );
     sqlx::query("UPDATE jobs SET lease_expires_at = now() - interval '1 second' WHERE id = $1")
         .bind(first.id)
         .execute(database.pool())

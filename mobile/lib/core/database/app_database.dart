@@ -149,6 +149,11 @@ class LibraryItems extends Table {
   DateTimeColumn get removedAt => dateTime().nullable()();
   IntColumn get revision => integer().nullable()();
   TextColumn get lastOperationId => text().nullable()();
+  TextColumn get privateNote => text().nullable()();
+  TextColumn get saveSourceKind => text().nullable()();
+  DateTimeColumn get reminderAt => dateTime().nullable()();
+  DateTimeColumn get reviewedAt => dateTime().nullable()();
+  DateTimeColumn get archivedAt => dateTime().nullable()();
 
   // The visible [deleted]/[savedAt] pair is the optimistic projection. These
   // nullable fields retain the last server-confirmed state so a permanent
@@ -157,9 +162,83 @@ class LibraryItems extends Table {
   BoolColumn get canonicalDeleted => boolean().nullable()();
   DateTimeColumn get canonicalSavedAt => dateTime().nullable()();
   DateTimeColumn get canonicalRemovedAt => dateTime().nullable()();
+  TextColumn get canonicalListState => text().nullable()();
+  TextColumn get canonicalPrivateNote => text().nullable()();
+  TextColumn get canonicalSaveSourceKind => text().nullable()();
+  DateTimeColumn get canonicalReminderAt => dateTime().nullable()();
+  DateTimeColumn get canonicalReviewedAt => dateTime().nullable()();
+  DateTimeColumn get canonicalArchivedAt => dateTime().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {accountId, paperId};
+}
+
+@DataClassName('LibraryCustomListRow')
+class LibraryCustomLists extends Table {
+  TextColumn get accountId => text()();
+  TextColumn get listId => text()();
+  TextColumn get name => text()();
+  TextColumn get description => text().nullable()();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  IntColumn get revision => integer().nullable()();
+  BoolColumn get deleted => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  TextColumn get lastOperationId => text().nullable()();
+  TextColumn get canonicalJson => text().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {accountId, listId};
+}
+
+@DataClassName('LibraryTagRow')
+class LibraryTags extends Table {
+  TextColumn get accountId => text()();
+  TextColumn get tagId => text()();
+  TextColumn get name => text()();
+  IntColumn get revision => integer().nullable()();
+  BoolColumn get deleted => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  TextColumn get lastOperationId => text().nullable()();
+  TextColumn get canonicalJson => text().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {accountId, tagId};
+}
+
+@DataClassName('LibraryListMembershipRow')
+class LibraryListMemberships extends Table {
+  TextColumn get accountId => text()();
+  TextColumn get listId => text()();
+  TextColumn get paperId => text()();
+  IntColumn get positionRank => integer().withDefault(const Constant(0))();
+  TextColumn get note => text().nullable()();
+  IntColumn get revision => integer().nullable()();
+  BoolColumn get deleted => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  TextColumn get lastOperationId => text().nullable()();
+  TextColumn get canonicalJson => text().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {accountId, listId, paperId};
+}
+
+@DataClassName('LibraryTagMembershipRow')
+class LibraryTagMemberships extends Table {
+  TextColumn get accountId => text()();
+  TextColumn get paperId => text()();
+  TextColumn get tagId => text()();
+  IntColumn get revision => integer().nullable()();
+  BoolColumn get deleted => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  TextColumn get lastOperationId => text().nullable()();
+  TextColumn get canonicalJson => text().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {accountId, paperId, tagId};
 }
 
 @DataClassName('CommentDraftRow')
@@ -235,6 +314,193 @@ class CacheMetadata extends Table {
   Set<Column<Object>> get primaryKey => {key};
 }
 
+@DataClassName('CachedDocumentArtifactRow')
+class CachedDocumentArtifacts extends Table {
+  TextColumn get accountId => text()();
+  TextColumn get paperId => text()();
+  TextColumn get versionKey => text()();
+  IntColumn get generation => integer()();
+  TextColumn get artifactKind => text()();
+  TextColumn get payloadJson => text()();
+  DateTimeColumn get fetchedAt => dateTime()();
+  DateTimeColumn get expiresAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {
+    accountId,
+    paperId,
+    generation,
+    artifactKind,
+  };
+}
+
+/// Position and presentation only. Library state and queue eligibility are
+/// intentionally absent so a checkpoint can never become a second authority.
+@DataClassName('ReadingCheckpointRow')
+class ReadingCheckpoints extends Table {
+  TextColumn get accountId => text()();
+  TextColumn get paperId => text()();
+  IntColumn get generation => integer()();
+  TextColumn get mode => text()();
+  TextColumn get stage => text()();
+  TextColumn get blockId => text().nullable()();
+  RealColumn get scrollFraction => real().nullable()();
+  DateTimeColumn get lastReadAt => dateTime()();
+  IntColumn get revision => integer().withDefault(const Constant(0))();
+  BoolColumn get pendingSync => boolean().withDefault(const Constant(true))();
+  TextColumn get operationId => text().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {accountId, paperId};
+}
+
+/// Private research data is account-scoped and intentionally never joined to
+/// feed or Library authority. Note bodies are ordinary SQLite text: Pakperk
+/// does not claim this database is encrypted at rest.
+@DataClassName('LocalAnnotationRow')
+class LocalAnnotations extends Table {
+  TextColumn get accountId => text()();
+  TextColumn get annotationId => text()();
+  TextColumn get paperId => text()();
+  IntColumn get generation => integer()();
+  TextColumn get blockId => text().nullable()();
+  TextColumn get kind => text()();
+  TextColumn get body => text().nullable()();
+  TextColumn get colorRole => text().nullable()();
+  TextColumn get selectorJson => text().nullable()();
+  TextColumn get sectionHintJson => text().withDefault(const Constant('[]'))();
+  IntColumn get pageHint => integer().nullable()();
+  TextColumn get anchorStatus => text()();
+  IntColumn get revision => integer().withDefault(const Constant(0))();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  TextColumn get syncState => text().withDefault(const Constant('clean'))();
+  TextColumn get activeOperationId => text().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {accountId, annotationId};
+}
+
+/// A conflict is never represented by overwriting either body. Resolution
+/// adds a third explicit merged value and retains both original versions.
+@DataClassName('AnnotationConflictRow')
+class AnnotationConflicts extends Table {
+  TextColumn get accountId => text()();
+  TextColumn get conflictId => text()();
+  TextColumn get annotationId => text()();
+  TextColumn get attemptedOperationId => text()();
+  IntColumn get baseRevision => integer()();
+  IntColumn get serverRevision => integer()();
+  TextColumn get attemptedBody => text().nullable()();
+  TextColumn get serverBody => text().nullable()();
+  TextColumn get mergeState =>
+      text().withDefault(const Constant('unresolved'))();
+  TextColumn get mergedBody => text().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get resolvedAt => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {accountId, conflictId};
+}
+
+@DataClassName('LocalEvidenceCardRow')
+class LocalEvidenceCards extends Table {
+  TextColumn get accountId => text()();
+  TextColumn get cardId => text()();
+  TextColumn get paperId => text()();
+  IntColumn get generation => integer()();
+  TextColumn get title => text()();
+  TextColumn get claimOrQuestion => text().nullable()();
+  TextColumn get userNote => text().nullable()();
+  TextColumn get sourceBlockIdsJson =>
+      text().withDefault(const Constant('[]'))();
+  TextColumn get figureIdsJson => text().withDefault(const Constant('[]'))();
+  TextColumn get tableIdsJson => text().withDefault(const Constant('[]'))();
+  TextColumn get citationContextIdsJson =>
+      text().withDefault(const Constant('[]'))();
+  TextColumn get verificationStatus => text()();
+  IntColumn get revision => integer().withDefault(const Constant(0))();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  TextColumn get syncState => text().withDefault(const Constant('clean'))();
+  TextColumn get activeOperationId => text().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {accountId, cardId};
+}
+
+@DataClassName('LocalMemoryItemRow')
+class LocalMemoryItems extends Table {
+  TextColumn get accountId => text()();
+  TextColumn get itemId => text()();
+  TextColumn get paperId => text()();
+  IntColumn get generation => integer()();
+  TextColumn get sourceType => text()();
+  TextColumn get sourceId => text()();
+  TextColumn get promptText => text().nullable()();
+  TextColumn get answerText => text().nullable()();
+  TextColumn get status => text()();
+  DateTimeColumn get nextReviewAt => dateTime().nullable()();
+  IntColumn get reviewCount => integer().withDefault(const Constant(0))();
+  IntColumn get revision => integer().withDefault(const Constant(0))();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  TextColumn get syncState => text().withDefault(const Constant('clean'))();
+  TextColumn get activeOperationId => text().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {accountId, itemId};
+}
+
+/// Stable operation IDs make replay safe across process death. Tombstone
+/// operations remain queued until the server acknowledges them.
+@DataClassName('ResearchOutboxRow')
+class ResearchOutbox extends Table {
+  TextColumn get accountId => text()();
+  TextColumn get operationId => text()();
+  TextColumn get entityKind => text()();
+  TextColumn get entityId => text()();
+  TextColumn get operation => text()();
+  IntColumn get baseRevision => integer().withDefault(const Constant(0))();
+  TextColumn get payloadJson => text()();
+  TextColumn get state => text().withDefault(const Constant('queued'))();
+  IntColumn get attemptCount => integer().withDefault(const Constant(0))();
+  TextColumn get lastErrorCode => text().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {accountId, operationId};
+}
+
+@DataClassName('ResearchSyncStateRow')
+class ResearchSyncStates extends Table {
+  TextColumn get accountId => text()();
+  TextColumn get entityKind => text()();
+  IntColumn get revision => integer().withDefault(const Constant(0))();
+  TextColumn get cursor => text().nullable()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {accountId, entityKind};
+}
+
+@DataClassName('CachedVersionArtifactRow')
+class CachedVersionArtifacts extends Table {
+  TextColumn get accountId => text()();
+  TextColumn get paperId => text()();
+  TextColumn get cacheKey => text()();
+  TextColumn get payloadJson => text()();
+  DateTimeColumn get fetchedAt => dateTime()();
+  DateTimeColumn get expiresAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {accountId, paperId, cacheKey};
+}
+
 @DriftDatabase(
   tables: [
     CachedPapers,
@@ -246,11 +512,24 @@ class CacheMetadata extends Table {
     CachedCommentPages,
     CachedChats,
     LibraryItems,
+    LibraryCustomLists,
+    LibraryTags,
+    LibraryListMemberships,
+    LibraryTagMemberships,
     CommentDrafts,
     BlockedUsers,
     SyncOutbox,
     LibrarySyncStates,
     CacheMetadata,
+    CachedDocumentArtifacts,
+    ReadingCheckpoints,
+    LocalAnnotations,
+    AnnotationConflicts,
+    LocalEvidenceCards,
+    LocalMemoryItems,
+    ResearchOutbox,
+    ResearchSyncStates,
+    CachedVersionArtifacts,
   ],
 )
 class PakPerkDatabase extends _$PakPerkDatabase {
@@ -280,7 +559,7 @@ class PakPerkDatabase extends _$PakPerkDatabase {
   final Future<String>? _databasePath;
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -443,6 +722,94 @@ class PakPerkDatabase extends _$PakPerkDatabase {
         // dormant legacy field cannot quietly become a reply feature later.
         await migrator.alterTable(TableMigration(commentDrafts));
       }
+      if (from < 7) {
+        if (!await _columnExists('library_items', 'private_note')) {
+          await migrator.addColumn(libraryItems, libraryItems.privateNote);
+        }
+        if (!await _columnExists('library_items', 'save_source_kind')) {
+          await migrator.addColumn(libraryItems, libraryItems.saveSourceKind);
+        }
+        if (!await _columnExists('library_items', 'reviewed_at')) {
+          await migrator.addColumn(libraryItems, libraryItems.reviewedAt);
+        }
+        if (!await _columnExists('library_items', 'archived_at')) {
+          await migrator.addColumn(libraryItems, libraryItems.archivedAt);
+        }
+        if (!await _columnExists('library_items', 'canonical_list_state')) {
+          await migrator.addColumn(
+            libraryItems,
+            libraryItems.canonicalListState,
+          );
+        }
+        if (!await _columnExists('library_items', 'canonical_private_note')) {
+          await migrator.addColumn(
+            libraryItems,
+            libraryItems.canonicalPrivateNote,
+          );
+        }
+        if (!await _columnExists(
+          'library_items',
+          'canonical_save_source_kind',
+        )) {
+          await migrator.addColumn(
+            libraryItems,
+            libraryItems.canonicalSaveSourceKind,
+          );
+        }
+        if (!await _columnExists('library_items', 'canonical_reviewed_at')) {
+          await migrator.addColumn(
+            libraryItems,
+            libraryItems.canonicalReviewedAt,
+          );
+        }
+        if (!await _columnExists('library_items', 'canonical_archived_at')) {
+          await migrator.addColumn(
+            libraryItems,
+            libraryItems.canonicalArchivedAt,
+          );
+        }
+        await migrator.createTable(libraryCustomLists);
+        await migrator.createTable(libraryTags);
+        await migrator.createTable(libraryListMemberships);
+        await migrator.createTable(libraryTagMemberships);
+        await customStatement('''
+              UPDATE library_items
+              SET canonical_list_state = CASE
+                WHEN canonical_deleted IS NULL THEN NULL
+                ELSE 'inbox'
+              END
+            ''');
+      }
+      if (from < 8) {
+        if (!await _columnExists('library_items', 'reminder_at')) {
+          await migrator.addColumn(libraryItems, libraryItems.reminderAt);
+        }
+        if (!await _columnExists('library_items', 'canonical_reminder_at')) {
+          await migrator.addColumn(
+            libraryItems,
+            libraryItems.canonicalReminderAt,
+          );
+        }
+      }
+      if (from < 9) {
+        await migrator.createTable(cachedDocumentArtifacts);
+        await migrator.createTable(readingCheckpoints);
+      }
+      if (from < 10) {
+        if (!await _columnExists('reading_checkpoints', 'operation_id')) {
+          await migrator.addColumn(
+            readingCheckpoints,
+            readingCheckpoints.operationId,
+          );
+        }
+        await migrator.createTable(localAnnotations);
+        await migrator.createTable(annotationConflicts);
+        await migrator.createTable(localEvidenceCards);
+        await migrator.createTable(localMemoryItems);
+        await migrator.createTable(researchOutbox);
+        await migrator.createTable(researchSyncStates);
+        await migrator.createTable(cachedVersionArtifacts);
+      }
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -450,6 +817,7 @@ class PakPerkDatabase extends _$PakPerkDatabase {
       await _installLibraryIndexes();
       await _installLibraryPinTriggers();
       await _installCommentIndexes();
+      await _installDeepReaderIndexes();
     },
   );
 
@@ -569,6 +937,33 @@ class PakPerkDatabase extends _$PakPerkDatabase {
           ON library_items(account_id, deleted, saved_at DESC, paper_id DESC)
         ''');
     await customStatement('''
+          CREATE INDEX IF NOT EXISTS library_lists_account_order
+          ON library_custom_lists(account_id, deleted, sort_order, name, list_id)
+        ''');
+    await customStatement('''
+          CREATE UNIQUE INDEX IF NOT EXISTS library_lists_account_name
+          ON library_custom_lists(account_id, name COLLATE NOCASE)
+          WHERE deleted = 0
+        ''');
+    await customStatement('''
+          CREATE UNIQUE INDEX IF NOT EXISTS library_tags_account_name
+          ON library_tags(account_id, name COLLATE NOCASE)
+          WHERE deleted = 0
+        ''');
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS library_list_memberships_paper
+          ON library_list_memberships(account_id, paper_id, deleted, list_id)
+        ''');
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS library_tag_memberships_paper
+          ON library_tag_memberships(account_id, paper_id, deleted, tag_id)
+        ''');
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS sync_outbox_library_v2_due
+          ON sync_outbox(account_id, state, next_attempt_at, created_at)
+          WHERE entity_kind LIKE 'library_v2_%'
+        ''');
+    await customStatement('''
           CREATE INDEX IF NOT EXISTS library_items_account_revision
           ON library_items(account_id, revision)
         ''');
@@ -602,6 +997,47 @@ class PakPerkDatabase extends _$PakPerkDatabase {
         ''');
   }
 
+  Future<void> _installDeepReaderIndexes() async {
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS document_artifacts_account_expiry
+          ON cached_document_artifacts(account_id, expires_at, fetched_at)
+        ''');
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS checkpoints_account_recent
+          ON reading_checkpoints(account_id, last_read_at DESC, paper_id)
+        ''');
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS annotations_account_paper_updated
+          ON local_annotations(account_id, paper_id, updated_at DESC)
+        ''');
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS annotations_anchor_review
+          ON local_annotations(account_id, anchor_status, updated_at DESC)
+          WHERE deleted_at IS NULL AND anchor_status != 'anchored'
+        ''');
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS annotation_conflicts_unresolved
+          ON annotation_conflicts(account_id, merge_state, created_at DESC)
+        ''');
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS evidence_account_paper_updated
+          ON local_evidence_cards(account_id, paper_id, updated_at DESC)
+        ''');
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS memory_account_review
+          ON local_memory_items(account_id, status, next_review_at, updated_at)
+          WHERE deleted_at IS NULL
+        ''');
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS research_outbox_due
+          ON research_outbox(account_id, state, created_at)
+        ''');
+    await customStatement('''
+          CREATE INDEX IF NOT EXISTS version_cache_account_expiry
+          ON cached_version_artifacts(account_id, expires_at, fetched_at)
+        ''');
+  }
+
   Future<void> putMetadata(String key, Object? value, {DateTime? updatedAt}) =>
       into(cacheMetadata).insertOnConflictUpdate(
         CacheMetadataCompanion.insert(
@@ -631,6 +1067,8 @@ class PakPerkDatabase extends _$PakPerkDatabase {
     await delete(cachedConnections).go();
     await delete(cachedCommentPages).go();
     await delete(cachedChats).go();
+    await delete(cachedDocumentArtifacts).go();
+    await delete(cachedVersionArtifacts).go();
     await customStatement('''
           DELETE FROM cached_papers
           WHERE pinned_by_library = 0
@@ -665,8 +1103,21 @@ class PakPerkDatabase extends _$PakPerkDatabase {
     await delete(cachedConnections).go();
     await delete(cachedCommentPages).go();
     await delete(cachedChats).go();
+    await delete(cachedDocumentArtifacts).go();
+    await delete(readingCheckpoints).go();
+    await delete(localAnnotations).go();
+    await delete(annotationConflicts).go();
+    await delete(localEvidenceCards).go();
+    await delete(localMemoryItems).go();
+    await delete(researchOutbox).go();
+    await delete(researchSyncStates).go();
+    await delete(cachedVersionArtifacts).go();
     await delete(feedQueries).go();
     await delete(libraryItems).go();
+    await delete(libraryListMemberships).go();
+    await delete(libraryTagMemberships).go();
+    await delete(libraryCustomLists).go();
+    await delete(libraryTags).go();
     await delete(blockedUsers).go();
     await delete(syncOutbox).go();
     await delete(librarySyncStates).go();

@@ -134,6 +134,12 @@ jobs:
           python3 scripts/production_approval_evidence.py --help
           python3 scripts/test_deployment_binding_evidence.py
           python3 scripts/deployment_binding_evidence.py --help
+          python3 scripts/test_deep_reader_release_evidence.py
+          python3 scripts/deep_reader_release_evidence.py --help
+          python3 scripts/test_deep_reader_evaluation.py
+          python3 scripts/deep_reader_evaluation.py --help
+          python3 scripts/test_deep_reader_rollout_docs.py
+          python3 scripts/test_to_read_first_rollout_docs.py
           python3 scripts/test_protected_service_exercise_evidence.py
           python3 scripts/protected_service_exercise_evidence.py --help
           python3 scripts/test_validate_protected_service_exercise_workflow.py
@@ -200,7 +206,7 @@ jobs:
           LOG_FORMAT: json
           RUST_LOG: info
           PAKPERK_MIGRATION_BACKUP_ID: ci-snapshot-${{ github.sha }}
-          PAKPERK_MIGRATION_EXPECTED_VERSION: "10"
+          PAKPERK_MIGRATION_EXPECTED_VERSION: "24"
           OTEL_EXPORTER_OTLP_ENDPOINT: http://pakperk-ci-otel-collector:4317
           OTEL_EXPORTER_OTLP_INSECURE: "true"
           OTEL_EXPORT_TIMEOUT_SECONDS: "1"

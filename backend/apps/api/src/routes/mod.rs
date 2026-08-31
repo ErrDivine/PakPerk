@@ -1,9 +1,6 @@
-use std::{
-    net::SocketAddr,
-    time::{Duration, Instant},
-};
+use std::{net::SocketAddr, time::Instant};
 
-use arxiv_client::{ArxivError, normalize_arxiv_id};
+use arxiv_client::ArxivError;
 use axum::{
     Extension, Json,
     extract::{ConnectInfo, Path, Query, State},
@@ -16,6 +13,7 @@ use domain::{
     ProcessingError, ProcessingStage, ProcessingState,
 };
 use llm_provider::{ChatCompletionRequest, EmbeddingRequest, EvidenceExcerpt, ProviderError};
+use paper_resolution::PaperResolutionError;
 use retrieval::{
     ContextSelectionConfig, RetrievalScope, SearchHit, hybrid_rank, keyword_websearch_query,
     select_context,
@@ -33,39 +31,95 @@ use crate::{
 };
 
 pub(crate) mod account;
+pub(crate) mod assistant_v2;
 pub(crate) mod chat;
 pub(crate) mod comments;
+pub(crate) mod discovery_search;
+pub(crate) mod document_reader;
+pub(crate) mod engagement;
 pub(crate) mod feed;
 pub(crate) mod health;
+pub(crate) mod interactions;
 pub(crate) mod library;
+pub(crate) mod library_imports;
+pub(crate) mod library_v2;
+pub(crate) mod paper_search;
 pub(crate) mod papers;
+pub(crate) mod passport;
+pub(crate) mod reading_feed;
+pub(crate) mod recommendations;
+pub(crate) mod research_memory;
+pub(crate) mod research_profiles;
 pub(crate) mod support;
+pub(crate) mod version_diff;
 
 use support::{
     apply_processing_policy, apply_summary_policy, capability_not_ready, cursor_error,
-    enforce_derived_policy, enforce_public_request_limit, internal_db_error, invalid_arxiv_id,
-    negative_exact_cache_ttl, observe_arxiv_result, paper_not_found, provider_error,
-    reciprocal_rank_score, retrieval_error, valid_category,
+    enforce_derived_policy, enforce_public_request_limit, internal_db_error, paper_not_found,
+    paper_resolution_error, provider_error, reciprocal_rank_score, retrieval_error, valid_category,
 };
 
 pub(crate) use account::{
     delete_me, get_me, patch_me, private_account_cache_control, verify_deletion_identity,
 };
+pub(crate) use assistant_v2::{assistant, assistant_feedback, assistant_provenance};
 pub(crate) use chat::chat;
 pub(crate) use comments::{
     block_user, create_comment, delete_comment, edit_comment, list_blocked_users, list_my_comments,
     list_paper_comments, report_comment, report_user, unblock_user,
 };
+pub(crate) use discovery_search::{
+    delete_saved_search, explore_search, list_saved_searches, lookup_search, save_search,
+    search_suggestions,
+};
+pub(crate) use document_reader::{
+    document_blocks, document_outline, equations, figure, figure_asset, figures, table, tables,
+    terms,
+};
+pub(crate) use engagement::{
+    create_reading_brief, create_subscription, current_reading_brief, delete_subscription,
+    dismiss_notification, get_notification_preferences, list_notifications, list_subscriptions,
+    mark_all_notifications_read, mark_notification_read, put_notification_preferences,
+    update_reading_brief_progress, update_subscription,
+};
 pub(crate) use feed::feed;
 pub(crate) use health::{health_cache_control, health_live, health_ready};
+pub(crate) use interactions::post_interaction_batch;
 pub(crate) use library::{library_changes, list_library, remove_library_item, save_library_item};
+pub(crate) use library_imports::import_library_paper;
+pub(crate) use library_v2::{
+    create_library_list, create_library_tag, delete_library_item_tag, delete_library_list,
+    delete_library_list_item, delete_library_tag, delete_library_v2_item, library_v2_changes,
+    list_library_lists, list_library_tags, list_library_v2_items, patch_library_v2_item,
+    put_library_item_tag, put_library_list_item, put_library_v2_item, update_library_list,
+    update_library_tag,
+};
+pub(crate) use paper_search::search_papers;
 pub(crate) use papers::{
     connections, introduction, paper_by_arxiv, paper_metadata, prepare, processing,
 };
+pub(crate) use passport::{passport, passport_feedback, semantic_spans, shared_provenance};
+pub(crate) use reading_feed::reading_feed;
+pub(crate) use recommendations::{get_recommendation_explanation, post_recommendation_feedback};
+pub(crate) use research_memory::{
+    MAX_ANNOTATION_IMPORT_REQUEST_BYTES, create_evidence_card, create_memory_item,
+    delete_annotation, delete_evidence_card, delete_memory_item, export_annotations,
+    import_annotations, list_annotation_conflicts, list_annotations, list_checkpoints,
+    list_evidence_cards, memory_review, put_annotation, put_checkpoint, put_evidence_card,
+    put_memory_item, reanchor_annotation, review_memory_item,
+};
+pub(crate) use research_profiles::{
+    delete_research_profile_author, delete_research_profile_topic, export_research_profile,
+    get_research_profile, get_research_profile_interests, reset_research_profile,
+    update_research_profile, upsert_research_profile_author, upsert_research_profile_topic,
+};
+pub(crate) use version_diff::{paper_version_diff, paper_versions};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
     use arxiv_client::ArxivClientConfig;
     use axum::{
         Router,
@@ -73,7 +127,7 @@ mod tests {
         extract::DefaultBodyLimit,
         http::{
             Method, Request as HttpRequest,
-            header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH},
+            header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH, VARY},
         },
         middleware,
         response::Response,
@@ -85,6 +139,7 @@ mod tests {
         ApiErrorEnvelope, ArxivIdentifier, Author, IntroductionDetection, PaperMetadata,
         ParsedPaper, ParsedParagraph, ParsedSection, SectionKind,
     };
+    use sqlx::postgres::PgPoolOptions;
     use tower::ServiceExt as _;
 
     use super::chat::validate_chat_body;
@@ -99,6 +154,56 @@ mod tests {
             stable_error_middleware,
         },
     };
+
+    #[tokio::test]
+    async fn personalized_features_default_to_absent_private_routes() {
+        let config = test_api_config(
+            "postgres://test:test@127.0.0.1/test",
+            FulltextPolicy::Prototype,
+        );
+        assert!(!config.features.reading_feed);
+        assert!(!config.features.library_v2);
+        assert!(!config.features.research_profiles);
+        assert!(!config.features.recommendations);
+        assert!(!config.features.recommendation_events);
+        let database = Database::from_pool(
+            PgPoolOptions::new()
+                .connect_lazy("postgres://test:test@127.0.0.1/test")
+                .unwrap(),
+        );
+        let app = build_router(AppState::new(database, &config).unwrap(), &config);
+
+        for path in [
+            "/v1/me/reading-feed",
+            "/v1/me/paper-searches",
+            "/v1/me/library/imports",
+            "/v1/library/items",
+            "/v1/library/lists",
+            "/v1/library/tags",
+            "/v1/library/changes",
+            "/v1/discovery/profile",
+            "/v1/discovery/batches/0198f4d7-a4ce-7b40-8ee8-4f350350810c/feedback",
+            "/v1/discovery/batches/0198f4d7-a4ce-7b40-8ee8-4f350350810c/papers/0198f4d7-a4ce-7b40-8ee8-4f350350810d/explanation",
+            "/v1/events/batch",
+            "/v1/annotation-conflicts",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(HttpRequest::get(path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            assert_eq!(response.headers()[CACHE_CONTROL], "private, no-store");
+            assert!(response.headers().get_all(VARY).iter().any(|value| {
+                value.to_str().is_ok_and(|value| {
+                    value
+                        .split(',')
+                        .any(|name| name.trim().eq_ignore_ascii_case("authorization"))
+                })
+            }));
+        }
+    }
 
     #[test]
     fn category_validation_is_conservative() {
@@ -191,6 +296,10 @@ mod tests {
                 introduction: true,
                 chat: true,
                 connections: true,
+                visual_objects: true,
+                terms: true,
+                semantic_facets: true,
+                paper_passport: true,
             },
         };
         let mut processing = ProcessingState {
@@ -540,6 +649,9 @@ mod tests {
             library: None,
             comments: None,
             account_deletion: None,
+            visual_assets: None,
+            paper_resolution: crate::config::PaperResolutionFeatureConfig::default(),
+            reading_feed: crate::config::ReadingFeedFeatureConfig::default(),
             request_origin: crate::config::RequestOriginConfig::for_local_development(
                 "route-test-request-origin-secret-0123456789",
             )
@@ -611,5 +723,48 @@ mod tests {
             .unwrap();
         let envelope: ApiErrorEnvelope = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(envelope.error.code, "REQUEST_BODY_TOO_LARGE");
+    }
+
+    #[tokio::test]
+    async fn annotation_import_limit_overrides_global_limit_but_stays_bounded() {
+        async fn import_json(Json(_body): Json<serde_json::Value>) -> StatusCode {
+            StatusCode::NO_CONTENT
+        }
+        let app = Router::new()
+            .route(
+                "/import",
+                post(import_json).layer(DefaultBodyLimit::max(MAX_ANNOTATION_IMPORT_REQUEST_BYTES)),
+            )
+            .layer(DefaultBodyLimit::max(64 * 1024));
+        let valid_export = serde_json::to_vec(&serde_json::json!({
+            "schema_version": "pakperk.research-export.v1",
+            "padding": "x".repeat(70 * 1024),
+        }))
+        .unwrap();
+        let accepted = app
+            .clone()
+            .oneshot(
+                HttpRequest::post("/import")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(valid_export))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(accepted.status(), StatusCode::NO_CONTENT);
+
+        let rejected = app
+            .oneshot(
+                HttpRequest::post("/import")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(vec![
+                        b' ';
+                        MAX_ANNOTATION_IMPORT_REQUEST_BYTES + 1
+                    ]))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rejected.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 }

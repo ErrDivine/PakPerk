@@ -9,6 +9,35 @@ bool platformPrefersReducedMotion(BuildContext context) {
       (media?.accessibleNavigation ?? false);
 }
 
+/// Explicit app policy for platforms where Flutter does not expose the native
+/// reduced-transparency setting through [MediaQueryData]. Tests and future
+/// settings UI can provide this independently from reduced motion. High
+/// contrast remains a conservative opaque-material fallback, not a synonym.
+class PakPerkAccessibilityPreferences extends InheritedWidget {
+  const PakPerkAccessibilityPreferences({
+    required this.reduceTransparency,
+    required super.child,
+    super.key,
+  });
+
+  final bool reduceTransparency;
+
+  static PakPerkAccessibilityPreferences? maybeOf(
+    BuildContext context,
+  ) => context
+      .dependOnInheritedWidgetOfExactType<PakPerkAccessibilityPreferences>();
+
+  @override
+  bool updateShouldNotify(PakPerkAccessibilityPreferences oldWidget) =>
+      reduceTransparency != oldWidget.reduceTransparency;
+}
+
+bool platformPrefersReducedTransparency(BuildContext context) {
+  final explicit = PakPerkAccessibilityPreferences.maybeOf(context);
+  if (explicit != null) return explicit.reduceTransparency;
+  return MediaQuery.maybeOf(context)?.highContrast ?? false;
+}
+
 abstract final class PakPerkMotion {
   static const Duration instant = Duration.zero;
   static const Duration crossFade = Duration(milliseconds: 140);

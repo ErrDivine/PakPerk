@@ -4,8 +4,9 @@ use chrono::{TimeDelta, Utc};
 use db::{
     AccountDeletionRepository, AccountDeletionRequest, AccountDeletionRequestOutcome,
     AdminCommentAction, Database, DbError, DeletionReapplyAction,
-    ExternalLedgerPurgeAuthorizationState, LibraryMutationIntent, LibraryMutationOutcome,
-    StoredAdminActor, UserReportOutcome,
+    ExternalLedgerPurgeAuthorizationState, LibraryCollectionIntent, LibraryListWrite,
+    LibraryMutationIntent, LibraryMutationOutcome, LibraryTagWrite, PaperImportFingerprint,
+    PaperImportInputKind, PaperImportReserveOutcome, StoredAdminActor, UserReportOutcome,
 };
 use domain::{
     AccountDeletionState, ArxivIdentifier, Author, CommentReportReason, IdentityFingerprint,
@@ -45,6 +46,44 @@ async fn postgres_deletion_request_rotation_lease_retention_and_restore_reapply(
         )
         .await
         .unwrap();
+    let list_id = Uuid::now_v7();
+    let tag_id = Uuid::now_v7();
+    assert!(matches!(
+        database
+            .library()
+            .mutate_list(
+                user.id,
+                Uuid::now_v7(),
+                LibraryCollectionIntent::Create,
+                &LibraryListWrite {
+                    id: list_id,
+                    name: "Deletion list".to_owned(),
+                    normalized_name: "deletion list".to_owned(),
+                    description: None,
+                    sort_order: 0,
+                },
+            )
+            .await
+            .unwrap(),
+        db::LibraryV2MutationOutcome::Applied { .. }
+    ));
+    assert!(matches!(
+        database
+            .library()
+            .mutate_tag(
+                user.id,
+                Uuid::now_v7(),
+                LibraryCollectionIntent::Create,
+                &LibraryTagWrite {
+                    id: tag_id,
+                    name: "Deletion tag".to_owned(),
+                    normalized_name: "deletion tag".to_owned(),
+                },
+            )
+            .await
+            .unwrap(),
+        db::LibraryV2MutationOutcome::Applied { .. }
+    ));
 
     // A normal request under a rotated key converges the active row to the
     // current fingerprint before deletion.
@@ -52,6 +91,21 @@ async fn postgres_deletion_request_rotation_lease_retention_and_restore_reapply(
         .provision_oidc_identity_guarded(&issuer, &subject, Duration::from_secs(900), &candidates)
         .await
         .unwrap();
+    let import_operation_id = Uuid::now_v7();
+    assert!(matches!(
+        database
+            .paper_imports()
+            .reserve(
+                user.id,
+                import_operation_id,
+                PaperImportInputKind::ArxivId,
+                PaperImportFingerprint::new([0x44; 32]),
+                Some("1706.03762"),
+            )
+            .await
+            .unwrap(),
+        PaperImportReserveOutcome::Reserved(_)
+    ));
     let persisted_key: String =
         sqlx::query_scalar("SELECT identity_fingerprint_key_id FROM users WHERE id = $1")
             .bind(user.id.into_inner())
@@ -281,6 +335,26 @@ async fn postgres_deletion_request_rotation_lease_retention_and_restore_reapply(
             .await
             .unwrap()
     );
+    let remaining_import_operations: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM paper_import_operations WHERE user_id = $1")
+            .bind(user.id.into_inner())
+            .fetch_one(database.pool())
+            .await
+            .unwrap();
+    assert_eq!(remaining_import_operations, 0);
+    for table in [
+        "library_lists",
+        "library_tags",
+        "library_collection_operations",
+    ] {
+        let query = format!("SELECT count(*) FROM {table} WHERE user_id = $1");
+        let remaining: i64 = sqlx::query_scalar(&query)
+            .bind(user.id.into_inner())
+            .fetch_one(database.pool())
+            .await
+            .unwrap();
+        assert_eq!(remaining, 0, "{table} must cascade with account deletion");
+    }
     let completion = deletion_repository
         .claim("fresh-worker", Duration::from_secs(30))
         .await
@@ -1004,7 +1078,7 @@ async fn postgres_deletion_purge_and_library_cleanup_have_acyclic_lock_order() {
                 paper.id,
                 Uuid::now_v7(),
                 LibraryMutationIntent::Save,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),
@@ -1017,7 +1091,7 @@ async fn postgres_deletion_purge_and_library_cleanup_have_acyclic_lock_order() {
                 paper.id,
                 Uuid::now_v7(),
                 LibraryMutationIntent::Remove,
-                LibraryState::ToRead,
+                LibraryState::Inbox,
             )
             .await
             .unwrap(),

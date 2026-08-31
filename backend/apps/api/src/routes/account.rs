@@ -29,20 +29,53 @@ pub(crate) async fn private_account_cache_control(request: Request, next: Next) 
     let path = request.uri().path();
     let method = request.method().clone();
     let is_paper_comments = path.starts_with("/v1/papers/") && path.ends_with("/comments");
+    let is_assistant_route = path.starts_with("/v1/papers/")
+        && (path.ends_with("/assistant") || path.ends_with("/assistant/feedback"));
+    let is_figure_asset =
+        path.starts_with("/v1/papers/") && path.contains("/figures/") && path.ends_with("/asset");
+    let is_passport_feedback =
+        path.starts_with("/v1/papers/") && path.ends_with("/passport/feedback");
+    let is_search_route = path.starts_with("/v1/search/");
     let is_private_account_route = path == "/v1/me"
         || path.starts_with("/v1/me/")
+        || path == "/v1/library"
+        || path.starts_with("/v1/library/")
+        || path == "/v1/discovery/profile"
+        || path.starts_with("/v1/discovery/profile/")
+        || path.starts_with("/v1/discovery/batches/")
+        || path == "/v1/subscriptions"
+        || path.starts_with("/v1/subscriptions/")
+        || path == "/v1/notifications"
+        || path.starts_with("/v1/notifications/")
+        || path == "/v1/notification-preferences"
+        || path == "/v1/events/batch"
         || path.starts_with("/v1/comments/")
         || path.starts_with("/v1/users/")
+        || path == "/v1/annotations"
+        || path == "/v1/annotation-conflicts"
+        || path.starts_with("/v1/annotations/")
+        || path == "/v1/evidence-cards"
+        || path.starts_with("/v1/evidence-cards/")
+        || path == "/v1/reading/checkpoints"
+        || path.starts_with("/v1/reading/checkpoints/")
+        || path == "/v1/memory/review"
+        || path == "/v1/memory/items"
+        || path.starts_with("/v1/memory/items/")
+        || path.starts_with("/v1/assistant/provenance/")
+        || is_assistant_route
+        || is_figure_asset
+        || is_passport_feedback
+        || is_search_route
         || (is_paper_comments
             && (method == Method::POST || request.headers().contains_key(AUTHORIZATION)));
     let mut response = next.run(request).await;
-    if is_private_account_route {
+    if is_private_account_route && !(is_figure_asset && response.status().is_success()) {
         response.headers_mut().insert(
             CACHE_CONTROL,
             HeaderValue::from_static(ACCOUNT_CACHE_CONTROL),
         );
     }
-    if is_paper_comments {
+    if is_paper_comments || is_private_account_route {
         response
             .headers_mut()
             .append(VARY, HeaderValue::from_static("Authorization"));
@@ -528,7 +561,7 @@ mod tests {
             header::{AUTHORIZATION, CONTENT_TYPE, RETRY_AFTER, WWW_AUTHENTICATE},
         },
         middleware,
-        routing::get,
+        routing::{get, post},
     };
     use chrono::{TimeZone as _, Utc};
     use db::{DbError, ProfilePatch, ProfileUpdateOutcome, RateLimitDecision, RateLimitRequest};
@@ -657,7 +690,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn personalized_comment_surfaces_are_private_and_public_reads_vary_on_auth() {
+    #[allow(clippy::too_many_lines)]
+    async fn personalized_surfaces_are_private_and_vary_on_authorization() {
         let app = Router::new()
             .route(
                 "/v1/papers/{paper_id}/comments",
@@ -666,6 +700,52 @@ mod tests {
             .route(
                 "/v1/comments/{comment_id}",
                 axum::routing::patch(|| async { StatusCode::OK }),
+            )
+            .route("/v1/me/reading-feed", get(|| async { StatusCode::OK }))
+            .route("/v1/discovery/profile", get(|| async { StatusCode::OK }))
+            .route(
+                "/v1/discovery/batches/{batch_id}/feedback",
+                post(|| async { StatusCode::SERVICE_UNAVAILABLE }),
+            )
+            .route("/v1/me/paper-searches", post(|| async { StatusCode::OK }))
+            .route("/v1/search/lookup", get(|| async { StatusCode::OK }))
+            .route("/v1/events/batch", post(|| async { StatusCode::OK }))
+            .route(
+                "/v1/me/reading-briefs",
+                post(|| async { StatusCode::SERVICE_UNAVAILABLE }),
+            )
+            .route("/v1/subscriptions", get(|| async { StatusCode::OK }))
+            .route(
+                "/v1/notifications",
+                get(|| async { StatusCode::SERVICE_UNAVAILABLE }),
+            )
+            .route(
+                "/v1/notification-preferences",
+                get(|| async { StatusCode::OK }),
+            )
+            .route("/v1/library/items", get(|| async { StatusCode::OK }))
+            .route(
+                "/v1/library/lists",
+                post(|| async { StatusCode::SERVICE_UNAVAILABLE }),
+            )
+            .route(
+                "/v1/me/library/imports",
+                post(|| async { StatusCode::SERVICE_UNAVAILABLE }),
+            )
+            .route(
+                "/v1/papers/{paper_id}/figures/{figure_id}/asset",
+                get(|| async {
+                    let mut response = StatusCode::OK.into_response();
+                    response.headers_mut().insert(
+                        CACHE_CONTROL,
+                        HeaderValue::from_static("private, max-age=86400, immutable"),
+                    );
+                    response
+                }),
+            )
+            .route(
+                "/v1/papers/{paper_id}/assistant/feedback",
+                post(|| async { StatusCode::CREATED }),
             )
             .layer(middleware::from_fn(private_account_cache_control));
 
@@ -693,6 +773,54 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(personalized.headers()[CACHE_CONTROL], ACCOUNT_CACHE_CONTROL);
+        assert_eq!(personalized.headers()[VARY], "Authorization");
+
+        let reading_feed = app
+            .clone()
+            .oneshot(
+                Request::get("/v1/me/reading-feed")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(reading_feed.headers()[CACHE_CONTROL], ACCOUNT_CACHE_CONTROL);
+        assert_eq!(reading_feed.headers()[VARY], "Authorization");
+
+        let figure_asset = app
+            .clone()
+            .oneshot(
+                Request::get(format!(
+                    "/v1/papers/{}/figures/{}/asset",
+                    Uuid::now_v7(),
+                    Uuid::now_v7()
+                ))
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            figure_asset.headers()[CACHE_CONTROL],
+            "private, max-age=86400, immutable"
+        );
+        assert_eq!(figure_asset.headers()[VARY], "Authorization");
+
+        let personalized_error = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/me/library/imports")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(personalized_error.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            personalized_error.headers()[CACHE_CONTROL],
+            ACCOUNT_CACHE_CONTROL
+        );
+        assert_eq!(personalized_error.headers()[VARY], "Authorization");
 
         for request in [
             Request::post(format!("/v1/papers/{}/comments", Uuid::now_v7()))
@@ -704,9 +832,46 @@ mod tests {
             Request::post(format!("/v1/users/{}/reports", Uuid::now_v7()))
                 .body(Body::empty())
                 .unwrap(),
+            Request::post("/v1/me/paper-searches")
+                .body(Body::empty())
+                .unwrap(),
+            Request::get("/v1/search/lookup?q=private")
+                .body(Body::empty())
+                .unwrap(),
+            Request::post("/v1/events/batch")
+                .body(Body::empty())
+                .unwrap(),
+            Request::post("/v1/me/reading-briefs")
+                .body(Body::empty())
+                .unwrap(),
+            Request::get("/v1/subscriptions")
+                .body(Body::empty())
+                .unwrap(),
+            Request::get("/v1/notifications")
+                .body(Body::empty())
+                .unwrap(),
+            Request::get("/v1/notification-preferences")
+                .body(Body::empty())
+                .unwrap(),
+            Request::get("/v1/library/items")
+                .body(Body::empty())
+                .unwrap(),
+            Request::post("/v1/library/lists")
+                .body(Body::empty())
+                .unwrap(),
+            Request::get("/v1/discovery/profile")
+                .body(Body::empty())
+                .unwrap(),
+            Request::post(format!("/v1/discovery/batches/{}/feedback", Uuid::now_v7()))
+                .body(Body::empty())
+                .unwrap(),
+            Request::post(format!("/v1/papers/{}/assistant/feedback", Uuid::now_v7()))
+                .body(Body::empty())
+                .unwrap(),
         ] {
             let response = app.clone().oneshot(request).await.unwrap();
             assert_eq!(response.headers()[CACHE_CONTROL], ACCOUNT_CACHE_CONTROL);
+            assert_eq!(response.headers()[VARY], "Authorization");
         }
     }
 
@@ -908,11 +1073,15 @@ mod tests {
                 comments: false,
                 comment_creation: false,
                 account_deletion: false,
+                ..FeatureFlags::default()
             },
             accounts: account,
             library: None,
             comments: None,
             account_deletion: None,
+            visual_assets: None,
+            paper_resolution: crate::config::PaperResolutionFeatureConfig::default(),
+            reading_feed: crate::config::ReadingFeedFeatureConfig::default(),
             request_origin: crate::config::RequestOriginConfig::for_local_development(
                 "account-route-request-origin-secret-0123456789",
             )

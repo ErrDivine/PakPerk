@@ -83,6 +83,19 @@ void main() {
           bundledCommunityGuidelinesDocumentVersion,
           reason: flavor,
         );
+        for (final key in const [
+          'PAKPERK_DEEP_READER_ENABLED',
+          'PAKPERK_PAPER_PASSPORT_ENABLED',
+          'PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED',
+          'PAKPERK_READING_CHECKPOINTS_ENABLED',
+          'PAKPERK_ANNOTATIONS_ENABLED',
+          'PAKPERK_EVIDENCE_CARDS_ENABLED',
+          'PAKPERK_RESEARCH_MEMORY_ENABLED',
+          'PAKPERK_VERSION_DIFF_ENABLED',
+          'PAKPERK_ASSISTANT_V2_ENABLED',
+        ]) {
+          expect(config[key], 'false', reason: '$flavor: $key');
+        }
       }
     },
   );

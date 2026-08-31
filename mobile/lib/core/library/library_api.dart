@@ -22,6 +22,7 @@ abstract interface class LibraryRemoteDataSource {
     required String paperId,
     required String operationId,
     required int expectedAuthEpoch,
+    LibrarySaveSourceKind? saveSourceKind,
   });
 
   Future<LibraryMutationResult> remove({
@@ -110,10 +111,12 @@ final class LibraryApi implements LibraryRemoteDataSource {
     required String paperId,
     required String operationId,
     required int expectedAuthEpoch,
+    LibrarySaveSourceKind? saveSourceKind,
   }) => _mutate(
     paperId: paperId,
     operationId: operationId,
     expectedAuthEpoch: expectedAuthEpoch,
+    saveSourceKind: saveSourceKind,
     save: true,
   );
 
@@ -134,6 +137,7 @@ final class LibraryApi implements LibraryRemoteDataSource {
     required String operationId,
     required int expectedAuthEpoch,
     required bool save,
+    LibrarySaveSourceKind? saveSourceKind,
   }) async {
     _validateUuid(paperId, 'paperId');
     _validateUuid(operationId, 'operationId');
@@ -149,7 +153,12 @@ final class LibraryApi implements LibraryRemoteDataSource {
       final response = save
           ? await _dio.put<Object?>(
               path,
-              data: {'operation_id': operationId, 'state': 'to_read'},
+              data: {
+                'operation_id': operationId,
+                'state': 'to_read',
+                if (saveSourceKind != null)
+                  'save_source_kind': saveSourceKind.wireValue,
+              },
               options: options,
             )
           : await _dio.delete<Object?>(path, options: options);

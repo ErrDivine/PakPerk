@@ -461,26 +461,91 @@ profile expiration, entitlement result, and packaged privacy-manifest result.
 
 ### Protected mobile feature flags
 
-The checked-in production config keeps accounts, library, and comments off.
-The checked-in staging fixture enables them so ordinary debug builds exercise
-the complete feature composition, but it is never used unchanged for a signed
-candidate. For both staging and production, the signed-candidate workflow
-materializes a temporary build config and defaults every protected feature to
-off unless these GitHub environment variables explicitly enable it:
+The checked-in production config keeps all 27 protected mobile capability flags
+off. The checked-in staging fixture enables only the established
+account/library/comment composition while the 24 candidate-bound To Read First,
+Plan 02, and Plan 03 flags stay off, but it is never used unchanged for a signed
+candidate. The protected evidence schema controls and binds these established
+seventeen flags:
 
 - `PAKPERK_ACCOUNTS_ENABLED`
 - `PAKPERK_LIBRARY_ENABLED`
 - `PAKPERK_COMMENTS_ENABLED`
+- `PAKPERK_PAPER_TITLE_SEARCH_ENABLED`
+- `PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED`
+- `PAKPERK_READING_FEED_ENABLED`
+- `PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED`
+- `PAKPERK_LIBRARY_V2_ENABLED`
+- `PAKPERK_RECOMMENDATIONS_ENABLED`
+- `PAKPERK_RECOMMENDATION_EVENTS_ENABLED`
+- `PAKPERK_SEARCH_LOOKUP_ENABLED`
+- `PAKPERK_SEARCH_EXPLORE_ENABLED`
+- `PAKPERK_SAVED_QUERIES_ENABLED`
+- `PAKPERK_RESEARCH_PROFILES_ENABLED`
+- `PAKPERK_READING_BRIEFS_ENABLED`
+- `PAKPERK_SUBSCRIPTIONS_ENABLED`
+- `PAKPERK_NOTIFICATIONS_ENABLED`
+
+The source config also contains these ten default-off Plan 03 controls:
+
+- `PAKPERK_DEEP_READER_ENABLED`
+- `PAKPERK_PAPER_PASSPORT_ENABLED`
+- `PAKPERK_SEMANTIC_FACETS_ENABLED`
+- `PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED`
+- `PAKPERK_READING_CHECKPOINTS_ENABLED`
+- `PAKPERK_ANNOTATIONS_ENABLED`
+- `PAKPERK_EVIDENCE_CARDS_ENABLED`
+- `PAKPERK_RESEARCH_MEMORY_ENABLED`
+- `PAKPERK_VERSION_DIFF_ENABLED`
+- `PAKPERK_ASSISTANT_V2_ENABLED`
+
+Schema-v6 feature evidence and schema-v4 candidate/provenance manifests now
+bind those ten values, and protected acceptance schema v6 defines ten Plan 03
+scenarios. This closes the repository contract gap only. No signed-device run,
+privacy/legal approval, human review, live-model result, staging canary, or
+release approval is checked in; those gates remain `not_ready`, and a candidate
+with a Plan 03 value enabled cannot be released without the complete protected
+evidence bundle.
 
 Each value must be exactly `true` or `false`; an absent value resolves to
-`false`. Library or comments cannot be enabled unless accounts is also true.
+`false`. Library, comments, or title search cannot be enabled unless accounts
+is also true. Import writes and the reading feed require both accounts and the
+library, and To Read First enforcement requires the reading feed. Library v2
+requires accounts and library. Recommendations and subscriptions require
+accounts, library, and reading feed. Explore requires Lookup; saved queries
+require accounts and Explore. Research profiles require accounts, reading
+briefs require reading feed, and notifications require subscriptions.
+Recommendation-event delivery is independently gated and has no recommendation
+feature dependency; runtime collection still requires the applicable consent.
+Deep Reader requires accounts, Library, reading feed, and To Read First
+enforcement. Passport, semantic facets, visual objects, checkpoints, version
+diff, and assistant v2 require Deep Reader. Annotations require Deep Reader,
+evidence cards require annotations, and research memory requires evidence
+cards.
 Define them on the protected `staging` and `production` environments, require
 release reviewers/branch restrictions there, and change them only through the
 release approval record. They are non-secret variables, never dispatch inputs
-or repository defaults. The workflow retains their three booleans in
+or repository defaults. The workflow retains closed schema-6 feature evidence,
+including all 27 booleans and the two public-document versions, in
 `mobile-feature-flags.json` and builds both platforms from that same generated
-config. Keep the independently controlled backend read/write/creation flags
-compatible; a mobile flag does not authorize a server capability.
+config. The canonical schema-4 candidate and provenance manifests each bind
+that file's raw SHA-256 plus the exact 24 To Read First, Plan 02, and Plan 03
+booleans.
+The assembler, both signer reattestations, each store-candidate validation, and
+the credential-free finalizer reject an unknown key, non-boolean value,
+dependency violation, digest mismatch, or candidate/provenance disagreement.
+Keep the independently controlled backend read/write/creation flags compatible;
+a mobile flag does not authorize a server capability.
+
+Library reminders require both `PAKPERK_LIBRARY_V2_ENABLED=true` and the
+independent `PAKPERK_NOTIFICATIONS_ENABLED=true` capability. With notifications
+off, Add Paper says “Organize paper,” the Library editor cannot set or replace
+a reminder, and an already stored reminder remains visible and clearable for a
+rollback-safe cleanup. An already-due reminder is presented as completed and
+is cleared only by the reader's next explicit Library save; dismissing its
+notification never edits the queue. Server reminder work is dormant while the
+notification flag is off, and reminders more than 24 hours overdue do not fire
+when the flag is re-enabled.
 
 ## Mobile verification lanes
 
@@ -552,16 +617,23 @@ executable. Configure these exact protected-environment variables:
 The pinned validator and driver must use absolute, reviewed paths for any
 Android SDK or other runner tools outside `/usr/bin:/bin`.
 
-The candidate content ID must resolve to a canonical, root-owned manifest at
-`/opt/pakperk/mobile-candidates/<digest>.json`. That manifest binds the source,
+The candidate content ID must resolve to a canonical schema-4, root-owned
+manifest at `/opt/pakperk/mobile-candidates/<digest>.json`. That manifest binds
+the source,
 staging environment, app version/build, strict flavor, Android and iOS install-
 artifact hashes, the exact staging application ID
 `app.pakperk.pakperk.staging`, signer digests, Apple team ID, and its provenance
-content ID. The provenance must independently resolve beneath
-`/opt/pakperk/mobile-release-provenance/<digest>.json` and exactly bind the AAB,
+content ID. It also binds the schema-6 mobile-feature-evidence SHA-256 and exact
+values for the four To Read First flags, all ten Plan 02 flags, and all ten
+Plan 03 flags. The schema-4 provenance
+must independently
+resolve beneath `/opt/pakperk/mobile-release-provenance/<digest>.json` and
+exactly bind the AAB,
 APK, and IPA SHA-256 values to repository `ErrDivine/PakPerk`, workflow
 `.github/workflows/mobile-release.yml`, job `signed-candidate`, the reviewed
 workflow/source SHA, GitHub run ID/attempt, and stage `artifacts_verified`.
+It must repeat the identical mobile-feature-evidence binding; any manifest,
+digest, schema, or boolean disagreement fails closed.
 Coordinates are read as data from the reviewed `mobile/config/staging.json`;
 mutable coordinate and package/bundle-ID variables are not accepted. The source
 step rejects duplicate/non-finite JSON, control characters, non-round-tripping
@@ -675,19 +747,153 @@ and emit the closed `mobile-acceptance-evidence.json` contract:
     Android three-button, and iPhone home-indicator modes.
 22. Exercise physical-keyboard Tab, Shift-Tab, Enter, and Escape paths on Android
     and iPad, including 200% text and minimum target coverage.
+23. On Android and iOS, sign in with a nonempty To Read queue, verify local and
+    server queue authority plus FIFO pagination, then remove every item and
+    require server-confirmed empty authority before requesting or publishing
+    recommendations; queued papers must never appear as recommendations.
+24. On both platforms, repeat the boundary with a pending save, pending paper
+    import, unknown/offline connectivity, sync reset, and pending final remove.
+    Every state must fail closed to queue/checking/finishing authority, with no
+    recommendation request or unlock before final server removal confirmation.
+25. Switch disposable accounts while a feed request is in flight and prove zero
+    old-account visible frames or old-generation publications. Exercise a
+    staging server-policy shadow -> strict -> shadow rollback cycle on Android
+    and iOS, revalidating queue authority before each surface transition.
+26. From both Read and To Read on Android and iOS, add papers by bare arXiv ID,
+    canonical arXiv URL, and title. Exact inputs must bypass title search; title
+    search must wait for its debounce and require explicit candidate selection.
+    Progress is accessible, the placeholder never enters canonical Drift, and
+    the canonical result is applied without a second outbox save.
+27. Exercise ambiguous title results, retryable search/import errors,
+    nonretryable input errors, and an account-scope change during import on both
+    platforms. Retry must reuse the exact operation ID and converge to one
+    canonical save with no cross-account result; retained evidence must contain
+    no raw title, URL, token, or account identity.
+28. On Android and iOS, open the Plan 02 Search destination from Read; exercise
+    normalized Lookup, bounded metadata-only suggestions, diagnostic Explore,
+    and authenticated saved-query replay. Opening results must not mutate the
+    Library, and an account switch must expose no prior account's saved query.
+29. On both platforms, verify personalization begins off; explicit,
+    feedback-derived, and inferred interests remain separately labeled; stored
+    mode/brief-size settings persist; export/reset behavior preserves queue
+    authority; and an account switch exposes no prior profile rows. Exercise the
+    controls with large text and reduced motion.
+30. For an enhanced recommendation batch, open a closed, evidence-backed
+    `Why this?` explanation and exercise relevant, not-relevant, and dismiss
+    feedback with idempotent retry. Recent-only fallback must expose no Why
+    action, inactive seeds only may appear in history reasons, excluded items
+    must stay absent, and feedback must not advance the Library revision. The
+    sheet must show only the recorded candidate source, whether behavior was
+    used, the relevance/exploration/diversity role, and historical-seed
+    presence without exposing a seed identifier, then link directly to Adjust
+    recommendations and personalization privacy controls.
+31. Create and resume a reading brief on both platforms, covering stored/default
+    and explicit size/mode selection, relaunch progress, accessible progress,
+    and account switching. Brief progress, completion, or exhaustion must not
+    mutate Library state or unlock recommendations while active queue items
+    remain.
+32. Exercise authenticated subscriptions and in-app notifications on both
+    platforms with an active queue, active-paper opt-in, quiet hours, daily
+    budget, global pause/mute, one bounded empty-queue digest, read/dismiss,
+    replay-safe scheduling, and account switching. Require zero unsafe,
+    duplicate, cross-account, push, or email deliveries.
+33. On Android and iOS, commit entry into Deep Reader, traverse at least four
+    bounded block pages, switch Skim/Read/Inspect without losing position, open
+    source locators, restore after a definition sheet, and prove there was no
+    preparation before committed intent, stale-generation rendering, or
+    fabricated parser fallback.
+34. Exercise Passport on both platforms with at least three populated fields,
+    distinct supported/inferred/conflicting/not-found states, exact evidence
+    navigation and visible paper version. Every populated field needs evidence,
+    and no Passport action may mutate Library state.
+35. Exercise semantic facets and definitions on both platforms only with their
+    explicit flag. Open exact occurrences, preserve selection/position when the
+    definition closes, show unavailable definitions honestly, and create no
+    automatic feed or Library insertion.
+36. Exercise figure, table, and equation cards on both platforms against the
+    exact generation. Open each source locator, validate table/plain-text and
+    equation accessibility fallbacks, including selectable exact source for
+    malformed LaTeX or unsupported MathML with SmartMath input repair and
+    sanitization disabled; preserve visual evidence locators, and
+    require zero wrong assets or unauthorized derivative exposures. Exercise
+    small, medium, and large selection from the exact atomic generation-scoped
+    set and validate the bounded response, manifest/file checksum binding, and
+    variant-specific cache identity; missing or invalid assets must retain
+    caption and original-page access.
+37. Save and restore position-only checkpoints across process restart and mode
+    changes on both platforms. Checkpoints and document end must cause zero
+    Library revision or queue-eligibility changes; only the explicit Mark
+    reviewed action may perform the expected Library mutation.
+38. On Android plus the independent iPad installation, create offline
+    highlights/notes, survive process death, replay idempotently, synchronize,
+    retain both bodies on a concurrent conflict, show reflow uncertainty, and
+    preserve evidence anchors. The closed scenario also requires an exact
+    export/import round trip, zero private-body telemetry, and zero cross-account
+    research rows. The importer is implemented, but only a protected run can
+    satisfy these device assertions.
+39. Exercise explicit memory creation, review, snooze, retire, origin return,
+    relaunch, and account switching on Android and iOS. Generated-but-unselected
+    content must not become memory, retired items must stay retired, and memory
+    actions must not change Library state or insert automatic feed items.
+40. Compare at least two version pairs on Android and iOS, open exact retained
+    old/new sources, identify changed sections/objects, keep unchanged blocks
+    out of the diff, and surface annotation anchor status. Uncertain or orphaned
+    annotations must never move silently, and diff navigation must not mutate
+    Library state.
+41. Exercise at least four explicitly scoped Assistant v2 questions on each
+    platform. Reject invented evidence IDs and stale generations, treat prompt
+    injection as source data, require evidence for material claims, abstain when
+    unsupported, open exact evidence sources, emit no offline ungrounded answer,
+    and retain no private prompt/answer telemetry fields.
+42. Across Android, iPhone, and keyboard iPad, prove automatic next-paper
+    navigation uses only the active queue, waits for server-confirmed empty at
+    the final item, and fails closed offline. Round-trip explicit Connections and
+    Memory branches without feed insertion, traverse at least 20 large-document
+    pages within the bounded load window, and verify 200% text, target size, and
+    gesture arbitration.
 
 The root-owned validator requires exact source, app version/build, candidate,
 validator, and driver digests; the signed-release provenance, canonical source
 binding, and ephemeral runner-session bindings; the staging API/app-link/OIDC/
 client coordinates; the four ordered physical-device roles; distinct installation and
-physical-identity hashes; sanitized hardware model and OS versions; and all 22
-ordered schema-v3 scenarios above. A scenario passes only with its exact
-device-role assignment, exact ordered assertion-ID list (141 markers in total),
-and closed integer threshold/equality metrics (78 rules in total); a generic
-positive count is not accepted. The driver request carries schema `3`, the exact
-scenario count, assertion count, metric count, and SHA-256 of the canonical
-ordered role/assertion/metric-rule contract. The pinned driver must reject a
-different contract rather than translating or accepting an older schema.
+physical-identity hashes; sanitized hardware model and OS versions; and all 42
+ordered schema-v6 scenarios above. A scenario passes only with its exact
+device-role assignment, exact ordered assertion-ID list (317 markers in total),
+and closed integer threshold/equality metrics (254 rules in total); a generic
+positive count is not accepted. The driver request carries schema `6`, those
+exact counts, and the canonical ordered role/assertion/metric-rule contract
+SHA-256
+`7483820afc6b2111f4886177dd120e72ab8ca47164757ca1eda9e10f64d70ad5`.
+The pinned driver must reject a different contract rather than translating or
+accepting an older schema.
+The request also carries the candidate's closed mobile-feature-evidence
+binding. Retained evidence repeats that binding, and the validator requires an
+exact match with both root-imported candidate and provenance manifests.
+Protected schema-v6 acceptance additionally requires the nested schema-v6
+mobile-feature evidence's 24 bound values
+to be exactly `true`; a disabled flag cannot produce valid evidence for this
+protected run and therefore fails before the root-owned driver starts. The 42
+physical scenarios are a closed baseline reader, identity, safety, device,
+To Read First, Add Paper, Plan 02 Search/Profile/Why/Brief/Alerts, and ten-scenario
+Plan 03 contract. The five Plan 02 and ten Plan 03 scenarios do not replace the
+automated backend/mobile suites or claim to exercise every feature permutation;
+separate protected staging, privacy, rollout, observability, and external-owner
+gates still apply.
+Changing the checked-in contract is repository evidence only. No scenario is
+production-passed until the updated root-owned driver emits a complete passing
+schema-v6 artifact for the exact signed candidate.
+
+The repository now carries the Plan 03 candidate/provenance/feature-evidence/
+driver/validator contract, but no exact signed-device run has passed it.
+Annotation import round-trip and exact generation-bound diff-page navigation
+are implemented as repository contracts. Authorized responsive derivative
+generation, ancillary-metadata-stripping re-encode, atomic manifest/hash-bound
+variant publication, authenticated variant delivery, variant-aware mobile
+caching, and exact-source, non-repairing maintained equation rendering are also
+present. Generated
+accessibility descriptions remain capability-gated, and no exact signed-device
+run has passed. Therefore every Plan 03 signed-device and mobile-release gate
+remains `not_ready` and every checked-in Plan 03 mobile flag remains false.
 In particular, `cold_cache_launch.metrics` must
 contain the exact integer keys `populated_cache_records`,
 `cached_first_readable_frame_p95_ms`, and `opening_transition_ms`. The latter two
@@ -718,7 +924,7 @@ request, evidence, logs, or artifacts. Passing these markers is not a substitute
 for the separate accountable visual, accessibility, mobile-platform, identity,
 privacy, and release approvals.
 
-Evidence schema v3 is also bound to a fresh cryptographic challenge, GitHub run
+Evidence schema v6 is also bound to a fresh cryptographic challenge, GitHub run
 ID and attempt, and whole-second UTC not-before time. Validation limits the run
 to six hours, rejects stale/replayed completion, duplicate or noncanonical JSON,
 non-finite numbers, extra fields, credential-shaped strings, symlinks,
@@ -803,8 +1009,15 @@ evidence for each before enabling production flags:
 - registered OIDC clients/redirects and production associated domains;
 - deployed association and legal/support URLs with monitored contact details;
 - live OTLP collector retention and redaction verification;
+- a compatible root-owned schema-v6 acceptance validator and driver installed
+  under `/opt/pakperk/bin`, their exact protected environment digest variables,
+  the current root-owned runner-session attestation, and all required physical-
+  device/account secrets;
 - physical-device account, comments/report/block, deletion, strict-content,
-  offline, callback, and deep-link QA;
+  offline, callback, deep-link, To Read First, and Add Paper QA. The protected
+  staging exercise also needs an approved way to drive and observe the
+  shadow-to-strict-to-shadow server-policy cycle without exposing control-plane
+  credentials to the candidate checkout;
 - reviewer account and store review notes without real-user data;
 - TestFlight and closed Play-track upload, current App Privacy/Data Safety and
   age-rating forms, monotonic store versions, review status, and either the

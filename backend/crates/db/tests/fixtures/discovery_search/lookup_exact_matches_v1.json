@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "exact_arxiv_identifier_wins",
+      "query_source": "first_arxiv_base",
+      "expected_paper": "first",
+      "expected_match_kind": "exact_arxiv_id"
+    },
+    {
+      "name": "exact_normalized_title_wins",
+      "query_source": "shared_title",
+      "expected_paper": "first",
+      "expected_match_kind": "exact_title"
+    },
+    {
+      "name": "exact_author_with_title_tokens_wins",
+      "query_source": "author_with_title_tokens",
+      "expected_paper": "author_match",
+      "expected_match_kind": "exact_author"
+    }
+  ]
+}

@@ -882,6 +882,7 @@ mod tests {
                 comments: true,
                 comment_creation: false,
                 account_deletion: false,
+                ..FeatureFlags::default()
             },
             accounts: Some(AccountFeatureConfig {
                 oidc: auth::OidcVerifierConfig::new(
@@ -904,6 +905,9 @@ mod tests {
             library: None,
             comments: Some(CommentFeatureConfig::for_test().unwrap()),
             account_deletion: None,
+            visual_assets: None,
+            paper_resolution: crate::config::PaperResolutionFeatureConfig::default(),
+            reading_feed: crate::config::ReadingFeedFeatureConfig::default(),
             request_origin: crate::config::RequestOriginConfig::for_local_development(
                 "strong-comment-origin-test-secret-0123456789",
             )

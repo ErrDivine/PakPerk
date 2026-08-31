@@ -24,6 +24,7 @@ import uuid
 SCRIPT = Path(__file__).with_name("run_backend_load.py")
 PROJECT_DIRECTORY = SCRIPT.parent.parent
 WORKFLOW = PROJECT_DIRECTORY / ".github/workflows/staging-backend-load.yml"
+RUNBOOK = PROJECT_DIRECTORY / "docs/runbooks/backend-load-testing.md"
 SPEC = importlib.util.spec_from_file_location("pakperk_backend_load", SCRIPT)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError("unable to load backend load module")
@@ -33,11 +34,19 @@ SPEC.loader.exec_module(LOAD)
 
 
 TOKEN_SENTINEL = "opaque-load-token-that-must-never-be-recorded"
+QUEUE_TOKEN_SENTINEL = "opaque-queue-token-that-must-never-be-recorded"
+RECOMMENDATION_TOKEN_SENTINEL = (
+    "opaque-recommendation-token-that-must-never-be-recorded"
+)
+SEARCH_QUERY_SENTINEL = "private paper title fixture must never be recorded"
 COMMENT_SENTINEL = "private comment content must never be recorded"
 METADATA_SENTINEL = "private metadata title must never be recorded"
 PAPER_IDS = tuple(str(uuid.UUID(int=index + 1)) for index in range(220))
 COMMENTS_PAPER_ID = PAPER_IDS[0]
 MUTATION_PAPER_ID = str(uuid.UUID(int=10_001))
+IMPORT_OPERATION_ID = str(uuid.UUID(int=20_001))
+IMPORT_ARXIV_ID = "2401.12345v1"
+IMPORT_ABS_URL = f"https://arxiv.org/abs/{IMPORT_ARXIV_ID}"
 
 
 class MockApiHandler(BaseHTTPRequestHandler):
@@ -47,6 +56,10 @@ class MockApiHandler(BaseHTTPRequestHandler):
     active_mutations = 0
     maximum_active_mutations = 0
     guest_authorization_seen = False
+    paper_search_requests = 0
+    paper_import_requests = 0
+    active_imports = 0
+    maximum_active_imports = 0
     slow_metadata_seconds = 0.0
     state_lock = threading.Lock()
 
@@ -61,6 +74,10 @@ class MockApiHandler(BaseHTTPRequestHandler):
             cls.active_mutations = 0
             cls.maximum_active_mutations = 0
             cls.guest_authorization_seen = False
+            cls.paper_search_requests = 0
+            cls.paper_import_requests = 0
+            cls.active_imports = 0
+            cls.maximum_active_imports = 0
             cls.slow_metadata_seconds = 0.0
 
     def _json(self, status: int, payload: dict[str, Any]) -> None:
@@ -71,8 +88,8 @@ class MockApiHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
-    def _authorized(self) -> bool:
-        if self.headers.get("Authorization") == f"Bearer {TOKEN_SENTINEL}":
+    def _authorized(self, token: str = TOKEN_SENTINEL) -> bool:
+        if self.headers.get("Authorization") == f"Bearer {token}":
             return True
         self._json(401, {"error": {"code": "UNAUTHENTICATED"}})
         return False
@@ -123,6 +140,63 @@ class MockApiHandler(BaseHTTPRequestHandler):
                     "title": METADATA_SENTINEL,
                 },
             )
+            return
+        if parsed.path == "/v1/me/reading-feed":
+            authorization = self.headers.get("Authorization")
+            if authorization == f"Bearer {QUEUE_TOKEN_SENTINEL}":
+                self._json(
+                    200,
+                    {
+                        "mode": "to_read",
+                        "decision": {
+                            "library_revision": 41,
+                            "active_to_read_count": 1,
+                            "queue_proven_empty": False,
+                        },
+                        "items": [
+                            {
+                                "paper": {
+                                    "paper_id": PAPER_IDS[0],
+                                    "title": METADATA_SENTINEL,
+                                },
+                                "queue": {
+                                    "saved_at": "2026-08-19T00:00:00Z",
+                                    "revision": 41,
+                                },
+                                "source": "to_read",
+                            }
+                        ],
+                        "next_cursor": None,
+                        "server_time": "2026-08-19T00:00:00Z",
+                    },
+                )
+                return
+            if authorization == f"Bearer {RECOMMENDATION_TOKEN_SENTINEL}":
+                self._json(
+                    200,
+                    {
+                        "mode": "recommendations",
+                        "decision": {
+                            "library_revision": 42,
+                            "active_to_read_count": 0,
+                            "queue_proven_empty": True,
+                        },
+                        "items": [
+                            {
+                                "paper": {
+                                    "paper_id": PAPER_IDS[1],
+                                    "title": METADATA_SENTINEL,
+                                },
+                                "queue": None,
+                                "source": "discovery_v1",
+                            }
+                        ],
+                        "next_cursor": None,
+                        "server_time": "2026-08-19T00:00:00Z",
+                    },
+                )
+                return
+            self._json(401, {"error": {"code": "UNAUTHENTICATED"}})
             return
         if parsed.path == "/v1/me/library":
             if not self._authorized():
@@ -184,6 +258,99 @@ class MockApiHandler(BaseHTTPRequestHandler):
             self._json(400, {"error": {"code": "INVALID_REQUEST"}})
             return
         self._mutation(removed=False)
+
+    def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract.
+        content_length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(content_length)
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            self._json(400, {"error": {"code": "INVALID_REQUEST"}})
+            return
+        if self.path == "/v1/me/paper-searches":
+            if not self._authorized():
+                return
+            if payload != {"query": SEARCH_QUERY_SENTINEL, "limit": 8}:
+                self._json(400, {"error": {"code": "INVALID_REQUEST"}})
+                return
+            with type(self).state_lock:
+                type(self).paper_search_requests += 1
+            self._json(
+                200,
+                {
+                    "query_id": str(uuid.uuid4()),
+                    "normalized_query": SEARCH_QUERY_SENTINEL,
+                    "candidates": [
+                        {
+                            "arxiv_id": IMPORT_ARXIV_ID,
+                            "title": SEARCH_QUERY_SENTINEL,
+                            "authors": ["Private Fixture Author"],
+                            "abstract": METADATA_SENTINEL,
+                            "primary_category": "cs.AI",
+                            "categories": ["cs.AI"],
+                            "published_at": "2026-08-18T00:00:00Z",
+                            "updated_at": "2026-08-19T00:00:00Z",
+                            "abs_url": IMPORT_ABS_URL,
+                            "match": {"kind": "title", "rank": 1},
+                        }
+                    ],
+                },
+            )
+            return
+        if self.path == "/v1/me/library/imports":
+            if not self._authorized():
+                return
+            if (
+                payload
+                != {
+                    "operation_id": IMPORT_OPERATION_ID,
+                    "source": {"kind": "arxiv_id", "value": IMPORT_ARXIV_ID},
+                }
+                or self.headers.get("Idempotency-Key") != IMPORT_OPERATION_ID
+            ):
+                self._json(400, {"error": {"code": "INVALID_REQUEST"}})
+                return
+            with type(self).state_lock:
+                type(self).paper_import_requests += 1
+                type(self).active_imports += 1
+                type(self).maximum_active_imports = max(
+                    type(self).maximum_active_imports,
+                    type(self).active_imports,
+                )
+            try:
+                time.sleep(0.002)
+                self._json(
+                    200,
+                    {
+                        "result": "saved",
+                        "resolution": {
+                            "input_kind": "arxiv_id",
+                            "canonical_arxiv_id": IMPORT_ARXIV_ID,
+                        },
+                        "item": {
+                            "paper_id": PAPER_IDS[2],
+                            "state": "to_read",
+                            "saved_at": "2026-08-19T00:00:00Z",
+                            "updated_at": "2026-08-19T00:00:00Z",
+                            "removed": False,
+                            "removed_at": None,
+                            "revision": 43,
+                            "last_operation_id": IMPORT_OPERATION_ID,
+                        },
+                        "paper": {
+                            "paper_id": PAPER_IDS[2],
+                            "arxiv_id": IMPORT_ARXIV_ID,
+                            "title": SEARCH_QUERY_SENTINEL,
+                            "abs_url": IMPORT_ABS_URL,
+                        },
+                        "sync_revision": 43,
+                    },
+                )
+            finally:
+                with type(self).state_lock:
+                    type(self).active_imports -= 1
+            return
+        self._json(404, {"error": {"code": "NOT_FOUND"}})
 
     def do_DELETE(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract.
         if self.path != f"/v1/me/library/{MUTATION_PAPER_ID}":
@@ -263,6 +430,12 @@ class BackendLoadContractTest(unittest.TestCase):
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             result = LOAD.main(arguments)
         return result, stdout.getvalue(), stderr.getvalue()
+
+    def private_file(self, name: str, value: str) -> Path:
+        path = self.directory / name
+        path.write_text(value, encoding="utf-8")
+        path.chmod(0o600)
+        return path
 
     def test_guest_gate_is_bounded_canonical_and_content_redacted(self) -> None:
         output = self.directory / "guest-evidence.json"
@@ -358,6 +531,171 @@ class BackendLoadContractTest(unittest.TestCase):
         ):
             self.assertNotIn(secret, serialized)
 
+    def test_private_feed_and_resolution_cache_paths_are_bounded_and_redacted(
+        self,
+    ) -> None:
+        token_file = self.private_file("token", TOKEN_SENTINEL)
+        queue_token_file = self.private_file("queue-token", QUEUE_TOKEN_SENTINEL)
+        recommendation_token_file = self.private_file(
+            "recommendation-token", RECOMMENDATION_TOKEN_SENTINEL
+        )
+        query_file = self.private_file("search-query", SEARCH_QUERY_SENTINEL)
+        import_source_file = self.private_file("import-source", IMPORT_ARXIV_ID)
+        output = self.directory / "private-cache-evidence.json"
+        arguments = self.base_arguments(output) + [
+            "--concurrency",
+            "4",
+            "--bearer-token-file",
+            str(token_file),
+            "--reading-feed-queue-token-file",
+            str(queue_token_file),
+            "--reading-feed-recommendation-token-file",
+            str(recommendation_token_file),
+            "--paper-search-query-file",
+            str(query_file),
+            "--max-paper-search-requests",
+            "4",
+            "--allow-paper-import-replays",
+            "--paper-import-operation-id",
+            IMPORT_OPERATION_ID,
+            "--paper-import-arxiv-id-file",
+            str(import_source_file),
+            "--max-paper-import-requests",
+            "4",
+            "--threshold",
+            "reading_feed_queue=60000,60000,60000,0",
+            "--threshold",
+            "reading_feed_recommendations=60000,60000,60000,0",
+            "--threshold",
+            "paper_title_search=60000,60000,60000,0",
+            "--threshold",
+            "paper_import_replay=60000,60000,60000,0",
+        ]
+
+        result, stdout, stderr = self.run_main(arguments)
+
+        self.assertEqual(result, 0, stderr)
+        self.assertIn("6 scenarios", stdout)
+        evidence = json.loads(output.read_text(encoding="utf-8"))
+        self.assertEqual(
+            evidence["workload"]["authenticated_scenarios"],
+            [
+                "reading_feed_queue",
+                "reading_feed_recommendations",
+                "paper_title_search",
+                "paper_import_replay",
+            ],
+        )
+        self.assertEqual(evidence["workload"]["paper_search_request_cap"], 4)
+        self.assertEqual(evidence["workload"]["paper_import_request_cap"], 4)
+        self.assertFalse(evidence["workload"]["private_fixture_content_recorded"])
+        import_measurement = evidence["measurements"]["scenarios"][
+            "paper_import_replay"
+        ]
+        self.assertGreaterEqual(import_measurement["requests"], 2)
+        self.assertLessEqual(import_measurement["requests"], 4)
+        self.assertEqual(import_measurement["errors"], 0)
+        self.assertEqual(
+            MockApiHandler.paper_import_requests,
+            import_measurement["requests"] + 1,
+        )
+        self.assertLessEqual(MockApiHandler.maximum_active_imports, 1)
+        search_measurement = evidence["measurements"]["scenarios"][
+            "paper_title_search"
+        ]
+        self.assertGreaterEqual(search_measurement["requests"], 2)
+        self.assertLessEqual(search_measurement["requests"], 4)
+        self.assertEqual(
+            MockApiHandler.paper_search_requests,
+            search_measurement["requests"] + 1,
+        )
+        serialized = stdout + stderr + output.read_text(encoding="utf-8")
+        for private_value in (
+            self.origin,
+            TOKEN_SENTINEL,
+            QUEUE_TOKEN_SENTINEL,
+            RECOMMENDATION_TOKEN_SENTINEL,
+            SEARCH_QUERY_SENTINEL,
+            IMPORT_OPERATION_ID,
+            IMPORT_ARXIV_ID,
+            IMPORT_ABS_URL,
+            PAPER_IDS[0],
+        ):
+            self.assertNotIn(private_value, serialized)
+
+    def test_private_workloads_fail_closed_without_complete_fixture_authority(
+        self,
+    ) -> None:
+        output = self.directory / "invalid-private-workload.json"
+        query_file = self.private_file("search-query", SEARCH_QUERY_SENTINEL)
+        with self.assertRaisesRegex(LOAD.ConfigurationError, "bearer-token"):
+            LOAD.parse_config(
+                self.base_arguments(output)
+                + ["--paper-search-query-file", str(query_file)]
+            )
+
+        token_file = self.private_file("token", TOKEN_SENTINEL)
+        import_source_file = self.private_file("import-source", IMPORT_ARXIV_ID)
+        with self.assertRaisesRegex(LOAD.ConfigurationError, "explicit allowance"):
+            LOAD.parse_config(
+                self.base_arguments(output)
+                + [
+                    "--bearer-token-file",
+                    str(token_file),
+                    "--paper-import-operation-id",
+                    IMPORT_OPERATION_ID,
+                    "--paper-import-arxiv-id-file",
+                    str(import_source_file),
+                ]
+            )
+        self.assertFalse(output.exists())
+
+    def test_private_fixture_normalization_and_account_rate_caps_are_closed(
+        self,
+    ) -> None:
+        output = self.directory / "private-rate-cap.json"
+        token_file = self.private_file("rate-token", TOKEN_SENTINEL)
+        query_file = self.private_file("unicode-query", "  Ｆast\n\tPaper  ")
+        base = self.base_arguments(output) + [
+            "--bearer-token-file",
+            str(token_file),
+            "--paper-search-query-file",
+            str(query_file),
+        ]
+
+        config = LOAD.parse_config(base)
+
+        self.assertEqual(config.paper_search_query, "Fast Paper")
+        self.assertEqual(
+            config.maximum_paper_search_requests,
+            LOAD.PAPER_SEARCH_ACCOUNT_LIMIT_PER_MINUTE - 1,
+        )
+        self.assertNotIn(TOKEN_SENTINEL, repr(config))
+        self.assertNotIn("Fast Paper", repr(config))
+        with self.assertRaisesRegex(
+            LOAD.argparse.ArgumentTypeError,
+            "max paper search requests must be between 1 and 9",
+        ):
+            LOAD.parse_config(base + ["--max-paper-search-requests", "10"])
+
+        import_source_file = self.private_file("rate-import-source", IMPORT_ARXIV_ID)
+        with self.assertRaisesRegex(
+            LOAD.argparse.ArgumentTypeError,
+            "max paper import requests must be between 1 and 19",
+        ):
+            LOAD.parse_config(
+                base
+                + [
+                    "--allow-paper-import-replays",
+                    "--paper-import-operation-id",
+                    IMPORT_OPERATION_ID,
+                    "--paper-import-arxiv-id-file",
+                    str(import_source_file),
+                    "--max-paper-import-requests",
+                    "20",
+                ]
+            )
+
     def test_threshold_failure_is_written_without_response_content(self) -> None:
         output = self.directory / "failed-evidence.json"
         arguments = self.base_arguments(output) + [
@@ -441,6 +779,70 @@ class BackendLoadContractTest(unittest.TestCase):
                 False,
                 PAPER_IDS[0],
             )
+        with self.assertRaises(LOAD.ProtocolError):
+            LOAD.validate_reading_feed(
+                {
+                    "mode": "recommendations",
+                    "decision": {
+                        "library_revision": 1,
+                        "active_to_read_count": 1,
+                        "queue_proven_empty": False,
+                    },
+                    "items": [],
+                    "next_cursor": None,
+                    "server_time": "2026-08-19T00:00:00Z",
+                },
+                "recommendations",
+                20,
+            )
+        with self.assertRaises(LOAD.ProtocolError):
+            LOAD.validate_reading_feed(
+                {
+                    "mode": "recommendations",
+                    "decision": {
+                        "library_revision": 1,
+                        "active_to_read_count": 0,
+                        "queue_proven_empty": True,
+                    },
+                    "items": [],
+                    "next_cursor": None,
+                    "server_time": "2026-08-19T00:00:00Z",
+                    "account_id": str(uuid.uuid4()),
+                },
+                "recommendations",
+                20,
+            )
+        with self.assertRaises(LOAD.ProtocolError):
+            LOAD.validate_paper_search(
+                {
+                    "query_id": str(uuid.uuid4()),
+                    "normalized_query": "different private query",
+                    "candidates": [],
+                },
+                SEARCH_QUERY_SENTINEL,
+                8,
+            )
+        with self.assertRaises(LOAD.ProtocolError):
+            LOAD.validate_paper_import(
+                {
+                    "result": "saved",
+                    "resolution": {
+                        "input_kind": "arxiv_id",
+                        "canonical_arxiv_id": IMPORT_ARXIV_ID,
+                    },
+                    "item": {
+                        "paper_id": PAPER_IDS[0],
+                        "state": "to_read",
+                        "removed": False,
+                        "removed_at": None,
+                        "revision": 1,
+                        "last_operation_id": str(uuid.uuid4()),
+                    },
+                    "paper": {"paper_id": PAPER_IDS[0]},
+                    "sync_revision": 1,
+                },
+                IMPORT_OPERATION_ID,
+            )
 
     def test_packet_loss_selection_is_repeatable(self) -> None:
         output = self.directory / "packet-loss-evidence.json"
@@ -475,17 +877,58 @@ class BackendLoadContractTest(unittest.TestCase):
         self.assertIn("--environment staging", workflow)
         self.assertIn('--max-requests "$MAX_REQUESTS"', workflow)
         self.assertIn("--allow-library-mutations", workflow)
+        self.assertIn("--reading-feed-queue-token-file", workflow)
+        self.assertIn("--reading-feed-recommendation-token-file", workflow)
+        self.assertIn("--paper-search-query-file", workflow)
+        self.assertIn("--allow-paper-import-replays", workflow)
+        self.assertIn("RUN_DEDICATED_STAGING_PAPER_IMPORT_REPLAYS", workflow)
+        private_dispatch_inputs = (
+            "include_reading_feed_queue",
+            "include_reading_feed_recommendations",
+            "include_paper_title_search",
+            "allow_paper_import_replays",
+        )
+        all_dispatch_inputs = (
+            "include_reading_feed_queue",
+            "include_reading_feed_recommendations",
+            "include_paper_title_search",
+            "allow_library_mutations",
+            "mutation_confirmation",
+            "max_library_mutation_requests",
+            "allow_paper_import_replays",
+            "paper_import_confirmation",
+            "max_paper_import_requests",
+            "simulated_network_delay_ms",
+        )
+        for dispatch_input in private_dispatch_inputs:
+            marker = f"      {dispatch_input}:\n"
+            start = workflow.index(marker)
+            input_index = all_dispatch_inputs.index(dispatch_input)
+            next_input = all_dispatch_inputs[input_index + 1]
+            end = workflow.index(f"\n      {next_input}:\n", start + len(marker))
+            block = workflow[start:end]
+            self.assertIn("default: false", block)
         self.assertIn("environment staging", workflow)
         self.assertIn("PAKPERK_STAGING_API_ORIGIN", workflow)
-        self.assertIn("PAKPERK_STAGING_LOAD_TOKEN", workflow)
-        self.assertEqual(
-            workflow.count(
-                "STAGING_LOAD_TOKEN: ${{ secrets.PAKPERK_STAGING_LOAD_TOKEN }}"
+        secret_bindings = {
+            "STAGING_LOAD_TOKEN": "PAKPERK_STAGING_LOAD_TOKEN",
+            "STAGING_READING_QUEUE_TOKEN": (
+                "PAKPERK_STAGING_LOAD_READING_QUEUE_TOKEN"
             ),
-            1,
-        )
-        self.assertNotIn("add-mask::$STAGING_LOAD_TOKEN", workflow)
-        self.assertNotIn('echo "$STAGING_LOAD_TOKEN"', workflow)
+            "STAGING_READING_RECOMMENDATION_TOKEN": (
+                "PAKPERK_STAGING_LOAD_READING_RECOMMENDATION_TOKEN"
+            ),
+            "STAGING_PAPER_SEARCH_QUERY": (
+                "PAKPERK_STAGING_LOAD_PAPER_SEARCH_QUERY"
+            ),
+        }
+        for variable, secret in secret_bindings.items():
+            self.assertEqual(
+                workflow.count(f"{variable}: ${{{{ secrets.{secret} }}}}"),
+                1,
+            )
+            self.assertNotIn(f"add-mask::${variable}", workflow)
+            self.assertNotIn(f'echo "${variable}"', workflow)
         self.assertIn("continue-on-error: true", workflow)
         self.assertIn("if: always()", workflow)
         self.assertIn("${{ github.run_id }}-${{ github.run_attempt }}", workflow)
@@ -503,6 +946,26 @@ class BackendLoadContractTest(unittest.TestCase):
         self.assertNotIn("run_backend_load.py", ci)
         self.assertIn('python3 "$project_dir/scripts/test_backend_load.py"', check)
         self.assertNotIn("run_backend_load.py", check)
+
+    def test_runbook_binds_plan02_scenarios_limits_and_external_evidence(self) -> None:
+        runbook = " ".join(RUNBOOK.read_text(encoding="utf-8").split())
+        for required in (
+            "`reading_feed_queue`",
+            "`reading_feed_recommendations`",
+            "`paper_title_search`",
+            "`paper_import_replay`",
+            "350/700/1,400 ms",
+            "500/1,000/2,000 ms",
+            "capped at nine",
+            "hard maximum is 19",
+            "RUN_DEDICATED_STAGING_PAPER_IMPORT_REPLAYS",
+            "private_fixture_content_recorded=false",
+            "no checked-in artifact proves",
+        ):
+            self.assertIn(required, runbook)
+        self.assertIn("owner-only regular file", runbook)
+        self.assertIn("mode `0600`", runbook)
+        self.assertIn("removes the files on exit", runbook)
 
 
 if __name__ == "__main__":

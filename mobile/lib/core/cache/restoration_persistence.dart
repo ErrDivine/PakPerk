@@ -312,7 +312,7 @@ String _feedReaderKey(PersistedFeedPaperReference paper) =>
 
 int _safeBranchIndex(Object? value) {
   final index = value is num ? value.toInt() : 0;
-  return index == AppBranch.you.index ? AppBranch.you.index : 0;
+  return AppBranch.fromIndex(index).index;
 }
 
 int _safeFeedIndex(Object? value) {

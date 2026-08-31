@@ -14,6 +14,7 @@ import '../../core/library/library_models.dart';
 import '../../core/models/paper.dart';
 import '../../core/providers.dart';
 import '../placeholders/phase_one_placeholder_screens.dart';
+import 'paper_import_flow.dart';
 import 'to_read_list.dart';
 
 class ToReadScreen extends ConsumerWidget {
@@ -40,6 +41,7 @@ class ToReadScreen extends ConsumerWidget {
           : _UnavailableReadOnlyLibraryScreen(status: readOnlyStatus);
     }
     final mutationScope = ref.watch(libraryMutationScopeProvider);
+    final canImport = ref.watch(paperImportAvailableProvider);
 
     final items = ref.watch(toReadItemsProvider(scope));
     final sync = ref.watch(librarySyncControllerProvider);
@@ -57,6 +59,15 @@ class ToReadScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('To Read'),
         actions: [
+          if (canImport)
+            IconButton(
+              key: const ValueKey('to-read-add-paper'),
+              tooltip: 'Add a paper',
+              onPressed: () => unawaited(
+                showAccountAddPaperFlow(context: context, ref: ref),
+              ),
+              icon: const Icon(Icons.add_rounded),
+            ),
           if (sync.pendingCount > 0)
             Padding(
               padding: const EdgeInsets.only(right: 16),
@@ -74,27 +85,30 @@ class ToReadScreen extends ConsumerWidget {
       ),
       body: cached == null && items.isLoading
           ? const Center(child: CircularProgressIndicator())
-          : ToReadListView(
-              // A PageStorageKey resets the stateful controls just like a
-              // ValueKey while also namespacing the descendant ListView's
-              // persisted scroll offset to this exact account/auth epoch.
-              key: PageStorageKey<ActiveLibraryScope>(scope),
-              items: cached ?? const [],
-              offline: offline,
-              syncIssue:
-                  sync.issue ??
-                  (items.hasError
-                      ? LibrarySyncIssue.fromCode('LOCAL_SYNC_UNAVAILABLE')
-                      : null),
-              readOnlyMessage: readOnlyStatus == null
-                  ? null
-                  : _libraryReadOnlyMessage(readOnlyStatus),
-              onRefresh: mutationScope == null ? null : () => _refresh(ref),
-              onOpen: (item) => onOpenPaper(item.paper),
-              onRemove: mutationScope == null
-                  ? null
-                  : (item) =>
-                        unawaited(_remove(context, ref, mutationScope, item)),
+          : SafeArea(
+              top: false,
+              child: ToReadListView(
+                // A PageStorageKey resets the stateful controls just like a
+                // ValueKey while also namespacing the descendant ListView's
+                // persisted scroll offset to this exact account/auth epoch.
+                key: PageStorageKey<ActiveLibraryScope>(scope),
+                items: cached ?? const [],
+                offline: offline,
+                syncIssue:
+                    sync.issue ??
+                    (items.hasError
+                        ? LibrarySyncIssue.fromCode('LOCAL_SYNC_UNAVAILABLE')
+                        : null),
+                readOnlyMessage: readOnlyStatus == null
+                    ? null
+                    : _libraryReadOnlyMessage(readOnlyStatus),
+                onRefresh: mutationScope == null ? null : () => _refresh(ref),
+                onOpen: (item) => onOpenPaper(item.paper),
+                onRemove: mutationScope == null
+                    ? null
+                    : (item) =>
+                          unawaited(_remove(context, ref, mutationScope, item)),
+              ),
             ),
     );
   }

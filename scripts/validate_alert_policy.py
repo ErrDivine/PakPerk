@@ -19,6 +19,14 @@ DEFAULT_POLICY = (
 )
 LEDGER_WORKER_SOURCE = "backend/crates/account_deletion/src/worker.rs"
 LEDGER_ALERT_LITERAL = '"external deletion ledger failed verification"'
+READING_FEED_SOURCE = "backend/apps/api/src/routes/reading_feed.rs"
+READING_FEED_ALERT_LITERAL = (
+    '"authenticated reading feed could not prove queue authority"'
+)
+MOBILE_TELEMETRY_SOURCE = "mobile/lib/core/telemetry/telemetry.dart"
+MOBILE_GATEWAY_SOURCE = "backend/apps/telemetry-gateway/src/main.rs"
+COLLECTOR_TEMPLATE = "deploy/helm/pakperk/templates/otel-collector.yaml"
+RECOMMENDATION_CARD_EVENT = "recommendation_card_rendered"
 
 # Every alert required by docs/runbooks/observability.md is represented
 # explicitly. The tuple fixes the operationally meaningful fields so a policy
@@ -38,6 +46,16 @@ EXPECTED_RULES = {
         "application-otlp", "metric", "http.server.request.duration",
         "p95_by_http_route", "warning", "ticket", "service-on-call",
         "docs/runbooks/incident-response.md", "greater_than", 0.5, 300, 600, "alert",
+    ),
+    "reading-feed-authority-unavailable": (
+        "kubernetes-redacted-logs", "log", "pakperk.static_message.count",
+        "sum_increase", "critical", "page", "service-on-call",
+        "docs/runbooks/incident-response.md", "greater_than", 0, 300, 60, "healthy",
+    ),
+    "recommendation-card-queue-leakage": (
+        "application-otlp", "log", "pakperk.mobile.event.count", "sum_increase",
+        "critical", "page", "service-on-call", "docs/runbooks/incident-response.md",
+        "greater_than", 0, 300, 60, "healthy",
     ),
     "database-pool-saturation": (
         "database-observer", "metric", "pakperk.infrastructure.database.pool.utilization",
@@ -158,6 +176,18 @@ EXPECTED_FILTERS: dict[str, dict[str, Any]] = {
     "api-latency-high": {
         "deployment.environment.name": "production", "service.name": "pakperk-api-production",
     },
+    "reading-feed-authority-unavailable": {
+        "body": "authenticated reading feed could not prove queue authority",
+        "code.namespace": "pakperk_api::routes::reading_feed",
+        "deployment.environment.name": "production", "log.severity_text": "ERROR",
+        "service.name": "pakperk-backend-stdout",
+    },
+    "recommendation-card-queue-leakage": {
+        "body": "recommendation_card_rendered",
+        "deployment.environment.name": "production",
+        "policy_consistent": "false",
+        "service.name": "pakperk-mobile",
+    },
     "database-pool-saturation": {"deployment.environment.name": "production"},
     "paper-queue-age-high": {
         "deployment.environment.name": "production", "unit": "seconds",
@@ -211,7 +241,7 @@ PROHIBITED_FILTER_FRAGMENTS = {
     "api_key", "email", "oidc.subject", "oidc.sub", "user.id", "account.id", "provider.id",
     "client.address", "source.address", "device.id", "session.id", "search.query",
     "comment.body", "chat.message", "paper.full_text", "model.prompt", "model.response",
-    "url.query", "db.statement", "db.query.text",
+    "url.query", "db.statement", "db.query.text", "cursor", "category",
 }
 
 
@@ -287,6 +317,15 @@ def _tracked_backend_rust_sources(
             if "target" not in path.relative_to(backend).parts
         )
 
+    # During a multi-file change, a newly introduced alert source may not yet
+    # be in the index. Include only the two reviewed source paths explicitly;
+    # the cross-source uniqueness check remains limited to shipping backend
+    # Rust plus these required emitters.
+    for required_source in (LEDGER_WORKER_SOURCE, READING_FEED_SOURCE):
+        if required_source not in relative_paths and (root / required_source).is_file():
+            relative_paths.append(required_source)
+    relative_paths.sort()
+
     sources: dict[str, str] = {}
     for relative in relative_paths:
         path = root / relative
@@ -298,6 +337,8 @@ def _tracked_backend_rust_sources(
             ) from error
     if LEDGER_WORKER_SOURCE not in sources:
         raise PolicyError("tracked backend sources omit the account-deletion worker")
+    if READING_FEED_SOURCE not in sources:
+        raise PolicyError("tracked backend sources omit the reading-feed route")
     return sources
 
 
@@ -309,6 +350,55 @@ def _validate_ledger_alert_sources(sources: dict[str, str]) -> None:
             "tracked backend Rust sources"
         )
     _validate_ledger_worker_emission(sources[LEDGER_WORKER_SOURCE])
+
+
+def _validate_reading_feed_alert_emission(source: str) -> None:
+    """Bind the alert body to the queue-authority fail-closed branch."""
+
+    if source.count(READING_FEED_ALERT_LITERAL) != 1:
+        raise PolicyError(
+            "reading-feed authority alert literal must occur exactly once in the route"
+        )
+    fail_closed_branch = re.compile(
+        r"""
+        error!\(\s*
+        request_id\s*=\s*%request_id\.0,\s*
+        error\.kind\s*=\s*"reading_feed_authority",\s*
+        "authenticated\ reading\ feed\ could\ not\ prove\ queue\ authority"\s*
+        \);\s*
+        queue_authority_unavailable\(request_id\)
+        """,
+        re.VERBOSE,
+    )
+    if len(fail_closed_branch.findall(source)) != 1:
+        raise PolicyError(
+            "reading-feed authority alert must be emitted only by the fail-closed branch"
+        )
+
+
+def _validate_reading_feed_alert_sources(sources: dict[str, str]) -> None:
+    occurrences = sum(
+        source.count(READING_FEED_ALERT_LITERAL) for source in sources.values()
+    )
+    if occurrences != 1:
+        raise PolicyError(
+            "reading-feed authority alert literal must occur exactly once across "
+            "tracked backend Rust sources"
+        )
+    if READING_FEED_SOURCE not in sources:
+        raise PolicyError("tracked backend sources omit the reading-feed route")
+    _validate_reading_feed_alert_emission(sources[READING_FEED_SOURCE])
+
+
+def _validate_recommendation_card_alert_sources(root: Path = PROJECT_ROOT) -> None:
+    """Bind the leakage alert to the closed mobile-to-Collector event path."""
+
+    for relative in (MOBILE_TELEMETRY_SOURCE, MOBILE_GATEWAY_SOURCE, COLLECTOR_TEMPLATE):
+        source = (root / relative).read_text(encoding="utf-8")
+        if RECOMMENDATION_CARD_EVENT not in source:
+            raise PolicyError(
+                f"recommendation-card alert event is absent from {relative}"
+            )
 
 
 def _expect_keys(value: dict[str, Any], expected: set[str], where: str) -> None:
@@ -540,13 +630,16 @@ def validate_policy(path: Path = DEFAULT_POLICY) -> None:
     emitted_metrics = {
         expected[2]
         for expected in EXPECTED_RULES.values()
-        if expected[0] == "application-otlp"
+        if expected[0] == "application-otlp" and expected[1] == "metric"
     }
     for metric in emitted_metrics:
         if f'"{metric}"' not in observability_source:
             raise PolicyError(f"application metric is not emitted by observability crate: {metric}")
 
-    _validate_ledger_alert_sources(_tracked_backend_rust_sources())
+    backend_sources = _tracked_backend_rust_sources()
+    _validate_ledger_alert_sources(backend_sources)
+    _validate_reading_feed_alert_sources(backend_sources)
+    _validate_recommendation_card_alert_sources()
 
 
 def main() -> int:

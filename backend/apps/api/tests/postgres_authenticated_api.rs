@@ -22,8 +22,8 @@ use axum::{
         header::{
             ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS,
             ACCESS_CONTROL_ALLOW_ORIGIN, ACCESS_CONTROL_REQUEST_HEADERS,
-            ACCESS_CONTROL_REQUEST_METHOD, AUTHORIZATION, CONTENT_TYPE, ETAG, IF_MATCH, ORIGIN,
-            WWW_AUTHENTICATE,
+            ACCESS_CONTROL_REQUEST_METHOD, AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, ETAG,
+            IF_MATCH, ORIGIN, VARY, WWW_AUTHENTICATE,
         },
     },
     response::Response,
@@ -283,6 +283,243 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
         paper.id.to_string()
     );
 
+    let v2_item_operation = Uuid::now_v7();
+    let v2_item = first
+        .clone()
+        .oneshot(
+            Request::put(format!("/v1/library/papers/{}", paper.id))
+                .header(AUTHORIZATION, bearer(&recent_token))
+                .header(CONTENT_TYPE, "application/json")
+                .header("idempotency-key", v2_item_operation.to_string())
+                .body(Body::from(
+                    json!({
+                        "operation_id": v2_item_operation,
+                        "state": "read_next",
+                        "private_note": "Compare the ablation",
+                        "save_source_kind": "other"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(v2_item.status(), StatusCode::OK);
+    assert_eq!(v2_item.headers()[CACHE_CONTROL], "private, no-store");
+    assert!(varies_on_authorization(&v2_item));
+    let v2_item = response_json(v2_item).await;
+    assert_eq!(v2_item["item"]["state"], "read_next");
+    assert_eq!(v2_item["item"]["private_note"], "Compare the ablation");
+    assert_eq!(v2_item["item"]["save_source_kind"], "other");
+
+    let legacy_read_next = first
+        .clone()
+        .oneshot(authorized_get(
+            "/v1/me/library?state=to_read&limit=10",
+            &recent_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(legacy_read_next.status(), StatusCode::OK);
+    let legacy_read_next = response_json(legacy_read_next).await;
+    assert_eq!(legacy_read_next["items"].as_array().unwrap().len(), 1);
+    assert_eq!(legacy_read_next["items"][0]["item"]["state"], "to_read");
+
+    let list_id = Uuid::now_v7();
+    let list_operation = Uuid::now_v7();
+    let created_list = first
+        .clone()
+        .oneshot(
+            Request::post("/v1/library/lists")
+                .header(AUTHORIZATION, bearer(&recent_token))
+                .header(CONTENT_TYPE, "application/json")
+                .header("idempotency-key", list_operation.to_string())
+                .body(Body::from(
+                    json!({
+                        "operation_id": list_operation,
+                        "id": list_id,
+                        "name": "Core methods",
+                        "description": "Compare exact methods",
+                        "sort_order": 10
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(created_list.status(), StatusCode::OK);
+
+    let list_membership_operation = Uuid::now_v7();
+    let list_membership = second
+        .clone()
+        .oneshot(
+            Request::put(format!("/v1/library/lists/{list_id}/papers/{}", paper.id))
+                .header(AUTHORIZATION, bearer(&recent_token))
+                .header(CONTENT_TYPE, "application/json")
+                .header("idempotency-key", list_membership_operation.to_string())
+                .body(Body::from(
+                    json!({
+                        "operation_id": list_membership_operation,
+                        "position_rank": 5,
+                        "note": "Start here"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_membership.status(), StatusCode::OK);
+
+    let v2_items = first
+        .clone()
+        .oneshot(authorized_get(
+            &format!("/v1/library/items?state=read_next&list_id={list_id}&limit=10"),
+            &recent_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(v2_items.status(), StatusCode::OK);
+    let v2_items = response_json(v2_items).await;
+    assert_eq!(v2_items["items"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        v2_items["items"][0]["item"]["paper_id"],
+        paper.id.to_string()
+    );
+
+    let reading_operation = Uuid::now_v7();
+    let reading_item = first
+        .clone()
+        .oneshot(
+            Request::put(format!("/v1/library/papers/{}", paper.id))
+                .header(AUTHORIZATION, bearer(&recent_token))
+                .header(CONTENT_TYPE, "application/json")
+                .header("idempotency-key", reading_operation.to_string())
+                .body(Body::from(
+                    json!({
+                        "operation_id": reading_operation,
+                        "state": "reading",
+                        "private_note": "Compare the ablation",
+                        "save_source_kind": "other"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(reading_item.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(reading_item).await["item"]["state"],
+        "reading"
+    );
+
+    let other_account_items = first
+        .clone()
+        .oneshot(authorized_get("/v1/library/items?limit=10", &second_token))
+        .await
+        .unwrap();
+    assert_eq!(other_account_items.status(), StatusCode::OK);
+    assert!(
+        response_json(other_account_items).await["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    let v2_changes = first
+        .clone()
+        .oneshot(authorized_get(
+            "/v1/library/changes?after_revision=0&limit=20",
+            &recent_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(v2_changes.status(), StatusCode::OK);
+    let v2_changes = response_json(v2_changes).await;
+    let entities = v2_changes["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|change| change["entity"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(entities, vec!["item", "list", "list_item"]);
+
+    let second_feed_paper = database
+        .papers()
+        .upsert_metadata(&metadata(&format!("{unique}.reading-feed")))
+        .await
+        .unwrap();
+    let second_feed_save = second
+        .clone()
+        .oneshot(library_save_request(
+            second_feed_paper.id,
+            &recent_token,
+            Uuid::now_v7(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(second_feed_save.status(), StatusCode::OK);
+
+    let exact_inbox = first
+        .clone()
+        .oneshot(authorized_get(
+            "/v1/library/items?state=inbox&limit=10",
+            &recent_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(exact_inbox.status(), StatusCode::OK);
+    let exact_inbox = response_json(exact_inbox).await;
+    assert_eq!(exact_inbox["items"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        exact_inbox["items"][0]["item"]["paper_id"],
+        second_feed_paper.id.to_string()
+    );
+
+    let reading_feed_page = first
+        .clone()
+        .oneshot(authorized_get("/v1/me/reading-feed?limit=1", &recent_token))
+        .await
+        .unwrap();
+    assert_eq!(reading_feed_page.status(), StatusCode::OK);
+    assert_eq!(
+        reading_feed_page.headers()[CACHE_CONTROL],
+        "private, no-store"
+    );
+    assert!(varies_on_authorization(&reading_feed_page));
+    let reading_feed_page = response_json(reading_feed_page).await;
+    assert_eq!(reading_feed_page["enforcement"], "shadow");
+    assert_eq!(reading_feed_page["mode"], "to_read");
+    assert_eq!(reading_feed_page["decision"]["active_to_read_count"], 2);
+    assert_eq!(reading_feed_page["decision"]["queue_proven_empty"], false);
+    assert_eq!(reading_feed_page["items"].as_array().unwrap().len(), 1);
+    assert_eq!(reading_feed_page["items"][0]["source"], "to_read");
+    assert_eq!(reading_feed_page["items"][0]["queue"]["state"], "reading");
+    assert_eq!(
+        reading_feed_page["items"][0]["queue"]["save_source_kind"],
+        "other"
+    );
+    let reading_feed_cursor = reading_feed_page["next_cursor"]
+        .as_str()
+        .expect("two queue rows with limit one must produce a continuation")
+        .to_owned();
+
+    let unknown_reading_feed_query = first
+        .clone()
+        .oneshot(authorized_get(
+            "/v1/me/reading-feed?limit=1&admin=true",
+            &recent_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(unknown_reading_feed_query.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response_json(unknown_reading_feed_query).await["error"]["code"],
+        "INVALID_REQUEST"
+    );
+
     let mut library_writes_disabled_config = config.clone();
     library_writes_disabled_config.features.library_writes = false;
     let library_writes_disabled = build_router(
@@ -319,12 +556,14 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
         .await
         .unwrap();
     assert_eq!(preserved_library_read.status(), StatusCode::OK);
-    assert_eq!(
-        response_json(preserved_library_read).await["items"]
+    let preserved_library_read = response_json(preserved_library_read).await;
+    assert_eq!(preserved_library_read["items"].as_array().unwrap().len(), 2);
+    assert!(
+        preserved_library_read["items"]
             .as_array()
             .unwrap()
-            .len(),
-        1
+            .iter()
+            .all(|entry| entry["item"]["state"] == "to_read")
     );
 
     // Device B removes the item through an independent router. Device A then
@@ -350,6 +589,25 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
     let removed_revision = removed["item"]["revision"].as_i64().unwrap();
     assert!(removed_revision > saved_revision);
 
+    let stale_feed_page = first
+        .clone()
+        .oneshot(authorized_get(
+            &format!("/v1/me/reading-feed?limit=1&cursor={reading_feed_cursor}"),
+            &recent_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(stale_feed_page.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        stale_feed_page.headers()[CACHE_CONTROL],
+        "private, no-store"
+    );
+    assert!(varies_on_authorization(&stale_feed_page));
+    assert_eq!(
+        response_json(stale_feed_page).await["error"]["code"],
+        "READING_FEED_CURSOR_STALE"
+    );
+
     let changes = first
         .clone()
         .oneshot(authorized_get(
@@ -369,6 +627,17 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
     assert_eq!(changes["items"][0]["item"]["revision"], removed_revision);
     assert_eq!(changes["next_after_revision"], removed_revision);
 
+    let second_feed_remove = second
+        .clone()
+        .oneshot(library_remove_request(
+            second_feed_paper.id,
+            &recent_token,
+            Uuid::now_v7(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(second_feed_remove.status(), StatusCode::OK);
+
     let converged_library = first
         .clone()
         .oneshot(authorized_get(
@@ -384,6 +653,18 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
             .unwrap()
             .is_empty()
     );
+
+    let recommendation_feed = first
+        .clone()
+        .oneshot(authorized_get("/v1/me/reading-feed?limit=1", &recent_token))
+        .await
+        .unwrap();
+    assert_eq!(recommendation_feed.status(), StatusCode::OK);
+    let recommendation_feed = response_json(recommendation_feed).await;
+    assert_eq!(recommendation_feed["enforcement"], "shadow");
+    assert_eq!(recommendation_feed["mode"], "recommendations");
+    assert_eq!(recommendation_feed["decision"]["active_to_read_count"], 0);
+    assert_eq!(recommendation_feed["decision"]["queue_proven_empty"], true);
 
     let comment_request_id = Uuid::now_v7();
     let comment = first
@@ -637,6 +918,7 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
     let mut library_disabled_config = config.clone();
     library_disabled_config.features.library = false;
     library_disabled_config.features.library_writes = false;
+    library_disabled_config.features.reading_feed = false;
     library_disabled_config.library = None;
     let library_disabled = build_router(
         AppState::new_with_auth(database.clone(), &library_disabled_config, auth.clone()).unwrap(),
@@ -1019,7 +1301,7 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
     cleanup_fixture(
         &database,
         &[user_id, second_user_id],
-        &[paper.id, strict_paper.id],
+        &[paper.id, second_feed_paper.id, strict_paper.id],
         &[comment_id, strict_comment_id],
         operation_id,
         &comment_origin_scope(&unique),
@@ -1165,9 +1447,12 @@ fn api_config(
             accounts: true,
             library: true,
             library_writes: true,
+            library_v2: true,
             comments: true,
             comment_creation: true,
             account_deletion: true,
+            reading_feed: true,
+            ..FeatureFlags::default()
         },
         accounts: Some(account),
         library: Some(LibraryFeatureConfig {
@@ -1176,6 +1461,9 @@ fn api_config(
         }),
         comments: Some(CommentFeatureConfig::for_test().unwrap()),
         account_deletion: Some(deletion),
+        visual_assets: None,
+        paper_resolution: pakperk_api::PaperResolutionFeatureConfig::default(),
+        reading_feed: pakperk_api::ReadingFeedFeatureConfig::default(),
         request_origin: RequestOriginConfig::for_local_development(&request_origin_secret(unique))
             .unwrap(),
         cursors: pakperk_api::CursorConfig::for_local_development(&format!(
@@ -1512,4 +1800,14 @@ fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
 async fn response_json(response: Response) -> Value {
     let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
     serde_json::from_slice(&bytes).unwrap()
+}
+
+fn varies_on_authorization(response: &Response) -> bool {
+    response.headers().get_all(VARY).iter().any(|value| {
+        value.to_str().is_ok_and(|value| {
+            value
+                .split(',')
+                .any(|name| name.trim().eq_ignore_ascii_case("authorization"))
+        })
+    })
 }

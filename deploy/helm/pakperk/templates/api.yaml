@@ -73,14 +73,52 @@ spec:
             - { name: API_REQUEST_TIMEOUT_SECONDS, value: {{ .Values.api.requestTimeoutSeconds | quote }} }
             - { name: CHAT_REQUEST_TIMEOUT_SECONDS, value: {{ .Values.api.chatTimeoutSeconds | quote }} }
             - { name: API_MAX_REQUEST_BYTES, value: {{ .Values.api.maxRequestBytes | quote }} }
+            - { name: PAPER_SEARCH_MIN_QUERY_CHARS, value: {{ .Values.api.paperSearchMinQueryChars | quote }} }
+            - { name: PAPER_SEARCH_MAX_QUERY_CHARS, value: {{ .Values.api.paperSearchMaxQueryChars | quote }} }
+            - { name: PAPER_SEARCH_MAX_RESULTS, value: {{ .Values.api.paperSearchMaxResults | quote }} }
+            - { name: PAPER_SEARCH_POSITIVE_CACHE_TTL_SECONDS, value: {{ .Values.api.paperSearchPositiveCacheTtlSeconds | quote }} }
+            - { name: PAPER_SEARCH_NEGATIVE_CACHE_TTL_SECONDS, value: {{ .Values.api.paperSearchNegativeCacheTtlSeconds | quote }} }
+            - { name: PAPER_IMPORT_ACCOUNT_LIMIT_PER_MINUTE, value: {{ .Values.api.paperImportAccountLimitPerMinute | quote }} }
+            - { name: PAPER_SEARCH_ACCOUNT_LIMIT_PER_MINUTE, value: {{ .Values.api.paperSearchAccountLimitPerMinute | quote }} }
+            - { name: READING_FEED_DEFAULT_LIMIT, value: {{ .Values.api.readingFeedDefaultLimit | quote }} }
+            - { name: READING_FEED_MAX_LIMIT, value: {{ .Values.api.readingFeedMaxLimit | quote }} }
+            - { name: READING_FEED_CURSOR_TTL_SECONDS, value: {{ .Values.api.readingFeedCursorTtlSeconds | quote }} }
             - { name: CORS_ALLOWED_ORIGINS, value: {{ .Values.public.siteOrigin | quote }} }
             - { name: FULLTEXT_POLICY, value: {{ .Values.policy.fulltext | quote }} }
             - { name: ACCOUNTS_ENABLED, value: {{ include "pakperk.bool" .Values.features.accounts | quote }} }
             - { name: LIBRARY_ENABLED, value: {{ include "pakperk.bool" .Values.features.library | quote }} }
             - { name: LIBRARY_WRITES_ENABLED, value: {{ include "pakperk.bool" .Values.features.libraryWrites | quote }} }
+            - { name: PAPER_RESOLUTION_ENABLED, value: {{ include "pakperk.bool" .Values.features.paperResolution | quote }} }
+            - { name: PAPER_TITLE_SEARCH_ENABLED, value: {{ include "pakperk.bool" .Values.features.paperTitleSearch | quote }} }
+            - { name: LIBRARY_IMPORT_WRITES_ENABLED, value: {{ include "pakperk.bool" .Values.features.libraryImportWrites | quote }} }
+            - { name: READING_FEED_ENABLED, value: {{ include "pakperk.bool" .Values.features.readingFeed | quote }} }
+            - { name: TO_READ_FIRST_ENFORCEMENT_ENABLED, value: {{ include "pakperk.bool" .Values.features.toReadFirstEnforcement | quote }} }
             - { name: COMMENTS_ENABLED, value: {{ include "pakperk.bool" .Values.features.comments | quote }} }
             - { name: COMMENT_CREATION_ENABLED, value: {{ include "pakperk.bool" .Values.features.commentCreation | quote }} }
             - { name: ACCOUNT_DELETION_ENABLED, value: {{ include "pakperk.bool" .Values.features.accountDeletion | quote }} }
+            - { name: LIBRARY_V2_ENABLED, value: {{ include "pakperk.bool" .Values.features.libraryV2 | quote }} }
+            - { name: RESEARCH_PROFILES_ENABLED, value: {{ include "pakperk.bool" .Values.features.researchProfiles | quote }} }
+            - { name: RECOMMENDATIONS_ENABLED, value: {{ include "pakperk.bool" .Values.features.recommendations | quote }} }
+            - { name: RECOMMENDATION_EVENTS_ENABLED, value: {{ include "pakperk.bool" .Values.features.recommendationEvents | quote }} }
+            - { name: SEARCH_LOOKUP_ENABLED, value: {{ include "pakperk.bool" .Values.features.searchLookup | quote }} }
+            - { name: SEARCH_EXPLORE_ENABLED, value: {{ include "pakperk.bool" .Values.features.searchExplore | quote }} }
+            - { name: SAVED_QUERIES_ENABLED, value: {{ include "pakperk.bool" .Values.features.savedQueries | quote }} }
+            - { name: READING_BRIEFS_ENABLED, value: {{ include "pakperk.bool" .Values.features.readingBriefs | quote }} }
+            - { name: SUBSCRIPTIONS_ENABLED, value: {{ include "pakperk.bool" .Values.features.subscriptions | quote }} }
+            - { name: NOTIFICATIONS_ENABLED, value: {{ include "pakperk.bool" .Values.features.notifications | quote }} }
+            - { name: DEEP_READER_ENABLED, value: {{ include "pakperk.bool" .Values.features.deepReader | quote }} }
+            - { name: PAPER_PASSPORT_ENABLED, value: {{ include "pakperk.bool" .Values.features.paperPassport | quote }} }
+            - { name: SEMANTIC_FACETS_ENABLED, value: {{ include "pakperk.bool" .Values.features.semanticFacets | quote }} }
+            - { name: VISUAL_OBJECTS_ENABLED, value: {{ include "pakperk.bool" .Values.features.visualObjects | quote }} }
+            {{- if .Values.visualAssets.existingClaim }}
+            - { name: VISUAL_ASSET_DIRECTORY, value: "/var/lib/pakperk/visual-assets" }
+            - { name: VISUAL_ASSET_MAX_BYTES, value: {{ .Values.visualAssets.maximumAssetBytes | quote }} }
+            {{- end }}
+            - { name: ASSISTANT_V2_ENABLED, value: {{ include "pakperk.bool" .Values.features.assistantV2 | quote }} }
+            - { name: ANNOTATIONS_ENABLED, value: {{ include "pakperk.bool" .Values.features.annotations | quote }} }
+            - { name: RESEARCH_MEMORY_ENABLED, value: {{ include "pakperk.bool" .Values.features.researchMemory | quote }} }
+            - { name: VERSION_DIFF_ENABLED, value: {{ include "pakperk.bool" .Values.features.versionDiff | quote }} }
+            - { name: DOCLING_EXPERIMENT_ENABLED, value: {{ include "pakperk.bool" .Values.features.doclingExperiment | quote }} }
             - { name: OIDC_ISSUER_URL, value: {{ .Values.public.oidcIssuer | quote }} }
             - { name: OIDC_AUDIENCE, value: {{ .Values.public.oidcAudience | quote }} }
             - { name: OIDC_ALLOWED_ALGORITHMS, value: "RS256" }
@@ -148,6 +186,9 @@ spec:
             {{- if .Values.features.accountDeletion }}
             - { name: deletion-ledger, mountPath: /var/lib/pakperk/deletion-ledger }
             {{- end }}
+            {{- if .Values.visualAssets.existingClaim }}
+            - { name: visual-assets, mountPath: /var/lib/pakperk/visual-assets, readOnly: true }
+            {{- end }}
       volumes:
         {{- include "pakperk.apiSecretVolumes" . | nindent 8 }}
         - name: tmp
@@ -155,6 +196,10 @@ spec:
         {{- if .Values.features.accountDeletion }}
         - name: deletion-ledger
           persistentVolumeClaim: { claimName: {{ .Values.deletionLedger.existingClaim }} }
+        {{- end }}
+        {{- if .Values.visualAssets.existingClaim }}
+        - name: visual-assets
+          persistentVolumeClaim: { claimName: {{ .Values.visualAssets.existingClaim }} }
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector: {{ toYaml . | nindent 8 }}

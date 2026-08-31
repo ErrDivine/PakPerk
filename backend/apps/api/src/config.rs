@@ -4,7 +4,7 @@ use std::{
     fmt, fs,
     io::Read as _,
     net::{IpAddr, SocketAddr},
-    path::Path,
+    path::{Path, PathBuf},
     str::FromStr,
     time::Duration,
 };
@@ -21,6 +21,8 @@ use domain::{
 use llm_provider::OpenAiCompatibleConfig;
 use moderation::HttpModerationConfig;
 use opaque_cursor::OpaqueCursorCodec;
+use paper_resolution::{PaperResolutionPolicy, PaperResolutionPolicyError};
+use reading_feed::{ReadingFeedPolicy, ReadingFeedPolicyError};
 use secrecy::{ExposeSecret as _, SecretString};
 use sha2::{Digest as _, Sha256};
 use url::{Host, Url};
@@ -69,6 +71,9 @@ pub struct FeatureFlags {
     /// Allows operators to freeze account-owned mutations while preserving
     /// synchronized library reads.
     pub library_writes: bool,
+    /// Registers the canonical five-state library, list, tag, and unified
+    /// change-feed surface while preserving v0.0 routes for older clients.
+    pub library_v2: bool,
     /// Registers the public/read and account safety surfaces for comments.
     pub comments: bool,
     /// Emergency kill switch for only new comment publication. Existing
@@ -77,6 +82,62 @@ pub struct FeatureFlags {
     /// Registers the recent-auth DELETE surface and its durable local request
     /// path. The provider credentials remain worker-only.
     pub account_deletion: bool,
+    /// Enables authenticated exact-resolution consumers such as library
+    /// imports. The existing public by-arXiv route remains compatible.
+    pub paper_resolution: bool,
+    /// Enables authenticated bounded title search.
+    pub paper_title_search: bool,
+    /// Emergency kill switch for resolving and saving library imports.
+    pub library_import_writes: bool,
+    /// Registers the authenticated queue-first reading feed. This never
+    /// changes the public discovery-feed contract.
+    pub reading_feed: bool,
+    /// Makes the authenticated reading feed canonical for supported clients.
+    /// Registration is controlled by `reading_feed`; this is a rollout switch.
+    pub to_read_first_enforcement: bool,
+    /// Registers authenticated future-discovery preferences. This is
+    /// independent from and cannot mutate the To Read queue.
+    pub research_profiles: bool,
+    /// Registers revision-bound recommendation explanations and explicit
+    /// feedback. Batch creation remains subordinate to reading-feed authority.
+    pub recommendations: bool,
+    /// Registers bounded, content-free product/evaluation event ingestion.
+    /// Product state and queue authority never depend on this optional stream.
+    pub recommendation_events: bool,
+    /// Registers public deterministic metadata-only Lookup.
+    pub search_lookup: bool,
+    /// Registers explicit Explore with bounded local-source diagnostics.
+    pub search_explore: bool,
+    /// Registers authenticated account-owned saved query definitions.
+    pub saved_queries: bool,
+    /// Enables bounded queue/discovery brief creation through the canonical
+    /// reading-feed gate.
+    pub reading_briefs: bool,
+    /// Enables private topic/category/author/saved-query subscriptions.
+    pub subscriptions: bool,
+    /// Enables queue-aware in-app notifications and their account work queue.
+    /// Push and email remain deliberately unavailable.
+    pub notifications: bool,
+    /// Registers the normalized document-block and outline surface. All
+    /// deeper-reader capabilities remain subordinate to this boundary.
+    pub deep_reader: bool,
+    /// Enables evidence-linked Paper Passport artifacts.
+    pub paper_passport: bool,
+    /// Enables bounded semantic facets and source-linked definitions.
+    pub semantic_facets: bool,
+    /// Enables source-linked figure, table, and equation objects.
+    pub visual_objects: bool,
+    /// Enables the evidence-ID-validated assistant contract.
+    pub assistant_v2: bool,
+    /// Enables private synchronized annotations and evidence cards.
+    pub annotations: bool,
+    /// Enables private reviewable research-memory items.
+    pub research_memory: bool,
+    /// Enables generation-aware paper-version and diff surfaces.
+    pub version_diff: bool,
+    /// Allows an explicitly evaluated parser adapter experiment. GROBID stays
+    /// the production baseline while this switch is false.
+    pub docling_experiment: bool,
 }
 
 impl FeatureFlags {
@@ -87,6 +148,9 @@ impl FeatureFlags {
         if self.library_writes && !self.library {
             anyhow::bail!("LIBRARY_WRITES_ENABLED requires LIBRARY_ENABLED");
         }
+        if self.library_v2 && !(self.accounts && self.library) {
+            anyhow::bail!("LIBRARY_V2_ENABLED requires ACCOUNTS_ENABLED and LIBRARY_ENABLED");
+        }
         if self.comments && !self.accounts {
             anyhow::bail!("COMMENTS_ENABLED requires ACCOUNTS_ENABLED");
         }
@@ -95,6 +159,72 @@ impl FeatureFlags {
         }
         if self.account_deletion && !self.accounts {
             anyhow::bail!("ACCOUNT_DELETION_ENABLED requires ACCOUNTS_ENABLED");
+        }
+        if self.paper_title_search && !self.paper_resolution {
+            anyhow::bail!("PAPER_TITLE_SEARCH_ENABLED requires PAPER_RESOLUTION_ENABLED");
+        }
+        if self.paper_title_search && !self.accounts {
+            anyhow::bail!("PAPER_TITLE_SEARCH_ENABLED requires ACCOUNTS_ENABLED");
+        }
+        if self.library_import_writes
+            && !(self.accounts && self.library && self.library_writes && self.paper_resolution)
+        {
+            anyhow::bail!(
+                "LIBRARY_IMPORT_WRITES_ENABLED requires ACCOUNTS_ENABLED, LIBRARY_ENABLED, LIBRARY_WRITES_ENABLED, and PAPER_RESOLUTION_ENABLED"
+            );
+        }
+        if self.reading_feed && !(self.accounts && self.library) {
+            anyhow::bail!("READING_FEED_ENABLED requires ACCOUNTS_ENABLED and LIBRARY_ENABLED");
+        }
+        if self.to_read_first_enforcement && !self.reading_feed {
+            anyhow::bail!("TO_READ_FIRST_ENFORCEMENT_ENABLED requires READING_FEED_ENABLED");
+        }
+        if self.research_profiles && !self.accounts {
+            anyhow::bail!("RESEARCH_PROFILES_ENABLED requires ACCOUNTS_ENABLED");
+        }
+        if self.recommendations && !(self.accounts && self.library && self.reading_feed) {
+            anyhow::bail!(
+                "RECOMMENDATIONS_ENABLED requires ACCOUNTS_ENABLED, LIBRARY_ENABLED, and READING_FEED_ENABLED"
+            );
+        }
+        if self.search_explore && !self.search_lookup {
+            anyhow::bail!("SEARCH_EXPLORE_ENABLED requires SEARCH_LOOKUP_ENABLED");
+        }
+        if self.saved_queries && !(self.accounts && self.search_explore) {
+            anyhow::bail!(
+                "SAVED_QUERIES_ENABLED requires ACCOUNTS_ENABLED and SEARCH_EXPLORE_ENABLED"
+            );
+        }
+        if self.reading_briefs && !self.reading_feed {
+            anyhow::bail!("READING_BRIEFS_ENABLED requires READING_FEED_ENABLED");
+        }
+        for (enabled, name) in [
+            (self.paper_passport, "PAPER_PASSPORT_ENABLED"),
+            (self.semantic_facets, "SEMANTIC_FACETS_ENABLED"),
+            (self.visual_objects, "VISUAL_OBJECTS_ENABLED"),
+            (self.assistant_v2, "ASSISTANT_V2_ENABLED"),
+            (self.version_diff, "VERSION_DIFF_ENABLED"),
+            (self.docling_experiment, "DOCLING_EXPERIMENT_ENABLED"),
+        ] {
+            if enabled && !self.deep_reader {
+                anyhow::bail!("{name} requires DEEP_READER_ENABLED");
+            }
+        }
+        if self.annotations && !(self.accounts && self.deep_reader) {
+            anyhow::bail!("ANNOTATIONS_ENABLED requires ACCOUNTS_ENABLED and DEEP_READER_ENABLED");
+        }
+        if self.research_memory && !(self.accounts && self.deep_reader && self.annotations) {
+            anyhow::bail!(
+                "RESEARCH_MEMORY_ENABLED requires ACCOUNTS_ENABLED, DEEP_READER_ENABLED, and ANNOTATIONS_ENABLED"
+            );
+        }
+        if self.subscriptions && !(self.accounts && self.library && self.reading_feed) {
+            anyhow::bail!(
+                "SUBSCRIPTIONS_ENABLED requires ACCOUNTS_ENABLED, LIBRARY_ENABLED, and READING_FEED_ENABLED"
+            );
+        }
+        if self.notifications && !self.subscriptions {
+            anyhow::bail!("NOTIFICATIONS_ENABLED requires SUBSCRIPTIONS_ENABLED");
         }
         Ok(self)
     }
@@ -115,6 +245,11 @@ pub struct ApiConfig {
     pub comments: Option<CommentFeatureConfig>,
     /// Present exactly when the account-deletion route is enabled.
     pub account_deletion: Option<AccountDeletionFeatureConfig>,
+    /// Optional private generated-derivative directory. Its absence keeps
+    /// figure delivery caption-only even when visual metadata is enabled.
+    pub visual_assets: Option<VisualAssetFeatureConfig>,
+    pub paper_resolution: PaperResolutionFeatureConfig,
+    pub reading_feed: ReadingFeedFeatureConfig,
     /// Shared trusted-proxy boundary and keyed request-origin pseudonym used
     /// by public expensive-operation and UGC rate limits.
     pub request_origin: RequestOriginConfig,
@@ -136,6 +271,51 @@ pub struct ApiConfig {
     pub llm: Option<ApiModelConfig>,
     pub prepare_requests_per_minute: u32,
     pub chat_requests_per_minute: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VisualAssetFeatureConfig {
+    pub directory: PathBuf,
+    pub maximum_asset_bytes: usize,
+}
+
+impl VisualAssetFeatureConfig {
+    const DEFAULT_MAXIMUM_ASSET_BYTES: usize = 8 * 1024 * 1024;
+    const MAXIMUM_CONFIGURED_ASSET_BYTES: usize = 8 * 1024 * 1024;
+
+    fn from_env() -> anyhow::Result<Option<Self>> {
+        let Some(raw_directory) = std::env::var_os("VISUAL_ASSET_DIRECTORY") else {
+            return Ok(None);
+        };
+        if raw_directory.is_empty() {
+            return Ok(None);
+        }
+        let directory = PathBuf::from(raw_directory);
+        if !directory.is_absolute() {
+            anyhow::bail!("VISUAL_ASSET_DIRECTORY must be an absolute path");
+        }
+        let config = Self {
+            directory,
+            maximum_asset_bytes: env_parse(
+                "VISUAL_ASSET_MAX_BYTES",
+                Self::DEFAULT_MAXIMUM_ASSET_BYTES,
+            )?,
+        };
+        config.validate()?;
+        Ok(Some(config))
+    }
+
+    fn validate(&self) -> anyhow::Result<()> {
+        if self.maximum_asset_bytes == 0
+            || self.maximum_asset_bytes > Self::MAXIMUM_CONFIGURED_ASSET_BYTES
+        {
+            anyhow::bail!("VISUAL_ASSET_MAX_BYTES must be between 1 and 8388608");
+        }
+        if !self.directory.is_absolute() {
+            anyhow::bail!("VISUAL_ASSET_DIRECTORY must be an absolute path");
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -210,6 +390,133 @@ pub struct AccountFeatureConfig {
 pub struct LibraryFeatureConfig {
     pub mutation_limit: u32,
     pub mutation_window: Duration,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PaperResolutionFeatureConfig {
+    pub search_min_query_chars: usize,
+    pub search_max_query_chars: usize,
+    pub search_max_results: usize,
+    pub search_positive_cache_ttl: Duration,
+    pub search_negative_cache_ttl: Duration,
+    pub import_account_limit_per_minute: u32,
+    pub search_account_limit_per_minute: u32,
+}
+
+impl Default for PaperResolutionFeatureConfig {
+    fn default() -> Self {
+        Self {
+            search_min_query_chars: 3,
+            search_max_query_chars: 300,
+            search_max_results: 10,
+            search_positive_cache_ttl: Duration::from_secs(86_400),
+            search_negative_cache_ttl: Duration::from_secs(900),
+            import_account_limit_per_minute: 20,
+            search_account_limit_per_minute: 10,
+        }
+    }
+}
+
+impl PaperResolutionFeatureConfig {
+    fn from_env() -> anyhow::Result<Self> {
+        Ok(Self {
+            search_min_query_chars: env_parse("PAPER_SEARCH_MIN_QUERY_CHARS", 3_usize)?,
+            search_max_query_chars: env_parse("PAPER_SEARCH_MAX_QUERY_CHARS", 300_usize)?,
+            search_max_results: env_parse("PAPER_SEARCH_MAX_RESULTS", 10_usize)?,
+            search_positive_cache_ttl: Duration::from_secs(env_parse(
+                "PAPER_SEARCH_POSITIVE_CACHE_TTL_SECONDS",
+                86_400_u64,
+            )?),
+            search_negative_cache_ttl: Duration::from_secs(env_parse(
+                "PAPER_SEARCH_NEGATIVE_CACHE_TTL_SECONDS",
+                900_u64,
+            )?),
+            import_account_limit_per_minute: env_parse(
+                "PAPER_IMPORT_ACCOUNT_LIMIT_PER_MINUTE",
+                20_u32,
+            )?,
+            search_account_limit_per_minute: env_parse(
+                "PAPER_SEARCH_ACCOUNT_LIMIT_PER_MINUTE",
+                10_u32,
+            )?,
+        })
+    }
+
+    pub fn policy(
+        self,
+        arxiv_minimum_interval: Duration,
+        exact_cache_ttl: Duration,
+    ) -> Result<PaperResolutionPolicy, PaperResolutionPolicyError> {
+        PaperResolutionPolicy::new(
+            arxiv_minimum_interval,
+            exact_cache_ttl,
+            self.search_min_query_chars,
+            self.search_max_query_chars,
+            self.search_max_results,
+            self.search_positive_cache_ttl,
+            self.search_negative_cache_ttl,
+            self.search_account_limit_per_minute,
+        )
+    }
+
+    fn validate(
+        self,
+        arxiv_minimum_interval: Duration,
+        exact_cache_ttl: Duration,
+    ) -> anyhow::Result<()> {
+        self.policy(arxiv_minimum_interval, exact_cache_ttl)
+            .map_err(anyhow::Error::from)?;
+        if self.import_account_limit_per_minute == 0
+            || self.import_account_limit_per_minute > 10_000
+        {
+            anyhow::bail!("PAPER_IMPORT_ACCOUNT_LIMIT_PER_MINUTE must be between 1 and 10000");
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReadingFeedFeatureConfig {
+    pub default_limit: u32,
+    pub max_limit: u32,
+    pub cursor_ttl: Duration,
+}
+
+impl Default for ReadingFeedFeatureConfig {
+    fn default() -> Self {
+        Self {
+            default_limit: 20,
+            max_limit: 50,
+            cursor_ttl: Duration::from_secs(86_400),
+        }
+    }
+}
+
+impl ReadingFeedFeatureConfig {
+    fn from_env() -> anyhow::Result<Self> {
+        Ok(Self {
+            default_limit: env_parse("READING_FEED_DEFAULT_LIMIT", 20_u32)?,
+            max_limit: env_parse("READING_FEED_MAX_LIMIT", 50_u32)?,
+            cursor_ttl: Duration::from_secs(env_parse(
+                "READING_FEED_CURSOR_TTL_SECONDS",
+                86_400_u64,
+            )?),
+        })
+    }
+
+    pub fn policy(self) -> Result<ReadingFeedPolicy, ReadingFeedPolicyError> {
+        if self.max_limit > 50 {
+            return Err(ReadingFeedPolicyError::InvalidPageLimits);
+        }
+        if self.cursor_ttl > Duration::from_secs(7 * 24 * 60 * 60) {
+            return Err(ReadingFeedPolicyError::InvalidCursorTtl);
+        }
+        ReadingFeedPolicy::new(self.default_limit, self.max_limit, self.cursor_ttl)
+    }
+
+    fn validate(self) -> anyhow::Result<()> {
+        self.policy().map(|_| ()).map_err(anyhow::Error::from)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1028,9 +1335,33 @@ impl ApiConfig {
             accounts: env_bool("ACCOUNTS_ENABLED", false)?,
             library: env_bool("LIBRARY_ENABLED", false)?,
             library_writes: env_bool("LIBRARY_WRITES_ENABLED", false)?,
+            library_v2: env_bool("LIBRARY_V2_ENABLED", false)?,
             comments: env_bool("COMMENTS_ENABLED", false)?,
             comment_creation: env_bool("COMMENT_CREATION_ENABLED", false)?,
             account_deletion: env_bool("ACCOUNT_DELETION_ENABLED", false)?,
+            paper_resolution: env_bool("PAPER_RESOLUTION_ENABLED", false)?,
+            paper_title_search: env_bool("PAPER_TITLE_SEARCH_ENABLED", false)?,
+            library_import_writes: env_bool("LIBRARY_IMPORT_WRITES_ENABLED", false)?,
+            reading_feed: env_bool("READING_FEED_ENABLED", false)?,
+            to_read_first_enforcement: env_bool("TO_READ_FIRST_ENFORCEMENT_ENABLED", false)?,
+            research_profiles: env_bool("RESEARCH_PROFILES_ENABLED", false)?,
+            recommendations: env_bool("RECOMMENDATIONS_ENABLED", false)?,
+            recommendation_events: env_bool("RECOMMENDATION_EVENTS_ENABLED", false)?,
+            search_lookup: env_bool("SEARCH_LOOKUP_ENABLED", false)?,
+            search_explore: env_bool("SEARCH_EXPLORE_ENABLED", false)?,
+            saved_queries: env_bool("SAVED_QUERIES_ENABLED", false)?,
+            reading_briefs: env_bool("READING_BRIEFS_ENABLED", false)?,
+            subscriptions: env_bool("SUBSCRIPTIONS_ENABLED", false)?,
+            notifications: env_bool("NOTIFICATIONS_ENABLED", false)?,
+            deep_reader: env_bool("DEEP_READER_ENABLED", false)?,
+            paper_passport: env_bool("PAPER_PASSPORT_ENABLED", false)?,
+            semantic_facets: env_bool("SEMANTIC_FACETS_ENABLED", false)?,
+            visual_objects: env_bool("VISUAL_OBJECTS_ENABLED", false)?,
+            assistant_v2: env_bool("ASSISTANT_V2_ENABLED", false)?,
+            annotations: env_bool("ANNOTATIONS_ENABLED", false)?,
+            research_memory: env_bool("RESEARCH_MEMORY_ENABLED", false)?,
+            version_diff: env_bool("VERSION_DIFF_ENABLED", false)?,
+            docling_experiment: env_bool("DOCLING_EXPERIMENT_ENABLED", false)?,
         }
         .validate()?;
         let request_origin = RequestOriginConfig::from_env(environment)?;
@@ -1119,6 +1450,9 @@ impl ApiConfig {
             library,
             comments,
             account_deletion,
+            visual_assets: VisualAssetFeatureConfig::from_env()?,
+            paper_resolution: PaperResolutionFeatureConfig::from_env()?,
+            reading_feed: ReadingFeedFeatureConfig::from_env()?,
             request_origin,
             cursors,
             bind,
@@ -1157,8 +1491,14 @@ impl ApiConfig {
 
     fn validate(&self) -> anyhow::Result<()> {
         self.features.validate()?;
+        self.paper_resolution
+            .validate(self.arxiv.minimum_interval, self.arxiv_cache_ttl)?;
+        self.reading_feed.validate()?;
         self.request_origin.validate(self.environment)?;
         self.validate_feature_configs()?;
+        if let Some(visual_assets) = &self.visual_assets {
+            visual_assets.validate()?;
+        }
         validate_database_pool_capacity(self.features, self.database_pool_size)?;
         if self.max_request_bytes == 0 {
             anyhow::bail!("API_MAX_REQUEST_BYTES must be greater than zero");
@@ -1557,6 +1897,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)] // One matrix keeps feature dependency coverage auditable.
     fn dependent_features_require_accounts() {
         assert!(
             FeatureFlags {
@@ -1566,6 +1907,7 @@ mod tests {
                 comments: false,
                 comment_creation: false,
                 account_deletion: false,
+                ..FeatureFlags::default()
             }
             .validate()
             .is_err()
@@ -1578,6 +1920,7 @@ mod tests {
                 comments: true,
                 comment_creation: false,
                 account_deletion: false,
+                ..FeatureFlags::default()
             }
             .validate()
             .is_err()
@@ -1587,9 +1930,33 @@ mod tests {
                 accounts: true,
                 library: true,
                 library_writes: true,
+                library_v2: true,
                 comments: true,
                 comment_creation: true,
                 account_deletion: true,
+                paper_resolution: true,
+                paper_title_search: true,
+                library_import_writes: true,
+                reading_feed: true,
+                to_read_first_enforcement: true,
+                research_profiles: true,
+                recommendations: true,
+                recommendation_events: true,
+                search_lookup: true,
+                search_explore: true,
+                saved_queries: true,
+                reading_briefs: true,
+                subscriptions: true,
+                notifications: true,
+                deep_reader: true,
+                paper_passport: true,
+                semantic_facets: true,
+                visual_objects: true,
+                assistant_v2: true,
+                annotations: true,
+                research_memory: true,
+                version_diff: true,
+                docling_experiment: true,
             }
             .validate()
             .is_ok()
@@ -1602,6 +1969,7 @@ mod tests {
                 comments: false,
                 comment_creation: false,
                 account_deletion: false,
+                ..FeatureFlags::default()
             }
             .validate()
             .is_err()
@@ -1614,9 +1982,378 @@ mod tests {
                 comments: false,
                 comment_creation: true,
                 account_deletion: false,
+                ..FeatureFlags::default()
             }
             .validate()
             .is_err()
+        );
+
+        let search_without_resolution = FeatureFlags {
+            accounts: true,
+            paper_title_search: true,
+            ..FeatureFlags::default()
+        };
+        assert!(search_without_resolution.validate().is_err());
+        let search_without_accounts = FeatureFlags {
+            paper_resolution: true,
+            paper_title_search: true,
+            ..FeatureFlags::default()
+        };
+        assert!(search_without_accounts.validate().is_err());
+        let import_without_library_writes = FeatureFlags {
+            accounts: true,
+            library: true,
+            paper_resolution: true,
+            library_import_writes: true,
+            ..FeatureFlags::default()
+        };
+        assert!(import_without_library_writes.validate().is_err());
+    }
+
+    #[test]
+    fn reading_feed_flags_default_off_and_policy_is_bounded() {
+        let flags = FeatureFlags::default();
+        assert!(!flags.reading_feed);
+        assert!(!flags.to_read_first_enforcement);
+
+        let feed_without_library = FeatureFlags {
+            accounts: true,
+            reading_feed: true,
+            ..FeatureFlags::default()
+        };
+        assert!(feed_without_library.validate().is_err());
+        let enforcement_without_feed = FeatureFlags {
+            accounts: true,
+            library: true,
+            to_read_first_enforcement: true,
+            ..FeatureFlags::default()
+        };
+        assert!(enforcement_without_feed.validate().is_err());
+
+        let defaults = ReadingFeedFeatureConfig::default();
+        assert_eq!(defaults.default_limit, 20);
+        assert_eq!(defaults.max_limit, 50);
+        assert_eq!(defaults.cursor_ttl, Duration::from_secs(86_400));
+        assert!(defaults.policy().is_ok());
+
+        let mut invalid = defaults;
+        invalid.default_limit = 0;
+        assert!(invalid.validate().is_err());
+        invalid = defaults;
+        invalid.max_limit = 10;
+        assert!(invalid.validate().is_err());
+        invalid = defaults;
+        invalid.max_limit = 51;
+        assert!(invalid.validate().is_err());
+        invalid = defaults;
+        invalid.cursor_ttl = Duration::ZERO;
+        assert!(invalid.validate().is_err());
+        invalid = defaults;
+        invalid.cursor_ttl = Duration::from_secs(7 * 24 * 60 * 60 + 1);
+        assert!(invalid.validate().is_err());
+    }
+
+    #[test]
+    fn library_v2_defaults_off_and_requires_the_legacy_account_library() {
+        assert!(!FeatureFlags::default().library_v2);
+        assert!(
+            FeatureFlags {
+                accounts: true,
+                library_v2: true,
+                ..FeatureFlags::default()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            FeatureFlags {
+                accounts: true,
+                library: true,
+                library_v2: true,
+                ..FeatureFlags::default()
+            }
+            .validate()
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn research_profiles_are_dormant_and_require_accounts() {
+        let defaults = FeatureFlags::default();
+        assert!(!defaults.research_profiles);
+        assert!(
+            FeatureFlags {
+                research_profiles: true,
+                ..FeatureFlags::default()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            FeatureFlags {
+                accounts: true,
+                research_profiles: true,
+                ..FeatureFlags::default()
+            }
+            .validate()
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn recommendations_are_dormant_and_require_queue_authority() {
+        assert!(!FeatureFlags::default().recommendations);
+        for flags in [
+            FeatureFlags {
+                recommendations: true,
+                ..FeatureFlags::default()
+            },
+            FeatureFlags {
+                accounts: true,
+                recommendations: true,
+                ..FeatureFlags::default()
+            },
+            FeatureFlags {
+                accounts: true,
+                library: true,
+                recommendations: true,
+                ..FeatureFlags::default()
+            },
+        ] {
+            assert!(flags.validate().is_err());
+        }
+        assert!(
+            FeatureFlags {
+                accounts: true,
+                library: true,
+                reading_feed: true,
+                recommendations: true,
+                ..FeatureFlags::default()
+            }
+            .validate()
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn recommendation_events_are_independently_dormant() {
+        assert!(!FeatureFlags::default().recommendation_events);
+        assert!(
+            FeatureFlags {
+                recommendation_events: true,
+                ..FeatureFlags::default()
+            }
+            .validate()
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn engagement_features_are_dormant_and_dependency_ordered() {
+        let defaults = FeatureFlags::default();
+        assert!(!defaults.reading_briefs);
+        assert!(!defaults.subscriptions);
+        assert!(!defaults.notifications);
+
+        for flags in [
+            FeatureFlags {
+                reading_briefs: true,
+                ..FeatureFlags::default()
+            },
+            FeatureFlags {
+                accounts: true,
+                library: true,
+                subscriptions: true,
+                ..FeatureFlags::default()
+            },
+            FeatureFlags {
+                accounts: true,
+                library: true,
+                reading_feed: true,
+                notifications: true,
+                ..FeatureFlags::default()
+            },
+        ] {
+            assert!(flags.validate().is_err());
+        }
+
+        assert!(
+            FeatureFlags {
+                accounts: true,
+                library: true,
+                reading_feed: true,
+                reading_briefs: true,
+                subscriptions: true,
+                notifications: true,
+                ..FeatureFlags::default()
+            }
+            .validate()
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn general_search_flags_are_dormant_and_dependency_ordered() {
+        let defaults = FeatureFlags::default();
+        assert!(!defaults.search_lookup);
+        assert!(!defaults.search_explore);
+        assert!(!defaults.saved_queries);
+        assert!(
+            FeatureFlags {
+                search_explore: true,
+                ..FeatureFlags::default()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            FeatureFlags {
+                search_lookup: true,
+                saved_queries: true,
+                ..FeatureFlags::default()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            FeatureFlags {
+                search_lookup: true,
+                search_explore: true,
+                saved_queries: true,
+                ..FeatureFlags::default()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            FeatureFlags {
+                accounts: true,
+                search_lookup: true,
+                search_explore: true,
+                saved_queries: true,
+                ..FeatureFlags::default()
+            }
+            .validate()
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn paper_resolution_flags_default_off_and_limits_are_bounded() {
+        let flags = FeatureFlags::default();
+        assert!(!flags.paper_resolution);
+        assert!(!flags.paper_title_search);
+        assert!(!flags.library_import_writes);
+
+        let defaults = PaperResolutionFeatureConfig::default();
+        assert_eq!(defaults.search_min_query_chars, 3);
+        assert_eq!(defaults.search_max_query_chars, 300);
+        assert_eq!(defaults.search_max_results, 10);
+        assert!(
+            defaults
+                .policy(Duration::from_secs(3), Duration::from_secs(86_400))
+                .is_ok()
+        );
+
+        let mut invalid = defaults;
+        invalid.search_max_results = 11;
+        assert!(
+            invalid
+                .policy(Duration::from_secs(3), Duration::from_secs(86_400))
+                .is_err()
+        );
+        invalid = defaults;
+        invalid.search_max_query_chars = 301;
+        assert!(
+            invalid
+                .policy(Duration::from_secs(3), Duration::from_secs(86_400))
+                .is_err()
+        );
+        invalid = defaults;
+        invalid.search_account_limit_per_minute = 0;
+        assert!(
+            invalid
+                .policy(Duration::from_secs(3), Duration::from_secs(86_400))
+                .is_err()
+        );
+        invalid = defaults;
+        invalid.import_account_limit_per_minute = 0;
+        assert!(
+            invalid
+                .validate(Duration::from_secs(3), Duration::from_secs(86_400))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn deep_reader_features_are_dormant_and_dependency_ordered() {
+        let defaults = FeatureFlags::default();
+        assert!(!defaults.deep_reader);
+        assert!(!defaults.paper_passport);
+        assert!(!defaults.semantic_facets);
+        assert!(!defaults.visual_objects);
+        assert!(!defaults.assistant_v2);
+        assert!(!defaults.annotations);
+        assert!(!defaults.research_memory);
+        assert!(!defaults.version_diff);
+        assert!(!defaults.docling_experiment);
+
+        for flags in [
+            FeatureFlags {
+                paper_passport: true,
+                ..FeatureFlags::default()
+            },
+            FeatureFlags {
+                semantic_facets: true,
+                ..FeatureFlags::default()
+            },
+            FeatureFlags {
+                visual_objects: true,
+                ..FeatureFlags::default()
+            },
+            FeatureFlags {
+                assistant_v2: true,
+                ..FeatureFlags::default()
+            },
+            FeatureFlags {
+                version_diff: true,
+                ..FeatureFlags::default()
+            },
+            FeatureFlags {
+                docling_experiment: true,
+                ..FeatureFlags::default()
+            },
+            FeatureFlags {
+                deep_reader: true,
+                annotations: true,
+                ..FeatureFlags::default()
+            },
+            FeatureFlags {
+                accounts: true,
+                deep_reader: true,
+                research_memory: true,
+                ..FeatureFlags::default()
+            },
+        ] {
+            assert!(flags.validate().is_err());
+        }
+
+        assert!(
+            FeatureFlags {
+                accounts: true,
+                deep_reader: true,
+                paper_passport: true,
+                semantic_facets: true,
+                visual_objects: true,
+                assistant_v2: true,
+                annotations: true,
+                research_memory: true,
+                version_diff: true,
+                docling_experiment: true,
+                ..FeatureFlags::default()
+            }
+            .validate()
+            .is_ok()
         );
     }
 
@@ -2125,6 +2862,7 @@ mod tests {
             comments: true,
             comment_creation: false,
             account_deletion: false,
+            ..FeatureFlags::default()
         };
 
         assert_eq!(
@@ -2144,6 +2882,9 @@ mod tests {
             library: None,
             comments: None,
             account_deletion: None,
+            visual_assets: None,
+            paper_resolution: PaperResolutionFeatureConfig::default(),
+            reading_feed: ReadingFeedFeatureConfig::default(),
             request_origin: RequestOriginConfig::for_local_development(
                 "production-config-request-origin-secret-0123456789",
             )

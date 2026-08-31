@@ -16,11 +16,11 @@
         <ul>
           <li>disables Pakperk account access immediately;</li>
           <li>revokes identity-provider sessions and deletes the provider identity;</li>
-          <li>removes your profile, To Read list, blocks, comments, reports, and pending account-owned operations;</li>
-          <li>clears account-owned data from the app after it receives acceptance; and</li>
+          <li>removes your profile, Library/To Read and discovery data, private annotations/conflicts/re-anchor history, evidence cards, checkpoints, memory, owner-bound assistant history/provenance, blocks, comments, reports, and pending account-owned operations;</li>
+          <li>clears account-owned data from the app after it receives acceptance, including ordinary-SQLite private research caches and pending research work; and</li>
           <li>retains anonymized security records for 90 days and signed deletion authority, including encrypted provider recovery coordinates, for at least 400 days and until no recoverable backup can recreate the account.</li>
         </ul>
-        <p>After both the 400-day minimum has elapsed and no recoverable backup can recreate the account, an operator-controlled final purge removes the deletion authority and encrypted coordinates. Account deletion cannot be undone. Paper metadata that is public and not account-owned may remain.</p>
+        <p>After both the 400-day minimum has elapsed and no recoverable backup can recreate the account, an operator-controlled final purge removes the deletion authority and encrypted coordinates. Account deletion cannot be undone. Shared paper metadata, normalized documents, and shared derived artifacts that are not account-owned may remain.</p>
       </div>
       <label class="check-row"><input id="confirm-deletion" type="checkbox"><span>I understand that account and public-comment deletion is permanent.</span></label>
       <button class="danger" id="start-deletion" type="button" disabled>Sign in and request deletion</button>

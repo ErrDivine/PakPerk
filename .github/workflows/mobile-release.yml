@@ -207,6 +207,30 @@ jobs:
           RELEASE_ACCOUNTS_ENABLED: ${{ vars.PAKPERK_ACCOUNTS_ENABLED }}
           RELEASE_LIBRARY_ENABLED: ${{ vars.PAKPERK_LIBRARY_ENABLED }}
           RELEASE_COMMENTS_ENABLED: ${{ vars.PAKPERK_COMMENTS_ENABLED }}
+          RELEASE_PAPER_TITLE_SEARCH_ENABLED: ${{ vars.PAKPERK_PAPER_TITLE_SEARCH_ENABLED }}
+          RELEASE_LIBRARY_IMPORT_WRITES_ENABLED: ${{ vars.PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED }}
+          RELEASE_READING_FEED_ENABLED: ${{ vars.PAKPERK_READING_FEED_ENABLED }}
+          RELEASE_TO_READ_FIRST_ENFORCEMENT_ENABLED: ${{ vars.PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED }}
+          RELEASE_LIBRARY_V2_ENABLED: ${{ vars.PAKPERK_LIBRARY_V2_ENABLED }}
+          RELEASE_RECOMMENDATIONS_ENABLED: ${{ vars.PAKPERK_RECOMMENDATIONS_ENABLED }}
+          RELEASE_RECOMMENDATION_EVENTS_ENABLED: ${{ vars.PAKPERK_RECOMMENDATION_EVENTS_ENABLED }}
+          RELEASE_SEARCH_LOOKUP_ENABLED: ${{ vars.PAKPERK_SEARCH_LOOKUP_ENABLED }}
+          RELEASE_SEARCH_EXPLORE_ENABLED: ${{ vars.PAKPERK_SEARCH_EXPLORE_ENABLED }}
+          RELEASE_SAVED_QUERIES_ENABLED: ${{ vars.PAKPERK_SAVED_QUERIES_ENABLED }}
+          RELEASE_RESEARCH_PROFILES_ENABLED: ${{ vars.PAKPERK_RESEARCH_PROFILES_ENABLED }}
+          RELEASE_READING_BRIEFS_ENABLED: ${{ vars.PAKPERK_READING_BRIEFS_ENABLED }}
+          RELEASE_SUBSCRIPTIONS_ENABLED: ${{ vars.PAKPERK_SUBSCRIPTIONS_ENABLED }}
+          RELEASE_NOTIFICATIONS_ENABLED: ${{ vars.PAKPERK_NOTIFICATIONS_ENABLED }}
+          RELEASE_DEEP_READER_ENABLED: ${{ vars.PAKPERK_DEEP_READER_ENABLED }}
+          RELEASE_PAPER_PASSPORT_ENABLED: ${{ vars.PAKPERK_PAPER_PASSPORT_ENABLED }}
+          RELEASE_SEMANTIC_FACETS_ENABLED: ${{ vars.PAKPERK_SEMANTIC_FACETS_ENABLED }}
+          RELEASE_DOCUMENT_VISUAL_OBJECTS_ENABLED: ${{ vars.PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED }}
+          RELEASE_READING_CHECKPOINTS_ENABLED: ${{ vars.PAKPERK_READING_CHECKPOINTS_ENABLED }}
+          RELEASE_ANNOTATIONS_ENABLED: ${{ vars.PAKPERK_ANNOTATIONS_ENABLED }}
+          RELEASE_EVIDENCE_CARDS_ENABLED: ${{ vars.PAKPERK_EVIDENCE_CARDS_ENABLED }}
+          RELEASE_RESEARCH_MEMORY_ENABLED: ${{ vars.PAKPERK_RESEARCH_MEMORY_ENABLED }}
+          RELEASE_VERSION_DIFF_ENABLED: ${{ vars.PAKPERK_VERSION_DIFF_ENABLED }}
+          RELEASE_ASSISTANT_V2_ENABLED: ${{ vars.PAKPERK_ASSISTANT_V2_ENABLED }}
           RELEASE_DOCUMENT_VERSION: ${{ vars.PAKPERK_PUBLIC_DOCUMENT_VERSION }}
         run: |
           mkdir -p "$RUNNER_TEMP/prepared/evidence"
@@ -224,6 +248,19 @@ jobs:
               "PAKPERK_ENV", "PAKPERK_API_BASE_URL", "PAKPERK_FULLTEXT_POLICY",
               "PAKPERK_TERMS_DOCUMENT_VERSION", "PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION",
               "PAKPERK_ACCOUNTS_ENABLED", "PAKPERK_LIBRARY_ENABLED", "PAKPERK_COMMENTS_ENABLED",
+              "PAKPERK_PAPER_TITLE_SEARCH_ENABLED", "PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED",
+              "PAKPERK_READING_FEED_ENABLED", "PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED",
+              "PAKPERK_LIBRARY_V2_ENABLED", "PAKPERK_RECOMMENDATIONS_ENABLED",
+              "PAKPERK_RECOMMENDATION_EVENTS_ENABLED",
+              "PAKPERK_SEARCH_LOOKUP_ENABLED", "PAKPERK_SEARCH_EXPLORE_ENABLED",
+              "PAKPERK_SAVED_QUERIES_ENABLED", "PAKPERK_RESEARCH_PROFILES_ENABLED",
+              "PAKPERK_READING_BRIEFS_ENABLED", "PAKPERK_SUBSCRIPTIONS_ENABLED",
+              "PAKPERK_NOTIFICATIONS_ENABLED",
+              "PAKPERK_DEEP_READER_ENABLED", "PAKPERK_PAPER_PASSPORT_ENABLED",
+              "PAKPERK_SEMANTIC_FACETS_ENABLED", "PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED",
+              "PAKPERK_READING_CHECKPOINTS_ENABLED", "PAKPERK_ANNOTATIONS_ENABLED",
+              "PAKPERK_EVIDENCE_CARDS_ENABLED", "PAKPERK_RESEARCH_MEMORY_ENABLED",
+              "PAKPERK_VERSION_DIFF_ENABLED", "PAKPERK_ASSISTANT_V2_ENABLED",
               "PAKPERK_OPENING_MOTION_ENABLED", "PAKPERK_OIDC_ISSUER_URL",
               "PAKPERK_OIDC_CLIENT_ID", "PAKPERK_OIDC_REDIRECT_URI",
               "PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI", "PAKPERK_OIDC_SCOPES",
@@ -246,6 +283,19 @@ jobs:
                   for name in (
                       "PAKPERK_ACCOUNTS_ENABLED", "PAKPERK_LIBRARY_ENABLED",
                       "PAKPERK_COMMENTS_ENABLED", "PAKPERK_OPENING_MOTION_ENABLED",
+                      "PAKPERK_PAPER_TITLE_SEARCH_ENABLED", "PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED",
+                      "PAKPERK_READING_FEED_ENABLED", "PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED",
+                      "PAKPERK_LIBRARY_V2_ENABLED", "PAKPERK_RECOMMENDATIONS_ENABLED",
+                      "PAKPERK_RECOMMENDATION_EVENTS_ENABLED",
+                      "PAKPERK_SEARCH_LOOKUP_ENABLED", "PAKPERK_SEARCH_EXPLORE_ENABLED",
+                      "PAKPERK_SAVED_QUERIES_ENABLED", "PAKPERK_RESEARCH_PROFILES_ENABLED",
+                      "PAKPERK_READING_BRIEFS_ENABLED", "PAKPERK_SUBSCRIPTIONS_ENABLED",
+                      "PAKPERK_NOTIFICATIONS_ENABLED",
+                      "PAKPERK_DEEP_READER_ENABLED", "PAKPERK_PAPER_PASSPORT_ENABLED",
+                      "PAKPERK_SEMANTIC_FACETS_ENABLED", "PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED",
+                      "PAKPERK_READING_CHECKPOINTS_ENABLED", "PAKPERK_ANNOTATIONS_ENABLED",
+                      "PAKPERK_EVIDENCE_CARDS_ENABLED", "PAKPERK_RESEARCH_MEMORY_ENABLED",
+                      "PAKPERK_VERSION_DIFF_ENABLED", "PAKPERK_ASSISTANT_V2_ENABLED",
                   )
               )
           ):
@@ -272,6 +322,30 @@ jobs:
                   ("ACCOUNTS", "PAKPERK_ACCOUNTS_ENABLED"),
                   ("LIBRARY", "PAKPERK_LIBRARY_ENABLED"),
                   ("COMMENTS", "PAKPERK_COMMENTS_ENABLED"),
+                  ("PAPER_TITLE_SEARCH", "PAKPERK_PAPER_TITLE_SEARCH_ENABLED"),
+                  ("LIBRARY_IMPORT_WRITES", "PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED"),
+                  ("READING_FEED", "PAKPERK_READING_FEED_ENABLED"),
+                  ("TO_READ_FIRST_ENFORCEMENT", "PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED"),
+                  ("LIBRARY_V2", "PAKPERK_LIBRARY_V2_ENABLED"),
+                  ("RECOMMENDATIONS", "PAKPERK_RECOMMENDATIONS_ENABLED"),
+                  ("RECOMMENDATION_EVENTS", "PAKPERK_RECOMMENDATION_EVENTS_ENABLED"),
+                  ("SEARCH_LOOKUP", "PAKPERK_SEARCH_LOOKUP_ENABLED"),
+                  ("SEARCH_EXPLORE", "PAKPERK_SEARCH_EXPLORE_ENABLED"),
+                  ("SAVED_QUERIES", "PAKPERK_SAVED_QUERIES_ENABLED"),
+                  ("RESEARCH_PROFILES", "PAKPERK_RESEARCH_PROFILES_ENABLED"),
+                  ("READING_BRIEFS", "PAKPERK_READING_BRIEFS_ENABLED"),
+                  ("SUBSCRIPTIONS", "PAKPERK_SUBSCRIPTIONS_ENABLED"),
+                  ("NOTIFICATIONS", "PAKPERK_NOTIFICATIONS_ENABLED"),
+                  ("DEEP_READER", "PAKPERK_DEEP_READER_ENABLED"),
+                  ("PAPER_PASSPORT", "PAKPERK_PAPER_PASSPORT_ENABLED"),
+                  ("SEMANTIC_FACETS", "PAKPERK_SEMANTIC_FACETS_ENABLED"),
+                  ("DOCUMENT_VISUAL_OBJECTS", "PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED"),
+                  ("READING_CHECKPOINTS", "PAKPERK_READING_CHECKPOINTS_ENABLED"),
+                  ("ANNOTATIONS", "PAKPERK_ANNOTATIONS_ENABLED"),
+                  ("EVIDENCE_CARDS", "PAKPERK_EVIDENCE_CARDS_ENABLED"),
+                  ("RESEARCH_MEMORY", "PAKPERK_RESEARCH_MEMORY_ENABLED"),
+                  ("VERSION_DIFF", "PAKPERK_VERSION_DIFF_ENABLED"),
+                  ("ASSISTANT_V2", "PAKPERK_ASSISTANT_V2_ENABLED"),
               ):
                   raw = os.environ.get(f"RELEASE_{short_name}_ENABLED", "") or "false"
                   if raw not in {"true", "false"}:
@@ -283,6 +357,72 @@ jobs:
                   raise SystemExit("Protected mobile library requires accounts")
               if protected["PAKPERK_COMMENTS_ENABLED"] == "true" and protected["PAKPERK_ACCOUNTS_ENABLED"] != "true":
                   raise SystemExit("Protected mobile comments require accounts")
+              if protected["PAKPERK_PAPER_TITLE_SEARCH_ENABLED"] == "true" and protected["PAKPERK_ACCOUNTS_ENABLED"] != "true":
+                  raise SystemExit("Protected mobile paper title search requires accounts")
+              if protected["PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED"] == "true" and (
+                  protected["PAKPERK_ACCOUNTS_ENABLED"] != "true"
+                  or protected["PAKPERK_LIBRARY_ENABLED"] != "true"
+              ):
+                  raise SystemExit("Protected mobile library imports require accounts and library")
+              if protected["PAKPERK_READING_FEED_ENABLED"] == "true" and (
+                  protected["PAKPERK_ACCOUNTS_ENABLED"] != "true"
+                  or protected["PAKPERK_LIBRARY_ENABLED"] != "true"
+              ):
+                  raise SystemExit("Protected mobile reading feed requires accounts and library")
+              if protected["PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED"] == "true" and protected["PAKPERK_READING_FEED_ENABLED"] != "true":
+                  raise SystemExit("Protected mobile To Read First enforcement requires the reading feed")
+              if protected["PAKPERK_LIBRARY_V2_ENABLED"] == "true" and (
+                  protected["PAKPERK_ACCOUNTS_ENABLED"] != "true"
+                  or protected["PAKPERK_LIBRARY_ENABLED"] != "true"
+              ):
+                  raise SystemExit("Protected mobile Library v2 requires accounts and library")
+              if protected["PAKPERK_RECOMMENDATIONS_ENABLED"] == "true" and (
+                  protected["PAKPERK_ACCOUNTS_ENABLED"] != "true"
+                  or protected["PAKPERK_LIBRARY_ENABLED"] != "true"
+                  or protected["PAKPERK_READING_FEED_ENABLED"] != "true"
+              ):
+                  raise SystemExit("Protected mobile recommendations require accounts, library, and reading feed")
+              if protected["PAKPERK_SEARCH_EXPLORE_ENABLED"] == "true" and protected["PAKPERK_SEARCH_LOOKUP_ENABLED"] != "true":
+                  raise SystemExit("Protected mobile Explore requires Lookup")
+              if protected["PAKPERK_SAVED_QUERIES_ENABLED"] == "true" and (
+                  protected["PAKPERK_ACCOUNTS_ENABLED"] != "true"
+                  or protected["PAKPERK_SEARCH_EXPLORE_ENABLED"] != "true"
+              ):
+                  raise SystemExit("Protected mobile saved queries require accounts and Explore")
+              if protected["PAKPERK_RESEARCH_PROFILES_ENABLED"] == "true" and protected["PAKPERK_ACCOUNTS_ENABLED"] != "true":
+                  raise SystemExit("Protected mobile research profiles require accounts")
+              if protected["PAKPERK_READING_BRIEFS_ENABLED"] == "true" and protected["PAKPERK_READING_FEED_ENABLED"] != "true":
+                  raise SystemExit("Protected mobile reading briefs require the reading feed")
+              if protected["PAKPERK_SUBSCRIPTIONS_ENABLED"] == "true" and (
+                  protected["PAKPERK_ACCOUNTS_ENABLED"] != "true"
+                  or protected["PAKPERK_LIBRARY_ENABLED"] != "true"
+                  or protected["PAKPERK_READING_FEED_ENABLED"] != "true"
+              ):
+                  raise SystemExit("Protected mobile subscriptions require accounts, library, and reading feed")
+              if protected["PAKPERK_NOTIFICATIONS_ENABLED"] == "true" and protected["PAKPERK_SUBSCRIPTIONS_ENABLED"] != "true":
+                  raise SystemExit("Protected mobile notifications require subscriptions")
+              if protected["PAKPERK_DEEP_READER_ENABLED"] == "true" and (
+                  protected["PAKPERK_ACCOUNTS_ENABLED"] != "true"
+                  or protected["PAKPERK_LIBRARY_ENABLED"] != "true"
+                  or protected["PAKPERK_READING_FEED_ENABLED"] != "true"
+                  or protected["PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED"] != "true"
+              ):
+                  raise SystemExit("Protected mobile deep reader requires accounts, library, reading feed, and To Read First enforcement")
+              for child in (
+                  "PAKPERK_PAPER_PASSPORT_ENABLED",
+                  "PAKPERK_SEMANTIC_FACETS_ENABLED",
+                  "PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED",
+                  "PAKPERK_READING_CHECKPOINTS_ENABLED",
+                  "PAKPERK_ANNOTATIONS_ENABLED",
+                  "PAKPERK_VERSION_DIFF_ENABLED",
+                  "PAKPERK_ASSISTANT_V2_ENABLED",
+              ):
+                  if protected[child] == "true" and protected["PAKPERK_DEEP_READER_ENABLED"] != "true":
+                      raise SystemExit("Protected mobile Plan 03 child feature requires the deep reader")
+              if protected["PAKPERK_EVIDENCE_CARDS_ENABLED"] == "true" and protected["PAKPERK_ANNOTATIONS_ENABLED"] != "true":
+                  raise SystemExit("Protected mobile evidence cards require annotations")
+              if protected["PAKPERK_RESEARCH_MEMORY_ENABLED"] == "true" and protected["PAKPERK_EVIDENCE_CARDS_ENABLED"] != "true":
+                  raise SystemExit("Protected mobile research memory requires evidence cards")
               config.update(protected)
 
           destination.write_text(
@@ -294,11 +434,35 @@ jobs:
           evidence.write_text(
               json.dumps(
                   {
-                      "schema": 2,
+                      "schema": 6,
                       "environment": os.environ["RELEASE_ENVIRONMENT"],
                       "accounts": config["PAKPERK_ACCOUNTS_ENABLED"] == "true",
                       "library": config["PAKPERK_LIBRARY_ENABLED"] == "true",
                       "comments": config["PAKPERK_COMMENTS_ENABLED"] == "true",
+                      "paperTitleSearch": config["PAKPERK_PAPER_TITLE_SEARCH_ENABLED"] == "true",
+                      "libraryImportWrites": config["PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED"] == "true",
+                      "readingFeed": config["PAKPERK_READING_FEED_ENABLED"] == "true",
+                      "toReadFirstEnforcement": config["PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED"] == "true",
+                      "libraryV2": config["PAKPERK_LIBRARY_V2_ENABLED"] == "true",
+                      "recommendations": config["PAKPERK_RECOMMENDATIONS_ENABLED"] == "true",
+                      "recommendationEvents": config["PAKPERK_RECOMMENDATION_EVENTS_ENABLED"] == "true",
+                      "searchLookup": config["PAKPERK_SEARCH_LOOKUP_ENABLED"] == "true",
+                      "searchExplore": config["PAKPERK_SEARCH_EXPLORE_ENABLED"] == "true",
+                      "savedQueries": config["PAKPERK_SAVED_QUERIES_ENABLED"] == "true",
+                      "researchProfiles": config["PAKPERK_RESEARCH_PROFILES_ENABLED"] == "true",
+                      "readingBriefs": config["PAKPERK_READING_BRIEFS_ENABLED"] == "true",
+                      "subscriptions": config["PAKPERK_SUBSCRIPTIONS_ENABLED"] == "true",
+                      "notifications": config["PAKPERK_NOTIFICATIONS_ENABLED"] == "true",
+                      "deepReader": config["PAKPERK_DEEP_READER_ENABLED"] == "true",
+                      "paperPassport": config["PAKPERK_PAPER_PASSPORT_ENABLED"] == "true",
+                      "semanticFacets": config["PAKPERK_SEMANTIC_FACETS_ENABLED"] == "true",
+                      "documentVisualObjects": config["PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED"] == "true",
+                      "readingCheckpoints": config["PAKPERK_READING_CHECKPOINTS_ENABLED"] == "true",
+                      "annotations": config["PAKPERK_ANNOTATIONS_ENABLED"] == "true",
+                      "evidenceCards": config["PAKPERK_EVIDENCE_CARDS_ENABLED"] == "true",
+                      "researchMemory": config["PAKPERK_RESEARCH_MEMORY_ENABLED"] == "true",
+                      "versionDiff": config["PAKPERK_VERSION_DIFF_ENABLED"] == "true",
+                      "assistantV2": config["PAKPERK_ASSISTANT_V2_ENABLED"] == "true",
                       "termsDocumentVersion": config["PAKPERK_TERMS_DOCUMENT_VERSION"],
                       "communityGuidelinesDocumentVersion": config["PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION"],
                   },
@@ -538,6 +702,30 @@ jobs:
           RELEASE_ACCOUNTS_ENABLED: ${{ vars.PAKPERK_ACCOUNTS_ENABLED }}
           RELEASE_LIBRARY_ENABLED: ${{ vars.PAKPERK_LIBRARY_ENABLED }}
           RELEASE_COMMENTS_ENABLED: ${{ vars.PAKPERK_COMMENTS_ENABLED }}
+          RELEASE_PAPER_TITLE_SEARCH_ENABLED: ${{ vars.PAKPERK_PAPER_TITLE_SEARCH_ENABLED }}
+          RELEASE_LIBRARY_IMPORT_WRITES_ENABLED: ${{ vars.PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED }}
+          RELEASE_READING_FEED_ENABLED: ${{ vars.PAKPERK_READING_FEED_ENABLED }}
+          RELEASE_TO_READ_FIRST_ENFORCEMENT_ENABLED: ${{ vars.PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED }}
+          RELEASE_LIBRARY_V2_ENABLED: ${{ vars.PAKPERK_LIBRARY_V2_ENABLED }}
+          RELEASE_RECOMMENDATIONS_ENABLED: ${{ vars.PAKPERK_RECOMMENDATIONS_ENABLED }}
+          RELEASE_RECOMMENDATION_EVENTS_ENABLED: ${{ vars.PAKPERK_RECOMMENDATION_EVENTS_ENABLED }}
+          RELEASE_SEARCH_LOOKUP_ENABLED: ${{ vars.PAKPERK_SEARCH_LOOKUP_ENABLED }}
+          RELEASE_SEARCH_EXPLORE_ENABLED: ${{ vars.PAKPERK_SEARCH_EXPLORE_ENABLED }}
+          RELEASE_SAVED_QUERIES_ENABLED: ${{ vars.PAKPERK_SAVED_QUERIES_ENABLED }}
+          RELEASE_RESEARCH_PROFILES_ENABLED: ${{ vars.PAKPERK_RESEARCH_PROFILES_ENABLED }}
+          RELEASE_READING_BRIEFS_ENABLED: ${{ vars.PAKPERK_READING_BRIEFS_ENABLED }}
+          RELEASE_SUBSCRIPTIONS_ENABLED: ${{ vars.PAKPERK_SUBSCRIPTIONS_ENABLED }}
+          RELEASE_NOTIFICATIONS_ENABLED: ${{ vars.PAKPERK_NOTIFICATIONS_ENABLED }}
+          RELEASE_DEEP_READER_ENABLED: ${{ vars.PAKPERK_DEEP_READER_ENABLED }}
+          RELEASE_PAPER_PASSPORT_ENABLED: ${{ vars.PAKPERK_PAPER_PASSPORT_ENABLED }}
+          RELEASE_SEMANTIC_FACETS_ENABLED: ${{ vars.PAKPERK_SEMANTIC_FACETS_ENABLED }}
+          RELEASE_DOCUMENT_VISUAL_OBJECTS_ENABLED: ${{ vars.PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED }}
+          RELEASE_READING_CHECKPOINTS_ENABLED: ${{ vars.PAKPERK_READING_CHECKPOINTS_ENABLED }}
+          RELEASE_ANNOTATIONS_ENABLED: ${{ vars.PAKPERK_ANNOTATIONS_ENABLED }}
+          RELEASE_EVIDENCE_CARDS_ENABLED: ${{ vars.PAKPERK_EVIDENCE_CARDS_ENABLED }}
+          RELEASE_RESEARCH_MEMORY_ENABLED: ${{ vars.PAKPERK_RESEARCH_MEMORY_ENABLED }}
+          RELEASE_VERSION_DIFF_ENABLED: ${{ vars.PAKPERK_VERSION_DIFF_ENABLED }}
+          RELEASE_ASSISTANT_V2_ENABLED: ${{ vars.PAKPERK_ASSISTANT_V2_ENABLED }}
           RELEASE_DOCUMENT_VERSION: ${{ vars.PAKPERK_PUBLIC_DOCUMENT_VERSION }}
         run: |
           [[ "$EXPECTED_ARTIFACT_ID" =~ ^[1-9][0-9]{0,19}$ ]] || exit 1
@@ -573,6 +761,19 @@ jobs:
               "PAKPERK_ENV", "PAKPERK_API_BASE_URL", "PAKPERK_FULLTEXT_POLICY",
               "PAKPERK_TERMS_DOCUMENT_VERSION", "PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION",
               "PAKPERK_ACCOUNTS_ENABLED", "PAKPERK_LIBRARY_ENABLED", "PAKPERK_COMMENTS_ENABLED",
+              "PAKPERK_PAPER_TITLE_SEARCH_ENABLED", "PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED",
+              "PAKPERK_READING_FEED_ENABLED", "PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED",
+              "PAKPERK_LIBRARY_V2_ENABLED", "PAKPERK_RECOMMENDATIONS_ENABLED",
+              "PAKPERK_RECOMMENDATION_EVENTS_ENABLED",
+              "PAKPERK_SEARCH_LOOKUP_ENABLED", "PAKPERK_SEARCH_EXPLORE_ENABLED",
+              "PAKPERK_SAVED_QUERIES_ENABLED", "PAKPERK_RESEARCH_PROFILES_ENABLED",
+              "PAKPERK_READING_BRIEFS_ENABLED", "PAKPERK_SUBSCRIPTIONS_ENABLED",
+              "PAKPERK_NOTIFICATIONS_ENABLED",
+              "PAKPERK_DEEP_READER_ENABLED", "PAKPERK_PAPER_PASSPORT_ENABLED",
+              "PAKPERK_SEMANTIC_FACETS_ENABLED", "PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED",
+              "PAKPERK_READING_CHECKPOINTS_ENABLED", "PAKPERK_ANNOTATIONS_ENABLED",
+              "PAKPERK_EVIDENCE_CARDS_ENABLED", "PAKPERK_RESEARCH_MEMORY_ENABLED",
+              "PAKPERK_VERSION_DIFF_ENABLED", "PAKPERK_ASSISTANT_V2_ENABLED",
               "PAKPERK_OPENING_MOTION_ENABLED", "PAKPERK_OIDC_ISSUER_URL",
               "PAKPERK_OIDC_CLIENT_ID", "PAKPERK_OIDC_REDIRECT_URI",
               "PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI", "PAKPERK_OIDC_SCOPES",
@@ -595,6 +796,19 @@ jobs:
                   for name in (
                       "PAKPERK_ACCOUNTS_ENABLED", "PAKPERK_LIBRARY_ENABLED",
                       "PAKPERK_COMMENTS_ENABLED", "PAKPERK_OPENING_MOTION_ENABLED",
+                      "PAKPERK_PAPER_TITLE_SEARCH_ENABLED", "PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED",
+                      "PAKPERK_READING_FEED_ENABLED", "PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED",
+                      "PAKPERK_LIBRARY_V2_ENABLED", "PAKPERK_RECOMMENDATIONS_ENABLED",
+                      "PAKPERK_RECOMMENDATION_EVENTS_ENABLED",
+                      "PAKPERK_SEARCH_LOOKUP_ENABLED", "PAKPERK_SEARCH_EXPLORE_ENABLED",
+                      "PAKPERK_SAVED_QUERIES_ENABLED", "PAKPERK_RESEARCH_PROFILES_ENABLED",
+                      "PAKPERK_READING_BRIEFS_ENABLED", "PAKPERK_SUBSCRIPTIONS_ENABLED",
+                      "PAKPERK_NOTIFICATIONS_ENABLED",
+                      "PAKPERK_DEEP_READER_ENABLED", "PAKPERK_PAPER_PASSPORT_ENABLED",
+                      "PAKPERK_SEMANTIC_FACETS_ENABLED", "PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED",
+                      "PAKPERK_READING_CHECKPOINTS_ENABLED", "PAKPERK_ANNOTATIONS_ENABLED",
+                      "PAKPERK_EVIDENCE_CARDS_ENABLED", "PAKPERK_RESEARCH_MEMORY_ENABLED",
+                      "PAKPERK_VERSION_DIFF_ENABLED", "PAKPERK_ASSISTANT_V2_ENABLED",
                   )
               )
           ):
@@ -606,7 +820,35 @@ jobs:
                   for name in ("PAKPERK_TERMS_DOCUMENT_VERSION", "PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION")
               ):
                   raise SystemExit("protected document version does not match base config")
-              for short in ("ACCOUNTS", "LIBRARY", "COMMENTS"):
+              for short in (
+                  "ACCOUNTS",
+                  "LIBRARY",
+                  "COMMENTS",
+                  "PAPER_TITLE_SEARCH",
+                  "LIBRARY_IMPORT_WRITES",
+                  "READING_FEED",
+                  "TO_READ_FIRST_ENFORCEMENT",
+                  "LIBRARY_V2",
+                  "RECOMMENDATIONS",
+                  "RECOMMENDATION_EVENTS",
+                  "SEARCH_LOOKUP",
+                  "SEARCH_EXPLORE",
+                  "SAVED_QUERIES",
+                  "RESEARCH_PROFILES",
+                  "READING_BRIEFS",
+                  "SUBSCRIPTIONS",
+                  "NOTIFICATIONS",
+                  "DEEP_READER",
+                  "PAPER_PASSPORT",
+                  "SEMANTIC_FACETS",
+                  "DOCUMENT_VISUAL_OBJECTS",
+                  "READING_CHECKPOINTS",
+                  "ANNOTATIONS",
+                  "EVIDENCE_CARDS",
+                  "RESEARCH_MEMORY",
+                  "VERSION_DIFF",
+                  "ASSISTANT_V2",
+              ):
                   value = os.environ.get("RELEASE_" + short + "_ENABLED", "") or "false"
                   if value not in {"true", "false"}:
                       raise SystemExit("protected feature flag is malformed")
@@ -615,15 +857,105 @@ jobs:
               raise SystemExit("library requires accounts")
           if expected_config.get("PAKPERK_COMMENTS_ENABLED") == "true" and expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true":
               raise SystemExit("comments require accounts")
+          if expected_config.get("PAKPERK_PAPER_TITLE_SEARCH_ENABLED") == "true" and expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true":
+              raise SystemExit("paper title search requires accounts")
+          if expected_config.get("PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED") == "true" and (
+              expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true"
+              or expected_config.get("PAKPERK_LIBRARY_ENABLED") != "true"
+          ):
+              raise SystemExit("library imports require accounts and library")
+          if expected_config.get("PAKPERK_READING_FEED_ENABLED") == "true" and (
+              expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true"
+              or expected_config.get("PAKPERK_LIBRARY_ENABLED") != "true"
+          ):
+              raise SystemExit("reading feed requires accounts and library")
+          if expected_config.get("PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED") == "true" and expected_config.get("PAKPERK_READING_FEED_ENABLED") != "true":
+              raise SystemExit("To Read First enforcement requires the reading feed")
+          if expected_config.get("PAKPERK_LIBRARY_V2_ENABLED") == "true" and (
+              expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true"
+              or expected_config.get("PAKPERK_LIBRARY_ENABLED") != "true"
+          ):
+              raise SystemExit("Library v2 requires accounts and library")
+          if expected_config.get("PAKPERK_RECOMMENDATIONS_ENABLED") == "true" and (
+              expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true"
+              or expected_config.get("PAKPERK_LIBRARY_ENABLED") != "true"
+              or expected_config.get("PAKPERK_READING_FEED_ENABLED") != "true"
+          ):
+              raise SystemExit("recommendations require accounts, library, and reading feed")
+          if expected_config.get("PAKPERK_SEARCH_EXPLORE_ENABLED") == "true" and expected_config.get("PAKPERK_SEARCH_LOOKUP_ENABLED") != "true":
+              raise SystemExit("Explore requires Lookup")
+          if expected_config.get("PAKPERK_SAVED_QUERIES_ENABLED") == "true" and (
+              expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true"
+              or expected_config.get("PAKPERK_SEARCH_EXPLORE_ENABLED") != "true"
+          ):
+              raise SystemExit("saved queries require accounts and Explore")
+          if expected_config.get("PAKPERK_RESEARCH_PROFILES_ENABLED") == "true" and expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true":
+              raise SystemExit("research profiles require accounts")
+          if expected_config.get("PAKPERK_READING_BRIEFS_ENABLED") == "true" and expected_config.get("PAKPERK_READING_FEED_ENABLED") != "true":
+              raise SystemExit("reading briefs require the reading feed")
+          if expected_config.get("PAKPERK_SUBSCRIPTIONS_ENABLED") == "true" and (
+              expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true"
+              or expected_config.get("PAKPERK_LIBRARY_ENABLED") != "true"
+              or expected_config.get("PAKPERK_READING_FEED_ENABLED") != "true"
+          ):
+              raise SystemExit("subscriptions require accounts, library, and reading feed")
+          if expected_config.get("PAKPERK_NOTIFICATIONS_ENABLED") == "true" and expected_config.get("PAKPERK_SUBSCRIPTIONS_ENABLED") != "true":
+              raise SystemExit("notifications require subscriptions")
+          if expected_config.get("PAKPERK_DEEP_READER_ENABLED") == "true" and (
+              expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true"
+              or expected_config.get("PAKPERK_LIBRARY_ENABLED") != "true"
+              or expected_config.get("PAKPERK_READING_FEED_ENABLED") != "true"
+              or expected_config.get("PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED") != "true"
+          ):
+              raise SystemExit("deep reader requires accounts, library, reading feed, and To Read First enforcement")
+          for child in (
+              "PAKPERK_PAPER_PASSPORT_ENABLED",
+              "PAKPERK_SEMANTIC_FACETS_ENABLED",
+              "PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED",
+              "PAKPERK_READING_CHECKPOINTS_ENABLED",
+              "PAKPERK_ANNOTATIONS_ENABLED",
+              "PAKPERK_VERSION_DIFF_ENABLED",
+              "PAKPERK_ASSISTANT_V2_ENABLED",
+          ):
+              if expected_config.get(child) == "true" and expected_config.get("PAKPERK_DEEP_READER_ENABLED") != "true":
+                  raise SystemExit("Plan 03 child feature requires the deep reader")
+          if expected_config.get("PAKPERK_EVIDENCE_CARDS_ENABLED") == "true" and expected_config.get("PAKPERK_ANNOTATIONS_ENABLED") != "true":
+              raise SystemExit("evidence cards require annotations")
+          if expected_config.get("PAKPERK_RESEARCH_MEMORY_ENABLED") == "true" and expected_config.get("PAKPERK_EVIDENCE_CARDS_ENABLED") != "true":
+              raise SystemExit("research memory requires evidence cards")
           actual_config = json.loads(root.joinpath("mobile-release-config.json").read_text(encoding="utf-8"))
           if actual_config != expected_config:
               raise SystemExit("prepared config does not derive from protected inputs")
           expected_evidence = {
-              "schema": 2,
+              "schema": 6,
               "environment": os.environ["RELEASE_ENVIRONMENT"],
               "accounts": expected_config["PAKPERK_ACCOUNTS_ENABLED"] == "true",
               "library": expected_config["PAKPERK_LIBRARY_ENABLED"] == "true",
               "comments": expected_config["PAKPERK_COMMENTS_ENABLED"] == "true",
+              "paperTitleSearch": expected_config["PAKPERK_PAPER_TITLE_SEARCH_ENABLED"] == "true",
+              "libraryImportWrites": expected_config["PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED"] == "true",
+              "readingFeed": expected_config["PAKPERK_READING_FEED_ENABLED"] == "true",
+              "toReadFirstEnforcement": expected_config["PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED"] == "true",
+              "libraryV2": expected_config["PAKPERK_LIBRARY_V2_ENABLED"] == "true",
+              "recommendations": expected_config["PAKPERK_RECOMMENDATIONS_ENABLED"] == "true",
+              "recommendationEvents": expected_config["PAKPERK_RECOMMENDATION_EVENTS_ENABLED"] == "true",
+              "searchLookup": expected_config["PAKPERK_SEARCH_LOOKUP_ENABLED"] == "true",
+              "searchExplore": expected_config["PAKPERK_SEARCH_EXPLORE_ENABLED"] == "true",
+              "savedQueries": expected_config["PAKPERK_SAVED_QUERIES_ENABLED"] == "true",
+              "researchProfiles": expected_config["PAKPERK_RESEARCH_PROFILES_ENABLED"] == "true",
+              "readingBriefs": expected_config["PAKPERK_READING_BRIEFS_ENABLED"] == "true",
+              "subscriptions": expected_config["PAKPERK_SUBSCRIPTIONS_ENABLED"] == "true",
+              "notifications": expected_config["PAKPERK_NOTIFICATIONS_ENABLED"] == "true",
+              "deepReader": expected_config["PAKPERK_DEEP_READER_ENABLED"] == "true",
+              "paperPassport": expected_config["PAKPERK_PAPER_PASSPORT_ENABLED"] == "true",
+              "semanticFacets": expected_config["PAKPERK_SEMANTIC_FACETS_ENABLED"] == "true",
+              "documentVisualObjects": expected_config["PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED"] == "true",
+              "readingCheckpoints": expected_config["PAKPERK_READING_CHECKPOINTS_ENABLED"] == "true",
+              "annotations": expected_config["PAKPERK_ANNOTATIONS_ENABLED"] == "true",
+              "evidenceCards": expected_config["PAKPERK_EVIDENCE_CARDS_ENABLED"] == "true",
+              "researchMemory": expected_config["PAKPERK_RESEARCH_MEMORY_ENABLED"] == "true",
+              "versionDiff": expected_config["PAKPERK_VERSION_DIFF_ENABLED"] == "true",
+              "assistantV2": expected_config["PAKPERK_ASSISTANT_V2_ENABLED"] == "true",
               "termsDocumentVersion": expected_config["PAKPERK_TERMS_DOCUMENT_VERSION"],
               "communityGuidelinesDocumentVersion": expected_config["PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION"],
           }
@@ -1176,6 +1508,30 @@ jobs:
           RELEASE_ACCOUNTS_ENABLED: ${{ vars.PAKPERK_ACCOUNTS_ENABLED }}
           RELEASE_LIBRARY_ENABLED: ${{ vars.PAKPERK_LIBRARY_ENABLED }}
           RELEASE_COMMENTS_ENABLED: ${{ vars.PAKPERK_COMMENTS_ENABLED }}
+          RELEASE_PAPER_TITLE_SEARCH_ENABLED: ${{ vars.PAKPERK_PAPER_TITLE_SEARCH_ENABLED }}
+          RELEASE_LIBRARY_IMPORT_WRITES_ENABLED: ${{ vars.PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED }}
+          RELEASE_READING_FEED_ENABLED: ${{ vars.PAKPERK_READING_FEED_ENABLED }}
+          RELEASE_TO_READ_FIRST_ENFORCEMENT_ENABLED: ${{ vars.PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED }}
+          RELEASE_LIBRARY_V2_ENABLED: ${{ vars.PAKPERK_LIBRARY_V2_ENABLED }}
+          RELEASE_RECOMMENDATIONS_ENABLED: ${{ vars.PAKPERK_RECOMMENDATIONS_ENABLED }}
+          RELEASE_RECOMMENDATION_EVENTS_ENABLED: ${{ vars.PAKPERK_RECOMMENDATION_EVENTS_ENABLED }}
+          RELEASE_SEARCH_LOOKUP_ENABLED: ${{ vars.PAKPERK_SEARCH_LOOKUP_ENABLED }}
+          RELEASE_SEARCH_EXPLORE_ENABLED: ${{ vars.PAKPERK_SEARCH_EXPLORE_ENABLED }}
+          RELEASE_SAVED_QUERIES_ENABLED: ${{ vars.PAKPERK_SAVED_QUERIES_ENABLED }}
+          RELEASE_RESEARCH_PROFILES_ENABLED: ${{ vars.PAKPERK_RESEARCH_PROFILES_ENABLED }}
+          RELEASE_READING_BRIEFS_ENABLED: ${{ vars.PAKPERK_READING_BRIEFS_ENABLED }}
+          RELEASE_SUBSCRIPTIONS_ENABLED: ${{ vars.PAKPERK_SUBSCRIPTIONS_ENABLED }}
+          RELEASE_NOTIFICATIONS_ENABLED: ${{ vars.PAKPERK_NOTIFICATIONS_ENABLED }}
+          RELEASE_DEEP_READER_ENABLED: ${{ vars.PAKPERK_DEEP_READER_ENABLED }}
+          RELEASE_PAPER_PASSPORT_ENABLED: ${{ vars.PAKPERK_PAPER_PASSPORT_ENABLED }}
+          RELEASE_SEMANTIC_FACETS_ENABLED: ${{ vars.PAKPERK_SEMANTIC_FACETS_ENABLED }}
+          RELEASE_DOCUMENT_VISUAL_OBJECTS_ENABLED: ${{ vars.PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED }}
+          RELEASE_READING_CHECKPOINTS_ENABLED: ${{ vars.PAKPERK_READING_CHECKPOINTS_ENABLED }}
+          RELEASE_ANNOTATIONS_ENABLED: ${{ vars.PAKPERK_ANNOTATIONS_ENABLED }}
+          RELEASE_EVIDENCE_CARDS_ENABLED: ${{ vars.PAKPERK_EVIDENCE_CARDS_ENABLED }}
+          RELEASE_RESEARCH_MEMORY_ENABLED: ${{ vars.PAKPERK_RESEARCH_MEMORY_ENABLED }}
+          RELEASE_VERSION_DIFF_ENABLED: ${{ vars.PAKPERK_VERSION_DIFF_ENABLED }}
+          RELEASE_ASSISTANT_V2_ENABLED: ${{ vars.PAKPERK_ASSISTANT_V2_ENABLED }}
           RELEASE_DOCUMENT_VERSION: ${{ vars.PAKPERK_PUBLIC_DOCUMENT_VERSION }}
         run: |
           [[ "$EXPECTED_ARTIFACT_ID" =~ ^[1-9][0-9]{0,19}$ ]] || exit 1
@@ -1211,6 +1567,19 @@ jobs:
               "PAKPERK_ENV", "PAKPERK_API_BASE_URL", "PAKPERK_FULLTEXT_POLICY",
               "PAKPERK_TERMS_DOCUMENT_VERSION", "PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION",
               "PAKPERK_ACCOUNTS_ENABLED", "PAKPERK_LIBRARY_ENABLED", "PAKPERK_COMMENTS_ENABLED",
+              "PAKPERK_PAPER_TITLE_SEARCH_ENABLED", "PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED",
+              "PAKPERK_READING_FEED_ENABLED", "PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED",
+              "PAKPERK_LIBRARY_V2_ENABLED", "PAKPERK_RECOMMENDATIONS_ENABLED",
+              "PAKPERK_RECOMMENDATION_EVENTS_ENABLED",
+              "PAKPERK_SEARCH_LOOKUP_ENABLED", "PAKPERK_SEARCH_EXPLORE_ENABLED",
+              "PAKPERK_SAVED_QUERIES_ENABLED", "PAKPERK_RESEARCH_PROFILES_ENABLED",
+              "PAKPERK_READING_BRIEFS_ENABLED", "PAKPERK_SUBSCRIPTIONS_ENABLED",
+              "PAKPERK_NOTIFICATIONS_ENABLED",
+              "PAKPERK_DEEP_READER_ENABLED", "PAKPERK_PAPER_PASSPORT_ENABLED",
+              "PAKPERK_SEMANTIC_FACETS_ENABLED", "PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED",
+              "PAKPERK_READING_CHECKPOINTS_ENABLED", "PAKPERK_ANNOTATIONS_ENABLED",
+              "PAKPERK_EVIDENCE_CARDS_ENABLED", "PAKPERK_RESEARCH_MEMORY_ENABLED",
+              "PAKPERK_VERSION_DIFF_ENABLED", "PAKPERK_ASSISTANT_V2_ENABLED",
               "PAKPERK_OPENING_MOTION_ENABLED", "PAKPERK_OIDC_ISSUER_URL",
               "PAKPERK_OIDC_CLIENT_ID", "PAKPERK_OIDC_REDIRECT_URI",
               "PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI", "PAKPERK_OIDC_SCOPES",
@@ -1233,6 +1602,19 @@ jobs:
                   for name in (
                       "PAKPERK_ACCOUNTS_ENABLED", "PAKPERK_LIBRARY_ENABLED",
                       "PAKPERK_COMMENTS_ENABLED", "PAKPERK_OPENING_MOTION_ENABLED",
+                      "PAKPERK_PAPER_TITLE_SEARCH_ENABLED", "PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED",
+                      "PAKPERK_READING_FEED_ENABLED", "PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED",
+                      "PAKPERK_LIBRARY_V2_ENABLED", "PAKPERK_RECOMMENDATIONS_ENABLED",
+                      "PAKPERK_RECOMMENDATION_EVENTS_ENABLED",
+                      "PAKPERK_SEARCH_LOOKUP_ENABLED", "PAKPERK_SEARCH_EXPLORE_ENABLED",
+                      "PAKPERK_SAVED_QUERIES_ENABLED", "PAKPERK_RESEARCH_PROFILES_ENABLED",
+                      "PAKPERK_READING_BRIEFS_ENABLED", "PAKPERK_SUBSCRIPTIONS_ENABLED",
+                      "PAKPERK_NOTIFICATIONS_ENABLED",
+                      "PAKPERK_DEEP_READER_ENABLED", "PAKPERK_PAPER_PASSPORT_ENABLED",
+                      "PAKPERK_SEMANTIC_FACETS_ENABLED", "PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED",
+                      "PAKPERK_READING_CHECKPOINTS_ENABLED", "PAKPERK_ANNOTATIONS_ENABLED",
+                      "PAKPERK_EVIDENCE_CARDS_ENABLED", "PAKPERK_RESEARCH_MEMORY_ENABLED",
+                      "PAKPERK_VERSION_DIFF_ENABLED", "PAKPERK_ASSISTANT_V2_ENABLED",
                   )
               )
           ):
@@ -1244,7 +1626,35 @@ jobs:
                   for name in ("PAKPERK_TERMS_DOCUMENT_VERSION", "PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION")
               ):
                   raise SystemExit("protected document version does not match base config")
-              for short in ("ACCOUNTS", "LIBRARY", "COMMENTS"):
+              for short in (
+                  "ACCOUNTS",
+                  "LIBRARY",
+                  "COMMENTS",
+                  "PAPER_TITLE_SEARCH",
+                  "LIBRARY_IMPORT_WRITES",
+                  "READING_FEED",
+                  "TO_READ_FIRST_ENFORCEMENT",
+                  "LIBRARY_V2",
+                  "RECOMMENDATIONS",
+                  "RECOMMENDATION_EVENTS",
+                  "SEARCH_LOOKUP",
+                  "SEARCH_EXPLORE",
+                  "SAVED_QUERIES",
+                  "RESEARCH_PROFILES",
+                  "READING_BRIEFS",
+                  "SUBSCRIPTIONS",
+                  "NOTIFICATIONS",
+                  "DEEP_READER",
+                  "PAPER_PASSPORT",
+                  "SEMANTIC_FACETS",
+                  "DOCUMENT_VISUAL_OBJECTS",
+                  "READING_CHECKPOINTS",
+                  "ANNOTATIONS",
+                  "EVIDENCE_CARDS",
+                  "RESEARCH_MEMORY",
+                  "VERSION_DIFF",
+                  "ASSISTANT_V2",
+              ):
                   value = os.environ.get("RELEASE_" + short + "_ENABLED", "") or "false"
                   if value not in {"true", "false"}:
                       raise SystemExit("protected feature flag is malformed")
@@ -1253,15 +1663,105 @@ jobs:
               raise SystemExit("library requires accounts")
           if expected_config.get("PAKPERK_COMMENTS_ENABLED") == "true" and expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true":
               raise SystemExit("comments require accounts")
+          if expected_config.get("PAKPERK_PAPER_TITLE_SEARCH_ENABLED") == "true" and expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true":
+              raise SystemExit("paper title search requires accounts")
+          if expected_config.get("PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED") == "true" and (
+              expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true"
+              or expected_config.get("PAKPERK_LIBRARY_ENABLED") != "true"
+          ):
+              raise SystemExit("library imports require accounts and library")
+          if expected_config.get("PAKPERK_READING_FEED_ENABLED") == "true" and (
+              expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true"
+              or expected_config.get("PAKPERK_LIBRARY_ENABLED") != "true"
+          ):
+              raise SystemExit("reading feed requires accounts and library")
+          if expected_config.get("PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED") == "true" and expected_config.get("PAKPERK_READING_FEED_ENABLED") != "true":
+              raise SystemExit("To Read First enforcement requires the reading feed")
+          if expected_config.get("PAKPERK_LIBRARY_V2_ENABLED") == "true" and (
+              expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true"
+              or expected_config.get("PAKPERK_LIBRARY_ENABLED") != "true"
+          ):
+              raise SystemExit("Library v2 requires accounts and library")
+          if expected_config.get("PAKPERK_RECOMMENDATIONS_ENABLED") == "true" and (
+              expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true"
+              or expected_config.get("PAKPERK_LIBRARY_ENABLED") != "true"
+              or expected_config.get("PAKPERK_READING_FEED_ENABLED") != "true"
+          ):
+              raise SystemExit("recommendations require accounts, library, and reading feed")
+          if expected_config.get("PAKPERK_SEARCH_EXPLORE_ENABLED") == "true" and expected_config.get("PAKPERK_SEARCH_LOOKUP_ENABLED") != "true":
+              raise SystemExit("Explore requires Lookup")
+          if expected_config.get("PAKPERK_SAVED_QUERIES_ENABLED") == "true" and (
+              expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true"
+              or expected_config.get("PAKPERK_SEARCH_EXPLORE_ENABLED") != "true"
+          ):
+              raise SystemExit("saved queries require accounts and Explore")
+          if expected_config.get("PAKPERK_RESEARCH_PROFILES_ENABLED") == "true" and expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true":
+              raise SystemExit("research profiles require accounts")
+          if expected_config.get("PAKPERK_READING_BRIEFS_ENABLED") == "true" and expected_config.get("PAKPERK_READING_FEED_ENABLED") != "true":
+              raise SystemExit("reading briefs require the reading feed")
+          if expected_config.get("PAKPERK_SUBSCRIPTIONS_ENABLED") == "true" and (
+              expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true"
+              or expected_config.get("PAKPERK_LIBRARY_ENABLED") != "true"
+              or expected_config.get("PAKPERK_READING_FEED_ENABLED") != "true"
+          ):
+              raise SystemExit("subscriptions require accounts, library, and reading feed")
+          if expected_config.get("PAKPERK_NOTIFICATIONS_ENABLED") == "true" and expected_config.get("PAKPERK_SUBSCRIPTIONS_ENABLED") != "true":
+              raise SystemExit("notifications require subscriptions")
+          if expected_config.get("PAKPERK_DEEP_READER_ENABLED") == "true" and (
+              expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true"
+              or expected_config.get("PAKPERK_LIBRARY_ENABLED") != "true"
+              or expected_config.get("PAKPERK_READING_FEED_ENABLED") != "true"
+              or expected_config.get("PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED") != "true"
+          ):
+              raise SystemExit("deep reader requires accounts, library, reading feed, and To Read First enforcement")
+          for child in (
+              "PAKPERK_PAPER_PASSPORT_ENABLED",
+              "PAKPERK_SEMANTIC_FACETS_ENABLED",
+              "PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED",
+              "PAKPERK_READING_CHECKPOINTS_ENABLED",
+              "PAKPERK_ANNOTATIONS_ENABLED",
+              "PAKPERK_VERSION_DIFF_ENABLED",
+              "PAKPERK_ASSISTANT_V2_ENABLED",
+          ):
+              if expected_config.get(child) == "true" and expected_config.get("PAKPERK_DEEP_READER_ENABLED") != "true":
+                  raise SystemExit("Plan 03 child feature requires the deep reader")
+          if expected_config.get("PAKPERK_EVIDENCE_CARDS_ENABLED") == "true" and expected_config.get("PAKPERK_ANNOTATIONS_ENABLED") != "true":
+              raise SystemExit("evidence cards require annotations")
+          if expected_config.get("PAKPERK_RESEARCH_MEMORY_ENABLED") == "true" and expected_config.get("PAKPERK_EVIDENCE_CARDS_ENABLED") != "true":
+              raise SystemExit("research memory requires evidence cards")
           actual_config = json.loads(root.joinpath("mobile-release-config.json").read_text(encoding="utf-8"))
           if actual_config != expected_config:
               raise SystemExit("prepared config does not derive from protected inputs")
           expected_evidence = {
-              "schema": 2,
+              "schema": 6,
               "environment": os.environ["RELEASE_ENVIRONMENT"],
               "accounts": expected_config["PAKPERK_ACCOUNTS_ENABLED"] == "true",
               "library": expected_config["PAKPERK_LIBRARY_ENABLED"] == "true",
               "comments": expected_config["PAKPERK_COMMENTS_ENABLED"] == "true",
+              "paperTitleSearch": expected_config["PAKPERK_PAPER_TITLE_SEARCH_ENABLED"] == "true",
+              "libraryImportWrites": expected_config["PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED"] == "true",
+              "readingFeed": expected_config["PAKPERK_READING_FEED_ENABLED"] == "true",
+              "toReadFirstEnforcement": expected_config["PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED"] == "true",
+              "libraryV2": expected_config["PAKPERK_LIBRARY_V2_ENABLED"] == "true",
+              "recommendations": expected_config["PAKPERK_RECOMMENDATIONS_ENABLED"] == "true",
+              "recommendationEvents": expected_config["PAKPERK_RECOMMENDATION_EVENTS_ENABLED"] == "true",
+              "searchLookup": expected_config["PAKPERK_SEARCH_LOOKUP_ENABLED"] == "true",
+              "searchExplore": expected_config["PAKPERK_SEARCH_EXPLORE_ENABLED"] == "true",
+              "savedQueries": expected_config["PAKPERK_SAVED_QUERIES_ENABLED"] == "true",
+              "researchProfiles": expected_config["PAKPERK_RESEARCH_PROFILES_ENABLED"] == "true",
+              "readingBriefs": expected_config["PAKPERK_READING_BRIEFS_ENABLED"] == "true",
+              "subscriptions": expected_config["PAKPERK_SUBSCRIPTIONS_ENABLED"] == "true",
+              "notifications": expected_config["PAKPERK_NOTIFICATIONS_ENABLED"] == "true",
+              "deepReader": expected_config["PAKPERK_DEEP_READER_ENABLED"] == "true",
+              "paperPassport": expected_config["PAKPERK_PAPER_PASSPORT_ENABLED"] == "true",
+              "semanticFacets": expected_config["PAKPERK_SEMANTIC_FACETS_ENABLED"] == "true",
+              "documentVisualObjects": expected_config["PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED"] == "true",
+              "readingCheckpoints": expected_config["PAKPERK_READING_CHECKPOINTS_ENABLED"] == "true",
+              "annotations": expected_config["PAKPERK_ANNOTATIONS_ENABLED"] == "true",
+              "evidenceCards": expected_config["PAKPERK_EVIDENCE_CARDS_ENABLED"] == "true",
+              "researchMemory": expected_config["PAKPERK_RESEARCH_MEMORY_ENABLED"] == "true",
+              "versionDiff": expected_config["PAKPERK_VERSION_DIFF_ENABLED"] == "true",
+              "assistantV2": expected_config["PAKPERK_ASSISTANT_V2_ENABLED"] == "true",
               "termsDocumentVersion": expected_config["PAKPERK_TERMS_DOCUMENT_VERSION"],
               "communityGuidelinesDocumentVersion": expected_config["PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION"],
           }
@@ -1778,7 +2278,7 @@ jobs:
           assembler_sha256="$(/usr/bin/shasum -a 256 \
             "$GITHUB_WORKSPACE/scripts/assemble_mobile_signed_candidate.py")"
           [[ "${assembler_sha256%% *}" == \
-            "863011bef3cc83b1b15c0d9dd74dfac57d100a4926bd24d881736bd699b034bb" ]] || exit 1
+            "dbfd4d0b49d71db400f52e1073e68c700696e1c9d9126b2bfb5115f1c84a7882" ]] || exit 1
           /usr/bin/python3 -I \
             "$GITHUB_WORKSPACE/scripts/assemble_mobile_signed_candidate.py" assemble \
             --prepared-root "$RUNNER_TEMP/aggregate-prepared" \
@@ -1844,7 +2344,7 @@ jobs:
           assembler_sha256="$(/usr/bin/shasum -a 256 \
             "$GITHUB_WORKSPACE/scripts/assemble_mobile_signed_candidate.py")"
           [[ "${assembler_sha256%% *}" == \
-            "863011bef3cc83b1b15c0d9dd74dfac57d100a4926bd24d881736bd699b034bb" ]] || exit 1
+            "dbfd4d0b49d71db400f52e1073e68c700696e1c9d9126b2bfb5115f1c84a7882" ]] || exit 1
           /usr/bin/python3 -I \
             "$GITHUB_WORKSPACE/scripts/assemble_mobile_signed_candidate.py" verify \
             --root "$RUNNER_TEMP/release-candidate" \
@@ -2060,12 +2560,12 @@ jobs:
             "f1f2b989dd433223114c85451147404ad4e65992d1f5a86ed3f3c6937ea1fd3a scripts/extract_mobile_store_client.py" \
             "61b72373391b5fd8d9ae92e69f5ebd7b03c52d1675eb7be870425e4d1ceef183 scripts/generate_mobile_store_upload_attempt.py" \
             "aaf319c661faf1b7eb775b50e7f842c42a7c4d23cbc32a6d8fb2e4c8ff2c2f40 scripts/generate_mobile_store_upload_handoff.py" \
-            "a30ae0bc85b5977cb546af8d9fa8bb311543392dbb9d5b86125de2964afa56e9 scripts/finalize_mobile_signed_release.py" \
+            "5b1fab036a7be9ee87364b8209e0834c17437e1f40ff283aeeb3416e1762d6c1 scripts/finalize_mobile_signed_release.py" \
             "2fb30a5ed3341e22254d2e6548d22b9b10e235176317b7b403d48d49d445c3ac scripts/manage_google_play_rollout.rb" \
             "ee7e55a902bfe4f1f9fe2f933871e44d51c1f8906eff93aad8c8aa6c3f05b68c scripts/manage_app_store_phased_release.rb" \
             "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4 scripts/materialize_mobile_release_secret.py" \
             "b6c4597b55db335fc46af14e0ba9c6969e99ca8ec29d43c817d699045fe12498 scripts/prepare_mobile_credentialed_upload.py" \
-            "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107 scripts/validate_mobile_store_candidate.py" \
+            "b9be3edb7d8486db5d4e4e86757340c76a8902278d4f977242d95a51c5ca172e scripts/validate_mobile_store_candidate.py" \
             "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93 scripts/validate_mobile_signed_release_run.py" \
             "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf scripts/validate_mobile_store_client.py" \
             "df7c9313182c54ae68a3312f720334dc9f524d17973f6a3b1339e8892d778175 mobile/Gemfile.lock"; do
@@ -2205,7 +2705,7 @@ jobs:
             "2fb30a5ed3341e22254d2e6548d22b9b10e235176317b7b403d48d49d445c3ac manage_google_play_rollout.rb" \
             "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4 materialize_mobile_release_secret.py" \
             "b6c4597b55db335fc46af14e0ba9c6969e99ca8ec29d43c817d699045fe12498 prepare_mobile_credentialed_upload.py" \
-            "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107 validate_mobile_store_candidate.py" \
+            "b9be3edb7d8486db5d4e4e86757340c76a8902278d4f977242d95a51c5ca172e validate_mobile_store_candidate.py" \
             "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93 validate_mobile_signed_release_run.py" \
             "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf validate_mobile_store_client.py"; do
             expected="${reviewed%% *}"
@@ -2312,7 +2812,7 @@ jobs:
           for reviewed in \
             "61b72373391b5fd8d9ae92e69f5ebd7b03c52d1675eb7be870425e4d1ceef183 generate_mobile_store_upload_attempt.py" \
             "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4 materialize_mobile_release_secret.py" \
-            "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107 validate_mobile_store_candidate.py" \
+            "b9be3edb7d8486db5d4e4e86757340c76a8902278d4f977242d95a51c5ca172e validate_mobile_store_candidate.py" \
             "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93 validate_mobile_signed_release_run.py" \
             "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf validate_mobile_store_client.py"; do
             expected="${reviewed%% *}"
@@ -2660,7 +3160,7 @@ jobs:
             "ee7e55a902bfe4f1f9fe2f933871e44d51c1f8906eff93aad8c8aa6c3f05b68c manage_app_store_phased_release.rb" \
             "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4 materialize_mobile_release_secret.py" \
             "b6c4597b55db335fc46af14e0ba9c6969e99ca8ec29d43c817d699045fe12498 prepare_mobile_credentialed_upload.py" \
-            "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107 validate_mobile_store_candidate.py" \
+            "b9be3edb7d8486db5d4e4e86757340c76a8902278d4f977242d95a51c5ca172e validate_mobile_store_candidate.py" \
             "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93 validate_mobile_signed_release_run.py" \
             "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf validate_mobile_store_client.py"; do
             expected="${reviewed%% *}"
@@ -2770,7 +3270,7 @@ jobs:
             "61b72373391b5fd8d9ae92e69f5ebd7b03c52d1675eb7be870425e4d1ceef183 generate_mobile_store_upload_attempt.py" \
             "ee7e55a902bfe4f1f9fe2f933871e44d51c1f8906eff93aad8c8aa6c3f05b68c manage_app_store_phased_release.rb" \
             "1f82f4ae7a6771c19f963f42436d1cc1bc196b4d55fa88261b368b6356c204d4 materialize_mobile_release_secret.py" \
-            "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107 validate_mobile_store_candidate.py" \
+            "b9be3edb7d8486db5d4e4e86757340c76a8902278d4f977242d95a51c5ca172e validate_mobile_store_candidate.py" \
             "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93 validate_mobile_signed_release_run.py" \
             "6172367be00718dce1beff7523bfa0988502b0860e6752912864817a92d2e4bf validate_mobile_store_client.py"; do
             expected="${reviewed%% *}"
@@ -3096,7 +3596,7 @@ jobs:
         run: |
           for reviewed in \
             "aaf319c661faf1b7eb775b50e7f842c42a7c4d23cbc32a6d8fb2e4c8ff2c2f40 generate_mobile_store_upload_handoff.py" \
-            "c70e38987495be0ad6cde2c180e01fa1e938117d8686512048c9d285691dd107 validate_mobile_store_candidate.py" \
+            "b9be3edb7d8486db5d4e4e86757340c76a8902278d4f977242d95a51c5ca172e validate_mobile_store_candidate.py" \
             "e0581035290e5b8fbf8236863a8f4c2c6914569f1e23a9571cc482b6f070cf93 validate_mobile_signed_release_run.py" \
             "2fb30a5ed3341e22254d2e6548d22b9b10e235176317b7b403d48d49d445c3ac manage_google_play_rollout.rb" \
             "ee7e55a902bfe4f1f9fe2f933871e44d51c1f8906eff93aad8c8aa6c3f05b68c manage_app_store_phased_release.rb" \
@@ -3174,7 +3674,7 @@ jobs:
           finalizer_sha256="$(/usr/bin/shasum -a 256 \
             "$GITHUB_WORKSPACE/scripts/finalize_mobile_signed_release.py")"
           [[ "${finalizer_sha256%% *}" == \
-            "a30ae0bc85b5977cb546af8d9fa8bb311543392dbb9d5b86125de2964afa56e9" ]] || exit 1
+            "5b1fab036a7be9ee87364b8209e0834c17437e1f40ff283aeeb3416e1762d6c1" ]] || exit 1
           /usr/bin/python3 -I \
             "$GITHUB_WORKSPACE/scripts/finalize_mobile_signed_release.py" \
             --requested-uploads "${{ inputs.upload_to_stores }}" \

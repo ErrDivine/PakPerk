@@ -12,13 +12,16 @@ arxiv_client.workspace = true
 chrono.workspace = true
 db.workspace = true
 document_model.workspace = true
+document_ingestion.workspace = true
 domain.workspace = true
 grobid_client.workspace = true
+image.workspace = true
 jobs.workspace = true
 llm_provider.workspace = true
 observability.workspace = true
 reqwest.workspace = true
 retrieval.workspace = true
+rustix.workspace = true
 secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -28,6 +31,9 @@ tokio.workspace = true
 tracing.workspace = true
 url.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

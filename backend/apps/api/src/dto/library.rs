@@ -2,7 +2,7 @@ use domain::{LibraryItem, LibraryState, PaperSummary, SavedLibraryPaper};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::format_timestamp;
+use super::{LibrarySaveSourceBody, format_timestamp};
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -28,7 +28,7 @@ pub(crate) enum LibraryStateBody {
 impl From<LibraryStateBody> for LibraryState {
     fn from(value: LibraryStateBody) -> Self {
         match value {
-            LibraryStateBody::ToRead => Self::ToRead,
+            LibraryStateBody::ToRead => Self::Inbox,
         }
     }
 }
@@ -38,12 +38,13 @@ impl From<LibraryStateBody> for LibraryState {
 pub(crate) struct LibrarySaveBody {
     pub(crate) operation_id: Uuid,
     pub(crate) state: LibraryStateBody,
+    pub(crate) save_source_kind: Option<LibrarySaveSourceBody>,
 }
 
 #[derive(Debug, Serialize)]
 pub(crate) struct LibraryItemResponse {
     pub(crate) paper_id: Uuid,
-    pub(crate) state: LibraryState,
+    pub(crate) state: LibraryStateBody,
     pub(crate) saved_at: String,
     pub(crate) updated_at: String,
     pub(crate) removed: bool,
@@ -54,13 +55,17 @@ pub(crate) struct LibraryItemResponse {
 
 impl From<LibraryItem> for LibraryItemResponse {
     fn from(item: LibraryItem) -> Self {
+        let removed = item.removed() || !item.state.is_active();
+        let removed_at = item
+            .removed_at
+            .or_else(|| (!item.state.is_active()).then_some(item.updated_at));
         Self {
             paper_id: item.paper_id,
-            state: item.state,
+            state: LibraryStateBody::ToRead,
             saved_at: format_timestamp(item.saved_at),
             updated_at: format_timestamp(item.updated_at),
-            removed: item.removed(),
-            removed_at: item.removed_at.map(format_timestamp),
+            removed,
+            removed_at: removed_at.map(format_timestamp),
             revision: item.revision,
             last_operation_id: item.last_operation_id,
         }

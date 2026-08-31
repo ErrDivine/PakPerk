@@ -177,12 +177,13 @@ class ApiClient {
   Future<PaperProcessingState> prepare(
     String paperId, {
     bool retry = false,
+    PreparationTrigger trigger = PreparationTrigger.introductionTransition,
     RequestCancellation? cancellation,
   }) async {
     try {
       final response = await _dio.post<Object?>(
         '/v1/papers/$paperId/prepare',
-        data: {'retry': retry},
+        data: {'retry': retry, 'trigger': trigger.wireValue},
         options: Options(headers: {'X-Session-Id': _sessionId}),
         cancelToken: cancellation?.dioToken,
       );

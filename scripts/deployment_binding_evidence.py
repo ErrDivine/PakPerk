@@ -53,9 +53,76 @@ FEATURE_KEYS = {
     "accounts",
     "library",
     "libraryWrites",
+    "paperResolution",
+    "paperTitleSearch",
+    "libraryImportWrites",
+    "readingFeed",
+    "toReadFirstEnforcement",
     "comments",
     "commentCreation",
     "accountDeletion",
+    "libraryV2",
+    "researchProfiles",
+    "recommendations",
+    "recommendationEvents",
+    "searchLookup",
+    "searchExplore",
+    "savedQueries",
+    "readingBriefs",
+    "subscriptions",
+    "notifications",
+    "deepReader",
+    "paperPassport",
+    "semanticFacets",
+    "visualObjects",
+    "assistantV2",
+    "annotations",
+    "researchMemory",
+    "versionDiff",
+    "doclingExperiment",
+}
+DEEP_READER_FEATURE_KEYS = {
+    "deepReader",
+    "paperPassport",
+    "semanticFacets",
+    "visualObjects",
+    "assistantV2",
+    "annotations",
+    "researchMemory",
+    "versionDiff",
+    "doclingExperiment",
+}
+FEATURE_DEPENDENCIES = {
+    "library": ("accounts",),
+    "libraryWrites": ("library",),
+    "paperTitleSearch": ("accounts", "paperResolution"),
+    "libraryImportWrites": (
+        "accounts",
+        "library",
+        "libraryWrites",
+        "paperResolution",
+    ),
+    "readingFeed": ("accounts", "library"),
+    "toReadFirstEnforcement": ("readingFeed",),
+    "comments": ("accounts",),
+    "commentCreation": ("comments",),
+    "accountDeletion": ("accounts",),
+    "libraryV2": ("accounts", "library"),
+    "researchProfiles": ("accounts",),
+    "recommendations": ("accounts", "library", "readingFeed"),
+    "searchExplore": ("searchLookup",),
+    "savedQueries": ("accounts", "searchExplore"),
+    "readingBriefs": ("readingFeed",),
+    "subscriptions": ("accounts", "library", "readingFeed"),
+    "notifications": ("subscriptions",),
+    "paperPassport": ("deepReader",),
+    "semanticFacets": ("deepReader",),
+    "visualObjects": ("deepReader",),
+    "assistantV2": ("deepReader",),
+    "annotations": ("accounts", "deepReader"),
+    "researchMemory": ("accounts", "deepReader", "annotations"),
+    "versionDiff": ("deepReader",),
+    "doclingExperiment": ("deepReader",),
 }
 RELEASE_EVIDENCE_KEYS = {
     "legalReviewId",
@@ -64,6 +131,7 @@ RELEASE_EVIDENCE_KEYS = {
     "restoreDrillId",
     "reviewerFlowId",
     "strictContentReviewId",
+    "deepReaderReleaseId",
 }
 IMAGE_KEYS = {"backend", "site", "grobid", "otelCollector"}
 CORE_COMPONENTS = (
@@ -544,16 +612,9 @@ def _validate_release_contract(value: Any, environment: str) -> dict[str, Any]:
     features = _exact(contract["features"], FEATURE_KEYS, "release features")
     if any(not isinstance(value, bool) for value in features.values()):
         raise EvidenceError("release feature is not boolean")
-    if features["library"] and not features["accounts"]:
-        raise EvidenceError("release feature dependencies are invalid")
-    if features["libraryWrites"] and not features["library"]:
-        raise EvidenceError("release feature dependencies are invalid")
-    if features["comments"] and not features["accounts"]:
-        raise EvidenceError("release feature dependencies are invalid")
-    if features["commentCreation"] and not features["comments"]:
-        raise EvidenceError("release feature dependencies are invalid")
-    if features["accountDeletion"] and not features["accounts"]:
-        raise EvidenceError("release feature dependencies are invalid")
+    for feature, required in FEATURE_DEPENDENCIES.items():
+        if features[feature] and not all(features[parent] for parent in required):
+            raise EvidenceError("release feature dependencies are invalid")
     if environment == "production" and features["accounts"] and not features["accountDeletion"]:
         raise EvidenceError("production account feature dependencies are invalid")
     if environment == "production" and features["comments"] and not features["accountDeletion"]:
@@ -571,6 +632,8 @@ def _validate_release_contract(value: Any, environment: str) -> dict[str, Any]:
             required_approvals.add("moderationReadinessId")
         if features["accountDeletion"]:
             required_approvals.update({"accountDeletionE2eId", "restoreDrillId"})
+        if any(features[key] for key in DEEP_READER_FEATURE_KEYS):
+            required_approvals.add("deepReaderReleaseId")
     for key, identifier in release_evidence.items():
         _sha256(
             identifier,

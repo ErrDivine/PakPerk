@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/app/account_providers.dart';
 import 'package:pakperk/app/feature_flags.dart';
+import 'package:pakperk/app/discovery_providers.dart';
+import 'package:pakperk/app/library_providers.dart';
 import 'package:pakperk/core/auth/auth.dart';
 import 'package:pakperk/core/cache/feed_cache_persistence.dart';
 import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/providers.dart';
+import 'package:pakperk/core/research/research_api.dart';
 import 'package:pakperk/core/settings/appearance.dart';
 import 'package:pakperk/features/settings/public_settings_screen.dart';
 
@@ -241,6 +245,166 @@ void main() {
 
     expect(find.byKey(const ValueKey('delete-account-setting')), findsNothing);
   });
+
+  testWidgets(
+    'verified account sees default-off reading updates only when enabled',
+    (tester) async {
+      final store = _CacheControlStore(
+        initial: const FeedCacheUsage(metadataRows: 0, databaseBytes: 0),
+        after: const FeedCacheUsage(metadataRows: 0, databaseBytes: 0),
+      );
+      var opens = 0;
+      await _pump(
+        tester,
+        store,
+        features: const FeatureFlags(
+          accounts: true,
+          library: true,
+          comments: false,
+          openingMotion: false,
+          readingFeed: true,
+          readingBriefsEnabled: true,
+        ),
+        discoveryScope: const (
+          accountId: '018f47a6-4b56-7f4c-8c7a-e2656e820001',
+          authEpoch: 7,
+        ),
+        authSession: _authController(),
+        onOpenReadingUpdates: () => opens += 1,
+      );
+      final action = find.byKey(const ValueKey('reading-updates-setting'));
+      await tester.scrollUntilVisible(
+        action,
+        240,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(action);
+      expect(opens, 1);
+    },
+  );
+
+  testWidgets(
+    'assistant-only account copies every bounded export part in order',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final platformCalls = <String>[];
+      String? clipboardText;
+      final messenger = tester.binding.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        platformCalls.add(call.method);
+        switch (call.method) {
+          case 'Clipboard.setData':
+            clipboardText = (call.arguments as Map)['text'] as String?;
+            return null;
+          case 'Clipboard.getData':
+            return <String, Object?>{'text': clipboardText};
+        }
+        return null;
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+      );
+      final store = _CacheControlStore(
+        initial: const FeedCacheUsage(metadataRows: 0, databaseBytes: 0),
+        after: const FeedCacheUsage(metadataRows: 0, databaseBytes: 0),
+      );
+      var exportCalls = 0;
+      int? exportedEpoch;
+      final exportedCursors = <String?>[];
+      const features = FeatureFlags(
+        accounts: true,
+        library: true,
+        comments: false,
+        openingMotion: false,
+        deepReader: true,
+        assistantV2: true,
+        annotations: false,
+      );
+      await _pump(
+        tester,
+        store,
+        features: features,
+        authSession: _authController(),
+        libraryScope: const (
+          accountId: '018f47a6-4b56-7f4c-8c7a-e2656e820001',
+          authEpoch: 13,
+        ),
+        researchExportLoader: (authEpoch, cursor) async {
+          exportCalls += 1;
+          exportedEpoch = authEpoch;
+          exportedCursors.add(cursor);
+          if (cursor == 'part-two') {
+            return ResearchExportArtifact(
+              bytes: '{"assistant_messages":[{"id":"second"}]}'.codeUnits,
+              mimeType: 'application/json',
+              fileName: 'pakperk-research-export.json',
+              pageNumber: 2,
+            );
+          }
+          return ResearchExportArtifact(
+            bytes: '{"assistant_threads":[]}'.codeUnits,
+            mimeType: 'application/json',
+            fileName: 'pakperk-research-export.json',
+            nextCursor: 'part-two',
+          );
+        },
+      );
+
+      final action = find.byKey(const ValueKey('research-data-export-setting'));
+      await tester.scrollUntilVisible(
+        action,
+        240,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Export research data'), findsOneWidget);
+      expect(find.textContaining('private Assistant history'), findsOneWidget);
+      expect(tester.getSize(action).height, greaterThanOrEqualTo(48));
+
+      await tester.tap(action);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(exportCalls, 1);
+      expect(exportedEpoch, 13);
+      expect(
+        (await Clipboard.getData('text/plain'))?.text,
+        '{"assistant_threads":[]}',
+      );
+      expect(
+        platformCalls.indexOf('Clipboard.setData'),
+        lessThan(platformCalls.indexOf('HapticFeedback.vibrate')),
+      );
+      expect(exportedCursors, [null]);
+      expect(
+        find.text('pakperk-research-export.json part 1 copied.'),
+        findsOneWidget,
+      );
+      final nextPart = find.text('Next part');
+      expect(
+        tester.getSize(find.byType(SnackBarAction)).height,
+        greaterThanOrEqualTo(48),
+      );
+
+      await tester.tap(nextPart);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(exportCalls, 2);
+      expect(exportedCursors, [null, 'part-two']);
+      expect(
+        (await Clipboard.getData('text/plain'))?.text,
+        '{"assistant_messages":[{"id":"second"}]}',
+      );
+      expect(
+        find.text(
+          'pakperk-research-export.json part 2 copied. Export complete.',
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 Future<void> _pump(
@@ -250,19 +414,37 @@ Future<void> _pump(
   FeatureFlags features = const FeatureFlags.disabled(),
   AuthSessionController? authSession,
   VoidCallback? onOpenDeleteAccount,
+  VerifiedDiscoveryAccountScope? discoveryScope,
+  ActiveLibraryScope? libraryScope,
+  VoidCallback? onOpenReadingUpdates,
+  Future<ResearchExportArtifact> Function(
+    int expectedAuthEpoch,
+    String? cursor,
+  )?
+  researchExportLoader,
 }) async {
   final tokens = secureStore ?? MemorySecureTokenStore();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         featureFlagsProvider.overrideWithValue(features),
+        if (discoveryScope != null)
+          verifiedDiscoveryAccountScopeProvider.overrideWithValue(
+            discoveryScope,
+          ),
+        if (libraryScope != null)
+          verifiedLibraryScopeProvider.overrideWithValue(libraryScope),
         if (authSession != null)
           authSessionProvider.overrideWith((ref) => authSession),
         secureTokenStoreProvider.overrideWithValue(tokens),
         localStoreProvider.overrideWithValue(store),
       ],
       child: MaterialApp(
-        home: PublicSettingsScreen(onOpenDeleteAccount: onOpenDeleteAccount),
+        home: PublicSettingsScreen(
+          onOpenDeleteAccount: onOpenDeleteAccount,
+          onOpenReadingUpdates: onOpenReadingUpdates,
+          researchExportLoader: researchExportLoader,
+        ),
       ),
     ),
   );

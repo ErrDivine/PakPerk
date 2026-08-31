@@ -255,20 +255,31 @@ data:
             resource.attributes["service.name"] != "pakperk-mobile" or
             resource.attributes["deployment.environment.name"] != {{ .Values.environment | quote }} or
             scope.name != "app.pakperk.mobile" or
-            not IsMatch(log.body, "^(app_cold_start|startup_ready|startup_failure|shell_destination_selected|paper_page_committed|paper_stage_committed|feed_prefetch_requested|feed_prefetch_succeeded|feed_prefetch_failed|feed_prefetch_deduplicated|next_paper_cache_hit|next_paper_cache_miss|feed_blank_card|feed_cache_rows|feed_cache_bytes|feed_time_to_readable_ms|save_requested|save_synced|save_failed|library_outbox_backlog|auth_started|auth_completed|auth_cancelled|comment_sheet_opened|comment_created|comment_pending|comment_rejected|comment_reported|user_reported|account_deletion_requested|account_deletion_accepted|account_deletion_unavailable|account_deletion_local_cleanup_failed|http_request_completed|mobile_error)$")
+            not IsMatch(log.body, "^(app_cold_start|startup_ready|startup_failure|shell_destination_selected|paper_page_committed|paper_stage_committed|feed_prefetch_requested|feed_prefetch_succeeded|feed_prefetch_failed|feed_prefetch_deduplicated|next_paper_cache_hit|next_paper_cache_miss|feed_blank_card|feed_cache_rows|feed_cache_bytes|feed_time_to_readable_ms|reading_feed_shadow_decision|recommendation_card_rendered|save_requested|save_synced|save_failed|library_outbox_backlog|auth_started|auth_completed|auth_cancelled|comment_sheet_opened|comment_created|comment_pending|comment_rejected|comment_reported|user_reported|account_deletion_requested|account_deletion_accepted|account_deletion_unavailable|account_deletion_local_cleanup_failed|http_request_completed|mobile_error)$")
       transform/redact-backend-log-body:
         # Filelog messages are not trusted merely because they came from a
         # selected Pakperk container. Preserve only the exact content-free
-        # terminal ledger signal used by the reviewed alert contract, with its
-        # exact severity and Rust target. Every other body becomes one marker.
+        # two content-free signals used by the reviewed alert contract, with
+        # exact severity/body/Rust-target pairings. Every other body becomes
+        # one marker.
         error_mode: propagate
         log_statements:
           - set(log.body, "pakperk_backend_log") where not IsString(log.body)
           - >-
             set(log.body, "pakperk_backend_log") where
-            log.body != "external deletion ledger failed verification" or
-            log.attributes["log.severity_text"] != "ERROR" or
+            log.attributes["log.severity_text"] != "ERROR"
+          - >-
+            set(log.body, "pakperk_backend_log") where
+            log.body != "external deletion ledger failed verification" and
+            log.body != "authenticated reading feed could not prove queue authority"
+          - >-
+            set(log.body, "pakperk_backend_log") where
+            log.body == "external deletion ledger failed verification" and
             log.attributes["code.namespace"] != "account_deletion::worker"
+          - >-
+            set(log.body, "pakperk_backend_log") where
+            log.body == "authenticated reading feed could not prove queue authority" and
+            log.attributes["code.namespace"] != "pakperk_api::routes::reading_feed"
       resource/backend-defaults:
         attributes:
           - { key: service.name, value: pakperk-backend-stdout, action: upsert }

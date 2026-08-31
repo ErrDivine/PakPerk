@@ -16,6 +16,7 @@ void main() {
   testWidgets(
     'resolved citation is tappable while unresolved marker stays readable',
     (tester) async {
+      final semantics = tester.ensureSemantics();
       const paragraph = IntroductionParagraph(
         ordinal: 0,
         text: 'We use [1] but retain [2].',
@@ -48,6 +49,12 @@ void main() {
 
       final link = find.byKey(const ValueKey('citation-marker-0-0'));
       expect(link, findsOneWidget);
+      final linkSize = tester.getSize(link);
+      expect(linkSize.width, greaterThanOrEqualTo(44));
+      expect(linkSize.height, greaterThanOrEqualTo(44));
+      final linkSemantics = tester.getSemantics(link);
+      expect(linkSemantics.label, '[1], citation to Resolved paper');
+      expect(linkSemantics.flagsCollection.isLink, isTrue);
       expect(find.byKey(const ValueKey('citation-marker-0-1')), findsNothing);
       final text = tester.widget<Text>(
         find.byKey(const ValueKey('introduction-paragraph-0')),
@@ -56,6 +63,7 @@ void main() {
 
       await tester.tap(link);
       expect(opened?.references.single.paperId, 'paper-2');
+      semantics.dispose();
     },
   );
 

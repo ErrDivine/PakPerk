@@ -1224,6 +1224,7 @@ final class _RecordingLibraryRemote implements LibraryRemoteDataSource {
     required String paperId,
     required String operationId,
     required int expectedAuthEpoch,
+    LibrarySaveSourceKind? saveSourceKind,
   }) => throw StateError('The regression path must upload only removal.');
 }
 

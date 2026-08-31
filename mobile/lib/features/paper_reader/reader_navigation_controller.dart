@@ -8,7 +8,10 @@ import '../../core/cache/local_store.dart';
 import '../../core/content_policy.dart';
 import '../../core/models/paper.dart';
 import '../../core/models/reader_state.dart';
+import '../../core/models/semantic_span.dart';
 import '../../core/providers.dart';
+import '../document_reader/reader_entry_context.dart';
+import '../reader_modes/reader_mode.dart';
 
 const maxRestoredRouteDepth = 32;
 const maxRestoredReaderStates = 64;
@@ -49,9 +52,12 @@ class AppRestorationController extends StateNotifier<AppRestorationState> {
 
   final LocalStore _store;
   Timer? _persistTimer;
+  Future<void> _persistTail = Future<void>.value();
+  Future<void>? _readerStateClearFlight;
+  bool _readerUpdatesSuspended = false;
 
   void setActiveBranch(int index) {
-    final safeIndex = index == 1 ? 1 : 0;
+    final safeIndex = AppBranch.fromIndex(index).index;
     if (safeIndex == state.activeBranchIndex) return;
     state = state.copyWith(activeBranchIndex: safeIndex);
     _schedulePersist();
@@ -83,6 +89,7 @@ class AppRestorationController extends StateNotifier<AppRestorationState> {
     String readerKey,
     ReaderNavigationState Function(ReaderNavigationState current) update,
   ) {
+    if (_readerUpdatesSuspended) return;
     final readers = Map<String, ReaderNavigationState>.from(state.readerStates);
     // Map insertion order is the restoration-state LRU. Refresh the entry so
     // long reading sessions retain the most recently touched papers.
@@ -95,20 +102,29 @@ class AppRestorationController extends StateNotifier<AppRestorationState> {
   }
 
   bool markPrepareRequestedOnCommittedPage(String readerKey, int pageIndex) {
-    if (pageIndex != PaperStage.introduction.index) return false;
+    if (_readerUpdatesSuspended || pageIndex != PaperStage.introduction.index) {
+      return false;
+    }
     final current = state.readerState(readerKey);
     if (current.prepareRequested) return false;
     updateReader(readerKey, (value) => value.copyWith(prepareRequested: true));
     return true;
   }
 
-  String pushPaper(PaperSummary paper) {
+  String pushPaper(
+    PaperSummary paper, {
+    ReaderEntryContext entryContext = const ReaderEntryContext.connection(),
+  }) {
     final routeId = const Uuid().v4();
     state = _normalizeRestorationState(
       state.copyWith(
         routeStack: [
           ...state.routeStack,
-          PaperRouteEntry(routeId: routeId, paper: paper),
+          PaperRouteEntry(
+            routeId: routeId,
+            paper: paper,
+            entryContext: entryContext,
+          ),
         ],
       ),
     );
@@ -163,7 +179,45 @@ class AppRestorationController extends StateNotifier<AppRestorationState> {
     _persistTimer = null;
     state = const AppRestorationState();
     _publishLiveCacheProtection();
-    await _store.saveRestoration(state);
+    await _persistSnapshot(state);
+  }
+
+  /// Removes identity-sensitive reader progress while retaining safe public
+  /// navigation references such as the selected branch, feed paper, and route
+  /// stack.
+  ///
+  /// Account cleanup awaits the queued write. This places the empty snapshot
+  /// after any older in-flight persistence operation, so a late write cannot
+  /// resurrect the previous account's mode, offsets, or checkpoint anchor.
+  Future<void> clearReaderStatesForAccountTransition() {
+    final active = _readerStateClearFlight;
+    if (active != null) return active;
+    _readerUpdatesSuspended = true;
+    late final Future<void> operation;
+    operation = _clearReaderStatesForAccountTransition().whenComplete(() {
+      if (identical(_readerStateClearFlight, operation)) {
+        _readerStateClearFlight = null;
+        _readerUpdatesSuspended = false;
+      }
+    });
+    _readerStateClearFlight = operation;
+    return operation;
+  }
+
+  Future<void> _clearReaderStatesForAccountTransition() async {
+    _persistTimer?.cancel();
+    _persistTimer = null;
+    state = state.copyWith(readerStates: const {});
+    _publishLiveCacheProtection();
+    await _persistSnapshot(state);
+    // Route or branch updates are safe during cleanup, but no per-reader
+    // update from the outgoing screen may survive. Persist the latest safe
+    // navigation snapshot once more before reopening reader updates.
+    _persistTimer?.cancel();
+    _persistTimer = null;
+    state = state.copyWith(readerStates: const {});
+    _publishLiveCacheProtection();
+    await _persistSnapshot(state);
   }
 
   void updateRoutePaper(String routeId, PaperSummary paper) {
@@ -176,7 +230,11 @@ class AppRestorationController extends StateNotifier<AppRestorationState> {
     final updated = state.routeStack
         .map(
           (entry) => entry.routeId == routeId
-              ? PaperRouteEntry(routeId: entry.routeId, paper: paper)
+              ? PaperRouteEntry(
+                  routeId: entry.routeId,
+                  paper: paper,
+                  entryContext: entry.entryContext,
+                )
               : entry,
         )
         .toList(growable: false);
@@ -197,7 +255,7 @@ class AppRestorationController extends StateNotifier<AppRestorationState> {
     _persistTimer?.cancel();
     _persistTimer = null;
     _publishLiveCacheProtection();
-    await _store.saveRestoration(state);
+    await _persistSnapshot(state);
   }
 
   void _schedulePersist() {
@@ -205,8 +263,22 @@ class AppRestorationController extends StateNotifier<AppRestorationState> {
     _persistTimer?.cancel();
     _persistTimer = Timer(
       const Duration(milliseconds: 250),
-      () => _store.saveRestoration(state),
+      () => unawaited(_persistSnapshot(state)),
     );
+  }
+
+  Future<void> _persistSnapshot(AppRestorationState snapshot) {
+    final operation = _persistTail.then(
+      (_) => _store.saveRestoration(snapshot),
+    );
+    _persistTail = operation.then<void>(
+      (_) {},
+      onError: (_, __) {
+        // Keep the queue usable. The caller awaiting [operation] still sees
+        // the failure, which makes account cleanup fail closed.
+      },
+    );
+    return operation;
   }
 
   void _publishLiveCacheProtection() {
@@ -223,7 +295,7 @@ class AppRestorationController extends StateNotifier<AppRestorationState> {
     _persistTimer?.cancel();
     // The app lifecycle observer calls flush before suspension. This final
     // best-effort write covers provider-container disposal in tests.
-    unawaited(_store.saveRestoration(state));
+    unawaited(_persistSnapshot(state));
     super.dispose();
   }
 }
@@ -280,6 +352,7 @@ AppRestorationState _applyRestorationPolicy(
           (entry) => PaperRouteEntry(
             routeId: entry.routeId,
             paper: policy.maskCachedPaper(entry.paper),
+            entryContext: entry.entryContext,
           ),
         )
         .toList(growable: false),
@@ -352,6 +425,42 @@ class PaperReaderNavigationController {
       (value) => value.copyWith(
         chatThreadId: threadId,
         clearChatThreadId: threadId == null,
+      ),
+    );
+  }
+
+  void setDepthMode(ReaderDepthMode mode) {
+    _controller.updateReader(
+      readerKey,
+      (value) => value.copyWith(depthMode: mode),
+    );
+  }
+
+  void setSemanticDensity(SemanticDensity density) {
+    _controller.updateReader(
+      readerKey,
+      (value) => value.copyWith(semanticDensity: density),
+    );
+  }
+
+  void setCheckpointPosition({
+    required String? blockId,
+    required double? scrollFraction,
+  }) {
+    final fraction =
+        scrollFraction != null &&
+            scrollFraction.isFinite &&
+            scrollFraction >= 0 &&
+            scrollFraction <= 1
+        ? scrollFraction
+        : null;
+    _controller.updateReader(
+      readerKey,
+      (value) => value.copyWith(
+        checkpointBlockId: blockId,
+        clearCheckpointBlockId: blockId == null,
+        checkpointScrollFraction: fraction,
+        clearCheckpointScrollFraction: fraction == null,
       ),
     );
   }

@@ -141,7 +141,7 @@ void main() {
     expect(container.read(appRestorationControllerProvider).feedIndex, 2);
   });
 
-  testWidgets('settled vertical commit emits one haptic, never during drag', (
+  testWidgets('passive vertical drag and settlement stay silent', (
     tester,
   ) async {
     final papers = _papers();
@@ -175,10 +175,10 @@ void main() {
       tester.element(find.byType(FeedScreen)),
     );
     expect(container.read(appRestorationControllerProvider).feedIndex, 1);
-    expect(hapticCalls, 1);
+    expect(hapticCalls, 0);
   });
 
-  testWidgets('reduced-motion explicit paper jump is instant and silent', (
+  testWidgets('reduced-motion explicit paper jump is instant and tactile', (
     tester,
   ) async {
     final papers = _papers();
@@ -211,6 +211,35 @@ void main() {
     );
     await tester.tap(nextPaper);
     await tester.pump();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FeedScreen)),
+    );
+    expect(container.read(appRestorationControllerProvider).feedIndex, 1);
+    expect(hapticCalls, 1);
+  });
+
+  testWidgets('reduced motion keeps passive gesture commits silent', (
+    tester,
+  ) async {
+    final papers = _papers();
+    var hapticCalls = 0;
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'HapticFeedback.vibrate') hapticCalls += 1;
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    await _pumpDirectFeed(tester, _repositoryFor(papers), reducedMotion: true);
+    await tester.fling(
+      find.byKey(const ValueKey('stage-abstractView')),
+      const Offset(0, -520),
+      1200,
+    );
+    await tester.pumpAndSettle();
 
     final container = ProviderScope.containerOf(
       tester.element(find.byType(FeedScreen)),

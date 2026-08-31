@@ -41,6 +41,77 @@ the required historical signing, identity-fingerprint, and provider-coordinate
 decryption keys; then raise `ACCOUNT_RECOVERABLE_BACKUP_DAYS`. A deployment that
 fails this ordering must remain unavailable rather than weaken the invariant.
 
+## Plan 02 account-owned data boundary
+
+The canonical `users` row remains the ownership root for Plan 02. Deletion must
+cascade the five-state Library, lists/tags/private notes and operation rows;
+research profile plus explicit/feedback/inferred interests and retry bindings;
+saved searches and retry bindings; recommendation batches/candidates,
+feedback, feedback revision, generation jobs, and account interaction events;
+reading briefs; subscriptions; notification preferences, notifications, and
+notification work.
+Public paper metadata and the canonical topic vocabulary are not account-owned
+and remain.
+
+Routine expiry is not a substitute for account deletion. The API separately
+removes expired profile/search retry bindings, 90-day interactions, 180-day
+raw recommendation feedback, expired batches, 35-day reading briefs, 30-day
+notifications and engagement retry/idempotency rows, and 30-day completed or
+failed notification work. Terminal/dormant/expired-lease recommendation
+generation jobs older than 30 days are also removed. Each hourly retention
+deletion is capped at 1,000 rows per table. A deletion request removes every
+account-owned row regardless of those deadlines. Profile Reset All is narrower
+than account deletion, but it must remove raw recommendation feedback, the
+feedback revision, interactions, batches, and non-explicit interests without
+changing Library/queue state.
+
+For each candidate schema, the deletion integration gate must prove zero rows
+for every account-owned Plan 02 class after worker completion, then repeat that
+proof after isolated restore and current-ledger reapply. Counts and table-class
+outcomes may enter protected evidence; query text, profile labels, private
+notes, notification payloads, paper IDs, account IDs, and feedback details may
+not.
+
+## Plan 03 private research data boundary
+
+Migrations 21, 22, and 24 attach every owner-bound Plan 03 record to the canonical
+`users` ownership root with cascading deletion. The inventory is:
+
+- `provenance_records` where `owner_user_id` is set,
+  `paper_passport_feedback_evaluations`, `assistant_threads`, and their
+  `assistant_messages`;
+- `research_artifact_sync_metadata` and `research_artifact_operations`;
+- `annotations`, `annotation_conflicts`, `annotation_reanchor_attempts`, and
+  the content-free `annotation_imports` idempotency ledger;
+- `evidence_cards`, account-owned `reading_sessions`,
+  `reading_checkpoints`, and `memory_items`.
+
+Shared `papers`, normalized document generations/blocks, shared Passport and
+semantic/visual artifacts, and shared version diffs are not removed merely
+because one account is deleted. An anonymous assistant session is likewise not
+owned by that account; its normal bounded expiry applies. The account export at
+`GET /v1/annotations/export` must be offered before deletion where policy
+requires it. It emits bounded JSON, Markdown, or a per-paper manifest and does
+not authorize from a client-supplied user ID.
+
+The mobile cleanup boundary must remove the matching account's checkpoints,
+annotations, conflict copies, evidence cards, memory items, research outbox and
+sync state, account-scoped document/version caches, plus other account-owned
+rows. The database stores those private bodies as ordinary SQLite text; local
+cleanup is therefore part of the privacy boundary, not a substitute for
+application-layer encryption. Android backup disablement, iOS backup exclusion
+and file protection, and signed-device removal must be verified against the
+exact candidate.
+
+For schema 24, extend the deletion integration and restore/reapply gate to
+prove zero rows for every owner-bound class above after worker completion and
+again after the current independent ledger is reapplied to an isolated restore.
+Also prove that shared paper data remains intact, the research export was
+principal-scoped, and no private body entered logs, metrics, or evidence. The
+foreign-key and repository checks are implementation evidence only; the live
+provider, signed-device, privacy/security, restore, and deletion-owner results
+remain `not_ready` until protected evidence is supplied.
+
 ## Normal operation
 
 Run `/usr/local/bin/pakperk-deletion-worker run` as a single-purpose deployment.

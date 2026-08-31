@@ -54,7 +54,7 @@ verified production universal links. Before a signed release, operations must:
 7. Confirm malformed and hostile-origin URLs stay in the browser or fail closed
    to Read, and that a valid public link opens Abstract.
 
-The protected physical mobile acceptance schema v3 closes steps 6 and 7 with
+The protected physical mobile acceptance schema v6 closes steps 6 and 7 with
 one ordered Android/iOS scenario: both `/p/*` and `/arxiv/*` are dispatched from
 cold, warm, and already-running state on each platform (12 valid dispatches),
 and hostile origins must produce zero paper requests while failing closed to

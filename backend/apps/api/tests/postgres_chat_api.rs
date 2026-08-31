@@ -165,6 +165,179 @@ async fn postgres_backed_router_serves_scoped_chat_and_prepared_capabilities() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn postgres_assistant_feedback_is_evidence_scoped_idempotent_and_generation_fenced() {
+    let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
+        eprintln!("TEST_DATABASE_URL is absent; skipped assistant-feedback API coverage");
+        return;
+    };
+    let database = Database::connect(&database_url, 8).await.unwrap();
+    database.migrate_embedded().await.unwrap();
+    let unique = Uuid::now_v7().simple().to_string();
+    let paper = database
+        .papers()
+        .upsert_metadata(&metadata(
+            &format!("test.api.assistant-feedback.{unique}"),
+            "Evidence Feedback Paper",
+        ))
+        .await
+        .unwrap();
+    let block_id = insert_assistant_document(&database, paper.id).await;
+
+    let mut config = api_config(database_url);
+    config.features = FeatureFlags {
+        deep_reader: true,
+        assistant_v2: true,
+        ..FeatureFlags::default()
+    };
+    let app = build_router(AppState::new(database.clone(), &config).unwrap(), &config);
+    let session_id = Uuid::new_v4();
+    let assistant_response = app
+        .clone()
+        .oneshot(assistant_request(paper.id, session_id))
+        .await
+        .unwrap();
+    assert_eq!(assistant_response.status(), StatusCode::OK);
+    assert_eq!(
+        assistant_response.headers()["cache-control"],
+        "private, no-store"
+    );
+    let answer: Value = response_json(assistant_response).await;
+    assert_eq!(answer["generation"], 1);
+    assert_eq!(answer["status"], "supported");
+    assert_eq!(
+        answer["claims"][0]["evidence"][0]["block_id"],
+        block_id.to_string()
+    );
+    let thread_id = Uuid::parse_str(answer["thread_id"].as_str().unwrap()).unwrap();
+    let response_id = Uuid::parse_str(answer["response_id"].as_str().unwrap()).unwrap();
+    let provenance_id = Uuid::parse_str(answer["provenance_id"].as_str().unwrap()).unwrap();
+    let operation_id = Uuid::now_v7();
+    let feedback_body = json!({
+        "operation_id": operation_id,
+        "paper_id": paper.id,
+        "generation": 1,
+        "thread_id": thread_id,
+        "response_id": response_id,
+        "provenance_id": provenance_id,
+        "feedback_type": "incorrect_citation",
+        "claim_index": 0,
+        "evidence_block_id": block_id,
+        "detail": "The cited range should be narrower."
+    });
+
+    let created = app
+        .clone()
+        .oneshot(assistant_feedback_request(
+            paper.id,
+            session_id,
+            &feedback_body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    assert_eq!(created.headers()["cache-control"], "private, no-store");
+    let created: Value = response_json(created).await;
+    assert_eq!(created["status"], "stored");
+    let feedback_id = Uuid::parse_str(created["feedback_id"].as_str().unwrap()).unwrap();
+
+    let replay = app
+        .clone()
+        .oneshot(assistant_feedback_request(
+            paper.id,
+            session_id,
+            &feedback_body,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(replay.status(), StatusCode::OK);
+    let replay: Value = response_json(replay).await;
+    assert_eq!(replay["status"], "replayed");
+    assert_eq!(replay["feedback_id"], feedback_id.to_string());
+
+    let mut conflicting = feedback_body.clone();
+    conflicting["detail"] = json!("Different content under the same operation ID.");
+    let conflict = app
+        .clone()
+        .oneshot(assistant_feedback_request(
+            paper.id,
+            session_id,
+            &conflicting,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(conflict.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        response_json::<Value>(conflict).await["error"]["code"],
+        "ASSISTANT_FEEDBACK_IDEMPOTENCY_CONFLICT"
+    );
+
+    let mut wrong_target = feedback_body.clone();
+    wrong_target["operation_id"] = json!(Uuid::now_v7());
+    wrong_target["evidence_block_id"] = json!(Uuid::now_v7());
+    let mismatch = app
+        .clone()
+        .oneshot(assistant_feedback_request(
+            paper.id,
+            session_id,
+            &wrong_target,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(mismatch.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response_json::<Value>(mismatch).await["error"]["code"],
+        "INVALID_ASSISTANT_FEEDBACK"
+    );
+
+    let mut cross_session = feedback_body.clone();
+    cross_session["operation_id"] = json!(Uuid::now_v7());
+    let not_owned = app
+        .clone()
+        .oneshot(assistant_feedback_request(
+            paper.id,
+            Uuid::new_v4(),
+            &cross_session,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(not_owned.status(), StatusCode::NOT_FOUND);
+
+    sqlx::query("UPDATE paper_processing SET generation = 2 WHERE paper_id = $1")
+        .bind(paper.id)
+        .execute(database.pool())
+        .await
+        .unwrap();
+    let mut stale_generation = feedback_body;
+    stale_generation["operation_id"] = json!(Uuid::now_v7());
+    let stale = app
+        .oneshot(assistant_feedback_request(
+            paper.id,
+            session_id,
+            &stale_generation,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(stale.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM assistant_evidence_feedback_evaluations WHERE id = $1",
+        )
+        .bind(feedback_id)
+        .fetch_one(database.pool())
+        .await
+        .unwrap(),
+        1
+    );
+
+    sqlx::query("DELETE FROM papers WHERE id = $1")
+        .bind(paper.id)
+        .execute(database.pool())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn postgres_public_limits_are_shared_and_untrusted_forwarding_cannot_rotate_origin() {
     let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
         eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL public rate-limit coverage");
@@ -252,6 +425,9 @@ fn api_config(database_url: String) -> ApiConfig {
         library: None,
         comments: None,
         account_deletion: None,
+        visual_assets: None,
+        paper_resolution: pakperk_api::PaperResolutionFeatureConfig::default(),
+        reading_feed: pakperk_api::ReadingFeedFeatureConfig::default(),
         request_origin: RequestOriginConfig::for_local_development(
             "postgres-chat-api-request-origin-secret-0123456789",
         )
@@ -407,6 +583,92 @@ async fn publish_chat_chunk(papers: &PaperRepository, paper_id: Uuid, text: &str
         .await
         .unwrap();
     chunk_id
+}
+
+async fn insert_assistant_document(database: &Database, paper_id: Uuid) -> Uuid {
+    let block_id = Uuid::now_v7();
+    let now = Utc::now();
+    sqlx::query(
+        r"
+        INSERT INTO document_generations (
+            paper_id, generation, arxiv_version, schema_version, parser_id,
+            parser_version, document_hash, metadata_snapshot, metadata_hash,
+            created_at, updated_at
+        ) VALUES (
+            $1, 1, 1, 'document.v1', 'grobid', 'api-feedback-v1', $2,
+            jsonb_build_object('schema_version', 'paper-metadata-v1'), $2, $3, $3
+        )
+        ",
+    )
+    .bind(paper_id)
+    .bind("a".repeat(64))
+    .bind(now)
+    .execute(database.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        r"
+        INSERT INTO document_blocks (
+            id, paper_id, generation, stable_key, ordinal, section_path,
+            kind, text, content_hash, page_start, page_end, inline_spans, created_at
+        ) VALUES (
+            $1, $2, 1, 'results:p0', 0, ARRAY['Results'], 'paragraph',
+            'The result is supported by the measured evidence.', $3,
+            3, 3, '[]'::jsonb, $4
+        )
+        ",
+    )
+    .bind(block_id)
+    .bind(paper_id)
+    .bind("b".repeat(64))
+    .bind(now)
+    .execute(database.pool())
+    .await
+    .unwrap();
+    block_id
+}
+
+fn assistant_request(paper_id: Uuid, session_id: Uuid) -> Request<Body> {
+    let body = json!({
+        "paper_id": paper_id,
+        "generation": 1,
+        "question": "What evidence supports the result?",
+        "scope": {
+            "kind": "paper",
+            "section_kinds": [],
+            "object_ids": [],
+            "selection": null,
+            "passport_field": null
+        },
+        "answer_style": "concise",
+        "thread_id": null
+    });
+    connected_json_request(
+        format!("/v1/papers/{paper_id}/assistant"),
+        session_id,
+        &body,
+    )
+}
+
+fn assistant_feedback_request(paper_id: Uuid, session_id: Uuid, body: &Value) -> Request<Body> {
+    connected_json_request(
+        format!("/v1/papers/{paper_id}/assistant/feedback"),
+        session_id,
+        body,
+    )
+}
+
+fn connected_json_request(uri: String, session_id: Uuid, body: &Value) -> Request<Body> {
+    let mut request = Request::post(uri)
+        .header(CONTENT_TYPE, "application/json")
+        .header("x-session-id", session_id.to_string())
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    request.extensions_mut().insert(ConnectInfo(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        41_235,
+    )));
+    request
 }
 
 async fn response_json<T>(response: axum::response::Response) -> T

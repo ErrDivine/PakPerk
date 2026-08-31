@@ -1,11 +1,17 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
-use domain::{ChatAnswer, ChatEvidence, SectionKind, SuggestedFollowUp};
+use domain::{
+    ASSISTANT_NOT_FOUND_ANSWER, AssistantAnswer, AssistantAnswerStatus, AssistantClaim,
+    AssistantClaimSupport, AssistantEvidenceReference, ChatAnswer, ChatEvidence, SectionKind,
+    SuggestedFollowUp, assistant_text_contains_link,
+};
+use uuid::Uuid;
 
 use crate::{
-    CHAT_PROMPT_VERSION, ChatCompletionRequest, ChatProvider, EmbeddingProvider, EmbeddingRequest,
-    EmbeddingResponse, ProviderError, RelationshipProvider, RelationshipRequest,
+    ASSISTANT_V2_PROMPT_VERSION, AssistantCompletion, AssistantCompletionRequest,
+    AssistantProvider, CHAT_PROMPT_VERSION, ChatCompletionRequest, ChatProvider, EmbeddingProvider,
+    EmbeddingRequest, EmbeddingResponse, ProviderError, RelationshipProvider, RelationshipRequest,
     RelationshipSummary, deterministic_relationship_fallback,
 };
 
@@ -202,6 +208,88 @@ impl ChatProvider for DeterministicProvider {
             model_id: Some("deterministic-chat-v2".into()),
             provider_request_id: None,
             prompt_version: format!("{CHAT_PROMPT_VERSION}-deterministic-v2"),
+        })
+    }
+}
+
+#[async_trait]
+impl AssistantProvider for DeterministicProvider {
+    fn provenance_provider_id(&self) -> &'static str {
+        "deterministic"
+    }
+
+    async fn answer_with_evidence(
+        &self,
+        request: &AssistantCompletionRequest,
+    ) -> Result<AssistantCompletion, ProviderError> {
+        request.validate()?;
+        let question_words = content_words(&request.request.question);
+        let selected = request
+            .evidence
+            .iter()
+            .map(|evidence| {
+                let words = content_words(&evidence.text);
+                let overlap = question_words.intersection(&words).count();
+                (overlap, evidence)
+            })
+            .max_by_key(|(overlap, evidence)| (*overlap, std::cmp::Reverse(evidence.block_id)));
+        let provenance_id = Uuid::now_v7();
+        let Some((overlap, evidence)) = selected.filter(|(overlap, _)| *overlap > 0) else {
+            return Ok(AssistantCompletion {
+                answer: AssistantAnswer {
+                    answer: ASSISTANT_NOT_FOUND_ANSWER.to_owned(),
+                    status: AssistantAnswerStatus::NotFound,
+                    claims: Vec::new(),
+                    limitations: Vec::new(),
+                    provenance_id,
+                    model_id: None,
+                    provider_request_id: None,
+                    prompt_version: format!("{ASSISTANT_V2_PROMPT_VERSION}-deterministic-v1"),
+                },
+                token_usage: None,
+            });
+        };
+        debug_assert!(overlap > 0);
+        let excerpt = evidence.text.chars().take(320).collect::<String>();
+        if assistant_text_contains_link(&excerpt) {
+            return Ok(AssistantCompletion {
+                answer: AssistantAnswer {
+                    answer: ASSISTANT_NOT_FOUND_ANSWER.to_owned(),
+                    status: AssistantAnswerStatus::NotFound,
+                    claims: Vec::new(),
+                    limitations: Vec::new(),
+                    provenance_id,
+                    model_id: None,
+                    provider_request_id: None,
+                    prompt_version: format!("{ASSISTANT_V2_PROMPT_VERSION}-deterministic-v1"),
+                },
+                token_usage: None,
+            });
+        }
+        let end = u32::try_from(excerpt.chars().count())
+            .map_err(|_| ProviderError::InvalidRequest("evidence range is too large".into()))?;
+        Ok(AssistantCompletion {
+            answer: AssistantAnswer {
+                answer: excerpt.clone(),
+                status: AssistantAnswerStatus::Supported,
+                claims: vec![AssistantClaim {
+                    text: excerpt,
+                    support: AssistantClaimSupport::Direct,
+                    evidence: vec![AssistantEvidenceReference {
+                        block_id: evidence.block_id,
+                        start: 0,
+                        end,
+                        page_start: evidence.page_start,
+                        section: evidence.section_heading.clone(),
+                    }],
+                }],
+                limitations: Vec::new(),
+                provenance_id,
+                model_id: None,
+                provider_request_id: None,
+                prompt_version: format!("{ASSISTANT_V2_PROMPT_VERSION}-deterministic-v1"),
+            },
+            token_usage: None,
         })
     }
 }

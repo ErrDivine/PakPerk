@@ -159,7 +159,7 @@ elif "json_build_object" in query:
     )
     bindings_after = os.environ.get("FAKE_DB_BINDINGS_AFTER", bindings_before)
     snapshot = {
-        "migration": 10,
+        "migration": 18,
         "users": 1,
         "papers": 3,
         "core_jobs": 2,
@@ -209,9 +209,9 @@ elif "FROM (VALUES" in query:
     print("1" if failure == "tables" else "0")
 elif "max(version)" in query:
     print(
-        "9"
+        "10"
         if failure == "migration"
-        else os.environ.get("PAKPERK_RESTORE_DRILL_EXPECTED_MIGRATION", "10")
+        else os.environ.get("PAKPERK_RESTORE_DRILL_EXPECTED_MIGRATION", "18")
     )
 else:
     raise SystemExit(3)
@@ -346,7 +346,7 @@ class RestoreDrillTests(unittest.TestCase):
             "backup_id": "backup-20260802-release-42",
             "source_revision": SOURCE_REVISION,
             "worker_sha256": self.worker_digest,
-            "expected_migration": 10,
+            "expected_migration": 18,
             "expected_ledger_records": 1,
             "expected_ledger_inventory_sha256": LEDGER_INVENTORY_SHA256,
             "recovery_point": timestamp(recovery),
@@ -403,7 +403,7 @@ class RestoreDrillTests(unittest.TestCase):
                 "PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_INVENTORY_SHA256": LEDGER_INVENTORY_SHA256,
                 "PAKPERK_RESTORE_DRILL_CONFIRM": "isolated-nonproduction-restore",
                 "PAKPERK_RESTORE_DRILL_PHASE": "reapply",
-                "PAKPERK_RESTORE_DRILL_EXPECTED_MIGRATION": "10",
+                "PAKPERK_RESTORE_DRILL_EXPECTED_MIGRATION": "18",
                 "PAKPERK_RESTORE_DRILL_SOURCE_REVISION": SOURCE_REVISION,
                 "PAKPERK_RESTORE_DRILL_WORKER_SHA256": self.worker_digest,
                 "PAKPERK_RESTORE_DRILL_BACKUP_ID": self.attestation_value["backup_id"],

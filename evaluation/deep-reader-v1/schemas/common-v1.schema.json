@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pakperk.invalid/schemas/deep-reader/common-v1.schema.json",
+  "title": "Pakperk Deep Reader evaluation common types v1",
+  "$defs": {
+    "safeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "basisPoints": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10000
+    },
+    "notReady": {
+      "const": "not_ready"
+    },
+    "protectedEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "human_domain",
+        "legal_review",
+        "live_model",
+        "signed_device"
+      ],
+      "properties": {
+        "human_domain": {"$ref": "#/$defs/notReady"},
+        "legal_review": {"$ref": "#/$defs/notReady"},
+        "live_model": {"$ref": "#/$defs/notReady"},
+        "signed_device": {"$ref": "#/$defs/notReady"}
+      }
+    },
+    "idList": {
+      "type": "array",
+      "maxItems": 2048,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/safeId"}
+    },
+    "passportStatus": {
+      "enum": [
+        "supported",
+        "inferred",
+        "conflicting",
+        "not_found",
+        "not_applicable"
+      ]
+    },
+    "assistantStatus": {
+      "enum": [
+        "supported",
+        "partial",
+        "not_found",
+        "rejected_stale_generation"
+      ]
+    },
+    "visualKind": {
+      "enum": ["figure", "table", "equation"]
+    },
+    "blockKind": {
+      "enum": [
+        "heading",
+        "paragraph",
+        "list_item",
+        "quote",
+        "theorem_definition",
+        "caption",
+        "equation_context",
+        "table_context",
+        "figure_context",
+        "footnote",
+        "other"
+      ]
+    }
+  }
+}

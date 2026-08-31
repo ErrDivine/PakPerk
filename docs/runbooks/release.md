@@ -66,6 +66,8 @@ does not replace that stronger external anchor or package verification.
 ```bash
 python3 scripts/production_approval_evidence.py validate \
   protected/legal-review.json --gate legalReviewId
+python3 scripts/production_approval_evidence.py validate-old-client-policy \
+  protected/old-client-policy.json
 
 approval_manifests=(
   --manifest "legalReviewId=protected/legal-review.json"
@@ -79,11 +81,13 @@ install -d -m 0700 protected
 python3 scripts/production_approval_evidence.py bundle \
   "${approval_manifests[@]}" \
   --rendered-manifest protected/rendered-production.yaml \
+  --old-client-policy protected/old-client-policy.json \
   --output protected/production-approval-bundle.json
 python3 scripts/production_approval_evidence.py predeploy \
   protected/production-approval-bundle.json \
   "${approval_manifests[@]}" \
-  --rendered-manifest protected/rendered-production.yaml
+  --rendered-manifest protected/rendered-production.yaml \
+  --old-client-policy protected/old-client-policy.json
 ```
 
 Each manifest binds the exact source, images, chart, signed mobile candidate,
@@ -95,6 +99,34 @@ five IDs exist, render the final protected chart with those exact values. The
 bundle command requires that render, recomputes the normalized configuration,
 image and full release-binding digests, checks all ConfigMap approval mirrors,
 and then binds the full rendered-manifest bytes.
+
+The bundle's schema-2 deployment statement also carries the exact rendered
+`toReadFirstEnforcement` value and either a content-addressed old-client policy
+ID or `null`. The policy is dormant and optional while enforcement is false.
+If the final production render sets enforcement true, `bundle` and `predeploy`
+fail closed unless the same canonical policy bytes are supplied and bind the
+exact source revision, normalized release configuration, images, chart,
+restore drill, and signed mobile candidate from all five approval manifests.
+
+The old-client policy has no repository default and the validator never chooses
+an adoption threshold. A protected producer must call
+`build_old_client_policy(...)`, retain its source evidence, and obtain the
+closed `product_release_owner` approval for exactly one strategy:
+
+| Strategy | Exact parameters | Required protected evidence |
+| --- | --- | --- |
+| `minimum_supported_version` | minimum mobile version/build and fixed `remote_configuration` mechanism | approved policy record, enforcement observation, rollback evidence |
+| `disable_legacy_account_library` | last legacy version/build plus both account and library access fixed to `disabled` | approved policy record, server/access-gate observation, rollback evidence |
+| `advisory_until_adoption_threshold` | owner-selected threshold in basis points, observation hours, and claim fixed to `advisory` | approved policy record, adoption measurement, rollback evidence |
+
+The advisory choice authorizes only staged/advisory behavior until the external
+measurement proves the owner-selected threshold; the artifact does not claim
+that threshold was reached and must not be used to claim universal enforcement.
+Similarly, a digest proves only which protected record was approved, not that a
+remote-version or legacy-access mechanism was actually deployed. Those live
+observations, accountable approval, and rollback execution remain external
+release evidence. Omitting `--old-client-policy` is valid only for a rendered
+release whose strict enforcement flag is false.
 
 The bundle also requires one byte-for-byte-equivalent approval binding across
 all five manifests and cross-checks the reviewer flow's legal, strict-content,
@@ -126,7 +158,7 @@ the Helm approval IDs:
 
 | Gate | Content ID | Closed protected scope |
 | --- | --- | --- |
-| `migration_expand_contract` | `pakperk-migration-exercise-v1:sha256:` | Staging schema 9 to 10; verified restore evidence; reviewed migration image; one migration Job and DDL role; old/new compatibility; switch reconciliation; integrity; schema-compatible code rollback and re-forward; database/release approvals |
+| `migration_expand_contract` | `pakperk-migration-exercise-v1:sha256:` | Staging schema 18 to 24; verified restore evidence; reviewed migration image; one migration Job and DDL role; old/new compatibility; all 30 release switches reconciled and all 39 required dependency edges rejected when unsatisfied; private-artifact deletion/restore integrity; schema-compatible code rollback and re-forward; database/privacy/release approvals |
 | `live_telemetry_retention` | `pakperk-live-telemetry-v1:sha256:` | Distinct production and staging-copy Collector/gateway/adapter/configuration/receiver/retention identities for one image candidate; reviewed parity diff; production safe-canary delivery and exact 30-day retention boundary; staging valid/hostile/redaction/restart/page/ticket checks; platform/observability/privacy approvals |
 | `mobile_performance_crash` | `pakperk-mobile-performance-v1:sha256:` | Exact signed APK/IPA and version/build; reviewed device/OS matrix; at least 20 cached-frame and opening samples with p95 at most 1,500 ms and opening at most 700 ms; at least 20 sequential requests with 95% hits and no blank cards; at least 20 frame samples; at least 24 hours and 200 aggregate exact-candidate sessions with 99.5% crash-free; mobile/release/privacy approvals |
 
@@ -140,7 +172,16 @@ execution-subject ID, then require every named owner to approve that exact ID
 within 14 days after cleanup. Approval records cannot reuse the cleanup audit
 reference. A forward fix may be retained as additional incident evidence, but
 it does not replace the schema-compatible rollback required for this additive
-9-to-10 release gate. Validate the three results:
+18-to-24 release gate. Validate the three results:
+
+The migration manifest remains schema/domain v1 because the canonical document
+shape and hashing algorithm did not change. Its closed current-release policy
+did change: a prior manifest for schema 10-to-11, 11-to-16, 11-to-17, or the
+completed Plan 02 schema 11-to-18 gate cannot satisfy the new 18-to-24 subject.
+Neither can an artifact that attests only six or eleven switches. The current
+manifest must bind the exact subject, ordered assertion IDs, 30-switch/39-edge
+contract, and schema-24 private-data/restore checks; prior content IDs must not
+be reused for this candidate.
 
 For telemetry, use the same immutable Collector, gateway, and adapter images in
 production and the staging canary copy. Bind their configurations, alert-policy
@@ -149,9 +190,9 @@ and staging environment identities are not interchangeable. Reopen both named
 `deployment-binding-v1:` records in the protected ledger; the production ID
 must equal the manifest's expected binding, and the staging ID is carried in
 the staging-copy subject. The parity record must show that staging changes only
-the reviewed environment filters/routes and does not weaken the six inputs, 17
+the reviewed environment filters/routes and does not weaken the six inputs, 19
 rules, redaction, or 30-day policy.
-The two receiver inventories must route all 17 rules across both `page` and
+The two receiver inventories must route all 19 rules across both `page` and
 `ticket`, with no ownerless receiver; a zero-receiver inventory is not a pass.
 Send a privacy-safe canary through the dark production deployment and require it in
 the production sink. Seed the bound production retention-canary commitments,
@@ -494,6 +535,115 @@ protected execution and human gates.
    `/v1/feed?limit=100` response with `Vary: Accept-Encoding`; magic bytes or a
    corrupt/truncated gzip stream do not pass.
 
+## Queue-first discovery staged enablement
+
+This subsection preserves the Plan 02 schema 11-to-18 enablement sequence. It
+is historical prerequisite evidence, not the current schema-24 migration gate.
+Run this sequence in protected staging against the exact Plan 02 candidate and
+release-shaped topology. Every optional queue-first/Plan 02 switch starts
+false. Change one flag at a time, retain the rendered before/after value and
+observed allowed and disabled request results, then restore the reviewed
+baseline before the next independent case. The six-switch protected-service
+artifact below does not, by itself, attest the additional switches. The
+migration operational manifest is the separate full-map contract: it must
+reconcile all 30 release switches and reject all 39 required dependency edges
+when each is individually unsatisfied.
+
+1. Before any feature switch, complete the schema 11-to-18 exercise from a
+   verified backup. Restore an isolated schema-11 snapshot, run the reviewed
+   standalone migration Job to version 18 exactly once, prove replay is a no-op,
+   run old/new compatibility and integrity checks, perform a schema-compatible
+   code rollback against schema 18, and re-forward. Mount the current deletion
+   ledger and complete deletion reapply/finalize. The fixture must include an
+   active To Read row, a removed tombstone, save/remove operation history, and
+   distinct accepted timestamps. Prove old SQL can still read, write, and replay
+   `to_read` after schema 18, and prove the new code rejects a changed v2 intent
+   under the same operation ID. Do not use a down migration.
+2. Enable `PAPER_RESOLUTION_ENABLED`. Prove cached and uncached exact resolution
+   through the monitored arXiv identity and shared database gate/cache, while
+   the existing public exact-paper route and anonymous feed remain compatible.
+3. Exercise `PAPER_TITLE_SEARCH_ENABLED` and
+   `LIBRARY_IMPORT_WRITES_ENABLED` independently. Search requires accounts and
+   resolution. Import requires accounts, library, library writes, and
+   resolution. For each, prove off/on/off behavior, bounded account and upstream
+   limits, cache behavior, retry/degradation semantics, idempotent import replay,
+   and that no preparation job is created. Neither switch enables the other.
+4. Enable `READING_FEED_ENABLED` with
+   `TO_READ_FIRST_ENFORCEMENT_ENABLED=false`. Prove FIFO active-queue pages,
+   recommendation exclusion, authoritative-empty-only recommendation access,
+   exact `decision.policy_version=queue_first_v1`, single-snapshot count/page
+   consistency, current-revision cursors, stale and cross-account rejection,
+   unknown-policy fail-closed handling, and private/no-store responses. Run the agreed
+   availability/latency observation and the queue-first correctness canary.
+   In compatible signed clients, verify legacy discovery remains the rendered
+   surface while the background authority controller emits only the closed
+   `reading_feed_shadow_decision` comparison. Reconcile its aggregate decision
+   classes with the server decision metric and attach the observation window;
+   do not treat missing mobile telemetry as a safe decision.
+   Trigger the staging-copy `reading-feed-authority-unavailable` rule and prove
+   its owned page route before continuing.
+5. Enable `LIBRARY_V2_ENABLED`, then `RESEARCH_PROFILES_ENABLED`. Prove the
+   five-state Library, lists, tags, notes, explicit profile interests,
+   personalization toggle/reset/export, and their idempotency/revision fences.
+   Active Library state remains the only queue input; profile/list/tag/note
+   operations must not mutate or override it.
+6. Enable `SEARCH_LOOKUP_ENABLED`, then `SEARCH_EXPLORE_ENABLED`, then
+   `SAVED_QUERIES_ENABLED`. Prove deterministic local-metadata lookup and
+   suggestions, bounded explicit Explore/source diagnostics, account-owned
+   saved-query definitions, no implicit query history, and canonical
+   Library/import-only saves. A search result is never an automated feed item.
+7. Exercise `RECOMMENDATION_EVENTS_ENABLED` independently and prove product
+   state is unchanged when its optional content-free stream is unavailable.
+   Before enabling `RECOMMENDATIONS_ENABLED`, prove that reading feed with the
+   switch off persists/serves only the minimal authority-bound Recent fallback
+   and still rechecks the final empty revision. Advanced modes, profile-aware
+   reasons, explanations, and feedback must remain unavailable, and the
+   Recent-only items must report `explanation_available=false`.
+   Enable `RECOMMENDATIONS_ENABLED` only with reading-feed shadow authority
+   healthy. Prove that build, persistence, and serve recheck library, profile,
+   and feedback revisions; mismatches supersede unserved batches. Prove every
+   retained exact/base arXiv feedback identity is excluded, not-relevant and
+   dismissed are hard exclusions, and qualified impressions add only a bounded
+   repeat penalty. With personalization already enabled, relevant feedback may
+   create a separately labelled `feedback` category affinity; For You labels
+   feedback/inferred sources and Following uses explicit groups only.
+   Bind the offline evaluation corpus/result digest, generator and scoring/
+   diversity policy versions, source-coverage and topic/author concentration
+   results, queue-leakage target zero, and accountable research/product/privacy
+   review before For You leaves shadow.
+8. Enable `READING_BRIEFS_ENABLED`, then `SUBSCRIPTIONS_ENABLED`, then
+   `NOTIFICATIONS_ENABLED`. Prove active/unknown queue deferral, brief
+   provenance and resume, recurring scheduling, mute/quiet-hours/budget rules,
+   expiry/dismissal, and active-paper in-app delivery. Brief progress or
+   completion must neither change nor prove queue emptiness. Push and email
+   remain unavailable.
+9. Ship compatible signed clients with their mobile capability still dark and
+   exercise the fail-closed queue-authority truth table on physical iOS and
+   Android. Approve the minimum-supported-client/adoption policy. Enable
+   `TO_READ_FIRST_ENFORCEMENT_ENABLED` only after these results, the complete
+   observation window, and rollback exercise are attached to the release.
+
+The privacy gate scans API logs, Collector output, the external sink, and every
+retained evidence package. It must find no raw search query or title, submitted
+URL, bearer or refresh token, account/paper/batch/event identifier, cursor,
+private note, profile interest, saved-query/subscription key, feedback reason,
+recommendation evidence, or notification payload. Alert labels and
+evidence retain only fixed environment/service/severity/namespace/message
+values, closed enums, buckets, request IDs, and aggregates; they never use
+account, cursor, category/topic/author, query, title, URL, token, paper, batch,
+event, or arXiv identity.
+
+These steps remain blocked until external evidence binds the exact monitored
+arXiv contact and live adapter, the multi-replica shared gate/cache, migration
+Job and protected database identity, provider backup/PITR restore, current
+deletion-ledger replay, staging and production alert-policy imports and owned
+receivers; retention cleanup and queue/revision canaries for profiles, search,
+recommendations, briefs, subscriptions, and notifications; signed physical
+clients; the privacy scan; and database, platform, service, security/privacy,
+mobile, and release approvals. Repository tests,
+fixtures, local Docker Compose, a Helm render, and a local alert-policy
+validator are repository evidence only; none substitutes for those executions.
+
 ## Protected auth, write, and switch exercise
 
 Run this gate against the exact dark-deployed candidate and its release-shaped
@@ -519,7 +669,7 @@ and approvers. It must prove all of these behaviors:
    returns HTTP 401 `TOKEN_EXPIRED` and that the protected mobile expiry path
    performs one successful refresh. In a separate disposable mobile session,
    invalidate the real refresh credential at the release IdP, force one refresh,
-   and bind the schema-v3 physical result showing guest transition, inaccessible
+   and bind the schema-v6 physical result showing guest transition, inaccessible
    account-owned rows, an unreadable refresh record, preserved public cache and
    exact reader state, and continued guest reading. Restoring or retiring
    provider keys is an identity-owner action and must be recorded without
@@ -658,10 +808,19 @@ switches, artifact, and approvals remain **P/H** until this exact run succeeds.
 
 1. Use additive/nullable tables, columns, indexes, and dual-compatible code for
    the expand release. Never combine destructive contraction with the first
-   code rollout that stops using a field.
+   code rollout that stops using a field. The preserved schema-18 Plan 02
+   compatibility rule still applies: logical Inbox is
+   physically `to_read`, the v0 `intent_fingerprint` is unchanged, and the
+   complete new mutation intent uses a separate nullable v2 fingerprint. Treat
+   any physical `inbox` row during this compatibility window as an invariant
+   violation. New readers may decode it defensively, but production writers
+   must not create it. Migrations 19 through 24 add only the preparation audit,
+   normalized document/Passport/provenance, private research, version-diff,
+   and annotation archive-import boundaries; none may become a second Library
+   or reading-feed authority.
 2. Run the chart migration Job once, with the reviewed image digest, distinct
    migration database role, `RUN_MIGRATIONS=false` everywhere else, expected
-   embedded migration version `10`, and a bounded non-placeholder backup
+   embedded migration version `24`, and a bounded non-placeholder backup
    evidence ID. The scheduled metadata manifest must be valid JSON containing
    1 to 2,000 canonical arXiv IDs within the chart's 1,048,000-byte ConfigMap
    boundary, and its bounded five-field Cron expression must render
@@ -678,18 +837,29 @@ switches, artifact, and approvals remain **P/H** until this exact run succeeds.
    readiness mismatch blocks feature enablement and store submission.
 5. Exercise guest cached reading first, then authenticated profile/library,
    comments/report/block/moderation, deletion request/status/web callback, paper
-   preparation, telemetry redaction/export, and association links. Complete the
+   preparation, default-off Deep Reader route registration, private research
+   export/deletion, telemetry redaction/export, and association links. Complete the
    [protected auth, write, and switch exercise](#protected-auth-write-and-switch-exercise)
    for the same candidate. Capture only the bounded, sanitized results defined
    by each evidence contract.
-6. Reconcile all six switch results with the final rendered feature
-   map. Do not infer a switch pass from a healthy baseline smoke, and do not
-   reuse evidence after any relevant image, issuer, quota, topology, or feature
-   map change. Account deletion remains enabled whenever production accounts are
-   enabled, including a comments-disabled library release.
+6. Reconcile all 30 switch results with the final rendered feature map and the
+   migration manifest's exact 39-edge dependency contract. The protected-service
+   artifact supplies only the legacy six live cases; the independently
+   exercised queue-first discovery sequence and Plan 03 rollout bundle supply
+   the remaining cases. Do not
+   infer a switch pass from a healthy baseline smoke, and do not reuse evidence
+   after any relevant image,
+   issuer, quota, topology, or feature-map change. Account deletion remains
+   enabled whenever production accounts are enabled, including a
+   comments-disabled library release.
 7. Observe error rate, readiness, database saturation, queue/backlog age,
-   moderation SLA, deletion failures, OTLP drops, and ingress errors through the
-   release observation window. Record the exact window and approver.
+   reading-feed availability/latency and queue-authority fail-closed alerts,
+   parser/preparation/Passport/assistant/visual/version-diff outcomes, mobile
+   reader/cache/annotation/memory signals, moderation SLA, deletion failures,
+   OTLP drops, and ingress errors through the release observation window.
+   Record the exact window and approver. Source instruments do not replace the
+   protected live telemetry, human, legal, signed-device, accessibility, or
+   release-approval gates.
 
 Contraction is a separate release only after every serving/worker version is
 compatible, the compatibility window and rollback retention have elapsed, and
@@ -704,6 +874,35 @@ backward compatible, roll back API/site/workers and preserve the expanded
 schema. If data corruption or an incompatible migration requires restore,
 declare an incident, isolate writes, follow [backup-restore.md](backup-restore.md),
 mount the current deletion ledger, and reapply deletions before traffic.
+
+For queue-first discovery, close `TO_READ_FIRST_ENFORCEMENT_ENABLED` first.
+Close `NOTIFICATIONS_ENABLED` before `SUBSCRIPTIONS_ENABLED`; close
+`READING_BRIEFS_ENABLED`, `RECOMMENDATIONS_ENABLED`, subscriptions, and
+enforcement before `READING_FEED_ENABLED`. Close `SAVED_QUERIES_ENABLED` before
+`SEARCH_EXPLORE_ENABLED` and Explore before `SEARCH_LOOKUP_ENABLED`. Close
+`PAPER_TITLE_SEARCH_ENABLED` and `LIBRARY_IMPORT_WRITES_ENABLED` independently
+before `PAPER_RESOLUTION_ENABLED`.
+Library v2 and research profiles may close independently once their consumers
+are dark; the optional recommendation-event stream may close at any point
+because product state cannot depend on it. Preserve ordinary Library
+reads/writes and account deletion as the incident permits.
+
+For Plan 03, close switches in the reverse order documented by
+[Deep Reader rollout](deep-reader-rollout.md#rollback): Docling experiment,
+version diff, memory, annotations, assistant v2, visual objects, semantic
+facets, Passport, then Deep Reader. Preserve readable source/legacy
+Introduction access and private data. Keep additive schema 24 in place and use
+a schema-24-compatible image; never restore schema 18 merely to disable a Plan
+03 capability. The historical Plan 02 rule likewise never allowed a downgrade
+from schema 18 to schema 11. Verify anonymous `GET /v1/feed`, the
+existing exact-paper route, Library reads, and explicit search navigation after
+each applicable rollback step.
+
+The schema-18 Plan 02 history allowed the verified v0.0 image only before any
+Library v2 writes. It is not a current schema-24 rollback target. Once Plan 03
+writes may exist, use the last expand-compatible image that understands the
+five Library states and safely ignores or reads the additive Plan 03 tables,
+close their consumers, and leave schema 24 in place.
 
 Never restore only PostgreSQL while leaving deletion obligations behind. A
 store action never downgrades an already installed mobile binary: increment the

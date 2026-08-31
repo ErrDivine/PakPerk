@@ -7,10 +7,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/account_providers.dart';
+import '../../app/discovery_providers.dart';
 import '../../app/library_providers.dart';
 import '../../core/account/account_profile.dart';
 import '../../core/database/library_dao.dart';
 import '../../core/library/library_models.dart';
+import '../../core/interactions/interaction_models.dart';
 import '../../core/models/paper.dart';
 import '../../core/providers.dart';
 import '../../core/telemetry/telemetry.dart';
@@ -21,11 +23,15 @@ class PaperSaveControl extends ConsumerStatefulWidget {
   const PaperSaveControl({
     required this.paper,
     this.compact = false,
+    this.saveSourceKind,
+    this.interactionContext,
     super.key,
   });
 
   final PaperSummary paper;
   final bool compact;
+  final LibrarySaveSourceKind? saveSourceKind;
+  final PaperInteractionContext? interactionContext;
 
   @override
   ConsumerState<PaperSaveControl> createState() => _PaperSaveControlState();
@@ -90,6 +96,12 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
     final telemetry = ref.read(telemetrySinkProvider);
     setState(() => _committing = true);
     final saved = !current.saved;
+    final saveIntentSequence =
+        saved && ref.read(featureFlagsProvider).readingFeed
+        ? ref
+              .read(librarySaveIntentSignalProvider.notifier)
+              .begin(accountId: scope.accountId, authEpoch: scope.authEpoch)
+        : null;
     emitTelemetry(telemetry, PakPerkTelemetryEvent.saveRequested, {
       'intent': saved ? 'save' : 'remove',
     });
@@ -101,8 +113,14 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
           paperId: widget.paper.paperId,
           saved: saved,
           paper: widget.paper,
+          saveSourceKind: saved ? widget.saveSourceKind : null,
         );
       } on Object {
+        if (saveIntentSequence != null) {
+          ref
+              .read(librarySaveIntentSignalProvider.notifier)
+              .end(saveIntentSequence);
+        }
         emitTelemetry(telemetry, PakPerkTelemetryEvent.saveFailed, {
           'intent': saved ? 'save' : 'remove',
           'failure_code': 'local_write',
@@ -119,6 +137,18 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
       // A successful local write includes the durable outbox operation. Drain
       // it even if navigation disposes this control while the write awaits.
       unawaited(sync.drain());
+      final interaction = widget.interactionContext;
+      ref
+          .read(interactionEventBatcherProvider)
+          .record(
+            eventType: saved
+                ? PaperInteractionEventType.saved
+                : PaperInteractionEventType.unsaved,
+            paperId: widget.paper.paperId,
+            feedMode: interaction?.feedMode,
+            batchId: interaction?.batchId,
+            position: interaction?.position,
+          );
       if (!mounted) return;
       // Platform feedback is best-effort. It must not delay durable sync or
       // the time-sensitive Undo affordance.
@@ -149,6 +179,11 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
     if (ref.read(libraryMutationScopeProvider) != scope) return;
     final repository = ref.read(libraryRepositoryProvider);
     final sync = ref.read(librarySyncControllerProvider.notifier);
+    final saveIntentSequence = ref.read(featureFlagsProvider).readingFeed
+        ? ref
+              .read(librarySaveIntentSignalProvider.notifier)
+              .begin(accountId: scope.accountId, authEpoch: scope.authEpoch)
+        : null;
     try {
       // setSaved always allocates a fresh operation ID. Undo is therefore a
       // new save intent and never rewrites the removal that may already have
@@ -159,11 +194,22 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
         paperId: widget.paper.paperId,
         saved: true,
         paper: widget.paper,
+        saveSourceKind: widget.saveSourceKind,
       );
     } on LibraryScopeChanged {
       // A stale Undo must not cross an account or authentication epoch.
+      if (saveIntentSequence != null) {
+        ref
+            .read(librarySaveIntentSignalProvider.notifier)
+            .end(saveIntentSequence);
+      }
       return;
     } on Object {
+      if (saveIntentSequence != null) {
+        ref
+            .read(librarySaveIntentSignalProvider.notifier)
+            .end(saveIntentSequence);
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -175,6 +221,16 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
     // Undo is itself a fresh durable operation and must not depend on the
     // originating reader widget remaining mounted.
     unawaited(sync.drain());
+    final interaction = widget.interactionContext;
+    ref
+        .read(interactionEventBatcherProvider)
+        .record(
+          eventType: PaperInteractionEventType.saved,
+          paperId: widget.paper.paperId,
+          feedMode: interaction?.feedMode,
+          batchId: interaction?.batchId,
+          position: interaction?.position,
+        );
     if (!mounted) return;
     await _acknowledgeSelection('Restored to To Read');
   }

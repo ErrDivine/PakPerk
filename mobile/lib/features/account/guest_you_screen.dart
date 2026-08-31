@@ -33,6 +33,7 @@ class GuestYouScreen extends StatelessWidget {
       libraryEnabled: libraryEnabled,
       commentsEnabled: commentsEnabled,
     );
+    final colors = Theme.of(context).colorScheme;
     return Material(
       color: Colors.transparent,
       child: SafeArea(
@@ -44,25 +45,46 @@ class GuestYouScreen extends StatelessWidget {
               header: true,
               child: Text(
                 'You',
-                style: Theme.of(context).textTheme.headlineMedium,
+                style: Theme.of(context).textTheme.displaySmall,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             Card(
+              color: colors.primaryContainer.withValues(alpha: .58),
               child: Padding(
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(accountCard.icon, size: 40),
-                    const SizedBox(height: 14),
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: ExcludeSemantics(
+                        child: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: colors.primary,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          alignment: Alignment.center,
+                          child: Icon(
+                            accountCard.icon,
+                            size: 26,
+                            color: colors.onPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     Text(
                       accountCard.title,
-                      textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
-                    const SizedBox(height: 8),
-                    Text(accountCard.message, textAlign: TextAlign.center),
+                    const SizedBox(height: 7),
+                    Text(
+                      accountCard.message,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
                     if (accountsEnabled) ...[
                       const SizedBox(height: 18),
                       FilledButton.icon(
@@ -74,7 +96,6 @@ class GuestYouScreen extends StatelessWidget {
                         const SizedBox(height: 10),
                         Text(
                           'Sign in is temporarily unavailable.',
-                          textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
@@ -83,46 +104,56 @@ class GuestYouScreen extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 22),
             Text(
-              'On this device',
-              style: Theme.of(context).textTheme.titleMedium,
+              'ON THIS DEVICE',
+              style: Theme.of(context).textTheme.labelSmall,
             ),
-            const SizedBox(height: 8),
-            _YouDestination(
-              icon: Icons.settings_outlined,
-              label: 'Settings',
-              supportingText: 'Appearance, motion, cache, and app information',
-              onTap: onOpenSettings,
-            ),
-            _YouDestination(
-              icon: Icons.privacy_tip_outlined,
-              label: 'Privacy',
-              onTap: onOpenPrivacy,
-            ),
-            _YouDestination(
-              icon: Icons.description_outlined,
-              label: 'Terms',
-              onTap: onOpenTerms,
-            ),
-            _YouDestination(
-              icon: Icons.groups_outlined,
-              label: 'Community guidelines',
-              onTap: onOpenCommunityGuidelines,
-            ),
-            _YouDestination(
-              icon: Icons.support_agent_outlined,
-              label: 'Support',
-              supportingText: onOpenSupport == null
-                  ? 'Support contact is not configured in this build'
-                  : null,
-              onTap: onOpenSupport,
-            ),
-            const AboutListTile(
-              icon: Icon(Icons.info_outline),
-              applicationName: 'Pakperk',
-              applicationVersion: PakPerkBuildInfo.displayVersion,
-              applicationLegalese: 'Production v0.0 release candidate',
+            const SizedBox(height: 7),
+            _YouInsetGroup(
+              children: [
+                _YouDestination(
+                  icon: Icons.settings_outlined,
+                  label: 'Settings',
+                  supportingText:
+                      'Appearance, motion, cache, and app information',
+                  onTap: onOpenSettings,
+                ),
+                const _YouDivider(),
+                _YouDestination(
+                  icon: Icons.privacy_tip_outlined,
+                  label: 'Privacy',
+                  onTap: onOpenPrivacy,
+                ),
+                const _YouDivider(),
+                _YouDestination(
+                  icon: Icons.description_outlined,
+                  label: 'Terms',
+                  onTap: onOpenTerms,
+                ),
+                const _YouDivider(),
+                _YouDestination(
+                  icon: Icons.groups_outlined,
+                  label: 'Community guidelines',
+                  onTap: onOpenCommunityGuidelines,
+                ),
+                const _YouDivider(),
+                _YouDestination(
+                  icon: Icons.support_agent_outlined,
+                  label: 'Support',
+                  supportingText: onOpenSupport == null
+                      ? 'Support contact is not configured in this build'
+                      : null,
+                  onTap: onOpenSupport,
+                ),
+                const _YouDivider(),
+                const AboutListTile(
+                  icon: _YouLeadingIcon(icon: Icons.info_outline),
+                  applicationName: 'Pakperk',
+                  applicationVersion: PakPerkBuildInfo.displayVersion,
+                  applicationLegalese: 'Production v0.0 release candidate',
+                ),
+              ],
             ),
           ],
         ),
@@ -190,11 +221,62 @@ class _YouDestination extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       minVerticalPadding: 12,
-      leading: Icon(icon),
+      leading: _YouLeadingIcon(icon: icon),
       title: Text(label),
       subtitle: supportingText == null ? null : Text(supportingText!),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: Icon(
+        Icons.chevron_right,
+        size: 20,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
       onTap: onTap,
+    );
+  }
+}
+
+class _YouInsetGroup extends StatelessWidget {
+  const _YouInsetGroup({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    clipBehavior: Clip.antiAlias,
+    child: Column(mainAxisSize: MainAxisSize.min, children: children),
+  );
+}
+
+class _YouDivider extends StatelessWidget {
+  const _YouDivider();
+
+  @override
+  Widget build(BuildContext context) => Divider(
+    height: 1,
+    thickness: .5,
+    indent: 60,
+    color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: .7),
+  );
+}
+
+class _YouLeadingIcon extends StatelessWidget {
+  const _YouLeadingIcon({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.primary;
+    return ExcludeSemantics(
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .12),
+          borderRadius: BorderRadius.circular(9),
+        ),
+        alignment: Alignment.center,
+        child: Icon(icon, size: 18, color: color),
+      ),
     );
   }
 }

@@ -16,19 +16,19 @@ DEFAULT_CHECK = ROOT / "scripts/check.sh"
 CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 UPLOAD_ACTION = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
 EXPECTED_TRIGGER_SHA256 = (
-    "795ac492d0770264d327de59af8bae7f68971e5d5bbf6a758bfad78832a22385"
+    "49c51256110a23b83e1e9f32ef76f1bdd4f2fd96343864c6937c76c163a8c59c"
 )
 EXPECTED_RUN_SHA256 = {
-    "source gate": "c27da15a7f7d72e7a6469a8307cd1cb62cae33f7b698e2e1a09ec79d9b8e1bd3",
-    "bounded runner": "1d39942e7725de4340c735f6bebb27b5434532ea3c5280f96e403f59bd6e3292",
+    "source gate": "085ab007f5ef8054bd289f7aec17cfb2798c79fd376993fc73098bcaa5d6a02b",
+    "bounded runner": "ca720a9b54c3a508d904c11b84d7971eb3ef7685b24ece4597f7e57bed7f74f9",
     "final enforcement": "d64d089eecbec5591a7e140c4371cf07713b84261adfa9d7c34072c0e71a078d",
 }
 EXPECTED_CHECKOUT_STEP_SHA256 = (
     "6bc05ec1a7fbb3a14b447485291230172fdfe398392d701d6fc4ec2a09b4ca50"
 )
 EXPECTED_STEP_SHA256 = {
-    "source gate": "de2d036e948e0f8628baf14fcf3944ad4169ca178f8082f82400d589240ff296",
-    "bounded runner": "173445d54bfe4e8dad7eb09b65d55c75e3abdc4ee2d7776b8d6b97416299e1b7",
+    "source gate": "4756dbeac202a85cb2cc1d027c631cd633439b9d8f4e0134fd009b95c02e4b11",
+    "bounded runner": "479532f466b09484dc03867a6031227684fa2cd9d7c054d959d5c48d0d67ced4",
     "evidence upload": "e810128426d200e4f483095ff03c68be912035e47e57fc842b591fbd5ab150b3",
     "final enforcement": "0a196f8fd691841d59867d538e64d1274ba91625463e2534be3b39d07262fcf3",
 }
@@ -41,9 +41,15 @@ EXPECTED_INPUTS = [
     "minimum_samples_per_scenario",
     "include_authenticated_library",
     "include_authenticated_comments",
+    "include_reading_feed_queue",
+    "include_reading_feed_recommendations",
+    "include_paper_title_search",
     "allow_library_mutations",
     "mutation_confirmation",
     "max_library_mutation_requests",
+    "allow_paper_import_replays",
+    "paper_import_confirmation",
+    "max_paper_import_requests",
     "simulated_network_delay_ms",
     "simulated_packet_loss_rate",
 ]
@@ -51,6 +57,10 @@ EXPECTED_JOB_ENV = {
     "STAGING_API_ORIGIN": "${{ vars.PAKPERK_STAGING_API_ORIGIN }}",
     "COMMENTS_PAPER_ID": "${{ vars.PAKPERK_STAGING_LOAD_COMMENTS_PAPER_ID }}",
     "MUTATION_PAPER_ID": "${{ vars.PAKPERK_STAGING_LOAD_MUTATION_PAPER_ID }}",
+    "PAPER_IMPORT_OPERATION_ID": (
+        "${{ vars.PAKPERK_STAGING_LOAD_IMPORT_OPERATION_ID }}"
+    ),
+    "PAPER_IMPORT_ARXIV_ID": "${{ vars.PAKPERK_STAGING_LOAD_IMPORT_ARXIV_ID }}",
     "REQUESTED_REVISION": "${{ inputs.source_revision }}",
     "EVIDENCE_ID": "${{ inputs.evidence_id }}",
     "DURATION_SECONDS": "${{ inputs.duration_seconds }}",
@@ -59,9 +69,17 @@ EXPECTED_JOB_ENV = {
     "MINIMUM_SAMPLES": "${{ inputs.minimum_samples_per_scenario }}",
     "INCLUDE_LIBRARY": "${{ inputs.include_authenticated_library }}",
     "INCLUDE_COMMENTS": "${{ inputs.include_authenticated_comments }}",
+    "INCLUDE_READING_QUEUE": "${{ inputs.include_reading_feed_queue }}",
+    "INCLUDE_READING_RECOMMENDATIONS": (
+        "${{ inputs.include_reading_feed_recommendations }}"
+    ),
+    "INCLUDE_PAPER_SEARCH": "${{ inputs.include_paper_title_search }}",
     "ALLOW_MUTATIONS": "${{ inputs.allow_library_mutations }}",
     "MUTATION_CONFIRMATION": "${{ inputs.mutation_confirmation }}",
     "MAX_MUTATIONS": "${{ inputs.max_library_mutation_requests }}",
+    "ALLOW_IMPORT_REPLAYS": "${{ inputs.allow_paper_import_replays }}",
+    "IMPORT_CONFIRMATION": "${{ inputs.paper_import_confirmation }}",
+    "MAX_IMPORT_REQUESTS": "${{ inputs.max_paper_import_requests }}",
     "NETWORK_DELAY_MS": "${{ inputs.simulated_network_delay_ms }}",
     "PACKET_LOSS_RATE": "${{ inputs.simulated_packet_loss_rate }}",
 }
@@ -313,12 +331,25 @@ def validate(
         "1000|5000|10000|25000) ;;",
         'case "$MINIMUM_SAMPLES" in',
         'case "$MAX_MUTATIONS" in',
+        'case "$MAX_IMPORT_REQUESTS" in',
         'case "$NETWORK_DELAY_MS" in',
         'case "$PACKET_LOSS_RATE" in',
-        "for boolean_input in INCLUDE_LIBRARY INCLUDE_COMMENTS ALLOW_MUTATIONS; do",
+        (
+            "for boolean_input in INCLUDE_LIBRARY INCLUDE_COMMENTS "
+            "INCLUDE_READING_QUEUE INCLUDE_READING_RECOMMENDATIONS "
+            "INCLUDE_PAPER_SEARCH ALLOW_MUTATIONS ALLOW_IMPORT_REPLAYS; do"
+        ),
         'case "${!boolean_input}" in',
         "true|false) ;;",
         '"RUN_DEDICATED_STAGING_LIBRARY_MUTATIONS"',
+        '"RUN_DEDICATED_STAGING_PAPER_IMPORT_REPLAYS"',
+        (
+            'if [[ "$ALLOW_IMPORT_REPLAYS" == "true" && '
+            '"$MAX_IMPORT_REQUESTS" -lt "$MINIMUM_SAMPLES" ]]; then'
+        ),
+        'if [[ "$INCLUDE_PAPER_SEARCH" == "true" && "$MINIMUM_SAMPLES" -gt 9 ]]; then',
+        'if [[ "$ALLOW_IMPORT_REPLAYS" == "true" && ! "$PAPER_IMPORT_OPERATION_ID" =~',
+        'if [[ "$ALLOW_IMPORT_REPLAYS" == "true" && ! "$PAPER_IMPORT_ARXIV_ID" =~',
     ):
         _require(source_gate, fragment, "exact reviewed-source gate")
     if "continue-on-error:" in source_gate:
@@ -338,6 +369,12 @@ def validate(
     expected_runner_env = (
         "        env:\n"
         "          STAGING_LOAD_TOKEN: ${{ secrets.PAKPERK_STAGING_LOAD_TOKEN }}\n"
+        "          STAGING_READING_QUEUE_TOKEN: "
+        "${{ secrets.PAKPERK_STAGING_LOAD_READING_QUEUE_TOKEN }}\n"
+        "          STAGING_READING_RECOMMENDATION_TOKEN: "
+        "${{ secrets.PAKPERK_STAGING_LOAD_READING_RECOMMENDATION_TOKEN }}\n"
+        "          STAGING_PAPER_SEARCH_QUERY: "
+        "${{ secrets.PAKPERK_STAGING_LOAD_PAPER_SEARCH_QUERY }}\n"
     )
     env_start = runner.index("        env:\n")
     run_start = runner.index("        run: |\n", env_start)
@@ -345,12 +382,22 @@ def validate(
         raise RuntimeError("staging load secret must remain one step-scoped binding")
     _require(runner, "id: backend-load", "bounded staging runner")
     _require(runner, "continue-on-error: true", "bounded staging runner")
+    _require(
+        runner,
+        "--max-paper-search-requests 9",
+        "bounded staging runner",
+    )
     _require_exact_run(runner, "bounded runner")
     if source.count('python3 scripts/run_backend_load.py "${arguments[@]}"') != 1:
         raise RuntimeError("workflow must invoke the checked-in bounded runner once")
 
     secret_refs = re.findall(r"\$\{\{\s*secrets\.([A-Z][A-Z0-9_]*)\s*\}\}", source)
-    if secret_refs != ["PAKPERK_STAGING_LOAD_TOKEN"]:
+    if secret_refs != [
+        "PAKPERK_STAGING_LOAD_TOKEN",
+        "PAKPERK_STAGING_LOAD_READING_QUEUE_TOKEN",
+        "PAKPERK_STAGING_LOAD_READING_RECOMMENDATION_TOKEN",
+        "PAKPERK_STAGING_LOAD_PAPER_SEARCH_QUERY",
+    ]:
         raise RuntimeError("staging load workflow secret surface changed")
     for forbidden in (
         "${{ github.token }}",

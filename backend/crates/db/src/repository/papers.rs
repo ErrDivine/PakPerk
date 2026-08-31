@@ -5,14 +5,14 @@ use super::{
     IntroductionResolvedReferenceRow, IntroductionSectionRow, JobKind, KeyConnection,
     KeyConnectionRow, LicenseUriRow, PAPER_SELECT_BY_ARXIV, PAPER_SELECT_BY_ID,
     PAPER_SUMMARY_BY_ID, PROCESSING_SELECT, Paper, PaperId, PaperMetadata, PaperRepository,
-    PaperRow, PaperSummary, PaperSummaryRow, ParsedPaper, Postgres, PrepareResult,
-    ProcessingGeneration, ProcessingRow, ProcessingStage, ProcessingState, QueryBuilder,
-    ReferenceResolutionStatus, ReferenceRow, RetrievalCandidate, RetrievalRow, StoredSection,
-    StoredSectionRow, TitleCandidate, TitleCandidateRow, Url, Utc, Uuid, Value, Vector,
-    VerificationMetrics, build_introduction_content, debug, failure_category_name, i64_to_usize,
-    info, instrument, lock_current_generation, observe_capability_transition, option_u32_to_i32,
-    processing_stage_name, publish_capability, reference_status_name, relation_type_name,
-    require_current_generation, section_kind_name, usize_to_i32,
+    PaperRow, PaperSummary, PaperSummaryRow, ParsedPaper, Postgres, PreparationTriggerKind,
+    PrepareResult, ProcessingGeneration, ProcessingRow, ProcessingStage, ProcessingState,
+    QueryBuilder, ReferenceResolutionStatus, ReferenceRow, RetrievalCandidate, RetrievalRow,
+    StoredSection, StoredSectionRow, TitleCandidate, TitleCandidateRow, Url, Utc, Uuid, Value,
+    Vector, VerificationMetrics, build_introduction_content, debug, failure_category_name,
+    i64_to_usize, info, instrument, lock_current_generation, observe_capability_transition,
+    option_u32_to_i32, processing_stage_name, publish_capability, reference_status_name,
+    relation_type_name, require_current_generation, section_kind_name, usize_to_i32,
 };
 
 impl PaperRepository {
@@ -277,6 +277,37 @@ impl PaperRepository {
         paper_id: PaperId,
         retry: bool,
     ) -> Result<Option<PrepareResult>, DbError> {
+        self.prepare_with_trigger(
+            paper_id,
+            retry,
+            PreparationTriggerKind::ApprovedReprocessing,
+        )
+        .await
+    }
+
+    /// Prepares one generation only from a closed, auditable trigger. Public
+    /// callers must use one of the deliberate user-action variants; the
+    /// maintenance wrapper above is intentionally explicit about its policy.
+    #[allow(clippy::too_many_lines)]
+    #[instrument(
+        skip(self),
+        fields(
+            paper_id = %paper_id,
+            retry,
+            preparation.trigger = %preparation_trigger
+        )
+    )]
+    pub async fn prepare_with_trigger(
+        &self,
+        paper_id: PaperId,
+        retry: bool,
+        preparation_trigger: PreparationTriggerKind,
+    ) -> Result<Option<PrepareResult>, DbError> {
+        if !preparation_trigger.is_approved_for_new_enqueue() {
+            return Err(DbError::InvalidData(
+                "legacy preparation provenance cannot be used for a new enqueue".to_owned(),
+            ));
+        }
         let mut transaction = self.pool.begin().await?;
         let Some(locked) = sqlx::query_as::<_, ProcessingRow>(
             r"
@@ -345,9 +376,9 @@ impl PaperRepository {
                 r"
                 INSERT INTO jobs (
                     job_type, paper_id, generation, state, attempts,
-                    available_at, payload
+                    available_at, preparation_trigger_kind, payload
                 )
-                VALUES ($1, $2, $3, 'queued', 0, now(), '{}'::jsonb)
+                VALUES ($1, $2, $3, 'queued', 0, now(), $4, '{}'::jsonb)
                 ON CONFLICT (paper_id, generation, job_type) DO UPDATE
                 SET state = 'queued',
                     attempts = 0,
@@ -357,14 +388,16 @@ impl PaperRepository {
                     last_error_class = NULL,
                     last_error_code = NULL,
                     last_error_message = NULL,
+                    preparation_trigger_kind = EXCLUDED.preparation_trigger_kind,
                     completed_at = NULL,
                     updated_at = now()
-                WHERE $4 AND jobs.state = 'failed'
+                WHERE $5 AND jobs.state = 'failed'
                 ",
             )
             .bind(kind.as_str())
             .bind(paper_id)
             .bind(state.generation)
+            .bind(preparation_trigger.as_str())
             .bind(retry)
             .execute(&mut *transaction)
             .await?
@@ -406,6 +439,13 @@ impl PaperRepository {
                 .fetch_one(&mut *transaction)
                 .await?;
         transaction.commit().await?;
+
+        info!(
+            metric.name = "preparation_request",
+            preparation.trigger = %preparation_trigger,
+            preparation.enqueued = enqueued,
+            "evaluated demand-driven preparation request"
+        );
 
         Ok(Some(PrepareResult {
             state: ProcessingState::try_from(refreshed)?,

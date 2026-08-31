@@ -16,7 +16,9 @@ import unittest
 import uuid
 
 from deployment_binding_evidence import (
+    DEEP_READER_FEATURE_KEYS,
     EvidenceError,
+    FEATURE_KEYS as RELEASE_FEATURE_KEYS,
     build_evidence,
     pod_spec_id,
     read_evidence,
@@ -27,6 +29,14 @@ from deployment_binding_evidence import (
 
 
 SOURCE_REVISION = "0123456789abcdef0123456789abcdef01234567"
+TO_READ_FIRST_FEATURE_KEYS = {
+    "paperResolution",
+    "paperTitleSearch",
+    "libraryImportWrites",
+    "readingFeed",
+    "toReadFirstEnforcement",
+}
+FEATURE_KEYS = set(RELEASE_FEATURE_KEYS)
 
 
 def sha(label: str) -> str:
@@ -69,14 +79,32 @@ def fixtures() -> tuple[bytes, bytes, bytes, bytes]:
             },
         },
     }
-    features = {
-        "accounts": True,
-        "library": True,
-        "libraryWrites": True,
-        "comments": True,
-        "commentCreation": True,
-        "accountDeletion": True,
-    }
+    features = dict.fromkeys(FEATURE_KEYS, False)
+    features.update(
+        {
+            "accounts": True,
+            "library": True,
+            "libraryWrites": True,
+            "paperResolution": True,
+            "paperTitleSearch": True,
+            "libraryImportWrites": True,
+            "readingFeed": True,
+            "toReadFirstEnforcement": True,
+            "comments": True,
+            "commentCreation": True,
+            "accountDeletion": True,
+            "libraryV2": True,
+            "researchProfiles": True,
+            "recommendations": True,
+            "recommendationEvents": True,
+            "searchLookup": True,
+            "searchExplore": True,
+            "savedQueries": True,
+            "readingBriefs": True,
+            "subscriptions": True,
+            "notifications": True,
+        }
+    )
     approvals = {
         "legalReviewId": sha("legal approval"),
         "moderationReadinessId": sha("moderation approval"),
@@ -84,6 +112,7 @@ def fixtures() -> tuple[bytes, bytes, bytes, bytes]:
         "restoreDrillId": sha("restore approval"),
         "reviewerFlowId": sha("reviewer approval"),
         "strictContentReviewId": sha("strict-content approval"),
+        "deepReaderReleaseId": "",
     }
     images = {
         "backend": promotion["helm_values"]["image"],
@@ -290,6 +319,16 @@ def sha_from_bytes(value: bytes) -> str:
     return "sha256:" + hashlib.sha256(value).hexdigest()
 
 
+def refresh_content_id(evidence: dict) -> None:
+    evidence["content_id"] = ""
+    evidence["content_id"] = (
+        "deployment-binding-v1:sha256:"
+        + hashlib.sha256(
+            b"pakperk-deployment-binding-v1\0" + canonical(evidence)
+        ).hexdigest()
+    )
+
+
 def rewrite_contract(config_map_bytes: bytes, mutate) -> bytes:
     config_map = json.loads(config_map_bytes)
     contract = json.loads(config_map["data"]["releaseContract.json"])
@@ -345,6 +384,7 @@ class DeploymentBindingEvidenceTest(unittest.TestCase):
             {item["component"]: item["replicas"] for item in validated["workloads"]}["api"],
             2,
         )
+        self.assertEqual(set(validated["release"]["features"]), FEATURE_KEYS)
         for excluded in (
             "pakperk-production",
             "pakperk-api-0",
@@ -353,6 +393,116 @@ class DeploymentBindingEvidenceTest(unittest.TestCase):
             "Bearer ",
         ):
             self.assertNotIn(excluded, encoded)
+
+    def test_to_read_first_features_are_exact_and_default_off_safe(self) -> None:
+        promotion, config_map, pods, observation = fixtures()
+
+        default_off = rewrite_contract(
+            config_map,
+            lambda contract: contract["features"].update(
+                dict.fromkeys(
+                    {
+                        *TO_READ_FIRST_FEATURE_KEYS,
+                        "recommendations",
+                        "readingBriefs",
+                        "subscriptions",
+                        "notifications",
+                    },
+                    False,
+                )
+            ),
+        )
+        evidence = build_evidence(promotion, default_off, pods, observation)
+        self.assertEqual(set(evidence["release"]["features"]), FEATURE_KEYS)
+        self.assertTrue(
+            all(
+                evidence["release"]["features"][key] is False
+                for key in TO_READ_FIRST_FEATURE_KEYS
+            )
+        )
+        self.assertTrue(
+            all(
+                evidence["release"]["features"][key] is False
+                for key in DEEP_READER_FEATURE_KEYS
+            )
+        )
+
+        for key in FEATURE_KEYS:
+            with self.subTest(missing=key):
+                missing = rewrite_contract(
+                    config_map,
+                    lambda contract, key=key: contract["features"].pop(key),
+                )
+                with self.assertRaisesRegex(EvidenceError, "closed key set"):
+                    build_evidence(promotion, missing, pods, observation)
+
+        extra = rewrite_contract(
+            config_map,
+            lambda contract: contract["features"].update(
+                {"unreviewedFeature": False}
+            ),
+        )
+        with self.assertRaisesRegex(EvidenceError, "closed key set"):
+            build_evidence(promotion, extra, pods, observation)
+
+        non_boolean = rewrite_contract(
+            config_map,
+            lambda contract: contract["features"].update(
+                {"readingFeed": "false"}
+            ),
+        )
+        with self.assertRaisesRegex(EvidenceError, "not boolean"):
+            build_evidence(promotion, non_boolean, pods, observation)
+
+    def test_to_read_first_feature_tampering_breaks_release_binding(self) -> None:
+        promotion, config_map, pods, observation = fixtures()
+        valid_disabled_overrides = {
+            "paperResolution": {
+                "paperResolution": False,
+                "paperTitleSearch": False,
+                "libraryImportWrites": False,
+            },
+            "paperTitleSearch": {"paperTitleSearch": False},
+            "libraryImportWrites": {"libraryImportWrites": False},
+            "readingFeed": {
+                "readingFeed": False,
+                "toReadFirstEnforcement": False,
+                "recommendations": False,
+                "readingBriefs": False,
+                "subscriptions": False,
+                "notifications": False,
+            },
+            "toReadFirstEnforcement": {"toReadFirstEnforcement": False},
+        }
+
+        for key, overrides in valid_disabled_overrides.items():
+            with self.subTest(feature=key):
+                bound_config = rewrite_contract(
+                    config_map,
+                    lambda contract, overrides=overrides: contract[
+                        "features"
+                    ].update(overrides),
+                )
+                evidence = build_evidence(
+                    promotion, bound_config, pods, observation
+                )
+                evidence["release"]["features"][key] = True
+                refresh_content_id(evidence)
+                with self.assertRaisesRegex(EvidenceError, "release digest"):
+                    validate_evidence(evidence)
+
+        mirror_tampered = json.loads(config_map)
+        mirrored_features = json.loads(
+            mirror_tampered["data"]["enabledFeatures.json"]
+        )
+        mirrored_features["readingFeed"] = False
+        mirror_tampered["data"]["enabledFeatures.json"] = compact(
+            mirrored_features
+        )
+        with self.assertRaisesRegex(EvidenceError, "data mirror"):
+            build_evidence(
+                promotion, canonical(mirror_tampered), pods, observation
+            )
 
     def test_release_binding_and_runtime_image_mismatches_fail_closed(self) -> None:
         promotion, config_map, pods, observation = fixtures()
@@ -472,6 +622,80 @@ class DeploymentBindingEvidenceTest(unittest.TestCase):
         invalid = rewrite_contract(config_map, make_deletion_without_account)
         with self.assertRaisesRegex(EvidenceError, "feature dependencies"):
             build_evidence(promotion, invalid, pods, observation)
+
+        deep_without_evidence = rewrite_contract(
+            config_map,
+            lambda contract: contract["features"].update({"deepReader": True}),
+        )
+        with self.assertRaisesRegex(EvidenceError, "deepReaderReleaseId"):
+            build_evidence(
+                promotion,
+                deep_without_evidence,
+                pods,
+                observation,
+            )
+
+        deep_with_evidence = rewrite_contract(
+            config_map,
+            lambda contract: (
+                contract["features"].update({"deepReader": True}),
+                contract["releaseEvidence"].update(
+                    {"deepReaderReleaseId": sha("deep-reader-release-bundle")}
+                ),
+            ),
+        )
+        build_evidence(promotion, deep_with_evidence, pods, observation)
+
+        invalid_overrides = {
+            "title search without resolution": {
+                "paperResolution": False,
+                "libraryImportWrites": False,
+            },
+            "import without accounts": {
+                "accounts": False,
+                "library": False,
+                "libraryWrites": False,
+                "paperTitleSearch": False,
+                "readingFeed": False,
+                "toReadFirstEnforcement": False,
+                "comments": False,
+                "commentCreation": False,
+                "accountDeletion": False,
+            },
+            "import without library": {
+                "library": False,
+                "libraryWrites": False,
+                "readingFeed": False,
+                "toReadFirstEnforcement": False,
+            },
+            "import without library writes": {"libraryWrites": False},
+            "import without resolution": {
+                "paperResolution": False,
+                "paperTitleSearch": False,
+            },
+            "feed without library": {
+                "library": False,
+                "libraryWrites": False,
+                "libraryImportWrites": False,
+            },
+            "enforcement without feed": {"readingFeed": False},
+            "passport without deep reader": {"paperPassport": True},
+            "annotations without deep reader": {"annotations": True},
+            "memory without annotations": {"researchMemory": True},
+        }
+        for label, overrides in invalid_overrides.items():
+            with self.subTest(case=label):
+                invalid = rewrite_contract(
+                    config_map,
+                    lambda contract, overrides=overrides: contract[
+                        "features"
+                    ].update(overrides),
+                )
+                with self.assertRaisesRegex(
+                    EvidenceError, "feature dependencies"
+                ):
+                    build_evidence(promotion, invalid, pods, observation)
+
         wrong_chart = rewrite_contract(
             config_map,
             lambda contract: contract["chart"].update({"name": "other"}),

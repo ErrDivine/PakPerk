@@ -4,23 +4,41 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models/paper.dart';
+import '../../core/library/library_models.dart';
+import '../../app/discovery_providers.dart';
+import '../../core/interactions/interaction_models.dart';
 import '../../core/providers.dart';
 import '../comments/paper_comments_control.dart';
-import '../library/paper_save_control.dart';
+import '../document_reader/reader_library_control.dart';
 
 /// Paper-scoped actions that stay available while the reader changes stages.
 class PaperActionBar extends ConsumerWidget {
-  const PaperActionBar({required this.paper, super.key});
+  const PaperActionBar({
+    required this.paper,
+    this.contextualAction,
+    this.saveSourceKind,
+    this.interactionContext,
+    super.key,
+  });
 
   final PaperSummary paper;
+  final Widget? contextualAction;
+  final LibrarySaveSourceKind? saveSourceKind;
+  final PaperInteractionContext? interactionContext;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final features = ref.watch(featureFlagsProvider);
     final actions = <Widget>[
-      if (features.library) PaperSaveControl(paper: paper, compact: true),
+      if (features.library)
+        ReaderLibraryControl(
+          paper: paper,
+          saveSourceKind: saveSourceKind,
+          interactionContext: interactionContext,
+        ),
       if (features.comments) PaperCommentsControl(paper: paper, compact: true),
-      _PaperArxivControl(paper: paper),
+      if (contextualAction != null) contextualAction!,
+      _PaperArxivControl(paper: paper, interactionContext: interactionContext),
     ];
 
     return Material(
@@ -55,9 +73,13 @@ class PaperActionBar extends ConsumerWidget {
 }
 
 class _PaperArxivControl extends ConsumerWidget {
-  const _PaperArxivControl({required this.paper});
+  const _PaperArxivControl({
+    required this.paper,
+    required this.interactionContext,
+  });
 
   final PaperSummary paper;
+  final PaperInteractionContext? interactionContext;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -100,6 +122,17 @@ class _PaperArxivControl extends ConsumerWidget {
     final uri = paper.canonicalAbsUri;
     final opened =
         uri != null && await ref.read(externalLinkOpenerProvider).open(uri);
+    if (opened) {
+      ref
+          .read(interactionEventBatcherProvider)
+          .record(
+            eventType: PaperInteractionEventType.openedOriginal,
+            paperId: paper.paperId,
+            feedMode: interactionContext?.feedMode,
+            batchId: interactionContext?.batchId,
+            position: interactionContext?.position,
+          );
+    }
     if (!opened && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not open the arXiv record.')),

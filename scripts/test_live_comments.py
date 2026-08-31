@@ -1701,7 +1701,7 @@ def run_acceptance() -> None:
         )
         expect_status(discovery, 200, "Keycloak realm discovery")
         assert_database_migration_version()
-        record_scenario_pass(state, "database_migration_version_10")
+        record_scenario_pass(state, "database_migration_version_24")
         print(f"PASS database is at exact migration {DATABASE_MIGRATION_VERSION}")
         paper_id = seed_paper(state)
         before_preparation = preparation_snapshot(paper_id)

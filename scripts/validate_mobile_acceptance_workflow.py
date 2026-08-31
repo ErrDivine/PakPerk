@@ -68,7 +68,7 @@ EXPECTED_RUN_SHA256 = {
         "68882b133588798cf62ff1a05ff8bb5198b9e8f191493f49a2e9af060f786ee0"
     ),
     "Run complete protected physical-device acceptance": (
-        "4d97f7e4cb8dc5ef499d3f5cf05c53850a489709565766936d17c7ea75cd7e89"
+        "7547673be6749d6090d083e20863e3785e107358a86a57ff3b7486f32e48469e"
     ),
     "Validate and atomically package sanitized acceptance evidence": (
         "89f990f5eee2e0f796bde6b3e0f9d43b428899464c6e1ee0eb4820cdb1d7976d"
@@ -89,7 +89,7 @@ EXPECTED_STEP_SHA256 = {
         "9a12a6bdff51bf16c4e5658f91dac84f23d72320c71f93f1bee4b34b1b058465"
     ),
     "Run complete protected physical-device acceptance": (
-        "827f863df6d15018a967a5eb4e335e271ca1daef790ae0ffc73c7438f03b3ba0"
+        "b318ce0689502a1c4c477cc115e6172c727568e092db09725793e903e40d45b4"
     ),
     "Validate and atomically package sanitized acceptance evidence": (
         "bd51391cbdcec15dfc633d4068bacd6033ebd71be631021fe12277976c3818f7"
@@ -500,6 +500,127 @@ def _validate_semantic_contract(source: str) -> None:
         _require(candidate, fragment, "protected candidate and run binding")
 
     acceptance = _named_step(source, EXPECTED_STEP_NAMES[2])
+    candidate_binding_contract = (
+        "          if set(candidate_binding) != {\n"
+        '              "manifest_id",\n'
+        '              "provenance_id",\n'
+        '              "signed_workflow",\n'
+        '              "strict_full_text",\n'
+        '              "mobile_feature_evidence",\n'
+        '              "android",\n'
+        '              "ios",\n'
+        "          }:\n"
+        '              raise SystemExit("candidate binding does not match its closed key contract")'
+    )
+    if acceptance.count(candidate_binding_contract) != 1:
+        raise RuntimeError(
+            "protected acceptance request lacks the closed candidate binding"
+        )
+    mobile_feature_contract = (
+        '          mobile_feature_evidence = candidate_binding["mobile_feature_evidence"]\n'
+        "          if (\n"
+        "              not isinstance(mobile_feature_evidence, dict)\n"
+        "              or set(mobile_feature_evidence) != {\n"
+        '                  "schema",\n'
+        '                  "sha256",\n'
+        '                  "paperTitleSearch",\n'
+        '                  "libraryImportWrites",\n'
+        '                  "readingFeed",\n'
+        '                  "toReadFirstEnforcement",\n'
+        '                  "libraryV2",\n'
+        '                  "recommendations",\n'
+        '                  "recommendationEvents",\n'
+        '                  "searchLookup",\n'
+        '                  "searchExplore",\n'
+        '                  "savedQueries",\n'
+        '                  "researchProfiles",\n'
+        '                  "readingBriefs",\n'
+        '                  "subscriptions",\n'
+        '                  "notifications",\n'
+        '                  "deepReader",\n'
+        '                  "paperPassport",\n'
+        '                  "semanticFacets",\n'
+        '                  "documentVisualObjects",\n'
+        '                  "readingCheckpoints",\n'
+        '                  "annotations",\n'
+        '                  "evidenceCards",\n'
+        '                  "researchMemory",\n'
+        '                  "versionDiff",\n'
+        '                  "assistantV2",\n'
+        "              }\n"
+        '              or type(mobile_feature_evidence["schema"]) is not int\n'
+        '              or mobile_feature_evidence["schema"] != 6\n'
+        '              or not isinstance(mobile_feature_evidence["sha256"], str)\n'
+        '              or len(mobile_feature_evidence["sha256"]) != 64\n'
+        "              or any(\n"
+        '                  character not in "0123456789abcdef"\n'
+        '                  for character in mobile_feature_evidence["sha256"]\n'
+        "              )\n"
+        "              or any(\n"
+        "                  type(mobile_feature_evidence[key]) is not bool\n"
+        "                  for key in (\n"
+        '                      "paperTitleSearch",\n'
+        '                      "libraryImportWrites",\n'
+        '                      "readingFeed",\n'
+        '                      "toReadFirstEnforcement",\n'
+        '                      "libraryV2",\n'
+        '                      "recommendations",\n'
+        '                      "recommendationEvents",\n'
+        '                      "searchLookup",\n'
+        '                      "searchExplore",\n'
+        '                      "savedQueries",\n'
+        '                      "researchProfiles",\n'
+        '                      "readingBriefs",\n'
+        '                      "subscriptions",\n'
+        '                      "notifications",\n'
+        '                      "deepReader",\n'
+        '                      "paperPassport",\n'
+        '                      "semanticFacets",\n'
+        '                      "documentVisualObjects",\n'
+        '                      "readingCheckpoints",\n'
+        '                      "annotations",\n'
+        '                      "evidenceCards",\n'
+        '                      "researchMemory",\n'
+        '                      "versionDiff",\n'
+        '                      "assistantV2",\n'
+        "                  )\n"
+        "              )\n"
+        "              or any(\n"
+        "                  mobile_feature_evidence[key] is not True\n"
+        "                  for key in (\n"
+        '                      "paperTitleSearch",\n'
+        '                      "libraryImportWrites",\n'
+        '                      "readingFeed",\n'
+        '                      "toReadFirstEnforcement",\n'
+        '                      "libraryV2",\n'
+        '                      "recommendations",\n'
+        '                      "recommendationEvents",\n'
+        '                      "searchLookup",\n'
+        '                      "searchExplore",\n'
+        '                      "savedQueries",\n'
+        '                      "researchProfiles",\n'
+        '                      "readingBriefs",\n'
+        '                      "subscriptions",\n'
+        '                      "notifications",\n'
+        '                      "deepReader",\n'
+        '                      "paperPassport",\n'
+        '                      "semanticFacets",\n'
+        '                      "documentVisualObjects",\n'
+        '                      "readingCheckpoints",\n'
+        '                      "annotations",\n'
+        '                      "evidenceCards",\n'
+        '                      "researchMemory",\n'
+        '                      "versionDiff",\n'
+        '                      "assistantV2",\n'
+        "                  )\n"
+        "              )\n"
+        "          ):\n"
+        '              raise SystemExit("candidate mobile feature evidence is invalid")'
+    )
+    if acceptance.count(mobile_feature_contract) != 1:
+        raise RuntimeError(
+            "protected acceptance request lacks exact mobile feature evidence"
+        )
     request_schema = (
         '          request = {\n'
         f'              "schema": {evidence.EVIDENCE_SCHEMA_VERSION},\n'
@@ -565,6 +686,38 @@ def _validate_semantic_contract(source: str) -> None:
         '                      "opening_transition_ms": '
         f'["range", 1, {evidence.OPENING_TRANSITION_MAX_MS}],\n'
         "                  },\n"
+        '                  "plan03_reader_queue_and_large_document_safety": {\n'
+        '                      "large_document_fixture_blocks": '
+        f'["eq", {evidence.LARGE_DOCUMENT_FIXTURE_BLOCKS}, None],\n'
+        '                      "large_document_minimum_blocks_traversed_per_device": '
+        f'["eq", {evidence.LARGE_DOCUMENT_BLOCKS_TRAVERSED_PER_DEVICE}, None],\n'
+        '                      "large_document_minimum_pages_traversed_per_device": '
+        f'["min", {evidence.LARGE_DOCUMENT_MIN_PAGES_TRAVERSED}, None],\n'
+        '                      "large_document_minimum_page_fetch_samples_per_device": '
+        f'["min", {evidence.LARGE_DOCUMENT_MIN_PAGE_FETCH_SAMPLES}, None],\n'
+        '                      "large_document_minimum_frame_samples_per_device": '
+        f'["min", {evidence.LARGE_DOCUMENT_MIN_FRAME_SAMPLES}, None],\n'
+        '                      "large_document_minimum_scroll_window_seconds_per_device": '
+        f'["min", {evidence.LARGE_DOCUMENT_MIN_SCROLL_WINDOW_SECONDS}, None],\n'
+        '                      "large_document_requested_page_size_blocks": '
+        f'["eq", {evidence.LARGE_DOCUMENT_REQUEST_PAGE_SIZE_BLOCKS}, None],\n'
+        '                      "large_document_peak_retained_blocks": '
+        f'["range", 1, {evidence.LARGE_DOCUMENT_MAX_RETAINED_BLOCKS}],\n'
+        '                      "large_document_worst_device_first_page_ms": '
+        f'["range", 1, {evidence.LARGE_DOCUMENT_FIRST_PAGE_MAX_MS}],\n'
+        '                      "large_document_worst_device_page_fetch_p95_ms": '
+        f'["range", 1, {evidence.LARGE_DOCUMENT_PAGE_FETCH_P95_MAX_MS}],\n'
+        '                      "large_document_worst_device_scroll_frame_p95_us": '
+        f'["range", 1, {evidence.LARGE_DOCUMENT_SCROLL_FRAME_P95_MAX_US}],\n'
+        '                      "large_document_worst_device_scroll_frame_max_us": '
+        f'["range", 1, {evidence.LARGE_DOCUMENT_SCROLL_FRAME_MAX_US}],\n'
+        '                      "large_document_worst_device_missed_frame_ratio_basis_points": '
+        f'["range", 0, {evidence.LARGE_DOCUMENT_MISSED_FRAME_RATIO_MAX_BPS}],\n'
+        '                      "large_document_worst_device_peak_rss_growth_mib": '
+        f'["range", 0, {evidence.LARGE_DOCUMENT_PEAK_RSS_GROWTH_MAX_MIB}],\n'
+        '                      "large_document_worst_device_maximum_live_block_widgets": '
+        f'["range", 1, {evidence.LARGE_DOCUMENT_MAX_LIVE_BLOCK_WIDGETS}],\n'
+        "                  },\n"
         "              },"
     )
     if acceptance.count(performance_contract) != 1:
@@ -586,6 +739,7 @@ def _validate_semantic_contract(source: str) -> None:
         "BASH_ENV: /dev/null",
         "ENV: /dev/null",
         '"runner_session": runner_session_binding',
+        '"mobile_feature_evidence": mobile_feature_evidence',
         '"acceptance_contract": {',
         '"performance_metric_rules": {',
         '"device_identity_hash_contract": {',

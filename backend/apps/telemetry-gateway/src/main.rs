@@ -426,10 +426,17 @@ fn valid_event(event: &str) -> bool {
             | "feed_cache_rows"
             | "feed_cache_bytes"
             | "feed_time_to_readable_ms"
+            | "reading_feed_shadow_decision"
+            | "recommendation_card_rendered"
+            | "recommendation_publication_rejected"
+            | "pending_intent_age"
+            | "discovery_suppression_latency"
+            | "discovery_unlock_latency"
             | "save_requested"
             | "save_synced"
             | "save_failed"
             | "library_outbox_backlog"
+            | "library_sync_conflict"
             | "auth_started"
             | "auth_completed"
             | "auth_cancelled"
@@ -465,6 +472,12 @@ fn valid_http_request_completed_attribute(key: &str, value: &OtlpValue) -> bool 
                     | "account"
                     | "account_deletion"
                     | "library"
+                    | "reading_feed"
+                    | "search"
+                    | "profile"
+                    | "recommendations"
+                    | "engagement"
+                    | "events"
                     | "comments"
                     | "moderation"
                     | "unknown"
@@ -510,6 +523,118 @@ fn valid_mobile_error_attribute(key: &str, value: &OtlpValue) -> bool {
     }
 }
 
+fn valid_reading_feed_shadow_attribute(key: &str, value: &OtlpValue) -> bool {
+    match key {
+        "shadow_decision" => matches!(
+            string_value(Some(value)),
+            Some(
+                "checking_queue"
+                    | "finishing_queue"
+                    | "to_read"
+                    | "recommendations"
+                    | "fail_closed"
+            )
+        ),
+        "queue_authority" => matches!(
+            string_value(Some(value)),
+            Some(
+                "unknown"
+                    | "local_non_empty"
+                    | "pending_save"
+                    | "server_non_empty"
+                    | "server_empty"
+                    | "stale"
+            )
+        ),
+        "legacy_decision" => string_value(Some(value)) == Some("public_discovery"),
+        "server_policy" => matches!(
+            string_value(Some(value)),
+            Some("unknown" | "shadow" | "strict")
+        ),
+        "queue_policy_agrees" | "offline" => bool_value(value).is_some(),
+        _ => false,
+    }
+}
+
+fn valid_recommendation_card_rendered_attribute(key: &str, value: &OtlpValue) -> bool {
+    match key {
+        "queue_authority" => matches!(
+            string_value(Some(value)),
+            Some(
+                "unknown"
+                    | "local_non_empty"
+                    | "pending_save"
+                    | "server_non_empty"
+                    | "server_empty"
+                    | "stale"
+            )
+        ),
+        "server_active_count" => matches!(
+            string_value(Some(value)),
+            Some("zero" | "nonzero" | "unknown")
+        ),
+        "policy_consistent" => bool_value(value).is_some(),
+        _ => false,
+    }
+}
+
+fn valid_duration_bucket(value: &OtlpValue) -> bool {
+    matches!(
+        string_value(Some(value)),
+        Some(
+            "none"
+                | "unknown"
+                | "lt_100ms"
+                | "100ms_1s"
+                | "1s_5s"
+                | "5s_30s"
+                | "30s_2m"
+                | "2m_15m"
+                | "15m_1h"
+                | "1h_6h"
+                | "6h_24h"
+                | "gte_24h"
+        )
+    )
+}
+
+fn valid_plan02_mobile_attribute(event: &str, key: &str, value: &OtlpValue) -> bool {
+    match (event, key) {
+        ("recommendation_publication_rejected", "reason") => matches!(
+            string_value(Some(value)),
+            Some(
+                "local_queue_non_empty"
+                    | "pending_save"
+                    | "pending_import"
+                    | "pending_remove"
+                    | "sync_reset"
+                    | "revision_stale"
+                    | "server_queue_not_empty"
+                    | "personalization_off"
+                    | "personalization_unknown"
+            )
+        ),
+        ("pending_intent_age", "intent_kind") => {
+            matches!(string_value(Some(value)), Some("save" | "import"))
+        }
+        ("pending_intent_age", "age_bucket")
+        | ("discovery_suppression_latency" | "discovery_unlock_latency", "latency_bucket")
+        | ("library_outbox_backlog", "oldest_age_bucket") => valid_duration_bucket(value),
+        ("discovery_suppression_latency", "trigger") => string_value(Some(value)) == Some("save"),
+        ("discovery_unlock_latency", "trigger") => {
+            string_value(Some(value)) == Some("final_completion")
+        }
+        ("library_outbox_backlog", "pending_count") => {
+            int_value(value).is_some_and(|value| value <= 100_000)
+        }
+        ("library_sync_conflict", "boundary") => matches!(
+            string_value(Some(value)),
+            Some("local_revision" | "remote_operation")
+        ),
+        _ => false,
+    }
+}
+
 fn valid_event_attribute(event: &str, key: &str, value: &OtlpValue, environment: &str) -> bool {
     match (event, key) {
         ("app_cold_start" | "startup_ready" | "startup_failure", "environment") => {
@@ -531,9 +656,14 @@ fn valid_event_attribute(event: &str, key: &str, value: &OtlpValue, environment:
         | ("save_failed" | "comment_rejected" | "account_deletion_unavailable", "retryable")
         | ("shell_destination_selected", "reselected") => bool_value(value).is_some(),
         ("shell_destination_selected", "destination") => {
-            matches!(string_value(Some(value)), Some("read" | "you"))
+            matches!(string_value(Some(value)), Some("read" | "library" | "you"))
         }
-        ("paper_page_committed", "source") => string_value(Some(value)) == Some("read_feed"),
+        ("paper_page_committed", "source") => {
+            matches!(
+                string_value(Some(value)),
+                Some("to_read" | "reading_recommendations" | "public_discovery")
+            )
+        }
         ("paper_page_committed", "position_bucket") => {
             int_value(value).is_some_and(|value| value <= 100)
         }
@@ -551,6 +681,19 @@ fn valid_event_attribute(event: &str, key: &str, value: &OtlpValue, environment:
         ("feed_time_to_readable_ms", "elapsed_ms") => {
             int_value(value).is_some_and(|value| value <= 86_400_000)
         }
+        ("reading_feed_shadow_decision", key) => valid_reading_feed_shadow_attribute(key, value),
+        ("recommendation_card_rendered", key) => {
+            valid_recommendation_card_rendered_attribute(key, value)
+        }
+        (
+            "recommendation_publication_rejected"
+            | "pending_intent_age"
+            | "discovery_suppression_latency"
+            | "discovery_unlock_latency"
+            | "library_outbox_backlog"
+            | "library_sync_conflict",
+            key,
+        ) => valid_plan02_mobile_attribute(event, key, value),
         ("save_requested", "intent") => {
             matches!(string_value(Some(value)), Some("save" | "remove"))
         }
@@ -559,9 +702,6 @@ fn valid_event_attribute(event: &str, key: &str, value: &OtlpValue, environment:
             string_value(Some(value)),
             Some("save" | "remove" | "mutation")
         ),
-        ("library_outbox_backlog", "pending_count") => {
-            int_value(value).is_some_and(|value| value <= 100_000)
-        }
         ("auth_started" | "auth_completed" | "auth_cancelled", "purpose") => matches!(
             string_value(Some(value)),
             Some("session" | "account_deletion")
@@ -603,11 +743,32 @@ fn valid_event_attribute_set(event: &str, attributes: &HashMap<&str, &OtlpValue>
         | "feed_prefetch_failed"
         | "feed_prefetch_deduplicated"
         | "feed_blank_card" => &[],
+        "shell_destination_selected" => &["destination", "reselected"],
+        "paper_page_committed" => &["source", "position_bucket"],
         "next_paper_cache_hit" | "next_paper_cache_miss" => &["cache_tier"],
         "feed_cache_rows" => &["rows"],
         "feed_cache_bytes" => &["bytes"],
         "feed_time_to_readable_ms" => &["elapsed_ms"],
-        "library_outbox_backlog" => &["pending_count"],
+        "reading_feed_shadow_decision" => &[
+            "shadow_decision",
+            "queue_authority",
+            "legacy_decision",
+            "server_policy",
+            "queue_policy_agrees",
+            "offline",
+        ],
+        "recommendation_card_rendered" => &[
+            "queue_authority",
+            "server_active_count",
+            "policy_consistent",
+        ],
+        "recommendation_publication_rejected" => &["reason"],
+        "pending_intent_age" => &["intent_kind", "age_bucket"],
+        "discovery_suppression_latency" | "discovery_unlock_latency" => {
+            &["trigger", "latency_bucket"]
+        }
+        "library_outbox_backlog" => &["pending_count", "oldest_age_bucket"],
+        "library_sync_conflict" => &["boundary"],
         "comment_reported" | "user_reported" => &["outcome"],
         "http_request_completed" => &[
             "method_class",
@@ -796,8 +957,23 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn accepts_all_feed_metrics_and_the_exact_http_completion_shape() {
         for (event, attributes) in [
+            (
+                "shell_destination_selected",
+                json!([
+                    {"key":"destination","value":{"stringValue":"library"}},
+                    {"key":"reselected","value":{"boolValue":false}}
+                ]),
+            ),
+            (
+                "paper_page_committed",
+                json!([
+                    {"key":"source","value":{"stringValue":"reading_recommendations"}},
+                    {"key":"position_bucket","value":{"intValue":"2"}}
+                ]),
+            ),
             ("feed_prefetch_requested", json!([])),
             ("feed_prefetch_succeeded", json!([])),
             ("feed_prefetch_failed", json!([])),
@@ -825,7 +1001,39 @@ mod tests {
             ),
             (
                 "library_outbox_backlog",
-                json!([{"key":"pending_count","value":{"intValue":"3"}}]),
+                json!([
+                    {"key":"pending_count","value":{"intValue":"3"}},
+                    {"key":"oldest_age_bucket","value":{"stringValue":"2m_15m"}}
+                ]),
+            ),
+            (
+                "recommendation_publication_rejected",
+                json!([{"key":"reason","value":{"stringValue":"pending_save"}}]),
+            ),
+            (
+                "pending_intent_age",
+                json!([
+                    {"key":"intent_kind","value":{"stringValue":"import"}},
+                    {"key":"age_bucket","value":{"stringValue":"15m_1h"}}
+                ]),
+            ),
+            (
+                "discovery_suppression_latency",
+                json!([
+                    {"key":"trigger","value":{"stringValue":"save"}},
+                    {"key":"latency_bucket","value":{"stringValue":"lt_100ms"}}
+                ]),
+            ),
+            (
+                "discovery_unlock_latency",
+                json!([
+                    {"key":"trigger","value":{"stringValue":"final_completion"}},
+                    {"key":"latency_bucket","value":{"stringValue":"1s_5s"}}
+                ]),
+            ),
+            (
+                "library_sync_conflict",
+                json!([{"key":"boundary","value":{"stringValue":"remote_operation"}}]),
             ),
         ] {
             assert!(
@@ -869,9 +1077,22 @@ mod tests {
         );
         let oversized_backlog = payload(
             "library_outbox_backlog",
-            &json!([{"key":"pending_count","value":{"intValue":"100001"}}]),
+            &json!([
+                {"key":"pending_count","value":{"intValue":"100001"}},
+                {"key":"oldest_age_bucket","value":{"stringValue":"unknown"}}
+            ]),
         );
         assert!(validate_payload(&oversized_backlog, "staging", SystemTime::now()).is_err());
+
+        let raw_timestamp = payload(
+            "pending_intent_age",
+            &json!([
+                {"key":"intent_kind","value":{"stringValue":"save"}},
+                {"key":"age_bucket","value":{"stringValue":"1s_5s"}},
+                {"key":"created_at","value":{"stringValue":"2026-08-28T00:00:00Z"}}
+            ]),
+        );
+        assert!(validate_payload(&raw_timestamp, "staging", SystemTime::now()).is_err());
 
         for forbidden_key in ["route", "uri", "authorization", "body", "paper_id"] {
             let mut attributes = http_attributes.as_array().unwrap().clone();
@@ -890,6 +1111,76 @@ mod tests {
                 )
                 .is_err(),
                 "accepted forbidden HTTP field {forbidden_key}"
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_only_the_closed_reading_feed_shadow_shape() {
+        let accepted = payload(
+            "reading_feed_shadow_decision",
+            &json!([
+                {"key":"shadow_decision","value":{"stringValue":"to_read"}},
+                {"key":"queue_authority","value":{"stringValue":"local_non_empty"}},
+                {"key":"legacy_decision","value":{"stringValue":"public_discovery"}},
+                {"key":"server_policy","value":{"stringValue":"shadow"}},
+                {"key":"queue_policy_agrees","value":{"boolValue":false}},
+                {"key":"offline","value":{"boolValue":false}}
+            ]),
+        );
+        assert!(validate_payload(&accepted, "staging", SystemTime::now()).is_ok());
+
+        let with_private_field = payload(
+            "reading_feed_shadow_decision",
+            &json!([
+                {"key":"shadow_decision","value":{"stringValue":"to_read"}},
+                {"key":"queue_authority","value":{"stringValue":"local_non_empty"}},
+                {"key":"legacy_decision","value":{"stringValue":"public_discovery"}},
+                {"key":"server_policy","value":{"stringValue":"shadow"}},
+                {"key":"queue_policy_agrees","value":{"boolValue":false}},
+                {"key":"offline","value":{"boolValue":false}},
+                {"key":"account_id","value":{"stringValue":"private"}}
+            ]),
+        );
+        assert!(validate_payload(&with_private_field, "staging", SystemTime::now()).is_err());
+    }
+
+    #[test]
+    fn accepts_only_the_closed_recommendation_card_rendered_shape() {
+        let accepted = payload(
+            "recommendation_card_rendered",
+            &json!([
+                {"key":"queue_authority","value":{"stringValue":"server_empty"}},
+                {"key":"server_active_count","value":{"stringValue":"zero"}},
+                {"key":"policy_consistent","value":{"boolValue":true}}
+            ]),
+        );
+        assert!(validate_payload(&accepted, "staging", SystemTime::now()).is_ok());
+
+        for rejected in [
+            json!([
+                {"key":"queue_authority","value":{"stringValue":"server_empty"}},
+                {"key":"server_active_count","value":{"stringValue":"zero"}}
+            ]),
+            json!([
+                {"key":"queue_authority","value":{"stringValue":"server_empty"}},
+                {"key":"server_active_count","value":{"stringValue":"zero"}},
+                {"key":"policy_consistent","value":{"boolValue":false}},
+                {"key":"paper_id","value":{"stringValue":"private"}}
+            ]),
+            json!([
+                {"key":"queue_authority","value":{"stringValue":"forged"}},
+                {"key":"server_active_count","value":{"stringValue":"zero"}},
+                {"key":"policy_consistent","value":{"boolValue":false}}
+            ]),
+        ] {
+            assert!(
+                validate_payload(
+                    &payload("recommendation_card_rendered", &rejected),
+                    "staging",
+                    SystemTime::now(),
+                )
+                .is_err()
             );
         }
     }

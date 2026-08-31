@@ -61,6 +61,18 @@ spec:
             - { name: ARXIV_USER_AGENT, value: {{ printf "Pakperk/%s" .Chart.AppVersion | quote }} }
             - { name: GROBID_URL, value: {{ printf "http://%s-grobid:8070" (include "pakperk.fullname" .) | quote }} }
             - { name: FULLTEXT_POLICY, value: {{ .Values.policy.fulltext | quote }} }
+            - { name: DEEP_READER_ENABLED, value: {{ include "pakperk.bool" .Values.features.deepReader | quote }} }
+            - { name: PAPER_PASSPORT_ENABLED, value: {{ include "pakperk.bool" .Values.features.paperPassport | quote }} }
+            - { name: SEMANTIC_FACETS_ENABLED, value: {{ include "pakperk.bool" .Values.features.semanticFacets | quote }} }
+            - { name: VISUAL_OBJECTS_ENABLED, value: {{ include "pakperk.bool" .Values.features.visualObjects | quote }} }
+            {{- if .Values.visualAssets.existingClaim }}
+            - { name: VISUAL_ASSET_DIRECTORY, value: "/var/lib/pakperk/visual-assets" }
+            - { name: VISUAL_ASSET_SOURCE_MAX_BYTES, value: {{ .Values.visualAssets.maximumSourceBytes | quote }} }
+            - { name: VISUAL_ASSET_MAX_BYTES, value: {{ .Values.visualAssets.maximumAssetBytes | quote }} }
+            {{- end }}
+            - { name: ASSISTANT_V2_ENABLED, value: {{ include "pakperk.bool" .Values.features.assistantV2 | quote }} }
+            - { name: VERSION_DIFF_ENABLED, value: {{ include "pakperk.bool" .Values.features.versionDiff | quote }} }
+            - { name: DOCLING_EXPERIMENT_ENABLED, value: {{ include "pakperk.bool" .Values.features.doclingExperiment | quote }} }
             - { name: LLM_PROVIDER, value: {{ .Values.paperWorker.llmProvider | quote }} }
             - { name: LLM_API_KEY_FILE, value: "/var/run/pakperk-secrets/LLM_API_KEY" }
             - { name: LLM_BASE_URL, value: {{ .Values.paperWorker.llmBaseUrl | quote }} }
@@ -79,10 +91,17 @@ spec:
           volumeMounts:
             - { name: owner-secrets, mountPath: /var/run/pakperk-secrets, readOnly: true }
             - { name: tmp, mountPath: /tmp }
+            {{- if .Values.visualAssets.existingClaim }}
+            - { name: visual-assets, mountPath: /var/lib/pakperk/visual-assets }
+            {{- end }}
       volumes:
         {{- include "pakperk.paperSecretVolumes" . | nindent 8 }}
         - name: tmp
           emptyDir: { sizeLimit: 512Mi }
+        {{- if .Values.visualAssets.existingClaim }}
+        - name: visual-assets
+          persistentVolumeClaim: { claimName: {{ .Values.visualAssets.existingClaim }} }
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector: {{ toYaml . | nindent 8 }}
       {{- end }}

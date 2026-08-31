@@ -11,6 +11,7 @@ import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/models/reader_state.dart';
 import 'package:pakperk/core/providers.dart';
 import 'package:pakperk/core/repository/paper_repository.dart';
+import 'package:pakperk/design_system/motion.dart';
 import 'package:pakperk/features/account/guest_you_screen.dart';
 import 'package:pakperk/features/paper_reader/reader_navigation_controller.dart';
 import 'package:pakperk/features/settings/public_settings_screen.dart';
@@ -57,6 +58,62 @@ void main() {
     await _tapDestination(tester, 'You');
     expect(find.byType(PublicSettingsScreen), findsOneWidget);
     expect(container.read(activeAppBranchProvider), AppBranch.you);
+  });
+
+  testWidgets('reselecting the active You tab returns to its root', (
+    tester,
+  ) async {
+    await _pumpApp(
+      tester,
+      repository: _repositoryFor([samplePaper]),
+      restoration: const AppRestorationState(),
+    );
+
+    await _tapDestination(tester, 'You');
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PublicSettingsScreen), findsOneWidget);
+
+    await _tapDestination(tester, 'You');
+    expect(find.byType(GuestYouScreen), findsOneWidget);
+    expect(find.byType(PublicSettingsScreen), findsNothing);
+  });
+
+  testWidgets('Library preserves the independent You navigation stack', (
+    tester,
+  ) async {
+    await _pumpApp(
+      tester,
+      repository: _repositoryFor([samplePaper]),
+      restoration: const AppRestorationState(),
+    );
+
+    await _tapDestination(tester, 'You');
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PublicSettingsScreen), findsOneWidget);
+
+    await _tapDestination(tester, 'Library');
+    expect(find.text('Library is not enabled'), findsWidgets);
+    expect(_selectedPrimaryDestination(tester), AppBranch.library.shellIndex);
+
+    await _tapDestination(tester, 'You');
+    expect(find.byType(PublicSettingsScreen), findsOneWidget);
+    expect(_selectedPrimaryDestination(tester), AppBranch.you.shellIndex);
+  });
+
+  testWidgets('reduced transparency removes navigation blur dependency', (
+    tester,
+  ) async {
+    await _pumpApp(
+      tester,
+      repository: _repositoryFor([samplePaper]),
+      restoration: const AppRestorationState(),
+      reduceTransparency: true,
+    );
+
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(find.byKey(const ValueKey('primary-navigation')), findsOneWidget);
   });
 
   testWidgets('active Read reselection keeps feed position then pops a paper', (
@@ -130,7 +187,22 @@ void main() {
     );
 
     expect(find.byType(GuestYouScreen), findsOneWidget);
-    expect(_selectedPrimaryDestination(tester), AppBranch.you.index);
+    expect(_selectedPrimaryDestination(tester), AppBranch.you.shellIndex);
+  });
+
+  testWidgets('restored Library branch uses its new persistence index', (
+    tester,
+  ) async {
+    await _pumpApp(
+      tester,
+      repository: _repositoryFor([samplePaper]),
+      restoration: AppRestorationState(
+        activeBranchIndex: AppBranch.library.index,
+      ),
+    );
+
+    expect(find.text('Library is not enabled'), findsWidgets);
+    expect(_selectedPrimaryDestination(tester), AppBranch.library.shellIndex);
   });
 
   testWidgets(
@@ -152,13 +224,20 @@ void main() {
 
       expect(find.byType(NavigationBar), findsOneWidget);
       expect(find.byType(NavigationRail), findsNothing);
+      expect(
+        find.ancestor(
+          of: find.byType(NavigationBar),
+          matching: find.byType(BackdropFilter),
+        ),
+        findsOneWidget,
+      );
       final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
-      expect(bar.destinations, hasLength(2));
-      expect(_selectedPrimaryDestination(tester), AppBranch.read.index);
+      expect(bar.destinations, hasLength(3));
+      expect(_selectedPrimaryDestination(tester), AppBranch.read.shellIndex);
 
       await _tapDestination(tester, 'You');
       expect(find.byType(GuestYouScreen), findsOneWidget);
-      expect(_selectedPrimaryDestination(tester), AppBranch.you.index);
+      expect(_selectedPrimaryDestination(tester), AppBranch.you.shellIndex);
 
       tester.view.physicalSize = const Size(1024, 768);
       tester.view.padding = const FakeViewPadding(
@@ -171,22 +250,22 @@ void main() {
       expect(find.byType(NavigationBar), findsNothing);
       expect(find.byType(NavigationRail), findsOneWidget);
       final rail = tester.widget<NavigationRail>(find.byType(NavigationRail));
-      expect(rail.destinations, hasLength(2));
+      expect(rail.destinations, hasLength(3));
       expect(
         rail.destinations.map(
           (destination) => (destination.label as Text).data,
         ),
-        ['Read', 'You'],
+        ['Read', 'Library', 'You'],
       );
       expect(rail.labelType, NavigationRailLabelType.all);
-      expect(_selectedPrimaryDestination(tester), AppBranch.you.index);
+      expect(_selectedPrimaryDestination(tester), AppBranch.you.shellIndex);
       expect(tester.getRect(find.byType(NavigationRail)).left, 12);
       expect(tester.getRect(find.byType(NavigationRail)).top, 24);
       expect(tester.getRect(find.byType(NavigationRail)).bottom, 768 - 20);
 
       await _tapDestination(tester, 'Read');
       expect(find.text(samplePaper.title), findsOneWidget);
-      expect(_selectedPrimaryDestination(tester), AppBranch.read.index);
+      expect(_selectedPrimaryDestination(tester), AppBranch.read.shellIndex);
       expect(tester.takeException(), isNull);
     },
   );
@@ -202,7 +281,7 @@ void main() {
     );
 
     final readTab = find.bySemanticsLabel(
-      RegExp(r'(Read.*Tab 1 of 2|Tab 1 of 2.*Read)', dotAll: true),
+      RegExp(r'(Read.*Tab 1 of 3|Tab 1 of 3.*Read)', dotAll: true),
     );
     expect(readTab, findsOneWidget);
     expect(
@@ -210,9 +289,14 @@ void main() {
       Tristate.isTrue,
     );
 
+    final libraryTab = find.bySemanticsLabel(
+      RegExp(r'(Library.*Tab 2 of 3|Tab 2 of 3.*Library)', dotAll: true),
+    );
+    expect(libraryTab, findsOneWidget);
+
     await _tapDestination(tester, 'You');
     final youTab = find.bySemanticsLabel(
-      RegExp(r'(You.*Tab 2 of 2|Tab 2 of 2.*You)', dotAll: true),
+      RegExp(r'(You.*Tab 3 of 3|Tab 3 of 3.*You)', dotAll: true),
     );
     expect(youTab, findsOneWidget);
     expect(
@@ -239,7 +323,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(PublicSettingsScreen), findsOneWidget);
-    expect(_selectedPrimaryDestination(tester), AppBranch.you.index);
+    expect(_selectedPrimaryDestination(tester), AppBranch.you.shellIndex);
   });
 
   testWidgets(
@@ -308,7 +392,7 @@ void main() {
     await tester.pumpAndSettle();
 
     _expectAbstractSelected();
-    expect(_selectedPrimaryDestination(tester), AppBranch.read.index);
+    expect(_selectedPrimaryDestination(tester), AppBranch.read.shellIndex);
   });
 
   testWidgets('encoded legacy arXiv link resolves in the Read branch', (
@@ -352,7 +436,41 @@ void main() {
     expect(repository.paperByArxivCalls, 0);
     expect(find.text('Legacy arXiv paper'), findsWidgets);
     _expectAbstractSelected();
-    expect(_selectedPrimaryDestination(tester), AppBranch.read.index);
+    expect(_selectedPrimaryDestination(tester), AppBranch.read.shellIndex);
+  });
+
+  testWidgets('Explore map intent opens the existing Connections stage', (
+    tester,
+  ) async {
+    final repository = _repositoryFor([samplePaper]);
+    await _pumpApp(
+      tester,
+      repository: repository,
+      restoration: const AppRestorationState(),
+    );
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PakPerkApp)),
+    );
+    final route = PakPerkRoutes.arxivConnections(samplePaper.arxivId);
+    expect(
+      route,
+      '${PakPerkRoutes.arxiv(samplePaper.arxivId)}?view=connections',
+    );
+
+    container.read(pakPerkRouterProvider).go(route);
+    await tester.pumpAndSettle();
+
+    expect(repository.paperByArxivCalls, 1);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.label == 'Connections view, selected' &&
+            widget.properties.selected == true,
+      ),
+      findsOneWidget,
+    );
+    expect(_selectedPrimaryDestination(tester), AppBranch.read.shellIndex);
   });
 
   testWidgets('UUID direct route pushes a connection above its source', (
@@ -628,7 +746,15 @@ Future<void> _pumpApp(
   WidgetTester tester, {
   required FakePaperDataSource repository,
   required AppRestorationState restoration,
+  bool? reduceTransparency,
 }) async {
+  Widget app = const PakPerkApp();
+  if (reduceTransparency != null) {
+    app = PakPerkAccessibilityPreferences(
+      reduceTransparency: reduceTransparency,
+      child: app,
+    );
+  }
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -636,7 +762,7 @@ Future<void> _pumpApp(
         localStoreProvider.overrideWithValue(MemoryLocalStore()),
         initialRestorationProvider.overrideWithValue(restoration),
       ],
-      child: const PakPerkApp(),
+      child: app,
     ),
   );
   await tester.pumpAndSettle();

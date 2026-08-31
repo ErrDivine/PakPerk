@@ -26,7 +26,8 @@ pub(crate) async fn timeout_middleware(
         .get::<RequestId>()
         .copied()
         .unwrap_or_else(|| RequestId(Uuid::now_v7()));
-    let timeout = if request.uri().path().ends_with("/chat") {
+    let path = request.uri().path();
+    let timeout = if path.ends_with("/chat") || path.ends_with("/assistant") {
         timeouts.chat
     } else {
         timeouts.default

@@ -50,6 +50,7 @@ CANDIDATE_KEYS = {
     "classification",
     "environment",
     "ios",
+    "mobile_feature_evidence",
     "provenance_id",
     "schema",
     "source_revision",
@@ -63,6 +64,7 @@ PROVENANCE_KEYS = {
     "created_at",
     "environment",
     "ios",
+    "mobile_feature_evidence",
     "schema",
     "source_revision",
     "workflow",
@@ -79,6 +81,79 @@ IOS_KEYS = {
     "signer_sha256",
     "team_id",
 }
+MOBILE_FEATURE_EVIDENCE_KEYS = {
+    "schema",
+    "sha256",
+    "paperTitleSearch",
+    "libraryImportWrites",
+    "readingFeed",
+    "toReadFirstEnforcement",
+    "libraryV2",
+    "recommendations",
+    "recommendationEvents",
+    "searchLookup",
+    "searchExplore",
+    "savedQueries",
+    "researchProfiles",
+    "readingBriefs",
+    "subscriptions",
+    "notifications",
+    "deepReader",
+    "paperPassport",
+    "semanticFacets",
+    "documentVisualObjects",
+    "readingCheckpoints",
+    "annotations",
+    "evidenceCards",
+    "researchMemory",
+    "versionDiff",
+    "assistantV2",
+}
+MOBILE_FEATURE_FLAG_KEYS = (
+    "paperTitleSearch",
+    "libraryImportWrites",
+    "readingFeed",
+    "toReadFirstEnforcement",
+    "libraryV2",
+    "recommendations",
+    "recommendationEvents",
+    "searchLookup",
+    "searchExplore",
+    "savedQueries",
+    "researchProfiles",
+    "readingBriefs",
+    "subscriptions",
+    "notifications",
+    "deepReader",
+    "paperPassport",
+    "semanticFacets",
+    "documentVisualObjects",
+    "readingCheckpoints",
+    "annotations",
+    "evidenceCards",
+    "researchMemory",
+    "versionDiff",
+    "assistantV2",
+)
+MOBILE_FEATURE_DEPENDENCIES = (
+    ("toReadFirstEnforcement", ("readingFeed",)),
+    ("recommendations", ("readingFeed",)),
+    ("searchExplore", ("searchLookup",)),
+    ("savedQueries", ("searchExplore",)),
+    ("readingBriefs", ("readingFeed",)),
+    ("subscriptions", ("readingFeed",)),
+    ("notifications", ("subscriptions",)),
+    ("deepReader", ("readingFeed", "toReadFirstEnforcement")),
+    ("paperPassport", ("deepReader",)),
+    ("semanticFacets", ("deepReader",)),
+    ("documentVisualObjects", ("deepReader",)),
+    ("readingCheckpoints", ("deepReader",)),
+    ("annotations", ("deepReader",)),
+    ("evidenceCards", ("annotations",)),
+    ("researchMemory", ("evidenceCards",)),
+    ("versionDiff", ("deepReader",)),
+    ("assistantV2", ("deepReader",)),
+)
 WORKFLOW_KEYS = {
     "github_run_attempt",
     "github_run_id",
@@ -354,9 +429,28 @@ def _matching_string(value: Any, pattern: re.Pattern[str], label: str) -> str:
     return value
 
 
-def _exact_schema(value: Any, label: str) -> None:
-    if type(value) is not int or value != 1:
-        raise ValidationError(f"{label} schema must be the exact integer 1")
+def _exact_schema(value: Any, label: str, expected: int = 1) -> None:
+    if type(value) is not int or value != expected:
+        raise ValidationError(f"{label} schema must be the exact integer {expected}")
+
+
+def _mobile_feature_evidence(value: Any, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValidationError(f"{label} must be an object")
+    _exact_keys(value, MOBILE_FEATURE_EVIDENCE_KEYS, label)
+    _exact_schema(value["schema"], label, 6)
+    _matching_string(value["sha256"], HEX_64, f"{label} SHA-256")
+    if any(type(value[key]) is not bool for key in MOBILE_FEATURE_FLAG_KEYS):
+        raise ValidationError(f"{label} flags must be exact booleans")
+    return dict(value)
+
+
+def _validate_mobile_feature_dependencies(
+    value: dict[str, Any], label: str
+) -> None:
+    for feature, dependencies in MOBILE_FEATURE_DEPENDENCIES:
+        if value[feature] and any(not value[dependency] for dependency in dependencies):
+            raise ValidationError(f"{label} dependency graph is invalid")
 
 
 def _timestamp(value: Any, label: str) -> None:
@@ -484,12 +578,12 @@ def _validate_store_handoff(
         "destination": "google_play_internal",
         "status": "succeeded",
         "version_code": build_number,
-            "verification": {
-                "bundle": {
-                    "sha256": android["aab_sha256"],
-                    "version_code": build_number,
-                },
-                "internal_target": {
+        "verification": {
+            "bundle": {
+                "sha256": android["aab_sha256"],
+                "version_code": build_number,
+            },
+            "internal_target": {
                 "status": "completed",
                 "user_fraction": None,
                 "version_codes": [build_number],
@@ -630,8 +724,8 @@ def validate_store_candidate(
     _exact_keys(provenance, PROVENANCE_KEYS, "provenance manifest")
     _exact_keys(candidate, CANDIDATE_KEYS, "candidate manifest")
 
-    _exact_schema(provenance["schema"], "provenance manifest")
-    _exact_schema(candidate["schema"], "candidate manifest")
+    _exact_schema(provenance["schema"], "provenance manifest", 4)
+    _exact_schema(candidate["schema"], "candidate manifest", 4)
     if provenance["classification"] != "protected signed mobile release provenance":
         raise ValidationError("provenance manifest classification is invalid")
     if candidate["classification"] != "protected signed mobile candidate":
@@ -652,6 +746,22 @@ def validate_store_candidate(
         raise ValidationError("candidate manifest must use strict full text")
     if candidate["provenance_id"] != provenance_id:
         raise ValidationError("candidate provenance content ID does not match")
+    candidate_mobile_feature_evidence = _mobile_feature_evidence(
+        candidate["mobile_feature_evidence"],
+        "candidate mobile feature evidence",
+    )
+    provenance_mobile_feature_evidence = _mobile_feature_evidence(
+        provenance["mobile_feature_evidence"],
+        "provenance mobile feature evidence",
+    )
+    if candidate_mobile_feature_evidence != provenance_mobile_feature_evidence:
+        raise ValidationError(
+            "candidate and provenance mobile feature evidence does not match"
+        )
+    _validate_mobile_feature_dependencies(
+        candidate_mobile_feature_evidence,
+        "candidate mobile feature evidence",
+    )
     _timestamp(provenance["created_at"], "provenance manifest")
 
     workflow = provenance["workflow"]
@@ -716,6 +826,7 @@ def validate_store_candidate(
         "artifacts": dict(artifact_digests),
         "candidate_id": observed_candidate_id,
         "ios": dict(candidate_ios),
+        "mobile_feature_evidence": candidate_mobile_feature_evidence,
         "provenance_id": observed_provenance_id,
         "signed_release_run_attempt": signed_release_run_attempt,
         "signed_release_run_id": signed_release_run_id,

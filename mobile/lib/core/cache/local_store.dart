@@ -111,6 +111,8 @@ class SharedPreferencesLocalStore implements LocalStore {
       'pakperk.introduction.',
       'pakperk.connections.',
       'pakperk.chat.',
+      'pakperk.guest.discovery.',
+      'pakperk.library.history.',
     ];
     final keys = _preferences
         .getKeys()

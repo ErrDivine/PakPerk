@@ -65,6 +65,20 @@ void main() {
         'PAKPERK_LIBRARY_ENABLED': 'true',
         'PAKPERK_COMMENTS_ENABLED': 'true',
         'PAKPERK_OPENING_MOTION_ENABLED': 'true',
+        'PAKPERK_PAPER_TITLE_SEARCH_ENABLED': 'true',
+        'PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED': 'true',
+        'PAKPERK_READING_FEED_ENABLED': 'true',
+        'PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED': 'true',
+        'PAKPERK_RECOMMENDATIONS_ENABLED': 'true',
+        'PAKPERK_RECOMMENDATION_EVENTS_ENABLED': 'true',
+        'PAKPERK_LIBRARY_V2_ENABLED': 'true',
+        'PAKPERK_SEARCH_LOOKUP_ENABLED': 'true',
+        'PAKPERK_SEARCH_EXPLORE_ENABLED': 'true',
+        'PAKPERK_SAVED_QUERIES_ENABLED': 'true',
+        'PAKPERK_RESEARCH_PROFILES_ENABLED': 'true',
+        'PAKPERK_READING_BRIEFS_ENABLED': 'true',
+        'PAKPERK_SUBSCRIPTIONS_ENABLED': 'true',
+        'PAKPERK_NOTIFICATIONS_ENABLED': 'true',
         'PAKPERK_OIDC_ISSUER_URL': 'https://identity.pakperk.app/realms/app',
         'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-prod',
         'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth://oauth/callback',
@@ -79,6 +93,20 @@ void main() {
       expect(config.features.library, isTrue);
       expect(config.features.comments, isTrue);
       expect(config.features.openingMotion, isTrue);
+      expect(config.features.paperTitleSearch, isTrue);
+      expect(config.features.libraryImportWrites, isTrue);
+      expect(config.features.readingFeed, isTrue);
+      expect(config.features.toReadFirstEnforcement, isTrue);
+      expect(config.features.recommendationsEnabled, isTrue);
+      expect(config.features.recommendationEventsEnabled, isTrue);
+      expect(config.features.libraryV2Enabled, isTrue);
+      expect(config.features.searchLookupEnabled, isTrue);
+      expect(config.features.searchExploreEnabled, isTrue);
+      expect(config.features.savedQueriesEnabled, isTrue);
+      expect(config.features.researchProfilesEnabled, isTrue);
+      expect(config.features.readingBriefsEnabled, isTrue);
+      expect(config.features.subscriptionsEnabled, isTrue);
+      expect(config.features.notificationsEnabled, isTrue);
       expect(config.oidcClientId, 'pakperk-mobile-prod');
       expect(config.oidcScopes, ['openid', 'profile']);
     });
@@ -266,6 +294,144 @@ void main() {
         }),
         throwsA(isA<BuildConfigurationException>()),
       );
+      for (final key in <String>[
+        'PAKPERK_PAPER_TITLE_SEARCH_ENABLED',
+        'PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED',
+        'PAKPERK_READING_FEED_ENABLED',
+        'PAKPERK_RECOMMENDATIONS_ENABLED',
+        'PAKPERK_LIBRARY_V2_ENABLED',
+        'PAKPERK_SAVED_QUERIES_ENABLED',
+        'PAKPERK_RESEARCH_PROFILES_ENABLED',
+        'PAKPERK_READING_BRIEFS_ENABLED',
+        'PAKPERK_SUBSCRIPTIONS_ENABLED',
+        'PAKPERK_NOTIFICATIONS_ENABLED',
+      ]) {
+        expect(
+          () => AppBuildConfig.fromValues({key: 'true'}),
+          throwsA(isA<BuildConfigurationException>()),
+          reason: key,
+        );
+      }
+    });
+
+    test('To Read First feature dependencies fail closed', () {
+      const accountValues = <String, String>{
+        'PAKPERK_ACCOUNTS_ENABLED': 'true',
+        'PAKPERK_OIDC_ISSUER_URL': 'http://localhost:8081/realms/app',
+        'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-dev',
+        'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth-dev://oauth/callback',
+        'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
+            'pakperk-auth-dev://oauth/logout',
+      };
+      final search = AppBuildConfig.fromValues({
+        ...accountValues,
+        'PAKPERK_PAPER_TITLE_SEARCH_ENABLED': 'true',
+      });
+      expect(search.features.paperTitleSearch, isTrue);
+
+      expect(
+        () => AppBuildConfig.fromValues({
+          ...accountValues,
+          'PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED': 'true',
+        }),
+        throwsA(isA<BuildConfigurationException>()),
+      );
+      expect(
+        () => AppBuildConfig.fromValues({
+          ...accountValues,
+          'PAKPERK_READING_FEED_ENABLED': 'true',
+        }),
+        throwsA(isA<BuildConfigurationException>()),
+      );
+      expect(
+        () => AppBuildConfig.fromValues(const {
+          'PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED': 'true',
+        }),
+        throwsA(isA<BuildConfigurationException>()),
+      );
+      expect(
+        () => AppBuildConfig.fromValues({
+          ...accountValues,
+          'PAKPERK_LIBRARY_ENABLED': 'true',
+          'PAKPERK_RECOMMENDATIONS_ENABLED': 'true',
+        }),
+        throwsA(isA<BuildConfigurationException>()),
+      );
+
+      final recommendations = AppBuildConfig.fromValues({
+        ...accountValues,
+        'PAKPERK_LIBRARY_ENABLED': 'true',
+        'PAKPERK_READING_FEED_ENABLED': 'true',
+        'PAKPERK_RECOMMENDATIONS_ENABLED': 'true',
+      });
+      expect(recommendations.features.recommendationsEnabled, isTrue);
+      expect(recommendations.features.recommendationEventsEnabled, isFalse);
+
+      final independentEvents = AppBuildConfig.fromValues(const {
+        'PAKPERK_RECOMMENDATION_EVENTS_ENABLED': 'true',
+      });
+      expect(independentEvents.features.recommendationEventsEnabled, isTrue);
+      expect(independentEvents.features.recommendationsEnabled, isFalse);
+
+      final recommendationEvents = AppBuildConfig.fromValues({
+        ...accountValues,
+        'PAKPERK_LIBRARY_ENABLED': 'true',
+        'PAKPERK_READING_FEED_ENABLED': 'true',
+        'PAKPERK_RECOMMENDATIONS_ENABLED': 'true',
+        'PAKPERK_RECOMMENDATION_EVENTS_ENABLED': 'true',
+      });
+      expect(recommendationEvents.features.recommendationEventsEnabled, isTrue);
+
+      final libraryV2 = AppBuildConfig.fromValues({
+        ...accountValues,
+        'PAKPERK_LIBRARY_ENABLED': 'true',
+        'PAKPERK_LIBRARY_V2_ENABLED': 'true',
+      });
+      expect(libraryV2.features.libraryV2Enabled, isTrue);
+
+      expect(
+        () => AppBuildConfig.fromValues(const {
+          'PAKPERK_SEARCH_EXPLORE_ENABLED': 'true',
+        }),
+        throwsA(isA<BuildConfigurationException>()),
+      );
+      final publicSearch = AppBuildConfig.fromValues(const {
+        'PAKPERK_SEARCH_LOOKUP_ENABLED': 'true',
+        'PAKPERK_SEARCH_EXPLORE_ENABLED': 'true',
+      });
+      expect(publicSearch.features.searchLookupEnabled, isTrue);
+      expect(publicSearch.features.searchExploreEnabled, isTrue);
+      expect(publicSearch.features.savedQueriesEnabled, isFalse);
+      final savedQueries = AppBuildConfig.fromValues({
+        ...accountValues,
+        'PAKPERK_SEARCH_LOOKUP_ENABLED': 'true',
+        'PAKPERK_SEARCH_EXPLORE_ENABLED': 'true',
+        'PAKPERK_SAVED_QUERIES_ENABLED': 'true',
+        'PAKPERK_RESEARCH_PROFILES_ENABLED': 'true',
+      });
+      expect(savedQueries.features.savedQueriesEnabled, isTrue);
+      expect(savedQueries.features.researchProfilesEnabled, isTrue);
+
+      expect(
+        () => AppBuildConfig.fromValues({
+          ...accountValues,
+          'PAKPERK_LIBRARY_ENABLED': 'true',
+          'PAKPERK_READING_FEED_ENABLED': 'true',
+          'PAKPERK_NOTIFICATIONS_ENABLED': 'true',
+        }),
+        throwsA(isA<BuildConfigurationException>()),
+      );
+      final engagement = AppBuildConfig.fromValues({
+        ...accountValues,
+        'PAKPERK_LIBRARY_ENABLED': 'true',
+        'PAKPERK_READING_FEED_ENABLED': 'true',
+        'PAKPERK_READING_BRIEFS_ENABLED': 'true',
+        'PAKPERK_SUBSCRIPTIONS_ENABLED': 'true',
+        'PAKPERK_NOTIFICATIONS_ENABLED': 'true',
+      });
+      expect(engagement.features.readingBriefsEnabled, isTrue);
+      expect(engagement.features.subscriptionsEnabled, isTrue);
+      expect(engagement.features.notificationsEnabled, isTrue);
     });
 
     test('enabled accounts require the complete native OIDC configuration', () {
@@ -441,6 +607,110 @@ void main() {
         }),
         throwsA(isA<BuildConfigurationException>()),
       );
+      expect(
+        () => AppBuildConfig.fromValues(const {
+          'PAKPERK_RECOMMENDATION_EVENTS_ENABLED': 'yes',
+        }),
+        throwsA(isA<BuildConfigurationException>()),
+      );
+    });
+
+    test('feature equality includes the independent event rollout gate', () {
+      const base = FeatureFlags(
+        accounts: true,
+        library: true,
+        comments: false,
+        openingMotion: false,
+        recommendationsEnabled: true,
+      );
+      const events = FeatureFlags(
+        accounts: true,
+        library: true,
+        comments: false,
+        openingMotion: false,
+        recommendationsEnabled: true,
+        recommendationEventsEnabled: true,
+      );
+      expect(base, isNot(events));
+    });
+
+    test('Plan 03 flags default off and validate their dependency chain', () {
+      const accountValues = <String, String>{
+        'PAKPERK_ACCOUNTS_ENABLED': 'true',
+        'PAKPERK_OIDC_ISSUER_URL': 'http://localhost:8081/realms/app',
+        'PAKPERK_OIDC_CLIENT_ID': 'pakperk-mobile-dev',
+        'PAKPERK_OIDC_REDIRECT_URI': 'pakperk-auth-dev://oauth/callback',
+        'PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI':
+            'pakperk-auth-dev://oauth/logout',
+      };
+      final defaults = AppBuildConfig.fromValues(const {});
+      expect(defaults.features.deepReader, isFalse);
+      expect(defaults.features.paperPassport, isFalse);
+      expect(defaults.features.semanticFacets, isFalse);
+      expect(defaults.features.documentVisualObjects, isFalse);
+      expect(defaults.features.readingCheckpoints, isFalse);
+      expect(defaults.features.annotations, isFalse);
+      expect(defaults.features.evidenceCards, isFalse);
+      expect(defaults.features.researchMemory, isFalse);
+      expect(defaults.features.versionDiff, isFalse);
+      expect(defaults.features.assistantV2, isFalse);
+
+      expect(
+        () => AppBuildConfig.fromValues({
+          ...accountValues,
+          'PAKPERK_DEEP_READER_ENABLED': 'true',
+        }),
+        throwsA(isA<BuildConfigurationException>()),
+      );
+      expect(
+        () => AppBuildConfig.fromValues(const {
+          'PAKPERK_PAPER_PASSPORT_ENABLED': 'true',
+        }),
+        throwsA(isA<BuildConfigurationException>()),
+      );
+      for (final key in const [
+        'PAKPERK_SEMANTIC_FACETS_ENABLED',
+        'PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED',
+        'PAKPERK_READING_CHECKPOINTS_ENABLED',
+        'PAKPERK_ANNOTATIONS_ENABLED',
+        'PAKPERK_EVIDENCE_CARDS_ENABLED',
+        'PAKPERK_RESEARCH_MEMORY_ENABLED',
+        'PAKPERK_VERSION_DIFF_ENABLED',
+        'PAKPERK_ASSISTANT_V2_ENABLED',
+      ]) {
+        expect(
+          () => AppBuildConfig.fromValues({key: 'true'}),
+          throwsA(isA<BuildConfigurationException>()),
+          reason: key,
+        );
+      }
+
+      final enabled = AppBuildConfig.fromValues({
+        ...accountValues,
+        'PAKPERK_LIBRARY_ENABLED': 'true',
+        'PAKPERK_READING_FEED_ENABLED': 'true',
+        'PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED': 'true',
+        'PAKPERK_DEEP_READER_ENABLED': 'true',
+        'PAKPERK_PAPER_PASSPORT_ENABLED': 'true',
+        'PAKPERK_SEMANTIC_FACETS_ENABLED': 'true',
+        'PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED': 'true',
+        'PAKPERK_READING_CHECKPOINTS_ENABLED': 'true',
+        'PAKPERK_ANNOTATIONS_ENABLED': 'true',
+        'PAKPERK_EVIDENCE_CARDS_ENABLED': 'true',
+        'PAKPERK_RESEARCH_MEMORY_ENABLED': 'true',
+        'PAKPERK_VERSION_DIFF_ENABLED': 'true',
+        'PAKPERK_ASSISTANT_V2_ENABLED': 'true',
+      });
+      expect(enabled.features.deepReader, isTrue);
+      expect(enabled.features.paperPassport, isTrue);
+      expect(enabled.features.semanticFacets, isTrue);
+      expect(enabled.features.documentVisualObjects, isTrue);
+      expect(enabled.features.readingCheckpoints, isTrue);
+      expect(enabled.features.annotations, isTrue);
+      expect(enabled.features.evidenceCards, isTrue);
+      expect(enabled.features.researchMemory, isTrue);
+      expect(enabled.features.versionDiff, isTrue);
+      expect(enabled.features.assistantV2, isTrue);
     });
 
     test('OIDC scopes are exactly openid and profile', () {

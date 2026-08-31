@@ -8,6 +8,7 @@ import datetime as dt
 import hashlib
 import json
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -57,9 +58,9 @@ def subject(gate: str) -> dict[str, object]:
             "backup_evidence_id": prefixed(
                 "pakperk-restore-evidence-v2:sha256:", "verified restore evidence"
             ),
-            "starting_schema_version": 9,
-            "ending_schema_version": 10,
-            "embedded_migration_version": 10,
+            "starting_schema_version": 18,
+            "ending_schema_version": 24,
+            "embedded_migration_version": 24,
             "starting_app_version": "0.1.0",
             "ending_app_version": "0.2.0",
             "resolution_path": "schema_compatible_code_rollback",
@@ -307,9 +308,162 @@ class OperationalGateEvidenceTests(unittest.TestCase):
                 "[0-9][0-9][0-9][0-9]_*.sql"
             )
         )
-        self.assertEqual(migrations, list(range(1, 11)))
-        self.assertEqual(evidence.PRIOR_DATABASE_MIGRATION, 9)
-        self.assertEqual(evidence.CURRENT_DATABASE_MIGRATION, 10)
+        self.assertEqual(migrations, list(range(1, 25)))
+        self.assertEqual(evidence.PRIOR_DATABASE_MIGRATION, 18)
+        self.assertEqual(evidence.CURRENT_DATABASE_MIGRATION, 24)
+
+        values_text = (
+            repository / "deploy" / "helm" / "pakperk" / "values.yaml"
+        ).read_text(encoding="utf-8")
+        feature_block = values_text.split("\nfeatures:\n", 1)[1].split(
+            "\nreleaseEvidence:\n", 1
+        )[0]
+        helm_switches = tuple(
+            line.strip().split(":", 1)[0]
+            for line in feature_block.splitlines()
+            if line.startswith("  ") and line.strip().endswith(": false")
+        )
+
+        def environment_name(helm_name: str) -> str:
+            converted = []
+            for character in helm_name:
+                if character.isupper():
+                    converted.append("_")
+                converted.append(character.upper())
+            return f"{''.join(converted)}_ENABLED"
+
+        self.assertEqual(
+            evidence.RELEASE_FEATURE_SWITCHES,
+            (
+                "ACCOUNTS_ENABLED",
+                "LIBRARY_ENABLED",
+                "LIBRARY_WRITES_ENABLED",
+                "PAPER_RESOLUTION_ENABLED",
+                "PAPER_TITLE_SEARCH_ENABLED",
+                "LIBRARY_IMPORT_WRITES_ENABLED",
+                "READING_FEED_ENABLED",
+                "TO_READ_FIRST_ENFORCEMENT_ENABLED",
+                "COMMENTS_ENABLED",
+                "COMMENT_CREATION_ENABLED",
+                "ACCOUNT_DELETION_ENABLED",
+                "LIBRARY_V2_ENABLED",
+                "RESEARCH_PROFILES_ENABLED",
+                "RECOMMENDATIONS_ENABLED",
+                "RECOMMENDATION_EVENTS_ENABLED",
+                "SEARCH_LOOKUP_ENABLED",
+                "SEARCH_EXPLORE_ENABLED",
+                "SAVED_QUERIES_ENABLED",
+                "READING_BRIEFS_ENABLED",
+                "SUBSCRIPTIONS_ENABLED",
+                "NOTIFICATIONS_ENABLED",
+                "DEEP_READER_ENABLED",
+                "PAPER_PASSPORT_ENABLED",
+                "SEMANTIC_FACETS_ENABLED",
+                "VISUAL_OBJECTS_ENABLED",
+                "ASSISTANT_V2_ENABLED",
+                "ANNOTATIONS_ENABLED",
+                "RESEARCH_MEMORY_ENABLED",
+                "VERSION_DIFF_ENABLED",
+                "DOCLING_EXPERIMENT_ENABLED",
+            ),
+        )
+        self.assertEqual(
+            tuple(environment_name(name) for name in helm_switches),
+            evidence.RELEASE_FEATURE_SWITCHES,
+        )
+        config_text = (
+            repository / "backend" / "apps" / "api" / "src" / "config.rs"
+        ).read_text(encoding="utf-8")
+        api_switches = re.findall(
+            r'env_bool\("([A-Z0-9_]+_ENABLED)", false\)\?', config_text
+        )
+        self.assertCountEqual(api_switches, evidence.RELEASE_FEATURE_SWITCHES)
+        self.assertEqual(len(evidence.RELEASE_FEATURE_SWITCHES), 30)
+        self.assertEqual(
+            evidence.RELEASE_FEATURE_DEPENDENCIES,
+            (
+                ("LIBRARY_ENABLED", ("ACCOUNTS_ENABLED",)),
+                ("LIBRARY_WRITES_ENABLED", ("LIBRARY_ENABLED",)),
+                (
+                    "PAPER_TITLE_SEARCH_ENABLED",
+                    ("ACCOUNTS_ENABLED", "PAPER_RESOLUTION_ENABLED"),
+                ),
+                (
+                    "LIBRARY_IMPORT_WRITES_ENABLED",
+                    (
+                        "ACCOUNTS_ENABLED",
+                        "LIBRARY_ENABLED",
+                        "LIBRARY_WRITES_ENABLED",
+                        "PAPER_RESOLUTION_ENABLED",
+                    ),
+                ),
+                (
+                    "READING_FEED_ENABLED",
+                    ("ACCOUNTS_ENABLED", "LIBRARY_ENABLED"),
+                ),
+                (
+                    "TO_READ_FIRST_ENFORCEMENT_ENABLED",
+                    ("READING_FEED_ENABLED",),
+                ),
+                ("COMMENTS_ENABLED", ("ACCOUNTS_ENABLED",)),
+                ("COMMENT_CREATION_ENABLED", ("COMMENTS_ENABLED",)),
+                ("ACCOUNT_DELETION_ENABLED", ("ACCOUNTS_ENABLED",)),
+                (
+                    "LIBRARY_V2_ENABLED",
+                    ("ACCOUNTS_ENABLED", "LIBRARY_ENABLED"),
+                ),
+                ("RESEARCH_PROFILES_ENABLED", ("ACCOUNTS_ENABLED",)),
+                (
+                    "RECOMMENDATIONS_ENABLED",
+                    (
+                        "ACCOUNTS_ENABLED",
+                        "LIBRARY_ENABLED",
+                        "READING_FEED_ENABLED",
+                    ),
+                ),
+                ("SEARCH_EXPLORE_ENABLED", ("SEARCH_LOOKUP_ENABLED",)),
+                (
+                    "SAVED_QUERIES_ENABLED",
+                    ("ACCOUNTS_ENABLED", "SEARCH_EXPLORE_ENABLED"),
+                ),
+                ("READING_BRIEFS_ENABLED", ("READING_FEED_ENABLED",)),
+                (
+                    "SUBSCRIPTIONS_ENABLED",
+                    (
+                        "ACCOUNTS_ENABLED",
+                        "LIBRARY_ENABLED",
+                        "READING_FEED_ENABLED",
+                    ),
+                ),
+                ("NOTIFICATIONS_ENABLED", ("SUBSCRIPTIONS_ENABLED",)),
+                ("PAPER_PASSPORT_ENABLED", ("DEEP_READER_ENABLED",)),
+                ("SEMANTIC_FACETS_ENABLED", ("DEEP_READER_ENABLED",)),
+                ("VISUAL_OBJECTS_ENABLED", ("DEEP_READER_ENABLED",)),
+                ("ASSISTANT_V2_ENABLED", ("DEEP_READER_ENABLED",)),
+                (
+                    "ANNOTATIONS_ENABLED",
+                    ("ACCOUNTS_ENABLED", "DEEP_READER_ENABLED"),
+                ),
+                (
+                    "RESEARCH_MEMORY_ENABLED",
+                    (
+                        "ACCOUNTS_ENABLED",
+                        "DEEP_READER_ENABLED",
+                        "ANNOTATIONS_ENABLED",
+                    ),
+                ),
+                ("VERSION_DIFF_ENABLED", ("DEEP_READER_ENABLED",)),
+                ("DOCLING_EXPERIMENT_ENABLED", ("DEEP_READER_ENABLED",)),
+            ),
+        )
+        self.assertEqual(evidence.RELEASE_FEATURE_DEPENDENCY_EDGE_COUNT, 39)
+        switch_set = set(evidence.RELEASE_FEATURE_SWITCHES)
+        self.assertTrue(
+            all(
+                switch in switch_set and set(required) <= switch_set
+                for switch, required in evidence.RELEASE_FEATURE_DEPENDENCIES
+            )
+        )
 
         policy_path = (
             repository
@@ -401,7 +555,7 @@ class OperationalGateEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(evidence.EvidenceError, "bounded post-run"):
             evidence.validate_evidence(reseal(stale))
 
-    def test_additive_nine_to_ten_gate_requires_code_rollback(self) -> None:
+    def test_additive_eleven_to_sixteen_gate_requires_code_rollback(self) -> None:
         value = manifest(evidence.MIGRATION_GATE)
         value["subject"]["resolution_path"] = "forward_fix"
         value["approval_subject_id"] = evidence.compute_approval_subject_id(value)
@@ -409,6 +563,38 @@ class OperationalGateEvidenceTests(unittest.TestCase):
             approval["approval_subject_id"] = value["approval_subject_id"]
         with self.assertRaisesRegex(evidence.EvidenceError, "code rollback"):
             evidence.validate_evidence(reseal(value))
+
+    def test_migration_gate_requires_all_current_switches_and_dependency_edges(
+        self,
+    ) -> None:
+        valid = manifest(evidence.MIGRATION_GATE)
+        self.assertEqual(metric(valid, "feature_switches_reconciled")["value"], 30)
+        self.assertEqual(
+            metric(valid, "feature_switch_dependency_edges_rejected")["value"],
+            39,
+        )
+
+        missing_switch = copy.deepcopy(valid)
+        metric(missing_switch, "feature_switches_reconciled")["value"] = 29
+        with self.assertRaises(evidence.EvidenceError):
+            evidence.validate_evidence(reapprove_and_reseal(missing_switch))
+
+        missing_dependency = copy.deepcopy(valid)
+        metric(missing_dependency, "feature_switch_dependency_edges_rejected")[
+            "value"
+        ] = 38
+        with self.assertRaises(evidence.EvidenceError):
+            evidence.validate_evidence(reapprove_and_reseal(missing_dependency))
+
+        assertion_missing = copy.deepcopy(valid)
+        assertion_missing["assertions"] = [
+            assertion
+            for assertion in assertion_missing["assertions"]
+            if assertion["id"]
+            != "feature_switch_dependency_graph_reconciled_and_invalid_edges_rejected"
+        ]
+        with self.assertRaises(evidence.EvidenceError):
+            evidence.validate_evidence(reapprove_and_reseal(assertion_missing))
 
     def test_mobile_release_policy_rejects_degenerate_samples_and_window(
         self,
@@ -462,7 +648,9 @@ class OperationalGateEvidenceTests(unittest.TestCase):
             metric(value, "production_safe_canaries_sent")["value"] = 2
 
         def incomplete_production_routing(value: dict[str, object]) -> None:
-            metric(value, "production_alert_rules_with_receiver")["value"] = 16
+            metric(value, "production_alert_rules_with_receiver")["value"] = (
+                len(evidence.ALERT_RULE_IDS) - 1
+            )
 
         def missed_retention_ingestion(value: dict[str, object]) -> None:
             value["subject"]["production_retention_canary"]["commitment_count"] = 2
@@ -518,7 +706,7 @@ class OperationalGateEvidenceTests(unittest.TestCase):
         cases: list[tuple[str, str, Callable[[dict[str, object]], None]]] = []
 
         def embedded_version(value: dict[str, object]) -> None:
-            value["subject"]["embedded_migration_version"] = 9
+            value["subject"]["embedded_migration_version"] = 10
 
         def resolution_path(value: dict[str, object]) -> None:
             value["subject"]["resolution_path"] = "statement_only"

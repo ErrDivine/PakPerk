@@ -8,7 +8,7 @@ This repository supplies the restore/replay mechanism, but it cannot prove a
 hosting provider's snapshots, WAL archive, retention, or recovery time. The
 release record must name the environment's measured RPO/RTO, latest verified
 backup ID, recovery point, storage inventory, and drill evidence. Until a real
-isolated restore completes this runbook, the Phase 6 backup/restore gate is not
+isolated restore completes this runbook, the current backup/restore gate is not
 passed.
 
 ## Non-negotiable topology
@@ -97,6 +97,81 @@ Record an immutable backup ID in protected release values and verify all of:
    other database session. This is a point-in-time observation, not proof of
    network isolation; retain the network-policy evidence separately.
 
+## Migrations 12–18 release rehearsal
+
+This is the preserved Plan 02 rehearsal contract. Before enabling any Plan 02
+flag, rehearse the expand and recovery path
+against an isolated restore of the deployed schema-11 production-shaped
+backup:
+
+1. Retain the provider backup/PITR receipt, recovery point, schema-11 migration
+   history, database identity, and current independent deletion-ledger inventory.
+2. Run the exact reviewed standalone migration image and DDL role once. Require
+   migrations 12 through 18 (`0012_library_v2.sql` through
+   `0018_recommendation_generation_jobs.sql`) to succeed in order and every
+   history row from 1 through 18 to have the reviewed checksum and
+   `success=true`.
+3. Run the same migration command again and prove it is a no-op. Verify the
+   v0.0-to-Inbox compatibility projection; five-state Library revisions;
+   research-profile source separation; recommendation queue/profile/feedback
+   fences and exact/base-identity exclusions; metadata-only search indexes;
+   saved-query/brief/subscription/notification ownership; account-deletion
+   cascades; interaction reason-code compatibility; retention cleanup/indexes;
+   and absence of raw submitted titles, URLs,
+   private notes, profile labels, feedback details, or notification payloads
+   from operational evidence.
+4. Exercise the last schema-compatible image against the expanded schema, then
+   re-forward to the candidate. Feature rollback keeps schema 18; never use a
+   down migration or restore schema 11 merely to close a flag.
+5. Complete both deletion-ledger reapply and finalize below with
+   `PAKPERK_RESTORE_DRILL_EXPECTED_MIGRATION=18`, then retain the protected
+   content IDs, backup/PITR audit records, integrity results, rollback/re-forward
+   results, cleanup, and database/privacy/release approvals.
+
+The repository migration tests and hermetic restore harness validate the
+mechanism only. This gate remains open until the provider-backed isolated
+restore, migration Job, current-ledger replay, and schema-compatible rollback
+are executed and externally anchored.
+
+## Migrations 19–24 current release rehearsal
+
+The current Plan 03 candidate starts from the accepted schema-18 Plan 02
+boundary and ends at schema 24. Before any Plan 03 switch can be enabled:
+
+1. Restore an isolated production-shaped schema-18 backup and retain its
+   provider/PITR receipt, recovery point, database identity, exact migration
+   history, and current independent deletion-ledger inventory.
+2. Run the exact reviewed standalone migration image and DDL role once. Require
+   `0019_preparation_trigger_audit.sql`, `0020_document_model.sql`,
+   `0021_passport_provenance.sql`, `0022_annotations_memory.sql`,
+   `0023_version_diff.sql`, and `0024_annotation_archive_import.sql` to succeed
+   in order. Every
+   migration-history row 1 through 24 must have the reviewed checksum and
+   `success=true`.
+3. Run the same migration command again and prove it is a no-op. Verify approved
+   preparation-trigger checks and idempotency; legacy Introduction and `/chat`
+   compatibility; generation-scoped document, visual, Passport, semantic, and
+   provenance constraints; principal-scoped private artifacts and export/import
+   bounds; account-deletion cascades; assistant expiry indexes; and stable,
+   bounded version-diff persistence. The schema must not add a second Library
+   or reading-feed authority.
+4. Exercise the last schema-18-compatible image that the release owner has
+   explicitly approved against schema 24, then roll forward to the candidate.
+   After Plan 03 writes exist, use only an image that safely ignores or
+   understands those additive tables. Feature rollback keeps schema 24 and
+   closes flags; never run a down migration or restore schema 18 merely to
+   disable Deep Reader.
+5. Complete deletion-ledger reapply and finalize below with
+   `PAKPERK_RESTORE_DRILL_EXPECTED_MIGRATION=24`. Prove restored owner-bound
+   annotations, conflicts, annotation-import ledgers, evidence cards,
+   checkpoints, memory, assistant history/provenance, and operation rows are
+   deleted again, while shared paper and normalized document data remain.
+
+Repository migration and persistence tests prove only the mechanism. This gate
+is `not_ready` until a provider-backed isolated restore, exact migration Job,
+current-ledger replay, schema-compatible rollback/re-forward, privacy scan, and
+database/privacy/release approvals are externally anchored to the candidate.
+
 ## Reapply and finalize
 
 Run the first phase with the exact reviewed worker binary and the same secret
@@ -106,7 +181,7 @@ schema: no omitted or additional members, duplicate names, non-finite numbers,
 multiple documents, indentation, or alternate key ordering are accepted.
 
 ```json
-{"backup_id":"backup-change-123-20260802t010000z","backup_observed_at":"2026-08-02T01:02:00Z","database":"pakperk_restore_change_123","environment":"staging","expected_ledger_inventory_sha256":"sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789","expected_ledger_records":42,"expected_migration":10,"latest_recoverable_point":"2026-08-02T01:01:00Z","marker":"restore-change-123","recovery_point":"2026-08-02T01:00:00Z","restore_completed_at":"2026-08-02T01:17:00Z","restore_started_at":"2026-08-02T01:02:00Z","schema":2,"source_revision":"0123456789abcdef0123456789abcdef01234567","worker_sha256":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
+{"backup_id":"backup-change-123-20260802t010000z","backup_observed_at":"2026-08-02T01:02:00Z","database":"pakperk_restore_change_123","environment":"staging","expected_ledger_inventory_sha256":"sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789","expected_ledger_records":42,"expected_migration":24,"latest_recoverable_point":"2026-08-02T01:01:00Z","marker":"restore-change-123","recovery_point":"2026-08-02T01:00:00Z","restore_completed_at":"2026-08-02T01:17:00Z","restore_started_at":"2026-08-02T01:02:00Z","schema":2,"source_revision":"0123456789abcdef0123456789abcdef01234567","worker_sha256":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
 ```
 
 Set its mode to `0600` (or stricter) and record its SHA-256 separately in the
@@ -126,6 +201,7 @@ PAKPERK_RESTORE_DRILL_PHASE=reapply \
 PAKPERK_RESTORE_DRILL_DATABASE=pakperk_restore_change_123 \
 PAKPERK_RESTORE_DRILL_MARKER=restore-change-123 \
 PAKPERK_RESTORE_DRILL_EVIDENCE_DIR=/secure/evidence/change-123-reapply \
+PAKPERK_RESTORE_DRILL_EXPECTED_MIGRATION=24 \
 PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_RECORDS=42 \
 PAKPERK_RESTORE_DRILL_EXPECTED_LEDGER_INVENTORY_SHA256=sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789 \
 PAKPERK_RESTORE_DRILL_SOURCE_REVISION=0123456789abcdef0123456789abcdef01234567 \

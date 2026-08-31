@@ -204,6 +204,26 @@ class MobileStoreRolloutWorkflowTests(unittest.TestCase):
             "",
         )
 
+    def test_store_candidate_validator_pin_is_bound_at_all_three_boundaries(
+        self,
+    ) -> None:
+        digest = validator.EXPECTED_HELPERS["validate_mobile_store_candidate.py"]
+        self.assertEqual(SOURCE.count(digest), 3)
+        offset = 0
+        for boundary in range(3):
+            position = SOURCE.index(digest, offset)
+            offset = position + len(digest)
+            mutated = SOURCE[:position] + "0" * 64 + SOURCE[offset:]
+            refreshed_lock = hashlib.sha256(mutated.encode("utf-8")).hexdigest()
+            with (
+                self.subTest(boundary=boundary),
+                mock.patch.object(
+                    validator, "EXPECTED_WORKFLOW_SHA256", refreshed_lock
+                ),
+                self.assertRaises(RuntimeError),
+            ):
+                self._validate(mutated)
+
     def test_downloaded_helper_directory_cannot_accept_extra_controls(self) -> None:
         self._reject_semantically(
             "          if {item.name for item in root.iterdir()} != set(expected):\n"

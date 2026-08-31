@@ -65,9 +65,33 @@ features:
   accounts: false
   library: false
   libraryWrites: false
+  paperResolution: false
+  paperTitleSearch: false
+  libraryImportWrites: false
+  readingFeed: false
+  toReadFirstEnforcement: false
   comments: false
   commentCreation: false
   accountDeletion: false
+  libraryV2: false
+  researchProfiles: false
+  recommendations: false
+  recommendationEvents: false
+  searchLookup: false
+  searchExplore: false
+  savedQueries: false
+  readingBriefs: false
+  subscriptions: false
+  notifications: false
+  deepReader: false
+  paperPassport: false
+  semanticFacets: false
+  visualObjects: false
+  assistantV2: false
+  annotations: false
+  researchMemory: false
+  versionDiff: false
+  doclingExperiment: false
 
 # Content-addressed references to protected, immutable release evidence. The
 # rendered binding also covers every deployed image identity, the chart/app
@@ -83,6 +107,7 @@ releaseEvidence:
   restoreDrillId: ""
   reviewerFlowId: ""
   strictContentReviewId: ""
+  deepReaderReleaseId: ""
 
 alerting:
   # The production-only provider-neutral policy is packaged as an immutable
@@ -117,6 +142,16 @@ api:
   requestTimeoutSeconds: 30
   chatTimeoutSeconds: 70
   maxRequestBytes: 65536
+  paperSearchMinQueryChars: 3
+  paperSearchMaxQueryChars: 300
+  paperSearchMaxResults: 10
+  paperSearchPositiveCacheTtlSeconds: 86400
+  paperSearchNegativeCacheTtlSeconds: 900
+  paperImportAccountLimitPerMinute: 20
+  paperSearchAccountLimitPerMinute: 10
+  readingFeedDefaultLimit: 20
+  readingFeedMaxLimit: 50
+  readingFeedCursorTtlSeconds: 86400
   # Coarse per-client ingress protection. Shared database-backed application
   # quotas remain authoritative for prepare/chat/comment operations.
   edgeRateLimitRps: 20
@@ -130,6 +165,16 @@ api:
     minAvailable: 1
   topologySpread:
     enabled: true
+
+# Optional private visual pipeline store. Reviewed PNG sources are placed under
+# `sources/`; the worker re-encodes responsive, metadata-free generation-keyed
+# files under `generated/`, and the API mounts the same claim read-only.
+# A configured claim must be RWX across nodes and writable by UID/GID 10001.
+# Keeping the claim empty preserves caption/PDF fallback.
+visualAssets:
+  existingClaim: ""
+  maximumSourceBytes: 33554432
+  maximumAssetBytes: 8388608
 
 telemetryGateway:
   enabled: true
@@ -200,7 +245,7 @@ migration:
   enabled: true
   command: [/usr/local/bin/pakperk-migrate]
   confirmBackupId: ""
-  expectedVersion: 10
+  expectedVersion: 24
   activeDeadlineSeconds: 900
   resources:
     requests: { cpu: 50m, memory: 96Mi }

@@ -1,15 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/library_providers.dart';
 import '../../core/models/paper.dart';
 import '../../core/models/reader_state.dart';
 import '../../core/providers.dart';
+import '../../design_system/sizes.dart';
+import '../passport/paper_passport_card.dart';
+import '../passport/passport_controller.dart';
+import '../research/research_controller.dart';
 
 class AbstractView extends ConsumerStatefulWidget {
   const AbstractView({
     required this.paper,
     required this.scrollController,
     required this.onStageRequested,
+    this.passportGeneration,
+    this.paperPassportReady = false,
+    this.active = true,
     this.onPreviousPaper,
     this.onNextPaper,
     super.key,
@@ -18,6 +26,9 @@ class AbstractView extends ConsumerStatefulWidget {
   final PaperSummary paper;
   final ScrollController scrollController;
   final ValueChanged<PaperStage> onStageRequested;
+  final int? passportGeneration;
+  final bool paperPassportReady;
+  final bool active;
   final VoidCallback? onPreviousPaper;
   final VoidCallback? onNextPaper;
 
@@ -27,11 +38,46 @@ class AbstractView extends ConsumerStatefulWidget {
 
 class _AbstractViewState extends ConsumerState<AbstractView> {
   bool _authorsExpanded = false;
+  AbstractPassportArgs? _scheduledPassportLoad;
 
   @override
   Widget build(BuildContext context) {
     final paper = widget.paper;
     final features = ref.watch(featureFlagsProvider);
+    final generation = widget.passportGeneration;
+    final canShowPreparedPassport =
+        features.paperPassport &&
+        widget.paperPassportReady &&
+        generation != null &&
+        generation > 0;
+    AbstractPassportArgs? passportArgs;
+    AbstractPassportState? passportState;
+    if (canShowPreparedPassport) {
+      passportArgs = AbstractPassportArgs(
+        paperId: paper.paperId,
+        versionKey: paper.arxivId,
+        generation: generation,
+        viewerScope: ref.watch(passportViewerScopeProvider),
+      );
+      passportState = ref.watch(
+        abstractPassportControllerProvider(passportArgs),
+      );
+      if (widget.active && _scheduledPassportLoad != passportArgs) {
+        _scheduledPassportLoad = passportArgs;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted ||
+              !widget.active ||
+              _scheduledPassportLoad != passportArgs) {
+            return;
+          }
+          ref
+              .read(abstractPassportControllerProvider(passportArgs!).notifier)
+              .load();
+        });
+      }
+    } else {
+      _scheduledPassportLoad = null;
+    }
     return CustomScrollView(
       key: const PageStorageKey('abstract-scroll'),
       controller: widget.scrollController,
@@ -67,6 +113,15 @@ class _AbstractViewState extends ConsumerState<AbstractView> {
                 paper.abstractText,
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
+              if (passportArgs != null && passportState != null) ...[
+                const SizedBox(height: 16),
+                _AbstractPassportContent(
+                  args: passportArgs,
+                  state: passportState,
+                  onOpenIntroduction: () =>
+                      widget.onStageRequested(PaperStage.introduction),
+                ),
+              ],
               const SizedBox(height: 28),
               Wrap(
                 spacing: 10,
@@ -112,6 +167,133 @@ class _AbstractViewState extends ConsumerState<AbstractView> {
         const SnackBar(content: Text('Could not open the arXiv record.')),
       );
     }
+  }
+}
+
+class _AbstractPassportContent extends ConsumerWidget {
+  const _AbstractPassportContent({
+    required this.args,
+    required this.state,
+    required this.onOpenIntroduction,
+  });
+
+  final AbstractPassportArgs args;
+  final AbstractPassportState state;
+  final VoidCallback onOpenIntroduction;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final passport = state.passport;
+    if (passport != null && state.phase == AbstractPassportPhase.ready) {
+      final verified = ref.watch(verifiedLibraryScopeProvider);
+      final sessionId = ref.watch(anonymousSessionIdProvider);
+      final feedbackArgs = verified == null
+          ? PassportControllerArgs.anonymous(
+              anonymousSessionId: sessionId,
+              paperId: args.paperId,
+              versionKey: args.versionKey,
+              generation: args.generation,
+              passportId: passport.id,
+              viewerScope: args.viewerScope,
+            )
+          : PassportControllerArgs.authenticated(
+              accountId: verified.accountId,
+              authEpoch: verified.authEpoch,
+              paperId: args.paperId,
+              versionKey: args.versionKey,
+              generation: args.generation,
+              passportId: passport.id,
+              viewerScope: args.viewerScope,
+            );
+      final features = ref.watch(featureFlagsProvider);
+      final researchArgs = verified != null && features.researchMemory
+          ? ResearchControllerArgs(
+              accountId: verified.accountId,
+              authEpoch: verified.authEpoch,
+              paperId: args.paperId,
+              versionKey: args.versionKey,
+              generation: args.generation,
+            )
+          : null;
+      return PaperPassportCard(
+        passport: passport,
+        compact: true,
+        feedbackArgs: feedbackArgs,
+        onRemember: researchArgs == null
+            ? null
+            : (field) => ref
+                  .read(researchControllerProvider(researchArgs).notifier)
+                  .rememberPassportField(field),
+        onInspectEvidence: (_) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Opening the prepared document evidence.'),
+            ),
+          );
+          onOpenIntroduction();
+        },
+      );
+    }
+    if (state.phase == AbstractPassportPhase.failed) {
+      return Card(
+        key: const ValueKey('abstract-passport-unavailable'),
+        margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Prepared Passport unavailable',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                state.message ?? 'The prepared Passport could not be verified.',
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                key: const ValueKey('abstract-passport-retry'),
+                style: const ButtonStyle(
+                  minimumSize: WidgetStatePropertyAll(
+                    Size(
+                      PakPerkSizes.minimumInteractive,
+                      PakPerkSizes.minimumInteractive,
+                    ),
+                  ),
+                ),
+                onPressed: () => ref
+                    .read(abstractPassportControllerProvider(args).notifier)
+                    .load(),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Try Passport again'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return Semantics(
+      liveRegion: state.phase == AbstractPassportPhase.loading,
+      label: 'Loading prepared Paper Passport',
+      child: const Card(
+        key: ValueKey('abstract-passport-loading'),
+        margin: EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: Row(
+            children: [
+              SizedBox.square(
+                dimension: 22,
+                child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+              ),
+              SizedBox(width: 12),
+              Expanded(child: Text('Loading prepared Paper Passport…')),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

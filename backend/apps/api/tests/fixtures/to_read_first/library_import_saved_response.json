@@ -1,0 +1,48 @@
+{
+  "result": "saved",
+  "resolution": {
+    "input_kind": "arxiv_url",
+    "canonical_arxiv_id": "1706.03762v7"
+  },
+  "item": {
+    "paper_id": "0198f4d7-a4ce-7b40-8ee8-4f350350810c",
+    "state": "inbox",
+    "private_note": null,
+    "save_source_kind": "arxiv_url",
+    "reminder_at": null,
+    "saved_at": "2026-08-19T12:00:00Z",
+    "updated_at": "2026-08-19T12:00:00Z",
+    "reviewed_at": null,
+    "archived_at": null,
+    "removed": false,
+    "removed_at": null,
+    "revision": 130,
+    "last_operation_id": "0198f500-0000-7000-8000-000000000010"
+  },
+  "paper": {
+    "paper_id": "0198f4d7-a4ce-7b40-8ee8-4f350350810c",
+    "arxiv_id": "1706.03762v7",
+    "title": "Attention Is All You Need",
+    "abstract": "Bounded public arXiv metadata.",
+    "authors": [
+      "Ashish Vaswani",
+      "Noam Shazeer"
+    ],
+    "primary_category": "cs.CL",
+    "categories": [
+      "cs.CL",
+      "cs.LG"
+    ],
+    "published_at": "2017-06-12T00:00:00Z",
+    "updated_at": "2023-08-02T00:00:00Z",
+    "abs_url": "https://arxiv.org/abs/1706.03762v7",
+    "pdf_url": "https://arxiv.org/pdf/1706.03762v7",
+    "capabilities": {
+      "metadata": true,
+      "introduction": false,
+      "chat": false,
+      "connections": false
+    }
+  },
+  "sync_revision": 130
+}

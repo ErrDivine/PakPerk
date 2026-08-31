@@ -43,9 +43,24 @@ features:
   accounts: true
   library: true
   libraryWrites: true
+  paperResolution: true
+  paperTitleSearch: true
+  libraryImportWrites: true
+  readingFeed: true
+  toReadFirstEnforcement: true
   comments: true
   commentCreation: true
   accountDeletion: true
+  libraryV2: true
+  researchProfiles: true
+  recommendations: true
+  recommendationEvents: true
+  searchLookup: true
+  searchExplore: true
+  savedQueries: true
+  readingBriefs: true
+  subscriptions: true
+  notifications: true
 
 alerting:
   # The packaged contract selects production resources. Staging canaries use
@@ -57,12 +72,18 @@ api:
   # Render-only example. A deployment must use the source CIDRs actually
   # observed from its ingress-controller pods.
   trustedProxyCidrs: [10.244.0.0/16]
+  readingFeedDefaultLimit: 20
+  readingFeedMaxLimit: 50
+  readingFeedCursorTtlSeconds: 86400
 
 paperWorker:
   arxivContactEmail: research-ops@pakperk.app
   llmBaseUrl: https://model.staging.pakperk.app/v1/
   llmChatModel: staging-chat
   llmEmbeddingModel: staging-embedding
+
+visualAssets:
+  existingClaim: pakperk-staging-visual-assets
 
 deletionLedger:
   existingClaim: pakperk-staging-deletion-ledger

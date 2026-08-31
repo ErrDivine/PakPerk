@@ -20,7 +20,7 @@ import uuid
 
 
 EVIDENCE_SCHEMA_VERSION = 1
-DATABASE_MIGRATION_VERSION = 10
+DATABASE_MIGRATION_VERSION = 24
 STATE_SCHEMA_VERSION = 2
 MAX_EVIDENCE_BYTES = 64 * 1024
 
@@ -46,7 +46,7 @@ JWT_TEXT = re.compile(
 # passed prefix, one failed scenario, and a not-run suffix. Cleanup is always
 # last and must pass before any artifact can be emitted.
 SCENARIO_IDS = (
-    "database_migration_version_10",
+    "database_migration_version_24",
     "mobile_oidc_authorization_code_pkce_and_password_grant_rejection",
     "admin_oidc_pkce_dedicated_audience_rejected_by_api",
     "account_terms_and_guidelines_onboarding",

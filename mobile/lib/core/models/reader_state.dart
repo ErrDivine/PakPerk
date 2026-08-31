@@ -1,4 +1,7 @@
 import 'paper.dart';
+import '../../features/document_reader/reader_entry_context.dart';
+import '../../features/reader_modes/reader_mode.dart';
+import 'semantic_span.dart';
 
 String feedReaderKey(PaperSummary paper) =>
     'feed:${paper.paperId}:${paper.arxivId}';
@@ -8,10 +11,30 @@ String routeReaderKey(String routeId, PaperSummary paper) =>
 
 enum AppBranch {
   read,
-  you;
+  you,
+  library;
 
-  static AppBranch fromIndex(int index) =>
-      index == AppBranch.you.index ? AppBranch.you : AppBranch.read;
+  /// Persistence indexes deliberately keep the v0.0 `Read = 0, You = 1`
+  /// mapping. The visible shell order is a separate concern so adding Library
+  /// cannot restore an older user's saved You session into the wrong account.
+  static AppBranch fromIndex(int index) => switch (index) {
+    1 => AppBranch.you,
+    2 => AppBranch.library,
+    _ => AppBranch.read,
+  };
+
+  /// The visible v0.1 destination order: Read, Library, You.
+  int get shellIndex => switch (this) {
+    AppBranch.read => 0,
+    AppBranch.library => 1,
+    AppBranch.you => 2,
+  };
+
+  static AppBranch fromShellIndex(int index) => switch (index) {
+    1 => AppBranch.library,
+    2 => AppBranch.you,
+    _ => AppBranch.read,
+  };
 }
 
 enum PaperStage {
@@ -38,6 +61,10 @@ class ReaderNavigationState {
     this.chatSheetOpen = false,
     this.chatThreadId,
     this.prepareRequested = false,
+    this.depthMode = ReaderDepthMode.skim,
+    this.semanticDensity = SemanticDensity.key,
+    this.checkpointBlockId,
+    this.checkpointScrollFraction,
   });
 
   final int stageIndex;
@@ -47,6 +74,17 @@ class ReaderNavigationState {
   final bool chatSheetOpen;
   final String? chatThreadId;
   final bool prepareRequested;
+  final ReaderDepthMode depthMode;
+  final SemanticDensity semanticDensity;
+
+  /// Exact server-checkpoint anchors are private, account-owned state.
+  ///
+  /// They may live in memory while the verified account is active, but
+  /// [toJson] deliberately does not place them in the unscoped application
+  /// restoration record. Account-scoped Drift storage remains authoritative
+  /// across launches.
+  final String? checkpointBlockId;
+  final double? checkpointScrollFraction;
 
   double offsetFor(PaperStage stage) => switch (stage) {
     PaperStage.abstractView => abstractOffset,
@@ -63,6 +101,12 @@ class ReaderNavigationState {
     String? chatThreadId,
     bool clearChatThreadId = false,
     bool? prepareRequested,
+    ReaderDepthMode? depthMode,
+    SemanticDensity? semanticDensity,
+    String? checkpointBlockId,
+    bool clearCheckpointBlockId = false,
+    double? checkpointScrollFraction,
+    bool clearCheckpointScrollFraction = false,
   }) => ReaderNavigationState(
     stageIndex: stageIndex ?? this.stageIndex,
     abstractOffset: abstractOffset ?? this.abstractOffset,
@@ -71,6 +115,14 @@ class ReaderNavigationState {
     chatSheetOpen: chatSheetOpen ?? this.chatSheetOpen,
     chatThreadId: clearChatThreadId ? null : chatThreadId ?? this.chatThreadId,
     prepareRequested: prepareRequested ?? this.prepareRequested,
+    depthMode: depthMode ?? this.depthMode,
+    semanticDensity: semanticDensity ?? this.semanticDensity,
+    checkpointBlockId: clearCheckpointBlockId
+        ? null
+        : checkpointBlockId ?? this.checkpointBlockId,
+    checkpointScrollFraction: clearCheckpointScrollFraction
+        ? null
+        : checkpointScrollFraction ?? this.checkpointScrollFraction,
   );
 
   factory ReaderNavigationState.fromJson(
@@ -83,6 +135,13 @@ class ReaderNavigationState {
     chatSheetOpen: json['chat_sheet_open'] as bool? ?? false,
     chatThreadId: json['chat_thread_id']?.toString(),
     prepareRequested: json['prepare_requested'] as bool? ?? false,
+    depthMode: ReaderDepthMode.fromWire(json['depth_mode']),
+    semanticDensity: SemanticDensity.fromRestoration(json['semantic_density']),
+    // Older Plan 03 development builds wrote exact account-owned checkpoint
+    // anchors into this unscoped record. Ignore them on decode so an upgrade
+    // cannot revive one account's position under another identity.
+    checkpointBlockId: null,
+    checkpointScrollFraction: null,
   );
 
   Map<String, dynamic> toJson() => {
@@ -93,14 +152,21 @@ class ReaderNavigationState {
     'chat_sheet_open': chatSheetOpen,
     if (chatThreadId != null) 'chat_thread_id': chatThreadId,
     'prepare_requested': prepareRequested,
+    'depth_mode': depthMode.wireValue,
+    'semantic_density': semanticDensity.wireValue,
   };
 }
 
 class PaperRouteEntry {
-  const PaperRouteEntry({required this.routeId, required this.paper});
+  const PaperRouteEntry({
+    required this.routeId,
+    required this.paper,
+    this.entryContext = const ReaderEntryContext.external(),
+  });
 
   final String routeId;
   final PaperSummary paper;
+  final ReaderEntryContext entryContext;
 
   String get readerKey => routeReaderKey(routeId, paper);
 
@@ -110,11 +176,18 @@ class PaperRouteEntry {
         paper: PaperSummary.fromJson(
           Map<String, dynamic>.from(json['paper'] as Map),
         ),
+        entryContext: switch (json['entry_context']) {
+          final Map value => ReaderEntryContext.fromJson(
+            Map<String, dynamic>.from(value),
+          ),
+          _ => const ReaderEntryContext.external(),
+        },
       );
 
   Map<String, dynamic> toJson() => {
     'route_id': routeId,
     'paper': paper.toJson(),
+    'entry_context': entryContext.toJson(),
   };
 }
 
@@ -131,7 +204,9 @@ class AppRestorationState {
          'Feed paper identity and version must be persisted together.',
        );
 
-  /// The selected root destination: `0` for Read and `1` for You.
+  /// The selected root destination persistence index.
+  ///
+  /// `0` is Read, `1` remains You for v0.0 compatibility, and `2` is Library.
   ///
   /// Keeping this alongside the reader state gives the application a small,
   /// deterministic fallback when platform Navigator restoration is not
@@ -221,7 +296,11 @@ class AppRestorationState {
 
 int _restoredBranchIndex(Object? value) {
   final index = value is num ? value.toInt() : 0;
-  return index == 1 ? 1 : 0;
+  return switch (index) {
+    1 => 1,
+    2 => 2,
+    _ => 0,
+  };
 }
 
 /// Pure committed-page gate used by the reader and unit-tested independently.

@@ -17,6 +17,7 @@ class AccountYouScreen extends ConsumerWidget {
     required this.onOpenLibrary,
     required this.onOpenComments,
     required this.onOpenBlockedUsers,
+    this.onOpenMemory,
     required this.onOpenSettings,
     required this.onOpenPrivacy,
     required this.onOpenTerms,
@@ -31,6 +32,7 @@ class AccountYouScreen extends ConsumerWidget {
   final VoidCallback onOpenLibrary;
   final VoidCallback onOpenComments;
   final VoidCallback onOpenBlockedUsers;
+  final VoidCallback? onOpenMemory;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenPrivacy;
   final VoidCallback onOpenTerms;
@@ -84,6 +86,7 @@ class AccountYouScreen extends ConsumerWidget {
         onOpenLibrary: onOpenLibrary,
         onOpenComments: onOpenComments,
         onOpenBlockedUsers: onOpenBlockedUsers,
+        onOpenMemory: onOpenMemory,
         onOpenSettings: onOpenSettings,
         onOpenPrivacy: onOpenPrivacy,
         onOpenTerms: onOpenTerms,
@@ -110,6 +113,7 @@ class _AuthenticatedAccountLoader extends ConsumerWidget {
     required this.onOpenLibrary,
     required this.onOpenComments,
     required this.onOpenBlockedUsers,
+    this.onOpenMemory,
     required this.onOpenSettings,
     required this.onOpenPrivacy,
     required this.onOpenTerms,
@@ -122,6 +126,7 @@ class _AuthenticatedAccountLoader extends ConsumerWidget {
   final VoidCallback onOpenLibrary;
   final VoidCallback onOpenComments;
   final VoidCallback onOpenBlockedUsers;
+  final VoidCallback? onOpenMemory;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenPrivacy;
   final VoidCallback onOpenTerms;
@@ -208,6 +213,7 @@ class _AuthenticatedAccountLoader extends ConsumerWidget {
       onOpenLibrary: onOpenLibrary,
       onOpenComments: onOpenComments,
       onOpenBlockedUsers: onOpenBlockedUsers,
+      onOpenMemory: onOpenMemory,
       onOpenSettings: onOpenSettings,
       onOpenPrivacy: onOpenPrivacy,
       onOpenTerms: onOpenTerms,
@@ -237,6 +243,7 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
     required this.onSignOut,
     this.libraryEnabled = false,
     this.commentsEnabled = false,
+    this.onOpenMemory,
     this.libraryCount,
     this.pendingLibraryCount = 0,
     this.updateError,
@@ -255,6 +262,7 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
   final VoidCallback onOpenLibrary;
   final VoidCallback onOpenComments;
   final VoidCallback onOpenBlockedUsers;
+  final VoidCallback? onOpenMemory;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenPrivacy;
   final VoidCallback onOpenTerms;
@@ -365,6 +373,14 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
                   pendingLibraryCount,
                 ),
                 onTap: onOpenLibrary,
+              ),
+            if (onOpenMemory != null)
+              _AccountDestination(
+                icon: Icons.psychology_alt_outlined,
+                label: 'Research memory',
+                supportingText:
+                    'Review only the notes and evidence you chose to remember.',
+                onTap: onOpenMemory!,
               ),
             if (commentsEnabled && profile.isActive) ...[
               _AccountDestination(

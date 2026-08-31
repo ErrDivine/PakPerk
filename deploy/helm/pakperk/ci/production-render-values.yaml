@@ -47,7 +47,7 @@ releaseEvidence:
 
 alerting:
   enabled: true
-  policySha256: sha256:1b708d5d63988f0bbb26a6649633d1f1f5b096b0bd52338508142c9afb97140b
+  policySha256: sha256:1332fab6e5ab0ef0a98a0b74e3d4285ae10764885be9b80e4a6697fb4d42dc46
 
 policy:
   termsVersion: "2026-08-01"
@@ -58,6 +58,9 @@ paperWorker:
   llmBaseUrl: https://model.pakperk.app/v1/
   llmChatModel: production-render-chat
   llmEmbeddingModel: production-render-embedding
+
+visualAssets:
+  existingClaim: pakperk-production-render-visual-assets
 
 deletionLedger:
   existingClaim: pakperk-production-render-deletion-ledger

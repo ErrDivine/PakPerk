@@ -11,12 +11,14 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::time::{sleep, timeout};
 use url::Url;
+use uuid::Uuid;
 
 use crate::{
+    AssistantCompletion, AssistantCompletionRequest, AssistantProvider, AssistantTokenUsage,
     ChatCompletionRequest, ChatProvider, EmbeddingProvider, EmbeddingRequest, EmbeddingResponse,
     ProviderError, RelationshipProvider, RelationshipRequest, RelationshipSummary,
-    prompt::{chat_payload, relationship_payload},
-    validate_chat_output, validate_relationship_output,
+    prompt::{assistant_v2_payload, chat_payload, relationship_payload},
+    validate_assistant_output, validate_chat_output, validate_relationship_output,
 };
 
 #[derive(Clone)]
@@ -179,6 +181,60 @@ impl ChatProvider for OpenAiCompatibleProvider {
 }
 
 #[async_trait]
+impl AssistantProvider for OpenAiCompatibleProvider {
+    fn provenance_provider_id(&self) -> &'static str {
+        "openai_compatible"
+    }
+
+    async fn answer_with_evidence(
+        &self,
+        request: &AssistantCompletionRequest,
+    ) -> Result<AssistantCompletion, ProviderError> {
+        let payload = assistant_v2_payload(request, &self.config.chat_model)?;
+        let bytes = self.post_json("chat/completions", &payload).await?;
+        let response: ChatEnvelope = serde_json::from_slice(&bytes).map_err(|_| {
+            ProviderError::InvalidResponse(
+                "assistant response is not the expected JSON envelope".into(),
+            )
+        })?;
+        let token_usage = response
+            .usage
+            .map(ChatUsage::try_into_assistant_usage)
+            .transpose()?;
+        let content = response
+            .choices
+            .into_iter()
+            .next()
+            .map(|choice| choice.message.content)
+            .filter(|content| !content.trim().is_empty())
+            .ok_or_else(|| {
+                ProviderError::InvalidResponse("assistant response contains no content".into())
+            })?;
+        let model_id = validated_provider_identifier(
+            response.model.as_deref().unwrap_or(&self.config.chat_model),
+            "model",
+        )?;
+        let provider_request_id = response
+            .id
+            .as_deref()
+            .map(|value| validated_provider_identifier(value, "request"))
+            .transpose()?;
+        let answer = validate_assistant_output(
+            &content,
+            request,
+            Uuid::now_v7(),
+            Some(model_id),
+            provider_request_id,
+        )
+        .map_err(ProviderError::from)?;
+        Ok(AssistantCompletion {
+            answer,
+            token_usage,
+        })
+    }
+}
+
+#[async_trait]
 impl EmbeddingProvider for OpenAiCompatibleProvider {
     async fn embed(&self, request: &EmbeddingRequest) -> Result<EmbeddingResponse, ProviderError> {
         request.validate()?;
@@ -273,6 +329,34 @@ struct ChatEnvelope {
     id: Option<String>,
     model: Option<String>,
     choices: Vec<ChatChoice>,
+    usage: Option<ChatUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatUsage {
+    prompt_tokens: u64,
+    completion_tokens: u64,
+}
+
+impl ChatUsage {
+    fn try_into_assistant_usage(self) -> Result<AssistantTokenUsage, ProviderError> {
+        const MAX_REPORTED_TOKENS: u64 = 10_000_000;
+        if self.prompt_tokens > MAX_REPORTED_TOKENS
+            || self.completion_tokens > MAX_REPORTED_TOKENS
+            || self
+                .prompt_tokens
+                .checked_add(self.completion_tokens)
+                .is_none()
+        {
+            return Err(ProviderError::InvalidResponse(
+                "assistant token usage exceeds its telemetry bound".to_owned(),
+            ));
+        }
+        Ok(AssistantTokenUsage {
+            input_tokens: self.prompt_tokens,
+            output_tokens: self.completion_tokens,
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -489,5 +573,29 @@ mod tests {
         assert!(validated_provider_identifier(&oversized, "model").is_err());
         assert!(is_safe_provider_identifier("text-embedding-3-small"));
         assert!(is_safe_provider_identifier("provider/model:v1"));
+    }
+
+    #[test]
+    fn assistant_token_usage_is_bounded_and_content_free() {
+        assert_eq!(
+            ChatUsage {
+                prompt_tokens: 120,
+                completion_tokens: 45,
+            }
+            .try_into_assistant_usage()
+            .unwrap(),
+            AssistantTokenUsage {
+                input_tokens: 120,
+                output_tokens: 45,
+            }
+        );
+        assert!(
+            ChatUsage {
+                prompt_tokens: 10_000_001,
+                completion_tokens: 0,
+            }
+            .try_into_assistant_usage()
+            .is_err()
+        );
     }
 }

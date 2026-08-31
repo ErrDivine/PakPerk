@@ -87,6 +87,29 @@ impl RateLimitRequest {
         Self::new("library_mutation", format!("user:{user_id}"), limit, window)
     }
 
+    pub fn saved_search_mutation(
+        user_id: AuthenticatedUserId,
+        limit: u32,
+        window: Duration,
+    ) -> Result<Self, RateLimitConfigError> {
+        Self::new(
+            "saved_search_mutation",
+            format!("user:{user_id}"),
+            limit,
+            window,
+        )
+    }
+
+    /// Bounded event ingestion. The caller must pass only a server-owned user
+    /// UUID or the explicit anonymous-session UUID, never an address or token.
+    pub fn interaction_batch(
+        principal_scope: impl Into<String>,
+        limit: u32,
+        window: Duration,
+    ) -> Result<Self, RateLimitConfigError> {
+        Self::new("interaction_batch", principal_scope, limit, window)
+    }
+
     pub fn comment_create(
         user_id: AuthenticatedUserId,
         limit: u32,

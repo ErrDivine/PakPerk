@@ -21,6 +21,7 @@ import sys
 import threading
 import time
 from typing import Any, Callable, Iterable
+import unicodedata
 from urllib.parse import urlencode, urlparse
 import uuid
 
@@ -29,26 +30,48 @@ SCENARIO_ORDER = (
     "feed",
     "metadata",
     "library",
+    "reading_feed_queue",
+    "reading_feed_recommendations",
+    "paper_title_search",
     "comments",
     "library_mutation",
+    "paper_import_replay",
 )
 DEFAULT_WEIGHTS = {
     "feed": 1,
     "metadata": 4,
     "library": 1,
+    "reading_feed_queue": 1,
+    "reading_feed_recommendations": 1,
+    "paper_title_search": 1,
     "comments": 1,
     "library_mutation": 1,
+    "paper_import_replay": 1,
 }
 DEFAULT_THRESHOLDS = {
     "feed": (250.0, 500.0, 1_000.0, 0.01),
     "metadata": (125.0, 250.0, 500.0, 0.01),
     "library": (250.0, 500.0, 1_000.0, 0.01),
+    "reading_feed_queue": (350.0, 700.0, 1_400.0, 0.01),
+    "reading_feed_recommendations": (350.0, 700.0, 1_400.0, 0.01),
+    "paper_title_search": (500.0, 1_000.0, 2_000.0, 0.01),
     "comments": (350.0, 700.0, 1_400.0, 0.01),
     "library_mutation": (250.0, 500.0, 1_000.0, 0.01),
+    "paper_import_replay": (350.0, 700.0, 1_400.0, 0.01),
 }
 EVIDENCE_ID = re.compile(r"[A-Za-z0-9._:/-]{1,128}")
 SOURCE_REVISION = re.compile(r"[0-9a-f]{40}")
 CATEGORY = re.compile(r"[A-Za-z0-9.-]{1,64}")
+ARXIV_ID = re.compile(r"[0-9]{4}\.[0-9]{4,5}(?:v[1-9][0-9]*)?")
+PAPER_SEARCH_ACCOUNT_LIMIT_PER_MINUTE = 10
+PAPER_IMPORT_ACCOUNT_LIMIT_PER_MINUTE = 20
+PRIVATE_PREFLIGHT_REQUESTS = 1
+MAXIMUM_PAPER_SEARCH_REQUESTS = (
+    PAPER_SEARCH_ACCOUNT_LIMIT_PER_MINUTE - PRIVATE_PREFLIGHT_REQUESTS
+)
+MAXIMUM_PAPER_IMPORT_REQUESTS = (
+    PAPER_IMPORT_ACCOUNT_LIMIT_PER_MINUTE - PRIVATE_PREFLIGHT_REQUESTS
+)
 
 
 class ConfigurationError(RuntimeError):
@@ -91,17 +114,26 @@ class Config:
     maximum_response_bytes: int
     minimum_paper_records: int
     feed_page_size: int
+    reading_feed_page_size: int
     maximum_bootstrap_pages: int
     minimum_samples_per_scenario: int
     warmup_per_worker: int
     category: str | None
     bearer_token: str | None = field(repr=False)
+    reading_feed_queue_token: str | None = field(default=None, repr=False)
+    reading_feed_recommendation_token: str | None = field(default=None, repr=False)
+    paper_search_query: str | None = field(default=None, repr=False)
+    maximum_paper_search_requests: int = 0
     include_library: bool = False
     comments_paper_id: str | None = None
     allow_library_mutations: bool = False
     library_mutation_paper_id: str | None = None
     maximum_library_mutation_requests: int = 0
     maximum_library_snapshot_pages: int = 0
+    allow_paper_import_replays: bool = False
+    paper_import_operation_id: str | None = field(default=None, repr=False)
+    paper_import_arxiv_id: str | None = field(default=None, repr=False)
+    maximum_paper_import_requests: int = 0
     weights: dict[str, int] = field(default_factory=dict)
     thresholds: dict[str, Threshold] = field(default_factory=dict)
 
@@ -110,10 +142,18 @@ class Config:
         enabled = ["feed", "metadata"]
         if self.include_library:
             enabled.append("library")
+        if self.reading_feed_queue_token is not None:
+            enabled.append("reading_feed_queue")
+        if self.reading_feed_recommendation_token is not None:
+            enabled.append("reading_feed_recommendations")
+        if self.paper_search_query is not None:
+            enabled.append("paper_title_search")
         if self.comments_paper_id is not None:
             enabled.append("comments")
         if self.allow_library_mutations:
             enabled.append("library_mutation")
+        if self.allow_paper_import_replays:
+            enabled.append("paper_import_replay")
         return tuple(enabled)
 
 
@@ -285,6 +325,82 @@ def read_bearer_token(path: Path | None) -> str | None:
     return token
 
 
+def read_private_text(
+    path: Path | None,
+    label: str,
+    *,
+    minimum_bytes: int,
+    maximum_bytes: int,
+) -> str | None:
+    """Read one owner-only UTF-8 fixture without ever echoing its content."""
+    if path is None:
+        return None
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+        metadata = os.fstat(descriptor)
+    except OSError as error:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise ConfigurationError(f"{label} file is unavailable") from error
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_mode & 0o077
+        or (hasattr(os, "geteuid") and metadata.st_uid != os.geteuid())
+        or not minimum_bytes <= metadata.st_size <= maximum_bytes
+    ):
+        os.close(descriptor)
+        raise ConfigurationError(
+            f"{label} file must be a bounded regular owner-only file"
+        )
+    try:
+        with os.fdopen(descriptor, "r", encoding="utf-8") as fixture_file:
+            descriptor = None
+            raw = fixture_file.read(maximum_bytes + 1)
+    except (OSError, UnicodeError) as error:
+        raise ConfigurationError(f"{label} file is not valid UTF-8") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    value = raw.rstrip("\r\n")
+    if raw not in {value, value + "\n", value + "\r\n"}:
+        raise ConfigurationError(f"{label} file contains invalid line endings")
+    return value
+
+
+def normalized_search_query(path: Path | None) -> str | None:
+    value = read_private_text(
+        path,
+        "paper-search query",
+        minimum_bytes=3,
+        maximum_bytes=4_096,
+    )
+    if value is None:
+        return None
+    normalized = " ".join(unicodedata.normalize("NFKC", value).split())
+    if (
+        not 3 <= len(normalized) <= 300
+        or any(ord(character) < 0x20 or ord(character) == 0x7F for character in normalized)
+    ):
+        raise ConfigurationError("paper-search query fixture is invalid")
+    return normalized
+
+
+def checked_arxiv_fixture(path: Path | None) -> str | None:
+    value = read_private_text(
+        path,
+        "paper-import source",
+        minimum_bytes=9,
+        maximum_bytes=64,
+    )
+    if value is not None and ARXIV_ID.fullmatch(value) is None:
+        raise ConfigurationError("paper-import source fixture is invalid")
+    return value
+
+
 def parse_config(argv: list[str] | None = None) -> Config:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--api-origin", required=True)
@@ -304,17 +420,32 @@ def parse_config(argv: list[str] | None = None) -> Config:
     parser.add_argument("--max-response-bytes", default=str(2 * 1024 * 1024))
     parser.add_argument("--minimum-paper-records", default="200")
     parser.add_argument("--feed-page-size", default="100")
+    parser.add_argument("--reading-feed-page-size", default="20")
     parser.add_argument("--max-bootstrap-pages", default="100")
     parser.add_argument("--minimum-samples-per-scenario", default="20")
     parser.add_argument("--warmup-per-worker", default="1")
     parser.add_argument("--category")
     parser.add_argument("--bearer-token-file", type=Path)
+    parser.add_argument("--reading-feed-queue-token-file", type=Path)
+    parser.add_argument("--reading-feed-recommendation-token-file", type=Path)
+    parser.add_argument("--paper-search-query-file", type=Path)
+    parser.add_argument(
+        "--max-paper-search-requests",
+        default=str(MAXIMUM_PAPER_SEARCH_REQUESTS),
+    )
     parser.add_argument("--include-library", action="store_true")
     parser.add_argument("--comments-paper-id")
     parser.add_argument("--allow-library-mutations", action="store_true")
     parser.add_argument("--library-mutation-paper-id")
     parser.add_argument("--max-library-mutation-requests", default="20")
     parser.add_argument("--max-library-snapshot-pages", default="100")
+    parser.add_argument("--allow-paper-import-replays", action="store_true")
+    parser.add_argument("--paper-import-operation-id")
+    parser.add_argument("--paper-import-arxiv-id-file", type=Path)
+    parser.add_argument(
+        "--max-paper-import-requests",
+        default=str(MAXIMUM_PAPER_IMPORT_REQUESTS),
+    )
     parser.add_argument(
         "--scenario-weight",
         action="append",
@@ -344,6 +475,13 @@ def parse_config(argv: list[str] | None = None) -> Config:
         arguments.api_origin, arguments.environment, arguments.allow_loopback_http
     )
     bearer_token = read_bearer_token(arguments.bearer_token_file)
+    reading_feed_queue_token = read_bearer_token(
+        arguments.reading_feed_queue_token_file
+    )
+    reading_feed_recommendation_token = read_bearer_token(
+        arguments.reading_feed_recommendation_token_file
+    )
+    paper_search_query = normalized_search_query(arguments.paper_search_query_file)
     if arguments.include_library and bearer_token is None:
         raise ConfigurationError("library load requires a bearer-token file")
     comments_paper_id = (
@@ -362,6 +500,23 @@ def parse_config(argv: list[str] | None = None) -> Config:
         )
     if arguments.allow_library_mutations and bearer_token is None:
         raise ConfigurationError("library mutations require a bearer-token file")
+    if paper_search_query is not None and bearer_token is None:
+        raise ConfigurationError("paper title search requires a bearer-token file")
+    import_operation_id = (
+        checked_uuid(arguments.paper_import_operation_id, "paper import operation ID")
+        if arguments.paper_import_operation_id
+        else None
+    )
+    import_arxiv_id = checked_arxiv_fixture(arguments.paper_import_arxiv_id_file)
+    if arguments.allow_paper_import_replays != (
+        import_operation_id is not None and import_arxiv_id is not None
+    ):
+        raise ConfigurationError(
+            "paper import replays require explicit allowance, an operation ID, "
+            "and an owner-only arXiv fixture file"
+        )
+    if arguments.allow_paper_import_replays and bearer_token is None:
+        raise ConfigurationError("paper import replays require a bearer-token file")
 
     weights = parse_mapping(arguments.scenario_weight, DEFAULT_WEIGHTS, parse_weight)
     default_thresholds = {
@@ -398,6 +553,9 @@ def parse_config(argv: list[str] | None = None) -> Config:
         "minimum paper records", arguments.minimum_paper_records, 10_000
     )
     feed_page_size = positive_int("feed page size", arguments.feed_page_size, 100)
+    reading_feed_page_size = positive_int(
+        "reading feed page size", arguments.reading_feed_page_size, 50
+    )
     bootstrap_pages = positive_int(
         "max bootstrap pages", arguments.max_bootstrap_pages, 1_000
     )
@@ -417,12 +575,26 @@ def parse_config(argv: list[str] | None = None) -> Config:
     snapshot_pages = positive_int(
         "max library snapshot pages", arguments.max_library_snapshot_pages, 1_000
     )
+    maximum_search_requests = positive_int(
+        "max paper search requests",
+        arguments.max_paper_search_requests,
+        MAXIMUM_PAPER_SEARCH_REQUESTS,
+    )
+    maximum_import_replays = positive_int(
+        "max paper import requests",
+        arguments.max_paper_import_requests,
+        MAXIMUM_PAPER_IMPORT_REQUESTS,
+    )
 
     enabled_count = (
         2
         + int(arguments.include_library)
+        + int(reading_feed_queue_token is not None)
+        + int(reading_feed_recommendation_token is not None)
+        + int(paper_search_query is not None)
         + int(comments_paper_id is not None)
         + int(arguments.allow_library_mutations)
+        + int(arguments.allow_paper_import_replays)
     )
     if maximum_requests < enabled_count * minimum_samples:
         raise ConfigurationError(
@@ -431,6 +603,14 @@ def parse_config(argv: list[str] | None = None) -> Config:
     if arguments.allow_library_mutations and maximum_mutations < minimum_samples:
         raise ConfigurationError(
             "max library mutation requests is smaller than the scenario sample floor"
+        )
+    if paper_search_query is not None and maximum_search_requests < minimum_samples:
+        raise ConfigurationError(
+            "max paper search requests is smaller than the scenario sample floor"
+        )
+    if arguments.allow_paper_import_replays and maximum_import_replays < minimum_samples:
+        raise ConfigurationError(
+            "max paper import requests is smaller than the scenario sample floor"
         )
     if os.path.lexists(arguments.output):
         raise ConfigurationError("evidence output already exists")
@@ -456,17 +636,26 @@ def parse_config(argv: list[str] | None = None) -> Config:
         maximum_response_bytes=maximum_response_bytes,
         minimum_paper_records=minimum_records,
         feed_page_size=feed_page_size,
+        reading_feed_page_size=reading_feed_page_size,
         maximum_bootstrap_pages=bootstrap_pages,
         minimum_samples_per_scenario=minimum_samples,
         warmup_per_worker=warmup_per_worker,
         category=arguments.category,
         bearer_token=bearer_token,
+        reading_feed_queue_token=reading_feed_queue_token,
+        reading_feed_recommendation_token=reading_feed_recommendation_token,
+        paper_search_query=paper_search_query,
+        maximum_paper_search_requests=maximum_search_requests,
         include_library=arguments.include_library,
         comments_paper_id=comments_paper_id,
         allow_library_mutations=arguments.allow_library_mutations,
         library_mutation_paper_id=mutation_paper_id,
         maximum_library_mutation_requests=maximum_mutations,
         maximum_library_snapshot_pages=snapshot_pages,
+        allow_paper_import_replays=arguments.allow_paper_import_replays,
+        paper_import_operation_id=import_operation_id,
+        paper_import_arxiv_id=import_arxiv_id,
+        maximum_paper_import_requests=maximum_import_replays,
         weights=weights,
         thresholds=thresholds,
     )
@@ -668,6 +857,170 @@ def validate_library(value: dict[str, Any]) -> None:
         raise ProtocolError("library response shape was invalid")
 
 
+def _paper_id(value: Any, label: str) -> str:
+    if not isinstance(value, dict) or not isinstance(value.get("paper_id"), str):
+        raise ProtocolError(f"{label} response shape was invalid")
+    try:
+        return str(uuid.UUID(value["paper_id"]))
+    except ValueError as error:
+        raise ProtocolError(f"{label} response shape was invalid") from error
+
+
+def _contains_account_identity(value: Any) -> bool:
+    if isinstance(value, dict):
+        return any(
+            key in {"account_id", "user_id"} or _contains_account_identity(nested)
+            for key, nested in value.items()
+        )
+    if isinstance(value, list):
+        return any(_contains_account_identity(nested) for nested in value)
+    return False
+
+
+def validate_reading_feed(
+    value: dict[str, Any], expected_mode: str, maximum_items: int
+) -> None:
+    mode = value.get("mode")
+    decision = value.get("decision")
+    items = value.get("items")
+    cursor = value.get("next_cursor")
+    if (
+        _contains_account_identity(value)
+        or mode != expected_mode
+        or not isinstance(decision, dict)
+        or not isinstance(items, list)
+        or len(items) > maximum_items
+        or not (cursor is None or isinstance(cursor, str) and 1 <= len(cursor) <= 512)
+        or not isinstance(value.get("server_time"), str)
+    ):
+        raise ProtocolError("reading-feed response shape was invalid")
+    revision = decision.get("library_revision")
+    active_count = decision.get("active_to_read_count")
+    proven_empty = decision.get("queue_proven_empty")
+    if (
+        not isinstance(revision, int)
+        or isinstance(revision, bool)
+        or revision < 0
+        or not isinstance(active_count, int)
+        or isinstance(active_count, bool)
+        or active_count < 0
+        or not isinstance(proven_empty, bool)
+    ):
+        raise ProtocolError("reading-feed response shape was invalid")
+    if expected_mode == "to_read":
+        if active_count <= 0 or proven_empty or not items:
+            raise ProtocolError("reading-feed queue decision was invalid")
+    elif expected_mode == "recommendations":
+        if active_count != 0 or not proven_empty:
+            raise ProtocolError("reading-feed recommendation decision was invalid")
+    else:
+        raise ProtocolError("reading-feed expected mode was invalid")
+    for entry in items:
+        if not isinstance(entry, dict):
+            raise ProtocolError("reading-feed response shape was invalid")
+        _paper_id(entry.get("paper"), "reading-feed")
+        queue = entry.get("queue")
+        source = entry.get("source")
+        if expected_mode == "to_read":
+            if (
+                source != "to_read"
+                or not isinstance(queue, dict)
+                or not isinstance(queue.get("saved_at"), str)
+                or not isinstance(queue.get("revision"), int)
+                or isinstance(queue.get("revision"), bool)
+                or queue["revision"] < 0
+            ):
+                raise ProtocolError("reading-feed queue item was invalid")
+        elif source != "discovery_v1" or queue is not None:
+            raise ProtocolError("reading-feed recommendation item was invalid")
+
+
+def validate_paper_search(
+    value: dict[str, Any], expected_query: str, maximum_candidates: int
+) -> None:
+    query_id = value.get("query_id")
+    candidates = value.get("candidates")
+    if (
+        _contains_account_identity(value)
+        or not isinstance(query_id, str)
+        or value.get("normalized_query") != expected_query
+        or not isinstance(candidates, list)
+        or len(candidates) > maximum_candidates
+    ):
+        raise ProtocolError("paper-search response shape was invalid")
+    try:
+        uuid.UUID(query_id)
+    except ValueError as error:
+        raise ProtocolError("paper-search response shape was invalid") from error
+    for index, candidate in enumerate(candidates, start=1):
+        if not isinstance(candidate, dict):
+            raise ProtocolError("paper-search candidate shape was invalid")
+        match = candidate.get("match")
+        abs_url = candidate.get("abs_url")
+        parsed_url = urlparse(abs_url) if isinstance(abs_url, str) else None
+        if (
+            not isinstance(candidate.get("arxiv_id"), str)
+            or not 1 <= len(candidate["arxiv_id"]) <= 64
+            or not isinstance(candidate.get("title"), str)
+            or not isinstance(candidate.get("authors"), list)
+            or not isinstance(candidate.get("abstract"), str)
+            or not isinstance(candidate.get("primary_category"), str)
+            or not isinstance(candidate.get("categories"), list)
+            or not isinstance(candidate.get("published_at"), str)
+            or not isinstance(candidate.get("updated_at"), str)
+            or parsed_url is None
+            or parsed_url.scheme != "https"
+            or parsed_url.hostname != "arxiv.org"
+            or not parsed_url.path.startswith("/abs/")
+            or not isinstance(match, dict)
+            or match.get("kind") != "title"
+            or match.get("rank") != index
+        ):
+            raise ProtocolError("paper-search candidate shape was invalid")
+
+
+def validate_paper_import(
+    value: dict[str, Any], expected_operation_id: str
+) -> None:
+    resolution = value.get("resolution")
+    item = value.get("item")
+    paper = value.get("paper")
+    sync_revision = value.get("sync_revision")
+    canonical_arxiv_id = (
+        resolution.get("canonical_arxiv_id")
+        if isinstance(resolution, dict)
+        else None
+    )
+    if (
+        _contains_account_identity(value)
+        or value.get("result") != "saved"
+        or not isinstance(resolution, dict)
+        or resolution.get("input_kind") != "arxiv_id"
+        or not isinstance(canonical_arxiv_id, str)
+        or ARXIV_ID.fullmatch(canonical_arxiv_id) is None
+        or not isinstance(item, dict)
+        or item.get("state") != "to_read"
+        or item.get("removed") is not False
+        or item.get("removed_at") is not None
+        or item.get("last_operation_id") != expected_operation_id
+        or not isinstance(item.get("revision"), int)
+        or isinstance(item.get("revision"), bool)
+        or item["revision"] <= 0
+        or sync_revision != item["revision"]
+    ):
+        raise ProtocolError("paper-import response shape was invalid")
+    item_paper_id = _paper_id(item, "paper-import")
+    if (
+        _paper_id(paper, "paper-import") != item_paper_id
+        or paper.get("arxiv_id") != canonical_arxiv_id
+    ):
+        raise ProtocolError("paper-import response shape was invalid")
+    try:
+        uuid.UUID(expected_operation_id)
+    except ValueError as error:
+        raise ProtocolError("paper-import response shape was invalid") from error
+
+
 def validate_comments(value: dict[str, Any]) -> None:
     items = value.get("items")
     cursor = value.get("next_cursor")
@@ -731,6 +1084,13 @@ def feed_path(config: Config, cursor: str | None = None) -> str:
     if cursor is not None:
         query["cursor"] = cursor
     return "/v1/feed?" + urlencode(query)
+
+
+def reading_feed_path(config: Config) -> str:
+    query: dict[str, str | int] = {"limit": config.reading_feed_page_size}
+    if config.category is not None:
+        query["category"] = config.category
+    return "/v1/me/reading-feed?" + urlencode(query)
 
 
 def preflight_json(
@@ -801,6 +1161,81 @@ def bootstrap_feed(
     return paths, paper_ids
 
 
+def preflight_private_workloads(
+    config: Config, client: HttpClient, deadline: float
+) -> None:
+    path = reading_feed_path(config)
+    for token, expected_mode, operation in (
+        (
+            config.reading_feed_queue_token,
+            "to_read",
+            "reading-feed queue preflight",
+        ),
+        (
+            config.reading_feed_recommendation_token,
+            "recommendations",
+            "reading-feed recommendation preflight",
+        ),
+    ):
+        if token is None:
+            continue
+        page = preflight_json(
+            client,
+            "GET",
+            path,
+            operation,
+            token,
+            deadline=deadline,
+        )
+        try:
+            validate_reading_feed(page, expected_mode, config.reading_feed_page_size)
+        except ProtocolError as error:
+            raise LoadError(f"{operation} returned an invalid response") from error
+
+    query = config.paper_search_query
+    if query is not None:
+        result = preflight_json(
+            client,
+            "POST",
+            "/v1/me/paper-searches",
+            "paper-search cache preflight",
+            config.bearer_token,
+            json_body={"query": query, "limit": 8},
+            deadline=deadline,
+        )
+        try:
+            validate_paper_search(result, query, 8)
+        except ProtocolError as error:
+            raise LoadError(
+                "paper-search cache preflight returned an invalid response"
+            ) from error
+
+    if config.allow_paper_import_replays:
+        operation_id = config.paper_import_operation_id
+        arxiv_id = config.paper_import_arxiv_id
+        if operation_id is None or arxiv_id is None or config.bearer_token is None:
+            raise LoadError("paper-import replay fixture is unavailable")
+        result = preflight_json(
+            client,
+            "POST",
+            "/v1/me/library/imports",
+            "paper-import replay preflight",
+            config.bearer_token,
+            json_body={
+                "operation_id": operation_id,
+                "source": {"kind": "arxiv_id", "value": arxiv_id},
+            },
+            extra_headers={"Idempotency-Key": operation_id},
+            deadline=deadline,
+        )
+        try:
+            validate_paper_import(result, operation_id)
+        except ProtocolError as error:
+            raise LoadError(
+                "paper-import replay preflight returned an invalid response"
+            ) from error
+
+
 def assert_mutation_target_absent(
     config: Config, client: HttpClient, deadline: float
 ) -> None:
@@ -869,7 +1304,10 @@ class Workload:
     @property
     def warmup_scenarios(self) -> tuple[str, ...]:
         return tuple(
-            name for name in self.config.enabled_scenarios if name != "library_mutation"
+            name
+            for name in self.config.enabled_scenarios
+            if name
+            not in {"paper_title_search", "library_mutation", "paper_import_replay"}
         )
 
     def try_acquire_mutation_slot(self) -> bool:
@@ -958,6 +1396,41 @@ class Workload:
                 self.config.bearer_token,
                 validate_library,
             )
+        if scenario == "reading_feed_queue":
+            return measure(
+                client,
+                scenario,
+                "GET",
+                reading_feed_path(self.config),
+                self.config.reading_feed_queue_token,
+                lambda value: validate_reading_feed(
+                    value, "to_read", self.config.reading_feed_page_size
+                ),
+            )
+        if scenario == "reading_feed_recommendations":
+            return measure(
+                client,
+                scenario,
+                "GET",
+                reading_feed_path(self.config),
+                self.config.reading_feed_recommendation_token,
+                lambda value: validate_reading_feed(
+                    value, "recommendations", self.config.reading_feed_page_size
+                ),
+            )
+        if scenario == "paper_title_search":
+            query = self.config.paper_search_query
+            if query is None:
+                return Measurement(scenario, 0, False, "client_protocol")
+            return measure(
+                client,
+                scenario,
+                "POST",
+                "/v1/me/paper-searches",
+                self.config.bearer_token,
+                lambda value: validate_paper_search(value, query, 8),
+                json_body={"query": query, "limit": 8},
+            )
         if scenario == "comments":
             return measure(
                 client,
@@ -971,7 +1444,31 @@ class Workload:
             if not mutation_slot:
                 return Measurement("library_mutation", 0, False, "client_protocol")
             return self._mutate_library(client)
+        if scenario == "paper_import_replay":
+            if not mutation_slot:
+                return Measurement(scenario, 0, False, "client_protocol")
+            return self._replay_paper_import(client)
         return Measurement(scenario, 0, False, "client_protocol")
+
+    def _replay_paper_import(self, client: HttpClient) -> Measurement:
+        operation_id = self.config.paper_import_operation_id
+        arxiv_id = self.config.paper_import_arxiv_id
+        token = self.config.bearer_token
+        if operation_id is None or arxiv_id is None or token is None:
+            return Measurement("paper_import_replay", 0, False, "client_protocol")
+        return measure(
+            client,
+            "paper_import_replay",
+            "POST",
+            "/v1/me/library/imports",
+            token,
+            lambda value: validate_paper_import(value, operation_id),
+            json_body={
+                "operation_id": operation_id,
+                "source": {"kind": "arxiv_id", "value": arxiv_id},
+            },
+            extra_headers={"Idempotency-Key": operation_id},
+        )
 
     def _mutate_library(self, client: HttpClient) -> Measurement:
         paper_id = self.config.library_mutation_paper_id
@@ -1041,6 +1538,8 @@ class LoadRunner:
         self.next_sequence = 0
         self.scheduled_requests = 0
         self.scheduled_mutations = 0
+        self.scheduled_paper_searches = 0
+        self.scheduled_import_replays = 0
         self.scheduled_by_scenario: Counter[str] = Counter()
         self.deadline = 0.0
         self.runner_timeout = False
@@ -1074,21 +1573,40 @@ class LoadRunner:
                     if reserve_for_sample_floor and deficits[scenario] == 0:
                         continue
                     mutation_slot = False
-                    if scenario == "library_mutation":
+                    if scenario == "paper_title_search":
                         if (
-                            self.scheduled_mutations
-                            >= self.config.maximum_library_mutation_requests
+                            self.scheduled_paper_searches
+                            >= self.config.maximum_paper_search_requests
+                        ):
+                            continue
+                        self.scheduled_paper_searches += 1
+                    if scenario in {"library_mutation", "paper_import_replay"}:
+                        if scenario == "library_mutation":
+                            if (
+                                self.scheduled_mutations
+                                >= self.config.maximum_library_mutation_requests
+                            ):
+                                continue
+                        elif (
+                            self.scheduled_import_replays
+                            >= self.config.maximum_paper_import_requests
                         ):
                             continue
                         if not self.workload.try_acquire_mutation_slot():
                             continue
                         mutation_slot = True
-                        self.scheduled_mutations += 1
+                        if scenario == "library_mutation":
+                            self.scheduled_mutations += 1
+                        else:
+                            self.scheduled_import_replays += 1
                     self.scheduled_requests += 1
                     self.scheduled_by_scenario[scenario] += 1
                     return sequence, scenario, mutation_slot
                 mutation_deficit = deficits.get("library_mutation", 0)
-                if reserve_for_sample_floor and mutation_deficit > 0:
+                import_deficit = deficits.get("paper_import_replay", 0)
+                if reserve_for_sample_floor and (
+                    mutation_deficit > 0 or import_deficit > 0
+                ):
                     self.condition.wait(timeout=max(0.0, self.deadline - now))
                     continue
                 return None
@@ -1308,7 +1826,15 @@ def build_evidence(
             "authenticated_scenarios": [
                 name
                 for name in enabled
-                if name in {"library", "library_mutation"}
+                if name
+                in {
+                    "library",
+                    "library_mutation",
+                    "reading_feed_queue",
+                    "reading_feed_recommendations",
+                    "paper_title_search",
+                    "paper_import_replay",
+                }
                 or (name == "comments" and config.bearer_token is not None)
             ],
             "library_mutation_request_cap": (
@@ -1316,6 +1842,17 @@ def build_evidence(
                 if config.allow_library_mutations
                 else 0
             ),
+            "paper_search_request_cap": (
+                config.maximum_paper_search_requests
+                if config.paper_search_query is not None
+                else 0
+            ),
+            "paper_import_request_cap": (
+                config.maximum_paper_import_requests
+                if config.allow_paper_import_replays
+                else 0
+            ),
+            "private_fixture_content_recorded": False,
         },
         "warmup": warmup_payload,
         "measurements": {
@@ -1330,6 +1867,16 @@ def build_evidence(
             "measures backend HTTP response latency, not mobile frame/build/raster time",
             "does not measure mobile SQLite size/query latency, cache retention, or lifecycle behavior",
             "comment workload is read-only and never creates or serializes user content into evidence",
+            "reading-feed mode fixtures require separate protected synthetic-account tokens",
+            "paper-search titles, response metadata, canonical URLs, tokens, "
+            "account identities, and import fixture values are never serialized "
+            "into evidence",
+            "paper-search and paper-import measured request caps reserve one "
+            "request from the configured 10/minute search and 20/minute import "
+            "account quotas for fail-closed preflight",
+            "paper-import replay workload is default-off and requires an "
+            "explicitly confirmed dedicated staging fixture; an unseeded "
+            "operation may create durable staging data",
             "results require separately recorded staging topology, database saturation, and telemetry context",
         ],
     }
@@ -1371,6 +1918,7 @@ def run(config: Config) -> dict[str, Any]:
         feed_paths, paper_ids = bootstrap_feed(
             config, preflight_client, preflight_deadline
         )
+        preflight_private_workloads(config, preflight_client, preflight_deadline)
         if config.allow_library_mutations:
             assert_mutation_target_absent(config, preflight_client, preflight_deadline)
     finally:

@@ -60,6 +60,7 @@ abstract interface class PaperDataSource {
   Future<RepositoryValue<PaperProcessingState>> prepare(
     String paperId, {
     bool retry = false,
+    PreparationTrigger trigger = PreparationTrigger.introductionTransition,
     RequestCancellation? cancellation,
   });
   Future<RepositoryValue<PaperProcessingState>> getProcessing(
@@ -404,6 +405,7 @@ class PaperRepository implements PaperDataSource {
   Future<RepositoryValue<PaperProcessingState>> prepare(
     String paperId, {
     bool retry = false,
+    PreparationTrigger trigger = PreparationTrigger.introductionTransition,
     RequestCancellation? cancellation,
   }) async {
     final expectedVersion = await _currentVersionKey(paperId);
@@ -411,6 +413,7 @@ class PaperRepository implements PaperDataSource {
       final value = await _api.prepare(
         paperId,
         retry: retry,
+        trigger: trigger,
         cancellation: cancellation,
       );
       _validateProcessingResponse(paperId, value);

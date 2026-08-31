@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+  <teiHeader>
+    <fileDesc>
+      <titleStmt><title>Fixture Paper</title></titleStmt>
+      <publicationStmt><p>Test fixture</p></publicationStmt>
+      <sourceDesc><p>Generated fixture</p></sourceDesc>
+    </fileDesc>
+  </teiHeader>
+  <text>
+    <body>
+      <div xml:id="intro">
+        <head>Introduction</head>
+        <p>Unicode α evidence follows <ref type="bibr" target="#b0">[1]</ref>.</p>
+      </div>
+      <div xml:id="methods">
+        <head>Methods</head>
+        <p>We evaluate a deterministic baseline.</p>
+      </div>
+    </body>
+    <back>
+      <listBibl>
+        <biblStruct xml:id="b0"><monogr><title>Reference title</title></monogr></biblStruct>
+      </listBibl>
+    </back>
+  </text>
+</TEI>

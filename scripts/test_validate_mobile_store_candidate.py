@@ -32,6 +32,38 @@ ANDROID_SIGNER_SHA256 = "d" * 64
 IOS_IPA_SHA256 = hashlib.sha256(IOS_IPA_BYTES).hexdigest()
 IOS_SIGNER_SHA256 = "f" * 64
 IOS_TEAM_ID = "PAKPERK001"
+MOBILE_FEATURE_EVIDENCE_SHA256 = "5" * 64
+
+
+def valid_mobile_feature_evidence() -> dict[str, object]:
+    return {
+        "schema": 6,
+        "sha256": MOBILE_FEATURE_EVIDENCE_SHA256,
+        "paperTitleSearch": True,
+        "libraryImportWrites": True,
+        "readingFeed": True,
+        "toReadFirstEnforcement": True,
+        "libraryV2": True,
+        "recommendations": True,
+        "recommendationEvents": True,
+        "searchLookup": True,
+        "searchExplore": True,
+        "savedQueries": True,
+        "researchProfiles": True,
+        "readingBriefs": True,
+        "subscriptions": True,
+        "notifications": True,
+        "deepReader": True,
+        "paperPassport": True,
+        "semanticFacets": True,
+        "documentVisualObjects": True,
+        "readingCheckpoints": True,
+        "annotations": True,
+        "evidenceCards": True,
+        "researchMemory": True,
+        "versionDiff": True,
+        "assistantV2": True,
+    }
 
 
 def valid_android() -> dict[str, object]:
@@ -61,7 +93,8 @@ def valid_provenance() -> dict[str, object]:
         "created_at": "2026-08-03T08:30:00Z",
         "environment": "production",
         "ios": valid_ios(),
-        "schema": 1,
+        "mobile_feature_evidence": valid_mobile_feature_evidence(),
+        "schema": 4,
         "source_revision": SOURCE_REVISION,
         "workflow": {
             "github_run_attempt": "2",
@@ -85,8 +118,11 @@ def valid_candidate(provenance: dict[str, object]) -> dict[str, object]:
         "classification": "protected signed mobile candidate",
         "environment": "production",
         "ios": copy.deepcopy(provenance["ios"]),
+        "mobile_feature_evidence": copy.deepcopy(
+            provenance["mobile_feature_evidence"]
+        ),
         "provenance_id": provenance_id,
-        "schema": 1,
+        "schema": 4,
         "source_revision": SOURCE_REVISION,
         "strict_full_text": True,
     }
@@ -352,6 +388,10 @@ class MobileStoreCandidateValidationTests(unittest.TestCase):
                 ".ipa": IOS_IPA_SHA256,
             },
         )
+        self.assertEqual(
+            binding["mobile_feature_evidence"],
+            valid_mobile_feature_evidence(),
+        )
 
     def test_handoff_must_bind_original_run_attempt(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -499,7 +539,7 @@ class MobileStoreCandidateValidationTests(unittest.TestCase):
         provenance = valid_provenance()
         candidate = valid_candidate(provenance)
         raw = validator.canonical_json_bytes(candidate).replace(
-            b'"schema":1', b'"schema":1,"schema":1', 1
+            b'"schema":4', b'"schema":4,"schema":4', 1
         )
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(
@@ -515,7 +555,7 @@ class MobileStoreCandidateValidationTests(unittest.TestCase):
         provenance = valid_provenance()
         candidate = valid_candidate(provenance)
         raw = validator.canonical_json_bytes(candidate).replace(
-            b'"schema":1', b'"schema":NaN', 1
+            b'"schema":4', b'"schema":NaN', 1
         )
         with tempfile.TemporaryDirectory() as directory:
             fixture = self.fixture(
@@ -641,9 +681,9 @@ class MobileStoreCandidateValidationTests(unittest.TestCase):
                 ):
                     fixture.validate(**{argument: value})
 
-    def test_schema_is_the_exact_integer_one(self) -> None:
+    def test_candidate_and_provenance_schema_is_the_exact_integer_four(self) -> None:
         for target in ("candidate", "provenance"):
-            for invalid in (True, 1.0, "1"):
+            for invalid in (3, True, 4.0, "4"):
                 provenance = valid_provenance()
                 candidate = valid_candidate(provenance)
                 if target == "candidate":
@@ -662,6 +702,77 @@ class MobileStoreCandidateValidationTests(unittest.TestCase):
                     )
                     with self.assertRaisesRegex(
                         validator.ValidationError, "exact integer"
+                    ):
+                        fixture.validate()
+
+    def test_mobile_feature_evidence_is_closed_and_matches_provenance(self) -> None:
+        for key in ("sha256", *validator.MOBILE_FEATURE_FLAG_KEYS):
+            provenance = valid_provenance()
+            candidate = valid_candidate(provenance)
+            feature_evidence = candidate["mobile_feature_evidence"]
+            assert isinstance(feature_evidence, dict)
+            feature_evidence[key] = (
+                "4" * 64 if key == "sha256" else not feature_evidence[key]
+            )
+            with (
+                self.subTest(key=key),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                fixture = self.fixture(
+                    pathlib.Path(directory),
+                    provenance=provenance,
+                    candidate=candidate,
+                )
+                with self.assertRaisesRegex(
+                    validator.ValidationError, "does not match"
+                ):
+                    fixture.validate()
+
+        provenance = valid_provenance()
+        feature_evidence = provenance["mobile_feature_evidence"]
+        assert isinstance(feature_evidence, dict)
+        feature_evidence["readingFeed"] = 1
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(
+                pathlib.Path(directory),
+                provenance=provenance,
+                candidate=valid_candidate(provenance),
+            )
+            with self.assertRaisesRegex(validator.ValidationError, "exact booleans"):
+                fixture.validate()
+
+        provenance = valid_provenance()
+        feature_evidence = provenance["mobile_feature_evidence"]
+        assert isinstance(feature_evidence, dict)
+        feature_evidence["schema"] = 5
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = self.fixture(
+                pathlib.Path(directory),
+                provenance=provenance,
+                candidate=valid_candidate(provenance),
+            )
+            with self.assertRaisesRegex(validator.ValidationError, "exact integer 6"):
+                fixture.validate()
+
+    def test_each_bound_mobile_dependency_is_fail_closed(self) -> None:
+        for feature, dependencies in validator.MOBILE_FEATURE_DEPENDENCIES:
+            for dependency in dependencies:
+                with (
+                    self.subTest(feature=feature, dependency=dependency),
+                    tempfile.TemporaryDirectory() as directory,
+                ):
+                    provenance = valid_provenance()
+                    feature_evidence = provenance["mobile_feature_evidence"]
+                    assert isinstance(feature_evidence, dict)
+                    feature_evidence[feature] = True
+                    feature_evidence[dependency] = False
+                    fixture = self.fixture(
+                        pathlib.Path(directory),
+                        provenance=provenance,
+                        candidate=valid_candidate(provenance),
+                    )
+                    with self.assertRaisesRegex(
+                        validator.ValidationError, "dependency graph"
                     ):
                         fixture.validate()
 

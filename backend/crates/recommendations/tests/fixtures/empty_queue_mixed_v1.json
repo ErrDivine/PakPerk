@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "fixture_id": "empty_queue_mixed_v1",
+  "queue_decision": {
+    "active_count": 0,
+    "library_revision": 42,
+    "proven_empty": true
+  },
+  "profile": {
+    "personalization_enabled": true,
+    "categories": ["cs.CL"],
+    "topics": ["retrieval"],
+    "authors": ["Ada Reader"],
+    "historical_seeds": [
+      {
+        "paper_id": "00000000-0000-0000-0000-000000000099",
+        "title": "Reviewed retrieval systems",
+        "state": "reviewed",
+        "topics": ["retrieval"],
+        "embedding": [1.0, 0.0]
+      }
+    ]
+  },
+  "documents": [
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000001",
+      "arxiv_id": "2608.00001v1",
+      "title": "Transparent Retrieval Systems",
+      "authors": ["Grace Scholar"],
+      "primary_category": "cs.CL",
+      "topics": ["retrieval", "evaluation"],
+      "embedding": [0.99, 0.01],
+      "citation_neighbors": ["00000000-0000-0000-0000-000000000099"],
+      "metadata_completeness": 1.0,
+      "published_at": "2026-08-18T12:00:00Z",
+      "relevance_grade": 3,
+      "cold_start": false
+    },
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000002",
+      "arxiv_id": "2608.00002v1",
+      "title": "Optimization for Emerging Models",
+      "authors": ["Ada Reader"],
+      "primary_category": "cs.LG",
+      "topics": ["optimization"],
+      "embedding": [0.92, 0.08],
+      "citation_neighbors": [],
+      "metadata_completeness": 0.95,
+      "published_at": "2026-08-17T12:00:00Z",
+      "relevance_grade": 2,
+      "cold_start": true
+    },
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000003",
+      "arxiv_id": "2608.00003v1",
+      "title": "Uncertainty Beyond Familiar Categories",
+      "authors": ["Lin Researcher"],
+      "primary_category": "stat.ML",
+      "topics": ["uncertainty"],
+      "embedding": [0.82, 0.18],
+      "citation_neighbors": [],
+      "metadata_completeness": 0.9,
+      "published_at": "2026-08-16T12:00:00Z",
+      "relevance_grade": 1,
+      "cold_start": true
+    },
+    {
+      "paper_id": "00000000-0000-0000-0000-000000000004",
+      "arxiv_id": "2608.00004v1",
+      "title": "Misleading Retrieval in an Unrelated Domain",
+      "authors": ["Grace Scholar"],
+      "primary_category": "physics.optics",
+      "topics": ["optics"],
+      "embedding": [-1.0, 0.0],
+      "citation_neighbors": [],
+      "metadata_completeness": 0.9,
+      "published_at": "2026-08-15T12:00:00Z",
+      "relevance_grade": 0,
+      "cold_start": false
+    }
+  ],
+  "expected_candidate_pool_ids": [
+    "00000000-0000-0000-0000-000000000001",
+    "00000000-0000-0000-0000-000000000002",
+    "00000000-0000-0000-0000-000000000003",
+    "00000000-0000-0000-0000-000000000004"
+  ],
+  "expected_unique_ranked_base_arxiv_ids": 3,
+  "evaluation_k": 3,
+  "covered_cases": [
+    "curated_explicit_profile",
+    "expected_candidate_pool",
+    "inactive_historical_seed_reasons",
+    "misleading_title"
+  ],
+  "negative_feedback_paper_ids": [],
+  "resource_evaluation": {
+    "usage": {
+      "measurement_source": "injected",
+      "latency_micros": 4000,
+      "estimated_cost_microusd": 0,
+      "generator_invocations": 7,
+      "generator_document_work_units": 28,
+      "external_requests": 0
+    },
+    "budget": {
+      "max_latency_micros": 10000,
+      "max_estimated_cost_microusd": 0,
+      "max_generator_invocations": 7,
+      "max_generator_document_work_units": 28,
+      "max_external_requests": 0
+    }
+  },
+  "small_profile_change": {
+    "categories": [],
+    "topics": ["uncertainty"],
+    "authors": []
+  },
+  "thresholds": {
+    "min_recall_at_k": 0.66,
+    "min_ndcg_at_k": 0.75,
+    "min_catalog_coverage": 0.75,
+    "min_topic_coverage": 0.5,
+    "min_intra_list_diversity": 0.3,
+    "min_novelty": 0.6,
+    "max_author_concentration": 0.67,
+    "max_category_concentration": 0.67,
+    "min_cold_start_coverage": 0.5,
+    "explanation_correctness": 1.0,
+    "negative_feedback_response": 1.0,
+    "min_ranking_stability": 0.5
+  }
+}

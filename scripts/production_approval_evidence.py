@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Canonical evidence contracts for Pakperk production approval gates.
 
-The five Helm approval IDs covered here are content IDs of sanitized,
-production-only manifests.  This module validates structure and binding; it
-cannot manufacture the protected execution or accountable human approval that
-the manifests describe.
+The five legacy Helm approval IDs covered here are content IDs of sanitized,
+production-only manifests. The independently validated Deep Reader bundle ID is
+also bound into the release contract. This module validates structure and
+binding; it cannot manufacture protected execution or accountable approval.
 """
 
 from __future__ import annotations
@@ -24,16 +24,19 @@ from typing import Any, Mapping, Sequence
 
 
 EVIDENCE_SCHEMA_VERSION = 1
-BUNDLE_SCHEMA_VERSION = 1
+BUNDLE_SCHEMA_VERSION = 3
+OLD_CLIENT_POLICY_SCHEMA_VERSION = 1
 MAX_DOCUMENT_BYTES = 128 * 1024
 MAX_RENDERED_MANIFEST_BYTES = 4 * 1024 * 1024
 MAX_JSON_NESTING = 16
 EVIDENCE_CLASSIFICATION = "protected production approval evidence"
 BUNDLE_CLASSIFICATION = "protected production approval predeploy bundle"
 EVIDENCE_DOMAIN = b"pakperk/production-approval-evidence/v1\0"
-BUNDLE_DOMAIN = b"pakperk/production-approval-bundle/v1\0"
+BUNDLE_DOMAIN = b"pakperk/production-approval-bundle/v3\0"
 RELEASE_CONFIGURATION_DOMAIN = b"pakperk/release-configuration/v1\0"
 DEPLOYMENT_IMAGES_DOMAIN = b"pakperk/deployment-images/v1\0"
+OLD_CLIENT_POLICY_DOMAIN = b"pakperk/old-client-policy/v1\0"
+OLD_CLIENT_POLICY_CLASSIFICATION = "protected production old-client policy evidence"
 
 GATES = (
     "legalReviewId",
@@ -116,6 +119,9 @@ BUNDLE_DEPLOYMENT_KEYS = {
     "release_binding_sha256",
     "release_evidence_sha256",
     "restore_drill_id",
+    "deep_reader_release_id",
+    "to_read_first_enforcement",
+    "old_client_policy_id",
 }
 RELEASE_CONTRACT_KEYS = {
     "schemaVersion",
@@ -127,15 +133,133 @@ RELEASE_CONTRACT_KEYS = {
     "chart",
     "legalPolicy",
 }
-RELEASE_EVIDENCE_KEYS = set(GATES) | {"restoreDrillId"}
+RELEASE_EVIDENCE_KEYS = set(GATES) | {"restoreDrillId", "deepReaderReleaseId"}
 IMAGE_KEYS = {"backend", "site", "grobid", "otelCollector"}
 FEATURE_KEYS = {
     "accounts",
     "library",
     "libraryWrites",
+    "paperResolution",
+    "paperTitleSearch",
+    "libraryImportWrites",
+    "readingFeed",
+    "toReadFirstEnforcement",
     "comments",
     "commentCreation",
     "accountDeletion",
+    "libraryV2",
+    "researchProfiles",
+    "recommendations",
+    "recommendationEvents",
+    "searchLookup",
+    "searchExplore",
+    "savedQueries",
+    "readingBriefs",
+    "subscriptions",
+    "notifications",
+    "deepReader",
+    "paperPassport",
+    "semanticFacets",
+    "visualObjects",
+    "assistantV2",
+    "annotations",
+    "researchMemory",
+    "versionDiff",
+    "doclingExperiment",
+}
+DEEP_READER_FEATURE_KEYS = {
+    "deepReader",
+    "paperPassport",
+    "semanticFacets",
+    "visualObjects",
+    "assistantV2",
+    "annotations",
+    "researchMemory",
+    "versionDiff",
+    "doclingExperiment",
+}
+FEATURE_DEPENDENCIES = {
+    "library": ("accounts",),
+    "libraryWrites": ("library",),
+    "paperTitleSearch": ("accounts", "paperResolution"),
+    "libraryImportWrites": (
+        "accounts",
+        "library",
+        "libraryWrites",
+        "paperResolution",
+    ),
+    "readingFeed": ("accounts", "library"),
+    "toReadFirstEnforcement": ("readingFeed",),
+    "comments": ("accounts",),
+    "commentCreation": ("comments",),
+    "accountDeletion": ("accounts",),
+    "libraryV2": ("accounts", "library"),
+    "researchProfiles": ("accounts",),
+    "recommendations": ("accounts", "library", "readingFeed"),
+    "searchExplore": ("searchLookup",),
+    "savedQueries": ("accounts", "searchExplore"),
+    "readingBriefs": ("readingFeed",),
+    "subscriptions": ("accounts", "library", "readingFeed"),
+    "notifications": ("subscriptions",),
+    "paperPassport": ("deepReader",),
+    "semanticFacets": ("deepReader",),
+    "visualObjects": ("deepReader",),
+    "assistantV2": ("deepReader",),
+    "annotations": ("accounts", "deepReader"),
+    "researchMemory": ("accounts", "deepReader", "annotations"),
+    "versionDiff": ("deepReader",),
+    "doclingExperiment": ("deepReader",),
+}
+OLD_CLIENT_POLICY_STRATEGIES = (
+    "minimum_supported_version",
+    "disable_legacy_account_library",
+    "advisory_until_adoption_threshold",
+)
+OLD_CLIENT_POLICY_ROOT_KEYS = {
+    "schema_version",
+    "content_id",
+    "classification",
+    "binding",
+    "strategy",
+    "parameters",
+    "evidence",
+    "approval",
+    "sanitization",
+}
+OLD_CLIENT_POLICY_PARAMETER_KEYS = {
+    "minimum_supported_version": {
+        "minimum_mobile_version",
+        "minimum_mobile_build",
+        "enforcement_mechanism",
+    },
+    "disable_legacy_account_library": {
+        "legacy_maximum_mobile_version",
+        "legacy_maximum_mobile_build",
+        "account_access",
+        "library_access",
+    },
+    "advisory_until_adoption_threshold": {
+        "adoption_threshold_basis_points",
+        "minimum_observation_hours",
+        "enforcement_claim",
+    },
+}
+OLD_CLIENT_POLICY_EVIDENCE_KEYS = {
+    "minimum_supported_version": {
+        "policy_record_sha256",
+        "minimum_version_enforcement_sha256",
+        "rollback_evidence_sha256",
+    },
+    "disable_legacy_account_library": {
+        "policy_record_sha256",
+        "legacy_access_gate_sha256",
+        "rollback_evidence_sha256",
+    },
+    "advisory_until_adoption_threshold": {
+        "policy_record_sha256",
+        "adoption_measurement_sha256",
+        "rollback_evidence_sha256",
+    },
 }
 RELEASE_CONFIG_MAP_ROOT_KEYS = {
     "apiVersion",
@@ -381,6 +505,11 @@ def compute_bundle_content_id(document: Mapping[str, Any]) -> str:
     return f"sha256:{hashlib.sha256(material).hexdigest()}"
 
 
+def compute_old_client_policy_content_id(document: Mapping[str, Any]) -> str:
+    material = OLD_CLIENT_POLICY_DOMAIN + _canonical_json(_statement(document))
+    return f"sha256:{hashlib.sha256(material).hexdigest()}"
+
+
 def _duplicate_rejecting_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -500,19 +629,19 @@ def _digest(value: Any, label: str) -> str:
 
 
 def compute_release_configuration_id(contract: Mapping[str, Any]) -> str:
-    """Address the release contract without the five IDs produced from it.
+    """Address the release contract without recursively produced bundle IDs.
 
     `restoreDrillId` remains bound because that independently produced ID does
-    not depend on this approval bundle. Blanking only the five approval gates
-    breaks the otherwise impossible cycle between their content IDs and Helm's
-    final release-binding digest.
+    not depend on these approval bundles. Blanking the five approval gates and
+    `deepReaderReleaseId` breaks the otherwise impossible cycles between their
+    content IDs and Helm's final release-binding digest.
     """
 
     normalized = copy.deepcopy(dict(contract))
     release_evidence = normalized.get("releaseEvidence")
     if not isinstance(release_evidence, dict):
         raise EvidenceError("release contract approvals are invalid")
-    for gate in GATES:
+    for gate in (*GATES, "deepReaderReleaseId"):
         release_evidence[gate] = ""
     material = RELEASE_CONFIGURATION_DOMAIN + _canonical_json(normalized)
     return f"sha256:{hashlib.sha256(material).hexdigest()}"
@@ -521,6 +650,14 @@ def compute_release_configuration_id(contract: Mapping[str, Any]) -> str:
 def compute_deployment_images_id(images: Mapping[str, Any]) -> str:
     material = DEPLOYMENT_IMAGES_DOMAIN + _canonical_json(dict(images))
     return f"sha256:{hashlib.sha256(material).hexdigest()}"
+
+
+def _validate_release_feature_dependencies(features: Mapping[str, bool]) -> None:
+    for feature, required in FEATURE_DEPENDENCIES.items():
+        if features[feature] and not all(features[parent] for parent in required):
+            raise EvidenceError("rendered release feature dependencies are invalid")
+    if features["accounts"] and not features["accountDeletion"]:
+        raise EvidenceError("rendered release feature dependencies are invalid")
 
 
 def _positive_int(
@@ -558,6 +695,160 @@ def _validate_binding(value: Any) -> dict[str, Any]:
             raise EvidenceError(f"binding {key} must be an exact release version")
     _positive_int(binding["mobile_build"], "binding mobile_build")
     return dict(binding)
+
+
+def _version_tuple(value: str) -> tuple[int, int, int]:
+    major, minor, patch = value.split(".")
+    return int(major), int(minor), int(patch)
+
+
+def validate_old_client_policy(
+    value: Any,
+    *,
+    expected_binding: Mapping[str, Any] | None = None,
+    expected_content_id: str | None = None,
+) -> dict[str, Any]:
+    root = _exact_keys(
+        value, OLD_CLIENT_POLICY_ROOT_KEYS, "old-client policy root"
+    )
+    if (
+        type(root["schema_version"]) is not int
+        or root["schema_version"] != OLD_CLIENT_POLICY_SCHEMA_VERSION
+    ):
+        raise EvidenceError("old-client policy schema version is invalid")
+    if root["classification"] != OLD_CLIENT_POLICY_CLASSIFICATION:
+        raise EvidenceError("old-client policy classification is invalid")
+    binding = _validate_binding(root["binding"])
+    if expected_binding is not None and binding != _validate_binding(
+        expected_binding
+    ):
+        raise EvidenceError("old-client policy does not match the expected release")
+
+    strategy = root["strategy"]
+    if strategy not in OLD_CLIENT_POLICY_STRATEGIES:
+        raise EvidenceError("old-client policy strategy is invalid")
+    parameters = _exact_keys(
+        root["parameters"],
+        OLD_CLIENT_POLICY_PARAMETER_KEYS[strategy],
+        "old-client policy parameters",
+    )
+    policy_evidence = _exact_keys(
+        root["evidence"],
+        OLD_CLIENT_POLICY_EVIDENCE_KEYS[strategy],
+        "old-client policy evidence",
+    )
+
+    candidate_version = _version_tuple(binding["mobile_version"])
+    candidate_build = binding["mobile_build"]
+    if strategy == "minimum_supported_version":
+        version = parameters["minimum_mobile_version"]
+        if not isinstance(version, str) or VERSION_RE.fullmatch(version) is None:
+            raise EvidenceError("minimum-supported mobile version is invalid")
+        build = _positive_int(
+            parameters["minimum_mobile_build"],
+            "minimum-supported mobile build",
+        )
+        if (
+            _version_tuple(version) > candidate_version
+            or build > candidate_build
+            or parameters["enforcement_mechanism"] != "remote_configuration"
+        ):
+            raise EvidenceError("minimum-supported version policy is impossible")
+    elif strategy == "disable_legacy_account_library":
+        version = parameters["legacy_maximum_mobile_version"]
+        if not isinstance(version, str) or VERSION_RE.fullmatch(version) is None:
+            raise EvidenceError("legacy maximum mobile version is invalid")
+        build = _positive_int(
+            parameters["legacy_maximum_mobile_build"],
+            "legacy maximum mobile build",
+        )
+        if (
+            _version_tuple(version) > candidate_version
+            or build >= candidate_build
+            or parameters["account_access"] != "disabled"
+            or parameters["library_access"] != "disabled"
+        ):
+            raise EvidenceError("legacy account/library policy is invalid")
+    else:
+        _positive_int(
+            parameters["adoption_threshold_basis_points"],
+            "adoption threshold basis points",
+            maximum=10_000,
+        )
+        _positive_int(
+            parameters["minimum_observation_hours"],
+            "minimum adoption observation hours",
+            maximum=90 * 24,
+        )
+        if parameters["enforcement_claim"] != "advisory":
+            raise EvidenceError("adoption policy must remain advisory")
+
+    for key, identifier in policy_evidence.items():
+        _digest(identifier, f"old-client policy evidence {key}")
+    approval = _exact_keys(root["approval"], APPROVAL_KEYS, "old-client approval")
+    if (
+        approval["role"] != "product_release_owner"
+        or approval["decision"] != "approved"
+    ):
+        raise EvidenceError("old-client policy owner approval is invalid")
+    _parse_utc(approval["approved_at"], "old-client policy approval timestamp")
+    _digest(
+        approval["protected_audit_reference"],
+        "old-client policy protected audit reference",
+    )
+    _validate_sanitization(root["sanitization"])
+    _reject_sensitive_shapes(root)
+
+    content_id = _digest(root["content_id"], "old-client policy content ID")
+    if content_id != compute_old_client_policy_content_id(root):
+        raise EvidenceError("old-client policy content ID does not match")
+    if expected_content_id is not None and content_id != _digest(
+        expected_content_id, "expected old-client policy content ID"
+    ):
+        raise EvidenceError("old-client policy content ID is not release-bound")
+    return copy.deepcopy(root)
+
+
+def build_old_client_policy(
+    binding: Mapping[str, Any],
+    *,
+    strategy: str,
+    parameters: Mapping[str, Any],
+    policy_evidence: Mapping[str, str],
+    approved_at: str,
+    protected_audit_reference: str,
+) -> dict[str, Any]:
+    statement: dict[str, Any] = {
+        "schema_version": OLD_CLIENT_POLICY_SCHEMA_VERSION,
+        "classification": OLD_CLIENT_POLICY_CLASSIFICATION,
+        "binding": copy.deepcopy(dict(binding)),
+        "strategy": strategy,
+        "parameters": copy.deepcopy(dict(parameters)),
+        "evidence": copy.deepcopy(dict(policy_evidence)),
+        "approval": {
+            "role": "product_release_owner",
+            "decision": "approved",
+            "approved_at": approved_at,
+            "protected_audit_reference": protected_audit_reference,
+        },
+        "sanitization": dict(SANITIZATION),
+    }
+    policy = dict(statement)
+    policy["content_id"] = compute_old_client_policy_content_id(policy)
+    return validate_old_client_policy(policy, expected_binding=binding)
+
+
+def read_old_client_policy(
+    path: pathlib.Path,
+    *,
+    expected_binding: Mapping[str, Any] | None = None,
+    expected_content_id: str | None = None,
+) -> dict[str, Any]:
+    return validate_old_client_policy(
+        _read_canonical(path),
+        expected_binding=expected_binding,
+        expected_content_id=expected_content_id,
+    )
 
 
 def _split_yaml_documents(source: str) -> list[str]:
@@ -788,7 +1079,8 @@ def validate_rendered_deployment(
     rendered: bytes,
     binding_value: Mapping[str, Any],
     gate_ids_value: Mapping[str, str],
-) -> dict[str, str]:
+    old_client_policy: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """Bind a completed rendered Helm manifest after gate IDs exist."""
 
     if not rendered or len(rendered) > MAX_RENDERED_MANIFEST_BYTES:
@@ -813,6 +1105,7 @@ def validate_rendered_deployment(
     )
     if any(type(enabled) is not bool for enabled in features.values()):
         raise EvidenceError("rendered release feature is not boolean")
+    _validate_release_feature_dependencies(features)
     approvals = _exact_keys(
         contract["releaseEvidence"],
         RELEASE_EVIDENCE_KEYS,
@@ -821,6 +1114,17 @@ def validate_rendered_deployment(
     for gate in GATES:
         if approvals[gate] != gate_ids[gate]:
             raise EvidenceError("rendered release approval ID does not match bundle")
+    deep_reader_release_id = approvals["deepReaderReleaseId"]
+    if any(features[key] for key in DEEP_READER_FEATURE_KEYS):
+        _digest(
+            deep_reader_release_id,
+            "rendered Deep Reader release evidence bundle ID",
+        )
+    elif deep_reader_release_id:
+        _digest(
+            deep_reader_release_id,
+            "rendered dormant Deep Reader release evidence bundle ID",
+        )
     restore_id = _digest(approvals["restoreDrillId"], "rendered restore drill ID")
     if restore_id != binding["restore_drill_id"]:
         raise EvidenceError("rendered restore drill ID does not match approval binding")
@@ -861,11 +1165,23 @@ def validate_rendered_deployment(
         {"documentVersion", "termsVersion", "communityGuidelinesVersion", "fulltext"},
         "rendered legal policy",
     )
+    policy_id = None
+    if old_client_policy is not None:
+        policy_id = validate_old_client_policy(
+            old_client_policy, expected_binding=binding
+        )["content_id"]
+    if features["toReadFirstEnforcement"] and policy_id is None:
+        raise EvidenceError(
+            "strict To Read First enforcement requires an approved old-client policy"
+        )
     return {
         "rendered_manifest_sha256": f"sha256:{hashlib.sha256(rendered).hexdigest()}",
         "release_binding_sha256": release_binding,
         "release_evidence_sha256": release_evidence_sha,
         "restore_drill_id": restore_id,
+        "deep_reader_release_id": deep_reader_release_id or None,
+        "to_read_first_enforcement": features["toReadFirstEnforcement"],
+        "old_client_policy_id": policy_id,
     }
 
 
@@ -873,9 +1189,13 @@ def read_rendered_deployment(
     path: pathlib.Path,
     binding: Mapping[str, Any],
     gate_ids: Mapping[str, str],
-) -> dict[str, str]:
+    old_client_policy: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     return validate_rendered_deployment(
-        _read_bounded(path, maximum=MAX_RENDERED_MANIFEST_BYTES), binding, gate_ids
+        _read_bounded(path, maximum=MAX_RENDERED_MANIFEST_BYTES),
+        binding,
+        gate_ids,
+        old_client_policy,
     )
 
 
@@ -1292,7 +1612,7 @@ def build_evidence(
 def build_bundle(
     binding: Mapping[str, Any],
     gate_ids: Mapping[str, str],
-    deployment: Mapping[str, str],
+    deployment: Mapping[str, Any],
 ) -> dict[str, Any]:
     _validate_binding(binding)
     if set(gate_ids) != set(GATES):
@@ -1317,7 +1637,7 @@ def _validate_bundle_deployment(
     value: Any,
     binding_value: Mapping[str, Any],
     gate_ids_value: Mapping[str, str],
-) -> dict[str, str]:
+) -> dict[str, Any]:
     deployment = _exact_keys(
         value, BUNDLE_DEPLOYMENT_KEYS, "bundle deployment binding"
     )
@@ -1335,11 +1655,22 @@ def _validate_bundle_deployment(
         "restore_drill_id",
     ):
         _digest(deployment[key], f"bundle deployment {key}")
+    deep_reader_release_id = deployment["deep_reader_release_id"]
+    if deep_reader_release_id is not None:
+        _digest(deep_reader_release_id, "bundle Deep Reader release evidence ID")
     if deployment["restore_drill_id"] != binding["restore_drill_id"]:
         raise EvidenceError("bundle restore drill ID does not match release binding")
+    policy_id = deployment["old_client_policy_id"]
+    if type(deployment["to_read_first_enforcement"]) is not bool:
+        raise EvidenceError("bundle enforcement policy is not boolean")
+    if deployment["to_read_first_enforcement"] and policy_id is None:
+        raise EvidenceError("strict bundle is missing its old-client policy")
+    if policy_id is not None:
+        _digest(policy_id, "bundle old-client policy ID")
     release_evidence = {
         **gate_ids,
         "restoreDrillId": binding["restore_drill_id"],
+        "deepReaderReleaseId": deep_reader_release_id or "",
     }
     expected_approval_sha = (
         f"sha256:{hashlib.sha256(_canonical_json(release_evidence)).hexdigest()}"
@@ -1384,7 +1715,9 @@ def read_bundle(path: pathlib.Path) -> dict[str, Any]:
 
 
 def validate_predeploy(
-    bundle: Mapping[str, Any], manifests: Mapping[str, Mapping[str, Any]]
+    bundle: Mapping[str, Any],
+    manifests: Mapping[str, Mapping[str, Any]],
+    old_client_policy: Mapping[str, Any] | None = None,
 ) -> dict[str, dict[str, Any]]:
     validated_bundle = validate_bundle(bundle)
     if set(manifests) != set(GATES):
@@ -1412,6 +1745,18 @@ def validate_predeploy(
     ):
         raise EvidenceError(
             "reviewer evidence references do not match the predeploy gate IDs"
+        )
+    expected_policy_id = validated_bundle["deployment"]["old_client_policy_id"]
+    if expected_policy_id is None:
+        if old_client_policy is not None:
+            raise EvidenceError("old-client policy is not bound by this bundle")
+    elif old_client_policy is None:
+        raise EvidenceError("predeploy validation requires the old-client policy")
+    else:
+        validate_old_client_policy(
+            old_client_policy,
+            expected_binding=expected_binding,
+            expected_content_id=expected_policy_id,
         )
     return validated
 
@@ -1483,6 +1828,13 @@ def _parser() -> argparse.ArgumentParser:
     validate.add_argument("--gate", choices=GATES)
     validate.add_argument("--expected-id")
 
+    validate_policy = commands.add_parser(
+        "validate-old-client-policy",
+        help="validate one owner-approved old-client policy",
+    )
+    validate_policy.add_argument("policy", type=pathlib.Path)
+    validate_policy.add_argument("--expected-id")
+
     bundle = commands.add_parser(
         "bundle", help="create a predeploy bundle from five manifests"
     )
@@ -1490,6 +1842,7 @@ def _parser() -> argparse.ArgumentParser:
         "--manifest", action="append", required=True, metavar="GATE=PATH"
     )
     bundle.add_argument("--rendered-manifest", required=True, type=pathlib.Path)
+    bundle.add_argument("--old-client-policy", type=pathlib.Path)
     bundle.add_argument("--output", required=True, type=pathlib.Path)
 
     validate_bundle_command = commands.add_parser(
@@ -1505,6 +1858,7 @@ def _parser() -> argparse.ArgumentParser:
         "--manifest", action="append", required=True, metavar="GATE=PATH"
     )
     predeploy.add_argument("--rendered-manifest", required=True, type=pathlib.Path)
+    predeploy.add_argument("--old-client-policy", type=pathlib.Path)
     return parser
 
 
@@ -1520,6 +1874,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(
                 f"Validated production approval evidence {evidence['gate']} {evidence['content_id']}."
             )
+        elif arguments.command == "validate-old-client-policy":
+            policy = read_old_client_policy(
+                arguments.policy, expected_content_id=arguments.expected_id
+            )
+            print(
+                "Validated production old-client policy "
+                f"{policy['strategy']} {policy['content_id']}."
+            )
         elif arguments.command == "bundle":
             manifests = _load_manifest_set(arguments.manifest)
             bindings = [manifests[gate]["binding"] for gate in GATES]
@@ -1528,11 +1890,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "gate manifests do not share one exact release binding"
                 )
             gate_ids = {gate: manifests[gate]["content_id"] for gate in GATES}
+            policy = (
+                read_old_client_policy(
+                    arguments.old_client_policy, expected_binding=bindings[0]
+                )
+                if arguments.old_client_policy is not None
+                else None
+            )
             deployment = read_rendered_deployment(
-                arguments.rendered_manifest, bindings[0], gate_ids
+                arguments.rendered_manifest, bindings[0], gate_ids, policy
             )
             bundle = build_bundle(bindings[0], gate_ids, deployment)
-            validate_predeploy(bundle, manifests)
+            validate_predeploy(bundle, manifests, policy)
             _write_exclusive(arguments.output, bundle)
             print(
                 f"Created production approval predeploy bundle {bundle['content_id']}."
@@ -1545,12 +1914,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif arguments.command == "predeploy":
             bundle = read_bundle(arguments.bundle)
             manifests = _load_manifest_set(arguments.manifest)
-            validate_predeploy(bundle, manifests)
+            policy = (
+                read_old_client_policy(
+                    arguments.old_client_policy,
+                    expected_binding=bundle["binding"],
+                )
+                if arguments.old_client_policy is not None
+                else None
+            )
+            validate_predeploy(bundle, manifests, policy)
             gate_ids = {
                 gate: manifests[gate]["content_id"] for gate in GATES
             }
             deployment = read_rendered_deployment(
-                arguments.rendered_manifest, bundle["binding"], gate_ids
+                arguments.rendered_manifest,
+                bundle["binding"],
+                gate_ids,
+                policy,
             )
             if deployment != bundle["deployment"]:
                 raise EvidenceError(

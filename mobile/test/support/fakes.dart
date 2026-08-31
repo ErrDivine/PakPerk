@@ -265,6 +265,8 @@ class FakePaperDataSource implements PaperDataSource {
   final List<bool> cachedFeedReplaceFlags = [];
   final List<int> cachedFeedLimits = [];
   final List<int> feedLimits = [];
+  String? lastCachedFeedCategory;
+  String? lastFeedCategory;
   RequestCancellation? lastFeedCancellation;
   RequestCancellation? lastPaperCancellation;
   RequestCancellation? lastPaperByArxivCancellation;
@@ -294,6 +296,7 @@ class FakePaperDataSource implements PaperDataSource {
     int limit = FeedPrefetchConfig.defaultRemotePageSize,
   }) async {
     cachedFeedLimits.add(limit);
+    lastCachedFeedCategory = category;
     final pending = cachedFeedCompleter;
     if (pending != null) return pending.future;
     return RepositoryValue(
@@ -312,6 +315,7 @@ class FakePaperDataSource implements PaperDataSource {
   }) async {
     feedCalls += 1;
     feedLimits.add(limit);
+    lastFeedCategory = category;
     lastFeedCancellation = cancellation;
     if (networkFeedCompleter != null) {
       return networkFeedCompleter!.future;
@@ -357,6 +361,7 @@ class FakePaperDataSource implements PaperDataSource {
   Future<RepositoryValue<PaperProcessingState>> prepare(
     String paperId, {
     bool retry = false,
+    PreparationTrigger trigger = PreparationTrigger.introductionTransition,
     RequestCancellation? cancellation,
   }) async {
     lastPrepareCancellation = cancellation;

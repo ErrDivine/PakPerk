@@ -12,14 +12,16 @@ mod validation;
 
 pub use deterministic::DeterministicProvider;
 pub use openai::{OpenAiCompatibleConfig, OpenAiCompatibleProvider};
-pub use prompt::{CHAT_PROMPT_VERSION, RELATIONSHIP_PROMPT_VERSION};
-pub use traits::{ChatProvider, EmbeddingProvider, RelationshipProvider};
+pub use prompt::{ASSISTANT_V2_PROMPT_VERSION, CHAT_PROMPT_VERSION, RELATIONSHIP_PROMPT_VERSION};
+pub use traits::{AssistantProvider, ChatProvider, EmbeddingProvider, RelationshipProvider};
 pub use types::{
+    AssistantCompletion, AssistantCompletionRequest, AssistantTokenUsage, BlockEvidenceExcerpt,
     ChatCompletionRequest, EmbeddingRequest, EmbeddingResponse, EvidenceExcerpt,
     RelationshipContext, RelationshipRequest, RelationshipSummary,
 };
 pub use validation::{
-    deterministic_relationship_fallback, validate_chat_output, validate_relationship_output,
+    deterministic_relationship_fallback, validate_assistant_output, validate_chat_output,
+    validate_relationship_output,
 };
 
 use thiserror::Error;
@@ -60,4 +62,10 @@ pub enum ValidationError {
     InvalidRelationshipSummary,
     #[error("relationship cites no context that was actually supplied")]
     MissingValidRelationshipEvidence,
+    #[error("assistant answer status or shape is invalid")]
+    InvalidAssistantAnswer,
+    #[error("assistant output contains an invalid or unsupported claim")]
+    InvalidAssistantClaim,
+    #[error("assistant output cites evidence that was not retrieved and validated")]
+    InvalidAssistantEvidence,
 }

@@ -14,6 +14,7 @@ final class LibraryCanonicalItem {
     required this.removedAt,
     required this.revision,
     required this.lastOperationId,
+    this.saveSourceKind,
   });
 
   final String paperId;
@@ -24,6 +25,7 @@ final class LibraryCanonicalItem {
   final DateTime? removedAt;
   final int revision;
   final String lastOperationId;
+  final LibrarySaveSourceKind? saveSourceKind;
 
   factory LibraryCanonicalItem.fromJson(Map<String, dynamic> json) {
     final paperId = _requiredUuid(json, 'paper_id');
@@ -58,6 +60,13 @@ final class LibraryCanonicalItem {
       removedAt: removedAt,
       revision: revision,
       lastOperationId: _requiredUuid(json, 'last_operation_id'),
+      // Legacy servers omitted this field. New or unknown values remain
+      // genuinely unknown instead of being relabelled as an explicit Other.
+      saveSourceKind: LibrarySaveSourceKind.tryFromWire(
+        json['save_source_kind'] is String
+            ? json['save_source_kind'] as String
+            : null,
+      ),
     );
   }
 }
@@ -275,34 +284,193 @@ final class LibrarySavedState {
   int get hashCode => Object.hash(saved, syncPending, issue);
 }
 
+/// The v0.1 library state model. Legacy `to_read` rows are projected to Inbox
+/// on-device until the compatibility-safe server migration is available.
+enum LibraryItemState {
+  inbox('inbox', 'Inbox', true),
+  readNext('read_next', 'Read next', true),
+  reading('reading', 'Reading', true),
+  reviewed('reviewed', 'Reviewed', false),
+  archived('archived', 'Archived', false);
+
+  const LibraryItemState(this.storageValue, this.label, this.isActive);
+
+  final String storageValue;
+  final String label;
+  final bool isActive;
+
+  static LibraryItemState? tryFromStorage(String value) => switch (value) {
+    'to_read' || 'inbox' => LibraryItemState.inbox,
+    'read_next' => LibraryItemState.readNext,
+    'reading' => LibraryItemState.reading,
+    'reviewed' => LibraryItemState.reviewed,
+    'archived' => LibraryItemState.archived,
+    _ => null,
+  };
+}
+
+enum LibrarySaveSourceKind {
+  discovery,
+  lookup,
+  titleSearch,
+  arxivUrl,
+  arxivId,
+  connection,
+  other;
+
+  String get wireValue => switch (this) {
+    LibrarySaveSourceKind.discovery => 'discovery',
+    LibrarySaveSourceKind.lookup => 'lookup',
+    LibrarySaveSourceKind.titleSearch => 'title_search',
+    LibrarySaveSourceKind.arxivUrl => 'arxiv_url',
+    LibrarySaveSourceKind.arxivId => 'arxiv_id',
+    LibrarySaveSourceKind.connection => 'connection',
+    LibrarySaveSourceKind.other => 'other',
+  };
+
+  static LibrarySaveSourceKind? tryFromWire(String? value) => switch (value) {
+    'discovery' => LibrarySaveSourceKind.discovery,
+    'lookup' => LibrarySaveSourceKind.lookup,
+    'title_search' => LibrarySaveSourceKind.titleSearch,
+    'arxiv_url' => LibrarySaveSourceKind.arxivUrl,
+    'arxiv_id' => LibrarySaveSourceKind.arxivId,
+    'connection' => LibrarySaveSourceKind.connection,
+    'other' => LibrarySaveSourceKind.other,
+    _ => null,
+  };
+
+  String get provenanceLabel => switch (this) {
+    LibrarySaveSourceKind.discovery => 'Saved from discovery',
+    LibrarySaveSourceKind.lookup => 'Saved from lookup',
+    LibrarySaveSourceKind.titleSearch => 'Added by title search',
+    LibrarySaveSourceKind.arxivUrl => 'Added from an arXiv link',
+    LibrarySaveSourceKind.arxivId => 'Added by arXiv ID',
+    LibrarySaveSourceKind.connection => 'Saved from Connections',
+    LibrarySaveSourceKind.other => 'Saved manually',
+  };
+}
+
 final class LibraryListItem {
   const LibraryListItem({
     required this.paper,
     required this.savedAt,
     required this.savedState,
+    this.state = LibraryItemState.inbox,
+    this.privateNote,
+    this.listNames = const [],
+    this.tagNames = const [],
+    this.saveSourceKind,
+    this.reminderAt,
   });
 
   final PaperSummary paper;
   final DateTime savedAt;
   final LibrarySavedState savedState;
+  final LibraryItemState state;
+  final String? privateNote;
+  final List<String> listNames;
+  final List<String> tagNames;
+  final LibrarySaveSourceKind? saveSourceKind;
+
+  /// Explicit account-owned reminder instant, always normalized to UTC.
+  final DateTime? reminderAt;
 }
 
 final class LibraryPendingOperation {
   const LibraryPendingOperation({
     required this.operationId,
     required this.accountId,
-    required this.paperId,
-    required this.intent,
+    required this.entityKind,
+    required this.entityId,
+    required this.operation,
+    required this.payloadJson,
     required this.createdAt,
     required this.attemptCount,
   });
 
   final String operationId;
   final String accountId;
-  final String paperId;
-  final LibraryMutationIntent intent;
+  final String entityKind;
+  final String entityId;
+  final String operation;
+  final String payloadJson;
   final DateTime createdAt;
   final int attemptCount;
+
+  String get paperId => entityId;
+
+  LibraryMutationIntent get intent => switch (operation) {
+    'library_save' => LibraryMutationIntent.save,
+    'library_remove' => LibraryMutationIntent.remove,
+    _ => throw StateError('This is not a legacy library operation.'),
+  };
+
+  bool get removesFromActiveQueue =>
+      operation == 'library_remove' ||
+      operation == 'library_v2_item_put_inactive' ||
+      operation == 'library_v2_item_delete';
+}
+
+final class LibraryPendingIntentCounts {
+  const LibraryPendingIntentCounts({
+    required this.saves,
+    required this.removes,
+  });
+
+  const LibraryPendingIntentCounts.empty() : saves = 0, removes = 0;
+
+  final int saves;
+  final int removes;
+
+  int get total => saves + removes;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LibraryPendingIntentCounts &&
+      other.saves == saves &&
+      other.removes == removes;
+
+  @override
+  int get hashCode => Object.hash(saves, removes);
+}
+
+/// Account-scoped operational aggregate read from the durable outbox.
+///
+/// Timestamps never cross the telemetry boundary. Controllers convert them
+/// into the closed duration buckets declared in `telemetry.dart`.
+final class LibraryOutboxSnapshot {
+  const LibraryOutboxSnapshot({
+    required this.pendingCount,
+    required this.oldestCreatedAt,
+    required this.oldestSaveCreatedAt,
+  });
+
+  final int pendingCount;
+  final DateTime? oldestCreatedAt;
+  final DateTime? oldestSaveCreatedAt;
+}
+
+final class LibrarySyncCheckpoint {
+  const LibrarySyncCheckpoint({
+    required this.initialized,
+    required this.lastRevision,
+  });
+
+  const LibrarySyncCheckpoint.unknown() : initialized = false, lastRevision = 0;
+
+  final bool initialized;
+  final int lastRevision;
+
+  bool get resetting => !initialized && lastRevision > 0;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LibrarySyncCheckpoint &&
+      other.initialized == initialized &&
+      other.lastRevision == lastRevision;
+
+  @override
+  int get hashCode => Object.hash(initialized, lastRevision);
 }
 
 enum LibrarySyncPhase { idle, syncing, pending, failed }

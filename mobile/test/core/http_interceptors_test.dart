@@ -493,6 +493,35 @@ void main() {
     },
   );
 
+  test('HTTP telemetry classifies every Plan 02 API family', () async {
+    for (final entry in const <String, String>{
+      '/v1/me/reading-feed': 'reading_feed',
+      '/v1/search/explore': 'search',
+      '/v1/discovery/profile': 'profile',
+      '/v1/discovery/batches/batch/feedback': 'recommendations',
+      '/v1/subscriptions': 'engagement',
+      '/v1/events/batch': 'events',
+      '/v1/library/items': 'library',
+    }.entries) {
+      final delegate = _RecordingTelemetrySink();
+      final dio = _dio(
+        _SequenceAdapter(const [_Attempt.response(200)]),
+        telemetry: RedactingTelemetrySink(delegate),
+      );
+
+      await dio.get<Object?>(entry.key);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(delegate.events, hasLength(1), reason: entry.key);
+      expect(
+        delegate.events.single.attributes['route_class'],
+        entry.value,
+        reason: entry.key,
+      );
+      dio.close(force: true);
+    }
+  });
+
   test('strict raw dispatch emits success, error, and cancellation', () async {
     final successSink = _RecordingTelemetrySink();
     final successDio = _strictDio(

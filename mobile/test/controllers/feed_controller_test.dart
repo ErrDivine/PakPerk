@@ -12,6 +12,13 @@ import 'package:pakperk/features/feed/preloaded_feed_snapshot.dart';
 import '../support/fakes.dart';
 
 void main() {
+  test('only late discovery activation requests preload revalidation', () {
+    expect(shouldRefreshDiscoveryAfterPolicyChange(null, true), isFalse);
+    expect(shouldRefreshDiscoveryAfterPolicyChange(false, false), isFalse);
+    expect(shouldRefreshDiscoveryAfterPolicyChange(true, true), isFalse);
+    expect(shouldRefreshDiscoveryAfterPolicyChange(false, true), isTrue);
+  });
+
   test(
     'preloaded feed is synchronous and waits for one explicit revalidation',
     () async {

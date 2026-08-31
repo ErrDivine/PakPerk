@@ -758,6 +758,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(320, 568));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final profile = AccountProfile.fromJson(_profileJson(complete: true));
+    var memoryOpened = false;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -774,6 +775,7 @@ void main() {
               onOpenLibrary: () {},
               onOpenComments: () {},
               onOpenBlockedUsers: () {},
+              onOpenMemory: () => memoryOpened = true,
               onOpenSettings: () {},
               onOpenPrivacy: () {},
               onOpenTerms: () {},
@@ -789,6 +791,15 @@ void main() {
     await tester.pump();
 
     expect(tester.takeException(), isNull);
+    await tester.scrollUntilVisible(
+      find.text('Research memory'),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final memoryTile = find.widgetWithText(ListTile, 'Research memory');
+    expect(tester.getSize(memoryTile).height, greaterThanOrEqualTo(48));
+    await tester.tap(find.text('Research memory'));
+    expect(memoryOpened, isTrue);
     await tester.scrollUntilVisible(
       find.text('Delete account'),
       260,

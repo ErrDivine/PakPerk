@@ -207,6 +207,13 @@ async fn run_locked(connection: &mut PgConnection, config: &Config) -> Result<()
             'users',
             'paper_comments',
             'user_reports',
+            'paper_import_operations',
+            'paper_interactions',
+            'reading_briefs',
+            'notifications',
+            'notification_work_items',
+            'recommendation_generation_jobs',
+            'recommendation_generation_candidates',
             'account_deletion_jobs',
             'account_deletion_ledger'
           )
@@ -215,7 +222,7 @@ async fn run_locked(connection: &mut PgConnection, config: &Config) -> Result<()
     .fetch_one(&mut *connection)
     .await
     .context("could not verify required application tables")?;
-    if required_tables != 6 {
+    if required_tables != 13 {
         anyhow::bail!("required application tables are missing after migration");
     }
     Ok(())
@@ -440,6 +447,328 @@ mod tests {
         let cleanup = drop_test_database(admin, &database).await;
         outcome?;
         cleanup
+    }
+
+    async fn exercise_version_eleven_library_upgrade(
+        admin: &mut PgConnection,
+        base_url: &str,
+    ) -> anyhow::Result<()> {
+        let (database, scoped_url) = create_test_database(admin, base_url, "v11_library").await?;
+        let outcome = async {
+            let mut version_eleven = PgConnection::connect(scoped_url.as_str()).await?;
+            sqlx::query(super::MIGRATION_SEARCH_PATH_SQL)
+                .execute(&mut version_eleven)
+                .await?;
+            version_eleven.ensure_migrations_table().await?;
+            for migration in super::MIGRATOR.iter().take(11) {
+                version_eleven.apply(migration).await?;
+            }
+            let applied_version: Option<i64> = sqlx::query_scalar(
+                "SELECT max(version) FROM _sqlx_migrations WHERE success = TRUE",
+            )
+            .fetch_one(&mut version_eleven)
+            .await?;
+            anyhow::ensure!(applied_version == Some(11));
+            seed_version_eleven_library_fixture(&mut version_eleven).await?;
+            drop(version_eleven);
+
+            let config = test_config(&scoped_url, "integration-backup-v11-library-20260828");
+            run(&config).await?;
+            let mut upgraded = PgConnection::connect(scoped_url.as_str()).await?;
+            assert_version_eleven_library_fixture(&mut upgraded, 1, 3).await?;
+            exercise_v0_library_sql_after_upgrade(&mut upgraded).await?;
+            assert_version_eleven_library_fixture(&mut upgraded, 2, 4).await?;
+            drop(upgraded);
+
+            // Re-forwarding the expand-compatible image is a no-op and must
+            // retain writes accepted by a temporarily rolled-back v0 binary.
+            run(&config).await?;
+            let mut reforwarded = PgConnection::connect(scoped_url.as_str()).await?;
+            assert_version_eleven_library_fixture(&mut reforwarded, 2, 4).await?;
+            Ok::<_, anyhow::Error>(())
+        }
+        .await;
+        let cleanup = drop_test_database(admin, &database).await;
+        outcome?;
+        cleanup
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn seed_version_eleven_library_fixture(
+        connection: &mut PgConnection,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            r"
+            INSERT INTO users (id, oidc_issuer, oidc_subject)
+            VALUES (
+                '51000000-0000-4000-8000-000000000001'::uuid,
+                'https://migration-v11.test',
+                'library-owner'
+            )
+            ",
+        )
+        .execute(&mut *connection)
+        .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO papers (
+                id, arxiv_base_id, arxiv_version, title, abstract, authors,
+                primary_category, categories, published_at, updated_at,
+                abs_url, pdf_url, metadata_fetched_at
+            ) VALUES
+                (
+                    '52000000-0000-4000-8000-000000000001'::uuid,
+                    '2608.51001', 1, 'Active v11 library fixture', 'Active.',
+                    '["Migration Test"]'::jsonb, 'cs.AI', ARRAY['cs.AI'],
+                    '2024-01-01T00:00:00Z'::timestamptz,
+                    '2024-01-01T00:00:00Z'::timestamptz,
+                    'https://arxiv.org/abs/2608.51001',
+                    'https://arxiv.org/pdf/2608.51001',
+                    '2024-01-01T00:00:00Z'::timestamptz
+                ),
+                (
+                    '52000000-0000-4000-8000-000000000002'::uuid,
+                    '2608.51002', 1, 'Removed v11 library fixture', 'Removed.',
+                    '["Migration Test"]'::jsonb, 'cs.LG', ARRAY['cs.LG'],
+                    '2024-01-02T00:00:00Z'::timestamptz,
+                    '2024-01-02T00:00:00Z'::timestamptz,
+                    'https://arxiv.org/abs/2608.51002',
+                    'https://arxiv.org/pdf/2608.51002',
+                    '2024-01-02T00:00:00Z'::timestamptz
+                ),
+                (
+                    '52000000-0000-4000-8000-000000000003'::uuid,
+                    '2608.51003', 1, 'Rollback write fixture', 'Rollback.',
+                    '["Migration Test"]'::jsonb, 'cs.IR', ARRAY['cs.IR'],
+                    '2024-01-03T00:00:00Z'::timestamptz,
+                    '2024-01-03T00:00:00Z'::timestamptz,
+                    'https://arxiv.org/abs/2608.51003',
+                    'https://arxiv.org/pdf/2608.51003',
+                    '2024-01-03T00:00:00Z'::timestamptz
+                )
+            "#,
+        )
+        .execute(&mut *connection)
+        .await?;
+        sqlx::query(
+            r"
+            INSERT INTO library_sync_metadata (
+                user_id, current_revision, purged_through_revision
+            ) VALUES ('51000000-0000-4000-8000-000000000001'::uuid, 3, 0)
+            ",
+        )
+        .execute(&mut *connection)
+        .await?;
+        sqlx::query(
+            r"
+            INSERT INTO library_operations (
+                user_id, operation_id, paper_id, intent, state, intent_fingerprint,
+                accepted_revision, accepted_saved_at, accepted_updated_at,
+                accepted_removed_at
+            ) VALUES
+                (
+                    '51000000-0000-4000-8000-000000000001'::uuid,
+                    '53000000-0000-4000-8000-000000000001'::uuid,
+                    '52000000-0000-4000-8000-000000000001'::uuid,
+                    'save', 'to_read',
+                    digest('52000000-0000-4000-8000-000000000001:save:to_read', 'sha256'),
+                    1, '2024-02-01T01:00:00Z'::timestamptz,
+                    '2024-02-01T01:00:00Z'::timestamptz, NULL
+                ),
+                (
+                    '51000000-0000-4000-8000-000000000001'::uuid,
+                    '53000000-0000-4000-8000-000000000002'::uuid,
+                    '52000000-0000-4000-8000-000000000002'::uuid,
+                    'save', 'to_read',
+                    digest('52000000-0000-4000-8000-000000000002:save:to_read', 'sha256'),
+                    2, '2024-02-02T01:00:00Z'::timestamptz,
+                    '2024-02-02T01:00:00Z'::timestamptz, NULL
+                ),
+                (
+                    '51000000-0000-4000-8000-000000000001'::uuid,
+                    '53000000-0000-4000-8000-000000000003'::uuid,
+                    '52000000-0000-4000-8000-000000000002'::uuid,
+                    'remove', 'to_read',
+                    digest('52000000-0000-4000-8000-000000000002:remove:to_read', 'sha256'),
+                    3, '2024-02-02T01:00:00Z'::timestamptz,
+                    '2024-02-03T01:00:00Z'::timestamptz,
+                    '2024-02-03T01:00:00Z'::timestamptz
+                )
+            ",
+        )
+        .execute(&mut *connection)
+        .await?;
+        sqlx::query(
+            r"
+            INSERT INTO user_paper_library (
+                user_id, paper_id, state, saved_at, updated_at, removed_at,
+                revision, last_operation_id
+            ) VALUES
+                (
+                    '51000000-0000-4000-8000-000000000001'::uuid,
+                    '52000000-0000-4000-8000-000000000001'::uuid,
+                    'to_read', '2024-02-01T01:00:00Z'::timestamptz,
+                    '2024-02-01T01:00:00Z'::timestamptz, NULL, 1,
+                    '53000000-0000-4000-8000-000000000001'::uuid
+                ),
+                (
+                    '51000000-0000-4000-8000-000000000001'::uuid,
+                    '52000000-0000-4000-8000-000000000002'::uuid,
+                    'to_read', '2024-02-02T01:00:00Z'::timestamptz,
+                    '2024-02-03T01:00:00Z'::timestamptz,
+                    '2024-02-03T01:00:00Z'::timestamptz, 3,
+                    '53000000-0000-4000-8000-000000000003'::uuid
+                )
+            ",
+        )
+        .execute(&mut *connection)
+        .await?;
+        Ok(())
+    }
+
+    async fn exercise_v0_library_sql_after_upgrade(
+        connection: &mut PgConnection,
+    ) -> anyhow::Result<()> {
+        let replay: (String, String, bool) = sqlx::query_as(
+            r"
+            SELECT intent, state,
+                   intent_fingerprint = digest(
+                       paper_id::text || ':' || intent || ':' || state,
+                       'sha256'
+                   )
+            FROM library_operations
+            WHERE user_id = '51000000-0000-4000-8000-000000000001'::uuid
+              AND operation_id = '53000000-0000-4000-8000-000000000001'::uuid
+            ",
+        )
+        .fetch_one(&mut *connection)
+        .await?;
+        anyhow::ensure!(replay == ("save".to_owned(), "to_read".to_owned(), true));
+
+        sqlx::query(
+            r"
+            INSERT INTO user_paper_library (
+                user_id, paper_id, state, saved_at, updated_at, removed_at,
+                revision, last_operation_id
+            ) VALUES (
+                '51000000-0000-4000-8000-000000000001'::uuid,
+                '52000000-0000-4000-8000-000000000003'::uuid,
+                'to_read', '2024-02-04T01:00:00Z'::timestamptz,
+                '2024-02-04T01:00:00Z'::timestamptz, NULL, 4,
+                '53000000-0000-4000-8000-000000000004'::uuid
+            )
+            ",
+        )
+        .execute(&mut *connection)
+        .await?;
+        sqlx::query(
+            r"
+            INSERT INTO library_operations (
+                user_id, operation_id, paper_id, intent, state, intent_fingerprint,
+                accepted_revision, accepted_saved_at, accepted_updated_at,
+                accepted_removed_at
+            ) VALUES (
+                '51000000-0000-4000-8000-000000000001'::uuid,
+                '53000000-0000-4000-8000-000000000004'::uuid,
+                '52000000-0000-4000-8000-000000000003'::uuid,
+                'save', 'to_read',
+                digest('52000000-0000-4000-8000-000000000003:save:to_read', 'sha256'),
+                4, '2024-02-04T01:00:00Z'::timestamptz,
+                '2024-02-04T01:00:00Z'::timestamptz, NULL
+            )
+            ",
+        )
+        .execute(&mut *connection)
+        .await?;
+        sqlx::query(
+            r"
+            UPDATE library_sync_metadata
+            SET current_revision = 4
+            WHERE user_id = '51000000-0000-4000-8000-000000000001'::uuid
+            ",
+        )
+        .execute(&mut *connection)
+        .await?;
+        Ok(())
+    }
+
+    async fn assert_version_eleven_library_fixture(
+        connection: &mut PgConnection,
+        expected_active: i64,
+        expected_revision: i64,
+    ) -> anyhow::Result<()> {
+        let states: (i64, i64, i64) = sqlx::query_as(
+            r"
+            SELECT
+                count(*) FILTER (WHERE state = 'to_read' AND removed_at IS NULL),
+                count(*) FILTER (WHERE state = 'to_read' AND removed_at IS NOT NULL),
+                count(*) FILTER (WHERE state = 'inbox')
+            FROM user_paper_library
+            WHERE user_id = '51000000-0000-4000-8000-000000000001'::uuid
+            ",
+        )
+        .fetch_one(&mut *connection)
+        .await?;
+        anyhow::ensure!(states == (expected_active, 1, 0));
+        let metadata_revision: i64 = sqlx::query_scalar(
+            r"
+            SELECT current_revision FROM library_sync_metadata
+            WHERE user_id = '51000000-0000-4000-8000-000000000001'::uuid
+            ",
+        )
+        .fetch_one(&mut *connection)
+        .await?;
+        anyhow::ensure!(metadata_revision == expected_revision);
+        let operation_shape: (i64, i64, i64) = sqlx::query_as(
+            r"
+            SELECT
+                count(*),
+                count(*) FILTER (
+                    WHERE intent_fingerprint = digest(
+                        paper_id::text || ':' || intent || ':' || state,
+                        'sha256'
+                    )
+                ),
+                count(*) FILTER (WHERE v2_intent_fingerprint IS NULL)
+            FROM library_operations
+            WHERE user_id = '51000000-0000-4000-8000-000000000001'::uuid
+            ",
+        )
+        .fetch_one(&mut *connection)
+        .await?;
+        let expected_operations = expected_revision;
+        anyhow::ensure!(
+            operation_shape
+                == (
+                    expected_operations,
+                    expected_operations,
+                    expected_operations
+                )
+        );
+        let removed: (bool, bool, i64, String) = sqlx::query_as(
+            r"
+            SELECT
+                saved_at = '2024-02-02T01:00:00Z'::timestamptz,
+                removed_at = '2024-02-03T01:00:00Z'::timestamptz,
+                revision,
+                last_operation_id::text
+            FROM user_paper_library
+            WHERE user_id = '51000000-0000-4000-8000-000000000001'::uuid
+              AND paper_id = '52000000-0000-4000-8000-000000000002'::uuid
+            ",
+        )
+        .fetch_one(&mut *connection)
+        .await?;
+        anyhow::ensure!(
+            removed
+                == (
+                    true,
+                    true,
+                    3,
+                    "53000000-0000-4000-8000-000000000003".to_owned(),
+                )
+        );
+        Ok(())
     }
 
     async fn seed_version_one_fixture(connection: &mut PgConnection) -> anyhow::Result<()> {
@@ -775,6 +1104,9 @@ mod tests {
             .await
             .unwrap();
         exercise_version_one_upgrade(&mut admin, &base_url)
+            .await
+            .unwrap();
+        exercise_version_eleven_library_upgrade(&mut admin, &base_url)
             .await
             .unwrap();
     }

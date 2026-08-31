@@ -41,8 +41,8 @@ TELEMETRY_GATE = "live_telemetry_retention"
 MOBILE_GATE = "mobile_performance_crash"
 GATES = (MIGRATION_GATE, TELEMETRY_GATE, MOBILE_GATE)
 
-CURRENT_DATABASE_MIGRATION = 10
-PRIOR_DATABASE_MIGRATION = 9
+CURRENT_DATABASE_MIGRATION = 24
+PRIOR_DATABASE_MIGRATION = 18
 TELEMETRY_RETENTION_DAYS = 30
 TELEMETRY_PRE_EXPIRY_MIN_AGE_SECONDS = 29 * 86_400
 TELEMETRY_POST_EXPIRY_MAX_AGE_SECONDS = 31 * 86_400
@@ -55,8 +55,102 @@ MOBILE_OBSERVATION_WINDOW_MIN_SECONDS = 86_400
 MOBILE_PERFORMANCE_SAMPLE_MIN = 20
 MOBILE_CRASH_SESSION_MIN = 200
 
+# The migration/expand-contract gate reconciles the complete current release
+# feature map, not only the legacy protected-service exercise's six switches.
+# Dependencies are directed edges: each enabled switch on the left requires
+# every switch on the right. Keeping this contract explicit makes a numeric
+# reconciliation incapable of silently substituting a different set of flags.
+RELEASE_FEATURE_SWITCHES = (
+    "ACCOUNTS_ENABLED",
+    "LIBRARY_ENABLED",
+    "LIBRARY_WRITES_ENABLED",
+    "PAPER_RESOLUTION_ENABLED",
+    "PAPER_TITLE_SEARCH_ENABLED",
+    "LIBRARY_IMPORT_WRITES_ENABLED",
+    "READING_FEED_ENABLED",
+    "TO_READ_FIRST_ENFORCEMENT_ENABLED",
+    "COMMENTS_ENABLED",
+    "COMMENT_CREATION_ENABLED",
+    "ACCOUNT_DELETION_ENABLED",
+    "LIBRARY_V2_ENABLED",
+    "RESEARCH_PROFILES_ENABLED",
+    "RECOMMENDATIONS_ENABLED",
+    "RECOMMENDATION_EVENTS_ENABLED",
+    "SEARCH_LOOKUP_ENABLED",
+    "SEARCH_EXPLORE_ENABLED",
+    "SAVED_QUERIES_ENABLED",
+    "READING_BRIEFS_ENABLED",
+    "SUBSCRIPTIONS_ENABLED",
+    "NOTIFICATIONS_ENABLED",
+    "DEEP_READER_ENABLED",
+    "PAPER_PASSPORT_ENABLED",
+    "SEMANTIC_FACETS_ENABLED",
+    "VISUAL_OBJECTS_ENABLED",
+    "ASSISTANT_V2_ENABLED",
+    "ANNOTATIONS_ENABLED",
+    "RESEARCH_MEMORY_ENABLED",
+    "VERSION_DIFF_ENABLED",
+    "DOCLING_EXPERIMENT_ENABLED",
+)
+RELEASE_FEATURE_DEPENDENCIES = (
+    ("LIBRARY_ENABLED", ("ACCOUNTS_ENABLED",)),
+    ("LIBRARY_WRITES_ENABLED", ("LIBRARY_ENABLED",)),
+    (
+        "PAPER_TITLE_SEARCH_ENABLED",
+        ("ACCOUNTS_ENABLED", "PAPER_RESOLUTION_ENABLED"),
+    ),
+    (
+        "LIBRARY_IMPORT_WRITES_ENABLED",
+        (
+            "ACCOUNTS_ENABLED",
+            "LIBRARY_ENABLED",
+            "LIBRARY_WRITES_ENABLED",
+            "PAPER_RESOLUTION_ENABLED",
+        ),
+    ),
+    ("READING_FEED_ENABLED", ("ACCOUNTS_ENABLED", "LIBRARY_ENABLED")),
+    ("TO_READ_FIRST_ENFORCEMENT_ENABLED", ("READING_FEED_ENABLED",)),
+    ("COMMENTS_ENABLED", ("ACCOUNTS_ENABLED",)),
+    ("COMMENT_CREATION_ENABLED", ("COMMENTS_ENABLED",)),
+    ("ACCOUNT_DELETION_ENABLED", ("ACCOUNTS_ENABLED",)),
+    ("LIBRARY_V2_ENABLED", ("ACCOUNTS_ENABLED", "LIBRARY_ENABLED")),
+    ("RESEARCH_PROFILES_ENABLED", ("ACCOUNTS_ENABLED",)),
+    (
+        "RECOMMENDATIONS_ENABLED",
+        ("ACCOUNTS_ENABLED", "LIBRARY_ENABLED", "READING_FEED_ENABLED"),
+    ),
+    ("SEARCH_EXPLORE_ENABLED", ("SEARCH_LOOKUP_ENABLED",)),
+    (
+        "SAVED_QUERIES_ENABLED",
+        ("ACCOUNTS_ENABLED", "SEARCH_EXPLORE_ENABLED"),
+    ),
+    ("READING_BRIEFS_ENABLED", ("READING_FEED_ENABLED",)),
+    (
+        "SUBSCRIPTIONS_ENABLED",
+        ("ACCOUNTS_ENABLED", "LIBRARY_ENABLED", "READING_FEED_ENABLED"),
+    ),
+    ("NOTIFICATIONS_ENABLED", ("SUBSCRIPTIONS_ENABLED",)),
+    ("PAPER_PASSPORT_ENABLED", ("DEEP_READER_ENABLED",)),
+    ("SEMANTIC_FACETS_ENABLED", ("DEEP_READER_ENABLED",)),
+    ("VISUAL_OBJECTS_ENABLED", ("DEEP_READER_ENABLED",)),
+    ("ASSISTANT_V2_ENABLED", ("DEEP_READER_ENABLED",)),
+    (
+        "ANNOTATIONS_ENABLED",
+        ("ACCOUNTS_ENABLED", "DEEP_READER_ENABLED"),
+    ),
+    (
+        "RESEARCH_MEMORY_ENABLED",
+        ("ACCOUNTS_ENABLED", "DEEP_READER_ENABLED", "ANNOTATIONS_ENABLED"),
+    ),
+    ("VERSION_DIFF_ENABLED", ("DEEP_READER_ENABLED",)),
+    ("DOCLING_EXPERIMENT_ENABLED", ("DEEP_READER_ENABLED",)),
+)
+RELEASE_FEATURE_DEPENDENCY_EDGE_COUNT = sum(
+    len(required) for _, required in RELEASE_FEATURE_DEPENDENCIES
+)
+
 ALERT_POLICY_SHA256 = (
-    "sha256:1b708d5d63988f0bbb26a6649633d1f1f5b096b0bd52338508142c9afb97140b"
+    "sha256:1332fab6e5ab0ef0a98a0b74e3d4285ae10764885be9b80e4a6697fb4d42dc46"
 )
 ALERT_INPUT_IDS = (
     "application-otlp",
@@ -70,6 +164,8 @@ ALERT_RULE_IDS = (
     "api-readiness-unavailable",
     "api-error-ratio-high",
     "api-latency-high",
+    "reading-feed-authority-unavailable",
+    "recommendation-card-queue-leakage",
     "database-pool-saturation",
     "paper-queue-age-high",
     "paper-terminal-failure-present",
@@ -229,7 +325,8 @@ GATE_SPECS = {
             "run_migrations_disabled_in_serving_workloads",
             "old_and_new_code_compatibility_exercised",
             "feature_switches_kept_dark_until_dependencies_passed",
-            "six_feature_switch_states_reconciled",
+            "all_current_release_feature_switch_states_reconciled",
+            "feature_switch_dependency_graph_reconciled_and_invalid_edges_rejected",
             "data_integrity_before_and_after_verified",
             "schema_compatible_code_rollback_exercised",
             "destructive_down_migration_not_used",
@@ -244,7 +341,22 @@ GATE_SPECS = {
             ("ddl_role_violations", _metric("count", 0, 0)),
             ("serving_workloads_with_run_migrations", _metric("count", 0, 0)),
             ("compatibility_versions_exercised", _metric("count", 2, 64)),
-            ("feature_switches_reconciled", _metric("count", 6, 6)),
+            (
+                "feature_switches_reconciled",
+                _metric(
+                    "count",
+                    len(RELEASE_FEATURE_SWITCHES),
+                    len(RELEASE_FEATURE_SWITCHES),
+                ),
+            ),
+            (
+                "feature_switch_dependency_edges_rejected",
+                _metric(
+                    "count",
+                    RELEASE_FEATURE_DEPENDENCY_EDGE_COUNT,
+                    RELEASE_FEATURE_DEPENDENCY_EDGE_COUNT,
+                ),
+            ),
             ("data_integrity_failures", _metric("count", 0, 0)),
             ("schema_compatible_code_rollbacks_exercised", _metric("count", 1, 1)),
             ("destructive_down_migrations", _metric("count", 0, 0)),
@@ -297,12 +409,24 @@ GATE_SPECS = {
         ),
         metrics=(
             ("window_seconds", _metric("seconds", 2_592_000, 7_776_000)),
-            ("production_enabled_alert_rules", _metric("count", 17, 17)),
+            (
+                "production_enabled_alert_rules",
+                _metric("count", len(ALERT_RULE_IDS), len(ALERT_RULE_IDS)),
+            ),
             ("production_required_signal_inputs", _metric("count", 6, 6)),
-            ("staging_enabled_alert_rules", _metric("count", 17, 17)),
+            (
+                "staging_enabled_alert_rules",
+                _metric("count", len(ALERT_RULE_IDS), len(ALERT_RULE_IDS)),
+            ),
             ("staging_required_signal_inputs", _metric("count", 6, 6)),
-            ("production_alert_rules_with_receiver", _metric("count", 17, 17)),
-            ("staging_alert_rules_with_receiver", _metric("count", 17, 17)),
+            (
+                "production_alert_rules_with_receiver",
+                _metric("count", len(ALERT_RULE_IDS), len(ALERT_RULE_IDS)),
+            ),
+            (
+                "staging_alert_rules_with_receiver",
+                _metric("count", len(ALERT_RULE_IDS), len(ALERT_RULE_IDS)),
+            ),
             (
                 "production_notification_classes_with_receiver",
                 _metric("count", 2, 2),
@@ -816,7 +940,8 @@ def _validate_subject(gate: str, value: Any) -> dict[str, Any]:
             or subject["embedded_migration_version"] != CURRENT_DATABASE_MIGRATION
         ):
             raise EvidenceError(
-                "migration subject does not bind the exact 9-to-10 path"
+                "migration subject does not bind the exact "
+                f"{PRIOR_DATABASE_MIGRATION}-to-{CURRENT_DATABASE_MIGRATION} path"
             )
         starting_app = _version(
             subject["starting_app_version"], "starting application version"
@@ -828,8 +953,9 @@ def _validate_subject(gate: str, value: Any) -> dict[str, Any]:
             raise EvidenceError("migration exercise must bind distinct app versions")
         if subject["resolution_path"] != "schema_compatible_code_rollback":
             raise EvidenceError(
-                "the additive 9-to-10 release gate requires a schema-compatible "
-                "code rollback exercise"
+                "the additive "
+                f"{PRIOR_DATABASE_MIGRATION}-to-{CURRENT_DATABASE_MIGRATION} "
+                "release gate requires a schema-compatible code rollback exercise"
             )
         return copy.deepcopy(subject)
 
@@ -1037,6 +1163,14 @@ def _validate_metric_relations(
             + metrics["failed_or_timed_out_migration_jobs"]
         ):
             raise EvidenceError("migration job outcome counts do not reconcile")
+        if (
+            metrics["feature_switches_reconciled"] != len(RELEASE_FEATURE_SWITCHES)
+            or metrics["feature_switch_dependency_edges_rejected"]
+            != RELEASE_FEATURE_DEPENDENCY_EDGE_COUNT
+        ):
+            raise EvidenceError(
+                "release feature switches do not reconcile with the dependency contract"
+            )
         return
     if gate == TELEMETRY_GATE:
         production = subject["production"]

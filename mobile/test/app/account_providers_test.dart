@@ -17,7 +17,16 @@ import 'package:pakperk/core/api/http_telemetry_interceptor.dart';
 import 'package:pakperk/core/api/safe_retry_interceptor.dart';
 import 'package:pakperk/core/api/transport_network_status.dart';
 import 'package:pakperk/core/auth/auth.dart';
+import 'package:pakperk/core/discovery_search/search_privacy_store.dart';
+import 'package:pakperk/core/document/visual_asset_repository.dart';
+import 'package:pakperk/core/library/library_history_store.dart';
+import 'package:pakperk/core/library/paper_import_draft_store.dart';
+import 'package:pakperk/core/models/reader_state.dart';
 import 'package:pakperk/core/providers.dart';
+import 'package:pakperk/core/reading_feed/reading_feed_page_cache.dart';
+import 'package:pakperk/features/document_reader/document_screen.dart';
+import 'package:pakperk/features/paper_reader/reader_navigation_controller.dart';
+import 'package:pakperk/features/reader_modes/reader_mode.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/auth/auth_fakes.dart';
@@ -57,7 +66,7 @@ void main() {
         initialAnonymousSessionIdProvider.overrideWithValue(
           await store.getOrCreateSessionId(),
         ),
-        ...accountApplicationOverrides(delegate),
+        ..._accountTestOverrides(delegate),
       ],
     );
     addTearDown(container.dispose);
@@ -85,6 +94,120 @@ void main() {
     expect(adapter.paths, ['/health/ready', '/health/ready']);
   });
 
+  test('account cleanup erases every scoped private mobile store', () async {
+    final draftA =
+        '$paperImportDraftPreferencesPrefix${paperImportDraftScopeFingerprint('account-a')}';
+    final draftB =
+        '$paperImportDraftPreferencesPrefix${paperImportDraftScopeFingerprint('account-b')}';
+    final feedA =
+        '$readingFeedPageCachePreferencesPrefix${readingFeedCacheScopeFingerprint('account-a')}.queue';
+    final feedB =
+        '$readingFeedPageCachePreferencesPrefix${readingFeedCacheScopeFingerprint('account-b')}.queue';
+    final searchA =
+        '$searchPrivacyPreferencesPrefix${searchPrivacyScopeFingerprint('account-a')}.history';
+    final searchB =
+        '$searchPrivacyPreferencesPrefix${searchPrivacyScopeFingerprint('account-b')}.history';
+    SharedPreferences.setMockInitialValues({
+      '${libraryHistoryPreferencesPrefix}account-a':
+          '{"schema":1,"enabled":false,"entries":[]}',
+      '${libraryHistoryPreferencesPrefix}account-b':
+          '{"schema":1,"enabled":false,"entries":[]}',
+      draftA: '{}',
+      draftB: '{}',
+      feedA: '{}',
+      feedB: '{}',
+      searchA: '{}',
+      searchB: '{}',
+    });
+    final visualAssets = _RecordingVisualAssetCache();
+    final readerKey = feedReaderKey(samplePaper);
+    final initialRestoration = AppRestorationState(
+      feedPaperId: samplePaper.paperId,
+      feedArxivId: samplePaper.arxivId,
+      routeStack: [
+        PaperRouteEntry(routeId: 'safe-public-route', paper: samplePaper),
+      ],
+      readerStates: {
+        readerKey: const ReaderNavigationState(
+          stageIndex: 1,
+          introductionOffset: 380,
+          depthMode: ReaderDepthMode.read,
+          checkpointBlockId: 'account-a-block',
+          checkpointScrollFraction: .59,
+        ),
+      },
+    );
+    final store = MemoryLocalStore()..restoration = initialRestoration;
+    final container = ProviderContainer(
+      overrides: [
+        localStoreProvider.overrideWithValue(store),
+        initialRestorationProvider.overrideWithValue(initialRestoration),
+        visualAssetCacheProvider.overrideWithValue(visualAssets),
+      ],
+    );
+    addTearDown(container.dispose);
+    final clear = container.read(accountOwnedDataClearerProvider);
+    final preferences = await SharedPreferences.getInstance();
+
+    await clear('account-a', 1);
+    expect(
+      preferences.containsKey('${libraryHistoryPreferencesPrefix}account-a'),
+      isFalse,
+    );
+    expect(
+      preferences.containsKey('${libraryHistoryPreferencesPrefix}account-b'),
+      isTrue,
+    );
+    expect(preferences.containsKey(draftA), isFalse);
+    expect(preferences.containsKey(feedA), isFalse);
+    expect(preferences.containsKey(searchA), isFalse);
+    expect(preferences.containsKey(draftB), isTrue);
+    expect(preferences.containsKey(feedB), isTrue);
+    expect(preferences.containsKey(searchB), isTrue);
+    expect(visualAssets.clearedAccounts, ['account-a']);
+    final afterSignOut = container.read(appRestorationControllerProvider);
+    expect(afterSignOut.readerStates, isEmpty);
+    expect(afterSignOut.routeStack.single.routeId, 'safe-public-route');
+    expect(store.restoration.readerStates, isEmpty);
+    expect(
+      shouldApplyRemoteReaderCheckpoint(afterSignOut.readerState(readerKey)),
+      isTrue,
+      reason: 'account B must be able to apply its own exact checkpoint',
+    );
+
+    container
+        .read(appRestorationControllerProvider.notifier)
+        .updateReader(
+          readerKey,
+          (_) => const ReaderNavigationState(
+            introductionOffset: 240,
+            depthMode: ReaderDepthMode.inspect,
+            checkpointBlockId: 'account-a-deletion-block',
+          ),
+        );
+
+    await clear(null, 2);
+    expect(visualAssets.clearAllCount, 1);
+    expect(
+      preferences.getKeys().where(
+        (key) =>
+            key.startsWith(libraryHistoryPreferencesPrefix) ||
+            key.startsWith(paperImportDraftPreferencesPrefix) ||
+            key.startsWith(readingFeedPageCachePreferencesPrefix) ||
+            key.startsWith(searchPrivacyPreferencesPrefix),
+      ),
+      isEmpty,
+    );
+    final afterDeletion = container.read(appRestorationControllerProvider);
+    expect(afterDeletion.readerStates, isEmpty);
+    expect(store.restoration.readerStates, isEmpty);
+    expect(
+      shouldApplyRemoteReaderCheckpoint(afterDeletion.readerState(readerKey)),
+      isTrue,
+      reason: 'global deletion cleanup must not suppress account B restore',
+    );
+  });
+
   test(
     'root transport shares offline recovery with paper repository',
     () async {
@@ -99,7 +222,7 @@ void main() {
           ),
           oidcClientProvider.overrideWithValue(FakeOidcClient()),
           secureTokenStoreProvider.overrideWithValue(MemorySecureTokenStore()),
-          ...accountApplicationOverrides(delegate),
+          ..._accountTestOverrides(delegate),
         ],
       );
       addTearDown(container.dispose);
@@ -149,7 +272,7 @@ void main() {
           ),
           oidcClientProvider.overrideWithValue(oidc),
           secureTokenStoreProvider.overrideWithValue(tokens),
-          ...accountApplicationOverrides(delegate),
+          ..._accountTestOverrides(delegate),
         ],
       );
       addTearDown(container.dispose);
@@ -198,7 +321,7 @@ void main() {
           ),
           oidcClientProvider.overrideWithValue(FakeOidcClient()),
           secureTokenStoreProvider.overrideWithValue(tokens),
-          ...accountApplicationOverrides(delegate),
+          ..._accountTestOverrides(delegate),
         ],
       );
       addTearDown(container.dispose);
@@ -251,7 +374,7 @@ void main() {
           accountOwnedDataClearerProvider.overrideWithValue((scope, _) async {
             clearedScopes.add(scope);
           }),
-          ...accountApplicationOverrides(delegate),
+          ..._accountTestOverrides(delegate),
         ],
       );
       addTearDown(container.dispose);
@@ -307,7 +430,7 @@ void main() {
           oidcClientProvider.overrideWithValue(oidc),
           secureTokenStoreProvider.overrideWithValue(tokens),
           accountDeletionGuardStoreProvider.overrideWithValue(guard),
-          ...accountApplicationOverrides(delegate),
+          ..._accountTestOverrides(delegate),
         ],
       );
       addTearDown(container.dispose);
@@ -356,7 +479,7 @@ void main() {
           ),
           oidcClientProvider.overrideWithValue(oidc),
           secureTokenStoreProvider.overrideWithValue(tokens),
-          ...accountApplicationOverrides(delegate),
+          ..._accountTestOverrides(delegate),
         ],
       );
       addTearDown(container.dispose);
@@ -429,7 +552,7 @@ void main() {
           ),
           oidcClientProvider.overrideWithValue(FakeOidcClient()),
           secureTokenStoreProvider.overrideWithValue(tokens),
-          ...accountApplicationOverrides(delegate),
+          ..._accountTestOverrides(delegate),
         ],
       );
       addTearDown(container.dispose);
@@ -513,7 +636,7 @@ void main() {
           accountOwnedDataClearerProvider.overrideWithValue((scope, _) async {
             clearedScopes.add(scope);
           }),
-          ...accountApplicationOverrides(delegate),
+          ..._accountTestOverrides(delegate),
         ],
       );
       addTearDown(container.dispose);
@@ -815,4 +938,49 @@ final class _DeletionPendingAdapter implements HttpClientAdapter {
 
   @override
   void close({bool force = false}) {}
+}
+
+List<Override> _accountTestOverrides(StartupBootstrapper bootstrapper) => [
+  visualAssetCacheProvider.overrideWithValue(_RecordingVisualAssetCache()),
+  ...accountApplicationOverrides(bootstrapper),
+];
+
+final class _RecordingVisualAssetCache implements VisualAssetCache {
+  final List<String> clearedAccounts = [];
+  int clearAllCount = 0;
+
+  @override
+  Future<void> clearAccount(String accountId) async {
+    clearedAccounts.add(accountId);
+  }
+
+  @override
+  Future<void> clearAll() async {
+    clearAllCount++;
+  }
+
+  @override
+  Future<VisualAssetPayload?> read(VisualAssetRequest request) async => null;
+
+  @override
+  void release(VisualAssetRequest request) {}
+
+  @override
+  void retain(VisualAssetRequest request) {}
+
+  @override
+  Future<void> setPersistentPin(
+    VisualAssetRequest request,
+    VisualAssetPersistentPin pin,
+    bool enabled,
+  ) async {}
+
+  @override
+  Future<void> setPaperSaved(VisualAssetPaperScope scope, bool saved) async {}
+
+  @override
+  Future<void> write(
+    VisualAssetRequest request,
+    VisualAssetPayload payload,
+  ) async {}
 }

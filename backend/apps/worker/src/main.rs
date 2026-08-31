@@ -3,6 +3,7 @@ mod config;
 mod evaluation;
 mod metadata_sync;
 mod runtime;
+mod visual_derivatives;
 
 use anyhow::{Context as _, Result};
 use cli::{Cli, Command};

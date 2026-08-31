@@ -2350,6 +2350,10 @@ void main() {
         'pakperk.session.v1': '00000000-0000-4000-8000-000000000777',
         'pakperk.appearance.v1': 'dark',
         'pakperk.feed.v1': '{"items":[]}',
+        'pakperk.guest.discovery.preferences.v1':
+            '{"schema":1,"onboarding_complete":true,"categories":["cs.CL"]}',
+        'pakperk.library.history.v1.account-clear-all':
+            '{"schema":1,"enabled":false,"entries":[]}',
         'pakperk.auth.invalidated.v1': true,
         'pakperk.account_deletion.guard.v1': '{"pending":true}',
       });
@@ -2433,6 +2437,14 @@ void main() {
       expect(preferences.containsKey('pakperk.session.v1'), isFalse);
       expect(preferences.containsKey('pakperk.appearance.v1'), isFalse);
       expect(preferences.containsKey('pakperk.restoration.drift.v1'), isFalse);
+      expect(
+        preferences.containsKey('pakperk.guest.discovery.preferences.v1'),
+        isFalse,
+      );
+      expect(
+        preferences.containsKey('pakperk.library.history.v1.account-clear-all'),
+        isFalse,
+      );
     },
   );
 

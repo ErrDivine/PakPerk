@@ -37,6 +37,17 @@ handler accepts it, that replacement remains uncaught so crash behavior is not
 hidden; the raw callback arguments are never returned to the engine fallback
 logger.
 
+Plan 02 queue-policy observations use the same closed boundary. The client may
+emit only coarse duration buckets for pending save/import age, save-to-
+suppression latency, final-acknowledgement-to-server-unlock latency, and oldest
+Library outbox age. Recommendation publication rejection and Library conflict
+events use closed reason/boundary enums. The source timestamps, account/auth
+scope, outbox operation, import operation, paper identity, and server response
+identity remain on-device. A missing timestamp or scope produces `unknown` or
+no timing sample; it is never reconstructed from a raw timestamp attribute.
+These are essential queue and product-state observations and do not enable
+interaction or personalization collection when personalization is off.
+
 ## Consequences
 
 - The mobile bundle contains no observability credential and direct upstream

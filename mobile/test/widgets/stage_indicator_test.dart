@@ -23,6 +23,14 @@ void main() {
     expect(find.text('Introduction'), findsOneWidget);
     expect(find.text('Connections'), findsOneWidget);
 
+    final controlTops = PaperStage.values
+        .map(
+          (stage) =>
+              tester.getTopLeft(find.byKey(ValueKey('stage-${stage.name}'))).dy,
+        )
+        .toSet();
+    expect(controlTops, hasLength(1));
+
     await tester.tap(find.byKey(const ValueKey('stage-connections')));
     expect(selected, PaperStage.connections);
   });
@@ -48,11 +56,10 @@ void main() {
         ),
       );
 
-      final dots = tester.widgetList<AnimatedContainer>(
-        find.byType(AnimatedContainer),
+      final selection = tester.widget<AnimatedPositionedDirectional>(
+        find.byType(AnimatedPositionedDirectional),
       );
-      expect(dots, isNotEmpty);
-      expect(dots.every((dot) => dot.duration == Duration.zero), isTrue);
+      expect(selection.duration, Duration.zero);
     }
   });
 
@@ -84,6 +91,10 @@ void main() {
 
     expect(find.byType(FittedBox), findsNothing);
     expect(scaledHeight, greaterThanOrEqualTo(normalHeight * 1.8));
+    expect(
+      find.byKey(const ValueKey('stage-indicator-scroll')),
+      findsOneWidget,
+    );
     final abstractRect = tester.getRect(
       find.byKey(const ValueKey('stage-abstractView')),
     );
@@ -93,8 +104,55 @@ void main() {
     final connectionsRect = tester.getRect(
       find.byKey(const ValueKey('stage-connections')),
     );
-    expect(introductionRect.top, greaterThanOrEqualTo(abstractRect.bottom));
-    expect(connectionsRect.top, greaterThanOrEqualTo(introductionRect.bottom));
+    expect(introductionRect.top, abstractRect.top);
+    expect(connectionsRect.top, abstractRect.top);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('selection capsule follows the live reader page position', (
+    tester,
+  ) async {
+    final controller = PageController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              PaperStageIndicator(
+                currentStage: PaperStage.abstractView,
+                pageController: controller,
+                onSelected: (_) {},
+              ),
+              Expanded(
+                child: PageView(
+                  controller: controller,
+                  children: const [
+                    SizedBox.expand(),
+                    SizedBox.expand(),
+                    SizedBox.expand(),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final capsule = find.byKey(const ValueKey('stage-selection-capsule'));
+    final firstLeft = tester.getTopLeft(capsule).dx;
+    final segmentWidth = tester
+        .getSize(find.byKey(const ValueKey('stage-abstractView')))
+        .width;
+
+    controller.jumpTo(controller.position.viewportDimension * .5);
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(capsule).dx,
+      closeTo(firstLeft + segmentWidth * .5, 1),
+    );
   });
 }
