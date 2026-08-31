@@ -30,7 +30,7 @@ dependencies:
   xml: 7.0.1
 
 dev_dependencies:
-  archive: 4.0.9
+  archive: 4.2.0
   flutter_test:
     sdk: flutter
   integration_test:
