@@ -20,6 +20,10 @@ The active production migration is governed by the authoritative
 and its [documentation entrypoint](docs/production-v0.0-plan.md).
 
 For day-to-day work, start with the [developer guide](docs/developer-guide.md).
+For a real Android phone or iPhone, use the
+[physical-device development guide](docs/mobile-device-development.md). For a
+staging or production server, follow the
+[backend deployment guide](docs/backend-deployment.md).
 For product behavior, privacy, safety, deletion, and troubleshooting, use the
 [user guide](docs/user-guide.md).
 
@@ -108,8 +112,12 @@ GET http://localhost:8080/health/ready
 ```
 
 `/health/live` only proves that the process is running. `/health/ready` checks
-the dependencies needed to serve cached content. GROBID or a model provider can
-be unavailable while already-prepared papers remain readable.
+the PostgreSQL connection, every embedded migration and checksum through schema
+24, the required database extensions, and the shared arXiv request gate. A
+newer schema is accepted when it remains forward-compatible with this binary.
+Readiness does not check GROBID, the model provider, OIDC, background workers,
+telemetry delivery, DNS, or TLS; already-prepared papers can remain readable
+while one of those dependencies is unavailable.
 
 ### Optional local OIDC accounts
 

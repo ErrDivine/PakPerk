@@ -1,15 +1,16 @@
 # Pakperk user guide
 
 Pakperk is a mobile arXiv reader. You can browse and read as a guest; an account
-is needed only for features that belong to you, such as a synchronized To Read
-list, public comments, blocking, and account deletion.
+is needed only for features that belong to you, such as your synchronized
+Library and its To Read queue, posting public comments, blocking, and account
+deletion.
 
 The release targets Android 7.0 / API 24 or newer and iOS 15 or newer.
 
 ## Availability note
 
 Pakperk Production v0.0 is currently a release candidate. The checked-in
-production configuration keeps accounts, To Read, and comments off until the
+production configuration keeps accounts, Library, and comments off until the
 service completes its operational, safety, legal, device, signing, and store
 reviews. A released build may therefore show only guest reading. The app should
 never advertise a disabled capability as available.
@@ -21,11 +22,19 @@ an arbitrary download or sideload as a released build.
 
 ## Read papers
 
-The app has two main destinations:
+The app has three main destinations:
 
 - **Read** contains the paper feed and reader.
+- **Library** contains your synchronized papers and To Read queue when those
+  features are enabled. Otherwise it explains that Library is unavailable or
+  asks you to sign in.
 - **You** contains guest information or, when accounts are enabled, sign-in,
-  profile, To Read, comments, blocked users, sign-out, and deletion controls.
+  profile, a Library shortcut, **My comments**, Blocked users, Settings,
+  Sign out, and Delete account controls.
+
+Library's canonical in-app location is `/library`. After an upgrade, an older
+restored route that still points to `/you/library` redirects to the standalone
+Library destination automatically.
 
 In Read:
 
@@ -97,17 +106,23 @@ Signing out removes account-owned local data and secure session material from
 the device. Public cached papers and reader restoration can remain so guest
 reading still works.
 
-## To Read
+## Library and To Read
 
-When the library is enabled, use the paper save control to add or remove a
-paper from **To Read**. Changes appear optimistically on the device and sync
-when the network and verified account are available. The list can be sorted by
-newest, oldest, or title and can filter already-loaded papers by title, author,
-arXiv ID, or category.
+When Library is enabled, use the paper save control to add or remove a paper
+from **To Read**. Saved papers appear in the standalone **Library** destination;
+baseline To Read entries appear in **Inbox**. Changes appear optimistically on
+the device and sync when the network and verified account are available.
 
-Removing a paper offers **Undo** as a new synchronized action. You can refresh
-the list explicitly; offline and pending states remain visible instead of
-pretending a remote change has completed.
+In the baseline To Read flow, removing a paper offers **Undo** as a new
+synchronized action. You can refresh Library by pulling down; offline and
+pending states remain visible instead of pretending a remote change has
+completed.
+
+If the expanded Library capability is enabled for your build, Library can also
+offer **Read next**, **Reading**, **Reviewed**, and **Archived** states, private
+save notes, **Lists & tags**, reminders, and private on-device **History**.
+Those controls appear only when their matching capabilities are enabled. Opening
+a paper never changes its Library state automatically.
 
 If library writes are temporarily paused, existing saved papers remain
 readable but save/remove actions wait or fail with an explanation. Saving a
@@ -158,10 +173,11 @@ service requires a recent sign-in so a stolen old session cannot delete the
 account. A public web deletion route is also provided for the released service.
 
 Deletion disables access immediately and queues removal of the provider
-identity, profile, To Read data, comments, blocks, reports, and pending
-account-owned work. The operation is retry-safe. A restricted signed deletion
-record is retained long enough to prevent a restored backup from silently
-recreating the account; it is not a copy of your profile or comments.
+identity, profile, Library data including To Read, comments, blocks, reports,
+and pending account-owned work. The operation is retry-safe. A restricted
+signed deletion record is retained long enough to prevent a restored backup
+from silently recreating the account; it is not a copy of your profile or
+comments.
 
 Use the built-in support action if deletion is stalled; it includes a validated
 request identifier when one is available. If the app or web page explicitly
@@ -203,13 +219,13 @@ on animation.
   original arXiv link remains available.
 - **You shows guest information:** the installed build may have accounts
   disabled, or you may need to sign in again after an invalid session.
-- **To Read or comments are missing:** those capabilities may be disabled for
-  the release or environment; guest reading should still work.
+- **Library is unavailable or comments are missing:** those capabilities may be
+  disabled for the release or environment; guest reading should still work.
 - **Comment sending is paused:** correct any visible length/character error,
   reconnect, verify the account, or wait for the publication switch to reopen.
   Existing discussion and safety actions should remain available when only new
   publication is paused.
-- **A saved or comment change has not appeared on another device:** keep the
+- **A Library or comment change has not appeared on another device:** keep the
   app online long enough to verify the account and complete synchronization,
   then refresh the destination view.
 - **Account deletion asks for sign-in:** complete the recent-authentication

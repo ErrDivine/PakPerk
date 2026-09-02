@@ -308,8 +308,8 @@ a { color: inherit; }
   .wordmark { margin-right: auto; }
   .sync-indicator { display: none; }
   .header-meta { gap: .5rem; }
-  .sidebar { box-shadow: 14px 0 40px rgba(16,42,37,.16); transform: translateX(-105%); transition: transform 180ms ease; width: min(88vw, 22rem); }
-  .sidebar.is-open { transform: translateX(0); }
+  .sidebar { box-shadow: 14px 0 40px rgba(16,42,37,.16); transform: translateX(-105%); transition: transform 180ms ease, visibility 0s linear 180ms; visibility: hidden; width: min(88vw, 22rem); }
+  .sidebar.is-open { transform: translateX(0); transition-delay: 0s; visibility: visible; }
   .sidebar-scrim { background: rgba(12,25,22,.42); border: 0; bottom: 0; display: block; left: 0; position: fixed; right: 0; top: var(--topbar-height); z-index: 20; }
   .document-stage { margin-left: 0; padding: calc(var(--topbar-height) + 2.6rem) clamp(1.1rem, 5vw, 2rem) 4rem; }
   .document h1 { font-size: clamp(2.25rem, 11vw, 3.5rem); }

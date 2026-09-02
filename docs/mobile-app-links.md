@@ -12,13 +12,15 @@ https://pakperk.app/arxiv/{arxiv_id}
 
 Paper IDs must be UUIDs. arXiv IDs may use the modern form or a legacy archive
 form whose slash is percent-encoded in the URL. The router accepts only the
-exact HTTPS origin, rejects credentials, ports, query strings, fragments,
-unexpected segments, traversal, and overlong or malformed identifiers, and
-fails closed to Read without issuing a paper request.
+configured HTTPS origin, including its effective port; it rejects credentials,
+nonmatching ports, query strings, fragments, unexpected segments, traversal,
+and overlong or malformed identifiers, and fails closed to Read without issuing
+a paper request.
 
-Android intent filters and the iOS URL scheme/associated-domain entitlement are
-checked into the native hosts. Those declarations alone do not establish
-verified production universal links. Before a signed release, operations must:
+Android intent filters and the iOS custom URL scheme/Associated Domains
+entitlement are checked into the native hosts. Those declarations alone do not
+establish verified production Android App Links or iOS Universal Links. Before
+a signed release, operations must:
 
 1. Serve `https://pakperk.app/.well-known/assetlinks.json` with the final
    Android application ID and every active **Play App Signing** certificate
@@ -50,7 +52,8 @@ verified production universal links. Before a signed release, operations must:
 5. Serve both files directly over HTTPS with the correct JSON content type and
    no redirect.
 6. Validate the files against signed release candidates, then exercise cold,
-   warm, and already-running app links on physical Android and iOS devices.
+   warm, and already-running Android App Links and iOS Universal Links on
+   physical devices.
 7. Confirm malformed and hostile-origin URLs stay in the browser or fail closed
    to Read, and that a valid public link opens Abstract.
 

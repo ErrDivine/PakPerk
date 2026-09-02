@@ -3,6 +3,9 @@
 Flutter client for Pakperk, with native Android and iOS hosts. The API base URL
 is configured at build time:
 
+Unless a command says it starts at the repository root, run commands in this
+file from `mobile/`.
+
 Reader-facing behavior, account/library/comment availability, privacy,
 deletion, and troubleshooting are summarized in the repository
 [`user guide`](../docs/user-guide.md).
@@ -19,18 +22,22 @@ Android emulators normally need `http://10.0.2.2:8080`. The app persists an
 anonymous session identifier, the cached feed and prepared content, the full
 paper navigation trail, each stage/scroll position, and chat-sheet state.
 
-The app uses a stateful Read/You shell. Read keeps feed, linked-paper, stage,
-and scroll restoration across tab switches. You remains a guest explanation
-when accounts are disabled and owns sign-in/profile/onboarding state in an
-account-enabled build. Phones use a bottom navigation bar; viewports at least
-600 logical pixels wide use a labeled, safe-area-aware navigation rail without
-changing branch or restoration behavior. An enabled To Read list can locally
-sort by newest, oldest, or title and search/filter its already-loaded cached
-papers by title, author, arXiv ID, or category. Startup opens local preferences
-and the first cached or bundled feed before the production widget tree mounts,
-releases the native splash, and starts exactly one feed revalidation after the
-first usable frame. Network and identity-provider availability are therefore
-not launch prerequisites.
+The app uses a stateful Read/Library/You shell. Read keeps feed, linked-paper,
+stage, and scroll restoration across tab switches. Library is the standalone
+`/library` branch; a restored `/you/library` location redirects there. It
+explains disabled, signed-out, or read-only states and otherwise shows
+synchronized papers with visible offline and pending-sync status. Legacy
+`to_read` rows are projected into Inbox. Library v2 enables expanded state
+editing, private notes, Lists & tags, and private on-device History; reminders
+also require notifications. When accounts are disabled, You remains a guest
+explanation; in an account-enabled build it owns sign-in/profile/onboarding
+state. Phones use a bottom navigation bar; viewports at least 600 logical pixels
+wide use a labeled, safe-area-aware navigation rail without changing branch or
+restoration behavior. Startup opens local preferences and the first cached or
+bundled feed before the production widget tree mounts, releases the native
+splash, and starts exactly one feed revalidation after the first usable frame.
+Network and identity-provider availability are therefore not launch
+prerequisites.
 
 For the optional Phase 3 development account flow, start the repository's
 Compose `accounts` profile and run with the exact public-client values:
@@ -136,12 +143,27 @@ memory-warning handling, reduced motion, and strict cache masking.
 Those fixtures do not impersonate a real identity provider, staging backend,
 second installed device, OS process kill, signed store candidate, or
 representative performance window. With a physical Android or iOS target
-attached, run the deterministic subset through Flutter's integration binding:
+attached, run the deterministic subset through Flutter's integration driver:
 
 ```sh
-flutter test integration_test/production_verification_test.dart \
-  --profile -d "$PAKPERK_MOBILE_DEVICE_ID"
+flutter drive \
+  --driver=test_driver/integration_test.dart \
+  --target=integration_test/production_verification_test.dart \
+  --flavor prod \
+  --dart-define-from-file=config/prod.json \
+  --profile \
+  -d "$PAKPERK_MOBILE_DEVICE_ID"
 ```
+
+On Android this profile task uses development/debug signing. On iOS it needs a
+development team and provisioning profile authorized for the production bundle
+identifier and Associated Domains entitlement; a personal team may not have
+that access. Neither result is release-signing evidence. For routine iPhone
+development, use the dev-flavor command in the physical-phone guide.
+
+The step-by-step Android USB routing, iPhone signing/HTTPS setup, dev-flavor
+test command, manual checklist, and troubleshooting map are in
+[`../docs/mobile-device-development.md`](../docs/mobile-device-development.md).
 
 Setting `PAKPERK_MOBILE_DEVICE_ID` makes the repository-level
 `scripts/check.sh` include that physical-device probe after the complete

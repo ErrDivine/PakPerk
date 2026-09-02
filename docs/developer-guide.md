@@ -1,93 +1,175 @@
 # Pakperk developer guide
 
-This is the shortest safe path for developing, testing, and preparing a
-Pakperk Production v0.0 candidate. The normative requirements remain in the
-[Production v0.0 implementation plan](../pakperk_production_v0_0_implementation_plan.md),
-and the difference between implemented source and approved release evidence is
-tracked in the [completion audit](production-v0.0-completion-audit.md).
+This guide is the starting point for working on Pakperk. It explains what runs
+where, gets a guest build working locally, and then points to the deeper guides
+for real phones and server deployment.
 
-## Current status
+Unless a paragraph says otherwise, treat every shell block in this guide as an
+independent block that starts at the repository root. A block that begins with
+`cd mobile` or `cd docs-site` changes directory only for that block.
 
-The repository implementation is a dark-launch candidate. Guest reading,
-optional accounts, To Read synchronization, comments and moderation, account
-deletion, queue-first discovery, normalized-document/Passport/assistant APIs,
-private research artifacts, telemetry, deployment, release automation, and
-evidence validators are implemented behind fail-closed controls. The checked-in
-production configuration keeps every optional Plan 02 and Plan 03 capability
-off until the corresponding protected staging, operations, human-domain,
-privacy/legal, signed-device, accessibility, signing, and store gates pass.
+> **First visit?** Follow [Run Pakperk locally](#run-pakperk-locally) from top to
+> bottom before enabling accounts or optional features. The default guest stack
+> is deliberately small and is the easiest place to learn the system.
 
-Source checks do not authorize a public rollout. Do not turn an unchecked item
-in the completion audit into a passing claim without its required immutable
-artifact and owner approval.
+## Choose the path you need
 
-## Repository map
-
-| Path | Purpose |
+| Goal | Start here |
 | --- | --- |
-| `backend/apps/api` | Axum public/account API |
-| `backend/apps/worker` | paper metadata and preparation jobs |
-| `backend/apps/deletion-worker` | leased provider/application deletion work |
-| `backend/apps/migrate` | standalone production migration job |
-| `backend/apps/admin` | recently authenticated moderation operations |
-| `backend/apps/telemetry-gateway` | validates the closed mobile telemetry schema |
-| `backend/crates` | domain, database, auth, library, comments, moderation, jobs, provider, and policy modules |
-| `mobile` | Flutter Android/iOS application and native hosts |
-| `site` | static policy, support, deletion, and association site |
-| `deploy` | Keycloak reference deployment and production Helm chart |
-| `scripts` | checks, evidence validators, release assembly, and operational drills |
-| `docs/adr` | accepted architectural decisions |
-| `docs/runbooks` | release, incident, restore, moderation, deletion, telemetry, and load procedures |
+| Run the API and app on one development machine | [Run Pakperk locally](#run-pakperk-locally) |
+| Debug on a physical Android phone or iPhone | [Test Pakperk on a physical phone](mobile-device-development.md) |
+| Install the backend on a staging or production server | [Deploy the backend](backend-deployment.md) |
+| Understand why the system has these boundaries | [Architecture](architecture.md) and [deployment boundaries](deployment-boundaries.md) |
+| Build a signed mobile release | [Mobile release](mobile-release.md) |
+| See which production claims still need evidence | [Production v0.0 completion audit](production-v0.0-completion-audit.md) |
 
-PostgreSQL is the production source of truth for application data, jobs, shared
-rate limits, synchronization, and moderation. Do not introduce another network
-service without an ADR.
+The repository is a dark-launch candidate, not proof that a public release is
+approved. Source code, local tests, and a healthy staging route cannot replace
+the protected operational, legal, privacy, accessibility, signing, store, and
+human-review evidence tracked by the completion audit.
 
-## Toolchain
+## Build a useful mental model first
 
-The complete local harness reports missing optional tools and every skipped
-gate. A fully representative developer machine needs:
+Pakperk has five main moving parts:
 
-- the pinned Rust 1.91.1 toolchain used by CI and release images;
-- Docker with Compose v2;
-- Python 3 and `jq`;
-- the pinned Flutter 3.44.8 / Dart 3.12.2 toolchain for current mobile release
-  evidence;
-- Android tooling, plus Xcode on macOS for iOS builds;
-- Node/npm for the public-site suite;
-- Helm 3.18.x for deployment rendering; and
-- Java signing tools and Ruby only for the corresponding release checks.
+1. The Flutter app asks the API for public feed and paper data. Account-owned
+   features are optional and stay hidden unless both the app and backend enable
+   compatible flags.
+2. The Axum API validates requests and reads or writes PostgreSQL. PostgreSQL is
+   also the durable queue, shared rate-limit store, and moderation source of
+   truth; there is no Redis, Kafka, or NATS dependency.
+3. A paper worker leases preparation jobs from PostgreSQL, fetches permitted
+   source material, asks GROBID to parse it, and can call a configured model
+   provider. Preparing a paper is an explicit action, never a side effect of
+   merely opening the app or refreshing a feed.
+4. A separate deletion worker coordinates account deletion with the identity
+   provider and an independently backed-up signed ledger. It is intentionally
+   isolated from the ordinary paper worker.
+5. The static `site/` project serves public policy, support, deletion, and app
+   association files. The `docs-site/` project is this developer documentation
+   site. Neither one is the API.
 
-Use lockfiles. Do not casually update Rust, Pub, npm, Gradle, SwiftPM, Ruby, or
-workflow-action inputs: dependency automation, checksums, SBOM inventories, and
-release evidence intentionally fail closed on unreviewed drift.
+For local guest development, Docker Compose runs PostgreSQL, GROBID, the API,
+and the paper worker. For staging and production, the supported shape is the
+Kubernetes Helm chart. Compose is intentionally convenient and intentionally
+unsafe for a public Internet deployment.
 
-## Start the guest development stack
+## Install the development tools
 
-From the repository root:
+Use the versions pinned by the repository rather than whichever versions are
+newest today.
+
+| Tool | Why it is needed |
+| --- | --- |
+| Rust 1.91.1 | Backend builds, tests, and release images |
+| Docker with Compose v2 | The local database, parser, API, and workers |
+| Flutter 3.44.8 with Dart 3.12.2 | The current Android and iOS app |
+| Android SDK tools | Android builds, emulators, `adb`, and physical-device debugging |
+| Xcode on macOS | iOS builds, simulators, signing, and physical iPhone debugging |
+| OpenSSL | Generates the owner-only local API and account key files |
+| Python 3 and `jq` | Repository validators and small maintenance tools |
+| Node.js 22.13 or newer, npm, and Pandoc | Public site and developer docs site |
+| Helm 3.18.x | Rendering and validating the deployment chart |
+
+Java signing tools, Ruby, and store CLIs are needed only for their corresponding
+release gates. The main check script reports missing optional tools and skipped
+gates rather than quietly treating them as successful.
+
+Lockfiles and pinned workflow inputs are part of the release controls. Do not
+casually update Rust, Pub, npm, Gradle, SwiftPM, Ruby, image, or workflow-action
+versions. Their checksums, software inventories, and evidence validators are
+designed to notice unreviewed drift.
+
+## Run Pakperk locally
+
+All commands in this section start at the repository root unless a step says
+otherwise.
+
+### 1. Create the local configuration
+
+Copy the fail-closed template:
 
 ```bash
 cp .env.example .env
-# Replace ARXIV_CONTACT_EMAIL with a real monitored address.
+```
+
+Open `.env` and replace the rejected `ARXIV_CONTACT_EMAIL` placeholder with a
+real, monitored address. arXiv asks API clients to identify a reachable contact,
+and both the API and worker reject placeholder or example-domain values.
+
+Leave the optional capability flags `false` for the first run. In particular,
+do not enable accounts, Library, comments, deletion, discovery, or Deep Reader
+features until the basic guest path works.
+
+Generate the local origin-hashing and cursor-encryption key files:
+
+```bash
 ./scripts/prepare_dev_api_origin_secret.sh
+```
+
+The script writes owner-only files beneath `.local/pakperk-secrets/`. It prints
+their paths, not their values. Do not copy the values into `.env`, print them in
+logs, or commit them.
+
+### 2. Start the guest backend
+
+```bash
 docker compose up -d --build
 ```
 
-The API is ready only when this returns HTTP 200:
+The first build can take several minutes. Watch the service state and API logs:
+
+```bash
+docker compose ps
+docker compose logs --tail=100 api
+```
+
+Wait for the readiness endpoint:
 
 ```bash
 curl --fail http://localhost:8080/health/ready
 ```
 
-`/health/live` proves only that the process is running. The API and worker
-reject placeholder arXiv contacts. Generated secret files are owner-only and
-must not be printed, copied into `.env`, or committed.
+An HTTP 200 means the API can reach PostgreSQL and that the migration and
+required-extension contract is valid. `/health/live` proves only that the API
+process is running. Readiness does **not** prove that GROBID, a model provider,
+OIDC, background workers, telemetry delivery, DNS, or TLS is healthy.
 
-Run the mobile app:
+If readiness fails, inspect the API and migration logs before restarting
+anything:
+
+```bash
+docker compose logs --tail=200 api postgres
+```
+
+The Compose API applies migrations for local convenience. Long-running staging
+and production processes must instead use `RUN_MIGRATIONS=false`; their
+standalone migration Job owns schema changes.
+
+The migration creates tables but does not seed papers. If the next task needs
+to prove live API data rather than only networking, load the checked-in demo
+metadata now:
+
+```bash
+./scripts/seed_demo.sh
+curl --fail http://localhost:8080/v1/feed | jq '.items | length'
+```
+
+The count should be greater than zero. `seed_demo.sh` contacts arXiv using the
+identity configured in `.env`. Preparing Introduction and Connections content
+is a separate, slower, provider-dependent action; run
+`./scripts/preprocess_demo.sh` only when the task needs that path. The mobile app
+also contains clearly labeled bundled demo papers, so seeing a paper on screen
+does not by itself prove that the live database contains it.
+
+### 3. Run the Flutter app
+
+In a second terminal:
 
 ```bash
 cd mobile
 flutter pub get --enforce-lockfile
+flutter devices
 flutter run \
   --flavor dev \
   --dart-define=PAKPERK_ENV=development \
@@ -95,13 +177,84 @@ flutter run \
   --dart-define=PAKPERK_FULLTEXT_POLICY=prototype
 ```
 
-An Android emulator reaches the host API through `http://10.0.2.2:8080`; either
-override the development API define or use a device/network configuration that
-can reach the host. iOS simulators normally use `http://localhost:8080`.
+This URL works directly in an iOS Simulator. An Android emulator reaches the
+host through `http://10.0.2.2:8080`, so replace the API base URL with that value.
+A physical phone needs additional routing and signing setup; follow the
+[physical-phone guide](mobile-device-development.md) rather than guessing a LAN
+address.
 
-## Enable reference accounts locally
+The flavor and environment are a checked pair:
 
-Start the separate Keycloak database/provider profile:
+| Flutter flavor | `PAKPERK_ENV` | Application identity suffix |
+| --- | --- | --- |
+| `dev` | `development` | `.dev` |
+| `staging` | `staging` | `.staging` |
+| `prod` | `production` | none |
+
+Startup rejects a mismatched pair. That early failure prevents a build carrying
+one environment's identity from silently talking as another environment.
+
+### 4. Prove the basic path
+
+In the app, confirm that the public feed opens and that a paper can be selected.
+Keep `flutter run` attached, open the DevTools link it prints, select the
+**Network** view, refresh the feed, and confirm a successful `GET /v1/feed`.
+Also verify the live API response independently from the development computer:
+
+```bash
+curl --fail http://localhost:8080/v1/feed | jq '.items | length'
+```
+
+The default compact API logger does not emit one line for every request, so
+searching `docker compose logs` for `/v1/feed` is not a valid reachability test.
+An item count of zero is valid on a fresh database, and the app can still show
+its bundled demo feed. When live data matters, run the seed step above, confirm
+that the API count is greater than zero, and use the phone's DevTools request to
+prove which network path the app exercised.
+
+For the same repeatable backend test command used by the repository gate, run:
+
+```bash
+cargo test --manifest-path backend/Cargo.toml --locked --workspace --all-features
+```
+
+For a repeatable mobile check:
+
+```bash
+cd mobile
+dart format --output=none --set-exit-if-changed .
+flutter analyze
+flutter test
+```
+
+The complete repository gate is:
+
+```bash
+./scripts/check.sh
+```
+
+It is deliberately broad and can be slow. Read its final skip report: a skipped
+device, signing, Helm, or external-service gate is not a pass.
+
+### 5. Stop the local stack
+
+```bash
+docker compose down
+```
+
+This preserves the named database volume. Use a volume-removing command only
+when you intentionally want to destroy local database state and have confirmed
+that nothing in it is needed.
+
+## Enable local accounts only when you need them
+
+The reference identity provider is a separate Compose profile. The issuer URL
+is public `localhost`, so the API must run on the host during this workflow;
+tokens issued for `localhost` must not be validated against a container-only
+hostname.
+
+First stop the Compose API, start PostgreSQL and Keycloak, and create the local
+account key material:
 
 ```bash
 docker compose stop api
@@ -109,292 +262,132 @@ docker compose --profile accounts up -d postgres keycloak
 ./scripts/prepare_dev_account_secrets.sh
 ```
 
-The reference issuer is
-`http://localhost:8081/realms/pakperk`. Run the API on the host with the account
-settings documented in the root [README](../README.md#optional-local-oidc-accounts).
-Do not run the Compose API at the same time: changing the issuer to a container
-hostname would make tokens disagree with the public issuer embedded in them.
-Verification mail is available in Mailpit at `http://localhost:8025`.
+Then follow [Account authentication](account-authentication.md) for the exact
+host API environment. The reference issuer is
+`http://localhost:8081/realms/pakperk`, and verification mail appears in Mailpit
+at `http://localhost:8025`.
 
-For an account-only client, use the public native OIDC defines in
-[`mobile/README.md`](../mobile/README.md#pakperk-mobile). The checked-in
-`mobile/config/dev.json` enables accounts, library, and comments together for
-full-composition testing; when using it, enable the matching backend account,
-library read/write, comment read/creation flags as well. A mobile build must
-never contain a client secret, provider API key, admin token, or
-deletion-worker credential.
+The checked-in `mobile/config/dev.json` enables accounts, Library, and comments
+together. The backend must enable the compatible account, Library read/write,
+and comment read/creation switches too. A mobile build must never contain a
+client secret, provider API key, administrative token, or deletion-worker
+credential.
 
-## Feature flags
+When several features are involved, enable dependencies from the bottom up and
+disable them in reverse order. Startup rejects invalid combinations. The full
+dependency graph and rollout evidence live in the relevant feature document,
+including [Discovery and Library](discovery-and-library.md) and the
+[Deep Reader rollout runbook](runbooks/deep-reader-rollout.md).
 
-All production capabilities are independent fail-closed switches:
+## Use a focused edit-and-test loop
 
-| Flag | Dependency and effect |
-| --- | --- |
-| `ACCOUNTS_ENABLED` | registers account verification/profile behavior |
-| `LIBRARY_ENABLED` | requires accounts; enables To Read reads |
-| `LIBRARY_WRITES_ENABLED` | requires library; enables save/remove mutations |
-| `LIBRARY_V2_ENABLED` | requires accounts and library; registers five-state Library, list, tag, note, and unified change-feed routes |
-| `COMMENTS_ENABLED` | requires accounts; registers public discussion and safety routes |
-| `COMMENT_CREATION_ENABLED` | requires comments; enables only new comment publication |
-| `ACCOUNT_DELETION_ENABLED` | requires accounts and the complete worker/ledger/provider boundary |
-| `PAPER_RESOLUTION_ENABLED` | enables authenticated resolution consumers without changing the public exact-paper route |
-| `PAPER_TITLE_SEARCH_ENABLED` | requires accounts and paper resolution; registers bounded title search |
-| `LIBRARY_IMPORT_WRITES_ENABLED` | requires accounts, library, library writes, and paper resolution; enables exact import writes |
-| `READING_FEED_ENABLED` | requires accounts and library; registers `GET /v1/me/reading-feed` and may persist the minimal authority-bound Recent fallback when the queue is proven empty |
-| `TO_READ_FIRST_ENFORCEMENT_ENABLED` | requires reading feed; changes the authenticated response policy from `shadow` to `strict` without changing route registration |
-| `RESEARCH_PROFILES_ENABLED` | requires accounts; registers future-discovery profile/interests/reset/export routes without queue authority |
-| `RECOMMENDATIONS_ENABLED` | requires accounts, library, and reading feed; enables advanced recommendation modes, profile-aware reasons, explanations, and feedback. It is not required for the reading feed's minimal authority-bound Recent fallback |
-| `RECOMMENDATION_EVENTS_ENABLED` | optional independent closed event ingestion; product and queue state never depend on it |
-| `SEARCH_LOOKUP_ENABLED` | registers public deterministic metadata-only Lookup and at-most-eight local topic-vocabulary suggestions |
-| `SEARCH_EXPLORE_ENABLED` | requires Lookup; registers bounded explicit Explore with partial-source diagnostics |
-| `SAVED_QUERIES_ENABLED` | requires accounts and Explore; stores account-owned query definitions only |
-| `READING_BRIEFS_ENABLED` | requires reading feed; creates queue or discovery briefs through the same gate |
-| `SUBSCRIPTIONS_ENABLED` | requires accounts, library, and reading feed; stores private explicit discovery subscriptions |
-| `NOTIFICATIONS_ENABLED` | requires subscriptions; enables queue-aware in-app notification work; push/email remain unavailable |
-| `DEEP_READER_ENABLED` | registers the normalized outline/block/object boundary; it does not enable subordinate Plan 03 routes by itself |
-| `PAPER_PASSPORT_ENABLED` | requires Deep Reader; enables evidence-linked Passport fields and feedback |
-| `SEMANTIC_FACETS_ENABLED` | requires Deep Reader; enables source-linked terms and semantic spans |
-| `VISUAL_OBJECTS_ENABLED` | requires Deep Reader; enables source-linked figure/table/equation metadata and an authenticated selectable-variant raster route when an operator-owned asset store is configured. The worker accepts only an exact operator-reviewed, generation-scoped PNG source, re-encodes ancillary-metadata-free responsive variants, hash-binds and atomically publishes the complete set, and leaves missing or untrusted sources on caption/original-page fallback. It never infers parser-coordinate crops. Mobile renders equations from exact maintained source: SmartMath sanitization/input repair is disabled, and malformed LaTeX or unsupported MathML falls back to selectable exact source. Generated accessibility descriptions remain capability-unavailable pending a reviewed persisted draft schema |
-| `ASSISTANT_V2_ENABLED` | requires Deep Reader; enables generation-scoped, evidence-ID-validated assistant requests and provenance |
-| `ANNOTATIONS_ENABLED` | requires accounts and Deep Reader; enables private annotations, retained conflicts, re-anchoring, evidence cards, checkpoints, and export/delete surfaces |
-| `RESEARCH_MEMORY_ENABLED` | requires accounts, Deep Reader, and annotations; enables private reviewable memory without Library authority |
-| `VERSION_DIFF_ENABLED` | requires Deep Reader; enables bounded generation-aware structural diffs |
-| `DOCLING_EXPERIMENT_ENABLED` | requires Deep Reader; authorizes only an evaluated experiment and never selects Docling as the default parser by itself |
+### Backend change
 
-The mobile build has compile-time `PAKPERK_ACCOUNTS_ENABLED`,
-`PAKPERK_LIBRARY_ENABLED`, `PAKPERK_COMMENTS_ENABLED`,
-`PAKPERK_PAPER_TITLE_SEARCH_ENABLED`,
-`PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED`, `PAKPERK_READING_FEED_ENABLED`, and
-`PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED`, plus the ten Plan 02 capabilities
-`PAKPERK_LIBRARY_V2_ENABLED`, `PAKPERK_RECOMMENDATIONS_ENABLED`,
-`PAKPERK_RECOMMENDATION_EVENTS_ENABLED`,
-`PAKPERK_SEARCH_LOOKUP_ENABLED`, `PAKPERK_SEARCH_EXPLORE_ENABLED`,
-`PAKPERK_SAVED_QUERIES_ENABLED`, `PAKPERK_RESEARCH_PROFILES_ENABLED`,
-`PAKPERK_READING_BRIEFS_ENABLED`, `PAKPERK_SUBSCRIPTIONS_ENABLED`, and
-`PAKPERK_NOTIFICATIONS_ENABLED`. The ten Plan 03 mobile controls are
-`PAKPERK_DEEP_READER_ENABLED`, `PAKPERK_PAPER_PASSPORT_ENABLED`,
-`PAKPERK_SEMANTIC_FACETS_ENABLED`, `PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED`,
-`PAKPERK_READING_CHECKPOINTS_ENABLED`, `PAKPERK_ANNOTATIONS_ENABLED`,
-`PAKPERK_EVIDENCE_CARDS_ENABLED`, `PAKPERK_RESEARCH_MEMORY_ENABLED`, and
-`PAKPERK_VERSION_DIFF_ENABLED`, and `PAKPERK_ASSISTANT_V2_ENABLED`; every
-checked-in environment keeps them false. Deep Reader requires accounts,
-Library, reading feed, and To Read First enforcement. Passport, facets, visuals,
-checkpoints, version diff, and assistant v2 require Deep Reader; annotations
-require Deep Reader, evidence cards require annotations, and research memory
-requires evidence cards. Library writes, Docling selection, comment creation,
-and account deletion remain independent server-side operational switches rather
-than additional mobile build flags. Backend and mobile values must still
-describe a compatible deployed product. A mobile build with reading
-feed on and enforcement off computes only privacy-safe shadow decisions while
-continuing to render public discovery. Turning comment creation off must leave
-reading, reporting, blocking, author removal, and moderation available. Turning
-library writes off must leave library reads available.
+1. Read the relevant ADR and contract before changing a boundary.
+2. Keep domain rules, persistence, API DTOs, OpenAPI, and mobile parsing in
+   agreement. Mobile response parsers intentionally reject unknown fields.
+3. Add tests next to the changed crate or application, then run the focused
+   package tests before the full workspace suite.
+4. If the API contract changed, regenerate it and inspect the diff:
 
-### Exercise To Read First flags locally
+   ```bash
+   ./scripts/generate_openapi.sh > docs/openapi-v1.json
+   ./scripts/check_openapi.sh
+   ```
 
-The Compose `api` and `worker` services load the repository-root `.env` through
-`env_file`; `.env.example` is only the default-off template. For the guest stack
-or resolution-only checks, edit `.env` and recreate the API so the process sees
-the new values:
+5. For schema changes, add a new forward-only migration. Never edit an applied
+   migration and never let production API replicas race one another to migrate.
+
+Preserve idempotency for retried writes, generation scope for prepared paper
+artifacts, and guest reading for public surfaces. Keep access tokens, passwords,
+identity attributes, paper full text, prompts, comments, and reports out of logs
+and telemetry.
+
+### Mobile change
+
+Run formatting, analysis, and the smallest relevant widget or unit test while
+iterating. Before handoff, run the full Flutter test suite and exercise the
+changed flow on the platforms it affects. A simulator is useful for speed; a
+physical phone is required for the signed-device and native-behavior evidence
+described in [Test Pakperk on a physical phone](mobile-device-development.md).
+
+### Documentation change
+
+Edit the authoritative English Markdown in `docs/`; do not hand-edit generated
+files in `docs-site/app/generated/` or `docs-site/public/docs-data/`.
 
 ```bash
-docker compose up -d --force-recreate api
-```
-
-Use dependency order locally: resolution first; title search and import as
-separate toggles; reading feed next; Library v2 and research profiles; Lookup,
-Explore, and saved queries; recommendation/event evaluation; reading briefs;
-subscriptions; notifications; enforcement last.
-`PAPER_TITLE_SEARCH_ENABLED` needs accounts and resolution.
-`LIBRARY_IMPORT_WRITES_ENABLED` needs accounts, library, library writes, and
-resolution. `READING_FEED_ENABLED` needs accounts and library, and
-`TO_READ_FIRST_ENFORCEMENT_ENABLED` needs the reading feed.
-Recommendation and engagement dependencies are listed in the table above;
-startup rejects every invalid combination. See
-[Plan 02 discovery and library](discovery-and-library.md) before enabling a
-surface, because a healthy route is not evidence that queue, retention, or
-privacy gates passed.
-
-Exercise Plan 03 only after the Plan 02 dependency chain is valid. Follow the
-[Deep Reader rollout](runbooks/deep-reader-rollout.md): migrate from schema 18
-through migrations 19–24 with every Plan 03 switch false, enable Deep Reader
-before subordinate capabilities, and keep Docling last and canary-only. Local
-routes, fixtures, or generated reports never satisfy the protected parser,
-human-domain, live-model, privacy/legal, signed-device, accessibility, staging,
-or release-approval gates; their current release state is `not_ready`.
-
-The reference account issuer is public at `localhost`, so account-backed To
-Read First checks must follow
-[Enable reference accounts locally](#enable-reference-accounts-locally): stop
-the Compose API, start the `accounts` profile, source the same `.env`, and run
-the API on the host. Do not point the mobile client at a container-only issuer
-alias. Local `.env` changes and Compose results are developer checks, not
-protected staging evidence and never authorize production enablement.
-
-Production also requires `FULLTEXT_POLICY=strict`,
-`PAKPERK_FULLTEXT_POLICY=strict`, `RUN_MIGRATIONS=false` for every long-running
-API, paper-worker, and deletion-worker process, HTTPS public origins, trusted
-ingress CIDRs, and mounted owner-only key files. The standalone migration job
-owns schema changes.
-
-## Normal change workflow
-
-1. Read the relevant ADR and contract document before changing a boundary.
-2. Keep API DTOs, domain rules, persistence, mobile parsing, and OpenAPI in
-   agreement. Response parsers intentionally reject unknown fields.
-3. Add a forward-only expand/contract migration. Never edit an applied
-   migration or let production API replicas race migrations at startup.
-4. Preserve idempotency for retried writes and generation scope for paper
-   artifacts.
-5. Preserve guest reading. Authentication is required only for cloud-owned or
-   moderation-sensitive actions.
-6. Never make startup, feed prefetch, cache hydration, or library sync prepare a
-   paper. Preparation begins only after a committed reader transition or an
-   explicit retry.
-7. Keep tokens, passwords, comment/report text, paper full text, prompts, and
-   identity attributes out of logs and telemetry.
-
-When the API surface changes, regenerate and verify the checked contract:
-
-```bash
-./scripts/generate_openapi.sh > docs/openapi-v1.json
-./scripts/check_openapi.sh
-```
-
-When a Drift table, index, converter, or annotated database declaration
-changes, regenerate the checked-in database bindings through the pinned
-generator; never edit `app_database.g.dart` by hand:
-
-```bash
-cd mobile
-flutter pub get --enforce-lockfile
-dart run build_runner build --delete-conflicting-outputs
-dart format lib/core/database/app_database.g.dart
-```
-
-Review and commit the generated diff together with the schema change and its
-migration/upgrade tests. Unrelated generated drift is a dependency/toolchain
-signal, not something to discard blindly.
-
-For a backend schema migration:
-
-1. add the next append-only `backend/migrations/NNNN_description.sql` file;
-2. update the exact migration version in `.env.example`,
-   `deploy/helm/pakperk/values.yaml`, `values.schema.json`,
-   `templates/validate.yaml`, and `scripts/validate_helm_release.sh`;
-3. add representative old-schema data-preservation and idempotent re-run
-   assertions to the standalone migrator test; and
-4. create a fresh disposable database as described in [Tests](#tests), then run
-   the focused upgrade test against that exact database:
-
-```bash
-TEST_DATABASE_URL=postgres://pakperk:pakperk@localhost:5432/pakperk_test_local_run_01 \
-  cargo test --manifest-path backend/Cargo.toml --locked \
-  -p pakperk-migrate \
-  tests::standalone_run_bootstraps_upgrades_and_rejects_wrong_extension_namespace \
-  -- --exact
-```
-
-The migration job also requires a real protected backup identifier in staging
-or production. A synthetic local value is never deployment evidence.
-
-## Tests
-
-Run the complete available harness from the repository root:
-
-```bash
-./scripts/check.sh
-```
-
-For PostgreSQL-backed tests, use a disposable database—not a developer or
-production database:
-
-```bash
-docker compose up -d postgres
-# Change the suffix for every run; this database must not already exist.
-docker compose exec -T postgres \
-  createdb -U pakperk pakperk_test_local_run_01
-TEST_DATABASE_URL=postgres://pakperk:pakperk@localhost:5432/pakperk_test_local_run_01 \
-  cargo test --manifest-path backend/Cargo.toml \
-  --locked --workspace --all-features
-docker compose exec -T postgres \
-  dropdb -U pakperk pakperk_test_local_run_01
-```
-
-Choose a new `pakperk_test_local_*` name for every run. Never point
-`TEST_DATABASE_URL` at the persistent `pakperk` development database; the
-integration suite applies migrations and writes directly to its target. If a
-run fails before cleanup, leave that database alone and choose another name;
-inspect or drop the old database explicitly later.
-
-The main harness covers repository contracts, Rust formatting/Clippy/tests,
-OpenAPI, release metadata, dependency/SBOM policy, Flutter format/analyze/tests
-and debug/simulator artifacts when available, site tests, Helm, and optional
-container/device probes. A final line saying available checks passed is not a
-release pass: review every explicit skip.
-
-Useful focused commands are:
-
-```bash
-cargo fmt --manifest-path backend/Cargo.toml --all -- --check
-cargo clippy --manifest-path backend/Cargo.toml \
-  --locked --workspace --all-targets --all-features -- -D warnings
-
-cd mobile
-dart format --output=none --set-exit-if-changed .
-flutter analyze
-flutter test
-
-cd ../site
-npm ci --ignore-scripts
+cd docs-site
+npm ci
+npm run sync-docs
 npm test
 ```
 
-Do not reinterpret a skipped PostgreSQL test, simulator build, browser test,
-container test, or physical-device lane as passing evidence.
+Pandoc is required by `sync-docs`. The docs site may show an English fallback
+when a matching reviewed Chinese translation is not present; the interface must
+not present a stale translation as current.
 
-## Release path
+## Know what local success does not prove
 
-The release owner should use the [release runbook](runbooks/release.md) and the
-[completion-audit evidence matrix](production-v0.0-completion-audit.md), in
-order:
+A green local run means the tested code path worked in a developer environment.
+It does not prove any of the following:
 
-1. obtain a clean exact-source canonical check with a disposable PostgreSQL
-   database and every required mobile/site/Helm/container lane;
-2. run current networked source, dependency, secret, and container scans;
-3. generate deterministic notices and source/native CycloneDX inventories;
-4. execute migration/rollback and isolated restore/deletion-replay drills;
-5. dark-deploy exact image digests and prove staging parity, load, telemetry,
-   retention, alerts, auth rotation, replay, shared limits, and kill switches;
-6. verify the public TLS edge, HSTS, gzip feed, policy/support pages, and mobile
-   association files;
-7. build and provenance-bind signed Android/iOS candidates;
-8. pass the protected four-device acceptance matrix, performance thresholds,
-   and crash-free observation window;
-9. obtain moderation, privacy, legal, content-rights, support, and store-review
-   approvals; and
-10. upload, verify, and progressively release through the protected store
-    workflows.
+- public DNS, TLS, ingress, trusted-proxy, or HSTS behavior;
+- production PostgreSQL roles, backups, restore compatibility, or migration
+  ownership;
+- OIDC browser/native clients, provider permissions, or deletion-ledger replay;
+- live GROBID, model-provider, telemetry, alerting, or worker behavior;
+- physical-device accessibility, backgrounding, offline recovery, signing, or
+  store acceptance; or
+- release-owner, privacy, legal, safety, and human-domain approval.
 
-Every artifact must bind the exact source revision and promoted image/mobile
-digests. A local log, mutable URL, ticket number, or human assertion cannot
-replace the immutable evidence required by the completion audit.
+Use the server deployment guide, physical-phone guide, runbooks, and completion
+audit to collect that evidence. Do not turn a feature on in production merely
+because its route exists or its local test passes.
 
-## Common failures
+## Repository map
 
-- A feature route returns 404: confirm its backend flag is enabled; absent
-  default-off routes are intentional.
-- The API rejects startup: read the exact validation error and fix the missing
-  dependent flag, HTTPS origin, contact, key file, or production assertion.
-- Local OIDC tokens fail: use the public `localhost` issuer and host-run API;
-  do not substitute a Docker-only issuer hostname.
-- PostgreSQL tests silently do little: set a disposable `TEST_DATABASE_URL`.
-- Flutter release checks drift: use the pinned SDK and lockfile, then review any
-  dependency/SBOM delta rather than bypassing it.
-- Derived content disappears in strict mode: this is fail-closed policy, not a
-  cache bug; verify the paper license and backend/mobile policy pairing.
-- `scripts/check.sh` succeeds with skips: install/provision the missing tool or
-  run the corresponding protected lane before release.
+| Path | What belongs there |
+| --- | --- |
+| `backend/apps/api` | Public and account Axum API |
+| `backend/apps/worker` | Paper metadata and preparation jobs |
+| `backend/apps/deletion-worker` | Provider and application deletion work |
+| `backend/apps/migrate` | Standalone deployment migration job |
+| `backend/apps/admin` | Recently authenticated moderation operations |
+| `backend/apps/telemetry-gateway` | Closed-schema mobile telemetry intake |
+| `backend/crates` | Domain, database, auth, policy, queue, and provider modules |
+| `mobile` | Flutter application and Android/iOS hosts |
+| `site` | Public policy, support, deletion, and association site |
+| `docs` | Authoritative English documentation and runbooks |
+| `docs-site` | Generated, searchable developer-documentation interface |
+| `deploy` | Reference identity configuration and Kubernetes Helm chart |
+| `scripts` | Checks, evidence validators, release tools, and drills |
 
-Security incidents, deletion, restore, moderation, observability, and load
-events have dedicated procedures under [`docs/runbooks`](runbooks/).
+## Common first-run problems
+
+**The API rejects the arXiv contact.** Replace the placeholder in `.env` with a
+real monitored address, then recreate the affected API and worker containers.
+
+**`/health/live` works but `/health/ready` fails.** The process is alive but its
+database contract is not ready. Read API, migration, and PostgreSQL logs; do not
+paper over the failure with a restart loop.
+
+**The Android emulator cannot reach `localhost:8080`.** `localhost` is the
+emulator itself. Use `http://10.0.2.2:8080`. For a physical Android phone, use
+the documented `adb reverse` path.
+
+**A physical iPhone cannot reach the Mac's `localhost`.** `localhost` is the
+iPhone itself, and this repository does not provide an iOS reverse tunnel. Use a
+reachable trusted HTTPS development or staging API as described in the phone
+guide.
+
+**The app exits immediately after launch.** Check that flavor and environment
+match and that all enabled mobile capabilities have their prerequisite defines.
+
+**Account tokens fail only in the container API.** The token issuer and API
+discovery URL disagree. Keep the public issuer as `localhost` and run the API on
+the host for the reference local account workflow.
+
+**A feature route is missing.** Most optional routes are not merely hidden in
+the UI; the backend does not register them while their fail-closed flags are
+off. Confirm the dependency chain before changing a flag.

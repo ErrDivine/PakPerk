@@ -1,23 +1,30 @@
-# 账户认证和资料合约
+# 账户认证与用户资料技术契约
 
-**阶段:** 生产 v0.0 阶段 3
-**功能开关:** `ACCOUNTS_ENABLED`
-**验证状态:** 已实现并接受；详见
-[阶段 3 报告](phase-reports/phase-3.md) 获取确切证据和剩余的物理设备发布候选检查。
+**阶段：** Production v0.0 第 3 阶段
+**功能开关：** `ACCOUNTS_ENABLED`
+**验证状态：** 已实现并通过验收；请参阅
+[第 3 阶段报告](phase-reports/phase-3.md)，了解确切证据和尚待完成的
+真机发布候选版本检查。
 
-Pakperk 使用 OpenID Connect 授权码与 PKCE。移动应用是公共原生客户端，Rust API 是资源服务器。密码、注册、电子邮件验证、恢复和提供者会话属于配置的身份提供者；Pakperk 仅存储其本地账户和公开资料。
+Pakperk 采用结合 PKCE 的 OpenID Connect 授权码流程。移动应用是公共原生客户端，Rust API 是资源服务器。密码、注册、电子邮件验证、账户恢复和身份提供商会话均由配置的身份提供商负责；Pakperk 仅存储本地账户及其公开用户资料。
 
-游客阅读不依赖此功能。当账户禁用时，`GET /v1/me` 和 `PATCH /v1/me` 不注册。当账户启用但 OIDC 发现或签名密钥暂时不可用时，公共论文路线仍然可用，账户路线失败关闭。
+访客阅读不依赖此功能。当账户功能关闭时，不会注册 `GET /v1/me` 和 `PATCH /v1/me` 路由。当账户功能开启，但 OIDC 发现服务或签名密钥暂时不可用时，公开论文路由仍然可用，而账户路由会在故障时默认拒绝请求。
 
-## 参考开发提供者
+## 开发环境参考身份提供商
 
-可选的 Compose 配置启动了固定的开发专用 Keycloak 域，其单独的 PostgreSQL 数据库和 Mailpit：
+本节中的每个 shell 命令块都以仓库根目录为起始目录。此账户功能拓扑要求在主机上运行 API，因此在占用 8080 端口前，请先停止任何由 Compose 启动的 API 服务：
+
+```bash
+docker compose stop api
+```
+
+可选的 Compose profile 会启动版本固定且仅供开发使用的 Keycloak Realm，以及它独立使用的 PostgreSQL 数据库和 Mailpit：
 
 ```bash
 docker compose --profile accounts up -d postgres keycloak
 ```
 
-已检查的域使用：
+代码仓库中已检入的 Realm 使用以下配置：
 
 ```text
 issuer:                  http://localhost:8081/realms/pakperk
@@ -34,10 +41,16 @@ requested scopes:        openid profile
 verification inbox:      http://localhost:8025
 ```
 
-公共原生和操作客户端没有客户端密钥，需要 PKCE S256。操作客户端仅发出专用的 `pakperk-admin-dev` 受众；API 受众令牌不是有意的管理员凭证。域启用自注册、电子邮件验证、密码恢复、暴力保护、访问令牌最长五分钟的生命周期和一次性刷新令牌轮换。详见
-[域运行手册](../deploy/keycloak/README.md) 获取开发边界。域导出和 Compose 启动默认值不得重复用作生产密钥或生产身份策略。
+公共原生客户端和运维客户端均不使用客户端密钥，并且要求 PKCE S256。运维客户端的令牌只携带专用的 `pakperk-admin-dev` 受众；面向 API 受众的令牌明确不能用作管理员凭证。该 Realm 启用了自行注册、电子邮件验证、密码恢复、暴力破解防护、最长五分钟的访问令牌有效期，以及单次使用的刷新令牌轮换机制。有关开发用途边界，请参阅
+[Realm 操作手册](../deploy/keycloak/README.md)。不得将 Realm 导出配置和 Compose 引导启动的默认值复用为生产密钥或生产身份策略。
 
-在主机上运行启用账户的 API，以便它和原生客户端看到确切的 `localhost` 发行者。首先将 `.env.example` 复制到 `.env`，替换 arXiv 联系占位符，如根 README 中所述，然后：
+请在主机上运行启用账户功能的 API，使 API 与原生客户端使用完全一致的 `localhost` 颁发者地址。首先将 `.env.example` 复制为 `.env`，按照根目录 README 的说明替换 arXiv 联系信息占位符，并在启动 API 前创建仅限所有者访问的账户密钥环：
+
+```bash
+./scripts/prepare_dev_account_secrets.sh
+```
+
+然后运行：
 
 ```bash
 set -a
@@ -48,13 +61,33 @@ DATABASE_URL=postgres://pakperk:pakperk@127.0.0.1:5432/pakperk \
 OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
 API_ORIGIN_HASH_SECRET_FILE="$PWD/.local/pakperk-secrets/API_ORIGIN_HASH_SECRET" \
 API_CURSOR_ENCRYPTION_KEYS_FILE="$PWD/.local/pakperk-secrets/API_CURSOR_ENCRYPTION_KEYS" \
+ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE="$PWD/.local/pakperk-secrets/ACCOUNT_IDENTITY_FINGERPRINT_KEYS" \
 API_BIND=127.0.0.1:8080 \
 cargo run --manifest-path backend/Cargo.toml -p pakperk-api
 ```
 
-不要为这个拓扑启动 Compose `api` 服务。在该容器中，`localhost` 是 API 容器本身；仅更改后端发行者为 `keycloak:8080` 将违反原生客户端的精确发行者验证。
+不要为该拓扑启动 Compose `api` 服务。在该容器内，`localhost` 指向 API 容器本身；如果只将后端的颁发者地址改为 `keycloak:8080`，就会破坏原生客户端要求的颁发者地址完全一致性校验。
 
-后端账户配置仅在 `ACCOUNTS_ENABLED=true` 时读取：
+上述命令只启用账户功能。要使用移动端代码仓库中已检入的完整 `config/dev.json` 配置，请先按 Ctrl-C 停止该 API，然后运行同一命令，并加入以下四个额外开关：
+
+```bash
+LIBRARY_ENABLED=true \
+LIBRARY_WRITES_ENABLED=true \
+COMMENTS_ENABLED=true \
+COMMENT_CREATION_ENABLED=true \
+ACCOUNTS_ENABLED=true \
+DATABASE_URL=postgres://pakperk:pakperk@127.0.0.1:5432/pakperk \
+OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
+API_ORIGIN_HASH_SECRET_FILE="$PWD/.local/pakperk-secrets/API_ORIGIN_HASH_SECRET" \
+API_CURSOR_ENCRYPTION_KEYS_FILE="$PWD/.local/pakperk-secrets/API_CURSOR_ENCRYPTION_KEYS" \
+ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE="$PWD/.local/pakperk-secrets/ACCOUNT_IDENTITY_FINGERPRINT_KEYS" \
+API_BIND=127.0.0.1:8080 \
+cargo run --manifest-path backend/Cargo.toml -p pakperk-api
+```
+
+请按上文所示导出 `.env`，然后从仓库根目录运行该命令。这些是相互独立的读取和写入功能开关：在 Flutter 中启用 Library 或评论开关，并不会注册或启用相应的 API 操作。
+
+仅当 `ACCOUNTS_ENABLED=true` 时，后端才会读取账户配置：
 
 ```dotenv
 ACCOUNTS_ENABLED=true
@@ -73,12 +106,11 @@ PROFILE_UPDATE_LIMIT=5
 PROFILE_UPDATE_WINDOW_SECONDS=3600
 ```
 
-仅接受回环开发的普通 HTTP 发行者。预演和生产需要 HTTPS、精确的发行者、显式的受众和非对称签名算法的允许列表。提供者元数据和 JWKS 读取是无重定向、字节限制、超时限制和缓存的。未知的签名密钥 ID 触发一次飞行刷新，受冷却时间限制。
+仅在使用回环地址的本地开发环境中接受明文 HTTP 颁发者地址。预发布环境和生产环境要求使用 HTTPS、完全一致的颁发者地址、显式受众，以及非对称签名算法允许列表。读取身份提供商元数据和 JWKS 时不会跟随重定向，并且设有响应字节数与超时时间上限；读取结果会被缓存。未知的签名密钥 ID 会触发合并并发刷新请求，并受冷却时间限制。
 
-访问令牌是自包含的 JWT；API 不会使用提供者对每个令牌进行验证。因此正常的会话撤销防止刷新并依赖于所需的短访问令牌生命周期。紧急签名密钥撤销通过从 JWKS 中移除该 `kid` 表示，并在第一个 API 验证后 `OIDC_JWKS_CACHE_TTL_SECONDS` 间隔内生效。组合的
-PostgreSQL/OIDC API 测试发布仅替换的 JWKS，等待其短测试缓存之后，并证明旧的签名令牌在 JIT 提供之前被拒绝。本地暂停或删除待定状态在每次认证请求时检查，并拒绝一个否则密码学有效的令牌，而无需等待提供者过期。
+访问令牌是自包含的 JWT；API 不会逐个向身份提供商查询令牌状态。因此，常规会话撤销会阻止后续刷新，并依赖强制要求的较短访问令牌有效期。紧急撤销签名密钥通过从 JWKS 中移除相应 `kid` 来表示；在最长不超过 `OIDC_JWKS_CACHE_TTL_SECONDS` 的缓存期限结束后，API 的下一次验证就会应用这一撤销。组合式 PostgreSQL/OIDC API 测试会发布只包含替代密钥的 JWKS，等待其短测试缓存期限过去，并证明旧签名令牌会在 JIT 即时预配之前遭到拒绝。每个经过身份认证的请求都会检查本地账户是否处于暂停或待删除状态；即使令牌在密码学上仍然有效，也会被拒绝，无需等待身份提供商侧的令牌到期。
 
-使用匹配的构建值启用原生客户端：
+使用相互匹配的构建参数启用原生客户端：
 
 ```bash
 cd mobile
@@ -94,34 +126,34 @@ flutter run \
   --dart-define='PAKPERK_OIDC_SCOPES=openid profile'
 ```
 
-Android 模拟器通常使用 `http://10.0.2.2:8080` 用于 Pakperk API。对于此域的 `localhost` 发行者，通过在启动前反转主机端口以保留精确的发行者身份：
+Android 模拟器通常使用 `http://10.0.2.2:8080` 访问 Pakperk API。对于此 Realm 的 `localhost` 颁发者地址，请在启动前为主机端口设置反向端口转发，以保持颁发者标识完全一致：
 
 ```bash
 adb reverse tcp:8080 tcp:8080
 adb reverse tcp:8081 tcp:8081
 ```
 
-然后 Android 应用可以使用两个文档的 `localhost` URL。应用使用的发行者、令牌、发现和 API 验证器必须完全相同；不要用模拟器或内部容器主机名替换该边界的一侧。
+这样，Android 应用就可以使用上文所示的两个 `localhost` URL。应用配置、令牌、OIDC 发现文档和 API 验证器中的颁发者值必须完全一致；不得只在该边界的一侧将其替换为模拟器或容器内部主机名。
 
-## 令牌和本地数据边界
+## 令牌与本地数据边界
 
-- 授权通过 AppAuth 在系统浏览器中打开；Pakperk 中没有嵌入的 WebView 或密码表单。
-- 访问令牌保存在内存中。刷新令牌、可选的提供者注销提示、发行者/客户端绑定和本地 Pakperk 账户 ID 是唯一的持久会话记录，存储在平台安全存储中。
-- 令牌、授权码、PKCE 验证器、OIDC 主题和资料数据不会出现在 SharedPreferences、Drift/SQLite、日志、分析、崩溃报告和 Riverpod 快照中。
-- SharedPreferences 中的授权无效条目只是一个布尔值。它在安全令牌删除前写入，并防止在重启后恢复残余的密钥链或密钥库记录；它不包含令牌、账户 ID、主题或资料数据。
-- 并发的令牌请求共享一个刷新。被挑战的请求可能刷新并最多重放一次；写入仅在受有限并发或幂等性头保护时重放。
-- `invalid_grant` 将应用返回到游客状态。提供者/网络中断会保留安全会话作为 auth-unknown 而不是销毁它。
-- 注销会无效在飞行中的授权工作，清除安全凭证和账户拥有的本地行，并保留公共论文/Feed 缓存以及阅读恢复。
+- 授权流程通过 AppAuth 在系统浏览器中打开；Pakperk 不包含嵌入式 WebView 或密码表单。
+- 访问令牌只保存在内存中。刷新令牌、可选的身份提供商注销提示、颁发者与客户端绑定信息以及本地 Pakperk 账户 ID 共同构成唯一的持久会话记录，并存储在平台安全存储中。
+- 令牌、授权码、PKCE 验证器、OIDC 主体标识和用户资料数据均不会出现在 SharedPreferences、Drift/SQLite、日志、分析数据、崩溃报告或 Riverpod 快照中。
+- SharedPreferences 中的认证失效标记只是一个布尔值。该标记会在删除安全存储中的令牌之前写入，并防止重启后恢复钥匙串或密钥库中的残留记录；它不包含令牌、账户 ID、主体标识或用户资料数据。
+- 并发令牌请求共用一次刷新。收到认证质询的请求最多只能刷新并重放一次；仅当请求头提供有界并发控制或幂等保护时，才会重放写操作。
+- `invalid_grant` 会使应用返回访客状态。身份提供商服务或网络中断时，安全会话会保留为 auth-unknown 状态，而不会被销毁。
+- 注销会使正在进行的认证工作失效，清除安全凭证和归该账户所有的本地数据行，并保留公开论文和 Feed 缓存以及阅读恢复状态。
 
-## 认证资料 API
+## 需身份认证的用户资料 API
 
-在 [openapi-v1.json](openapi-v1.json) 中的已检查 OpenAPI 艺术品是机器可读的真相来源。资料操作使用 OpenAPI `oidcBearer` HTTP 承载安全方案，从不接受客户端提供的 Pakperk 用户 ID。
+[openapi-v1.json](openapi-v1.json) 中已验证的 OpenAPI 规范文件是机器可读的权威数据源。用户资料操作使用 OpenAPI 的 `oidcBearer` HTTP Bearer 安全方案，并且绝不接受由客户端提供的 Pakperk 用户 ID。
 
-现有的 `/v1/feed` 和 `/v1/papers/...` 操作在 OpenAPI 中发布匿名和 `oidcBearer` 替代方案：游客访问保持有效，而提供的承载令牌可以验证和 JIT 映射。此可选的安全注释不得被解释为账户墙。健康操作没有承载安全要求。
+现有的 `/v1/feed` 和 `/v1/papers/...` 操作在 OpenAPI 中声明匿名访问和 `oidcBearer` 两种可选方案：访客访问仍然有效，而客户端提供的 Bearer 令牌可以经过验证并进行 JIT 映射。不得将这种可选安全声明理解为必须登录账户才能访问。健康检查操作无需 Bearer 认证。
 
 ### `GET /v1/me`
 
-第一个有效的请求事务性地将验证的 `(issuer, subject)` 映射到一个 Pakperk 账户。响应是私有的且不可缓存：
+首个有效请求会在一个事务中将经过验证的 `(issuer, subject)` 映射到一个 Pakperk 账户。该响应属于私有响应，且禁止缓存：
 
 ```http
 HTTP/1.1 200 OK
@@ -149,11 +181,11 @@ Content-Type: application/json
 }
 ```
 
-`profile_complete` 仅在账户处于活动状态、有 handle 并且已接受当前条款版本时为 true。`terms_current` 作为单独报告，以便客户端可以解释为什么一个其他命名的资料不完整。提供者发行者、主题、电子邮件、声明和 `last_seen_at` 从不返回。
+仅当账户处于活动状态、拥有用户名且已接受当前条款版本时，`profile_complete` 才为 true。`terms_current` 会单独返回，以便客户端解释为什么用户资料即使已有名称仍不完整。身份提供商的颁发者标识、主体标识、电子邮件、声明和 `last_seen_at` 绝不会返回。
 
 ### `PATCH /v1/me`
 
-资料变异是比较并交换。`If-Match` 是必需的，且仅接受最新账户响应返回的精确强资料验证器：
+用户资料变更操作采用比较并交换（CAS）机制。`If-Match` 是必需的，并且只接受最新账户响应返回的用户资料强验证器；其值必须完全一致：
 
 ```http
 PATCH /v1/me HTTP/1.1
@@ -170,12 +202,13 @@ Content-Type: application/json
 }
 ```
 
-未知字段被拒绝，至少需要一个支持的字段。省略 `display_name` 保持其不变；发送 `null` 清除它。handle 不能为 `null`，规范化为小写 ASCII，必须匹配
-`[a-z0-9_]{3,30}`，并且只能设置一次。`accept_terms_version` 必须等于服务器的当前版本。成功返回与 `GET` 相同的信封和私有缓存头，ETag 增加。
+未知字段会被拒绝，并且必须至少提供一个受支持的字段。
+省略 `display_name` 时，该字段保持不变；发送 `null` 会清除该字段。用户名不能为 `null`，会被规范化为小写 ASCII，必须匹配
+`[a-z0-9_]{3,30}`，并且只能设置一次。`accept_terms_version` 必须等于服务器当前版本。成功返回与 `GET` 相同的响应封装和私有缓存头，ETag 值递增。
 
-稳定的失败保留普通错误信封：
+以下稳定失败仍使用常规错误响应封装：
 
-| 状态 | 稳定代码 | 响应头 |
+| 状态 | 稳定错误码 | 响应头 |
 |---:|---|---|
 | 400 | `INVALID_REQUEST`, `INVALID_PROFILE_VERSION`, `INVALID_PROFILE_UPDATE`, `INVALID_HANDLE`, `INVALID_DISPLAY_NAME`, `INVALID_TERMS_VERSION`, `TERMS_VERSION_MISMATCH` | — |
 | 401 | `UNAUTHENTICATED`, `TOKEN_EXPIRED` | `WWW-Authenticate: Bearer` |
@@ -183,34 +216,35 @@ Content-Type: application/json
 | 409 | `HANDLE_ALREADY_SET`, `HANDLE_UNAVAILABLE` | — |
 | 412 | `PROFILE_VERSION_CONFLICT` | 当前 `ETag` |
 | 428 | `PROFILE_VERSION_REQUIRED` | — |
-| 429 | `RATE_LIMITED` | delta-seconds `Retry-After` |
-| 503 | `AUTHENTICATION_UNAVAILABLE`, `ACCOUNT_SERVICE_UNAVAILABLE` | delta-seconds `Retry-After` 当已知 |
+| 429 | `RATE_LIMITED` | 秒数差值形式的 `Retry-After` |
+| 503 | `AUTHENTICATION_UNAVAILABLE`, `ACCOUNT_SERVICE_UNAVAILABLE` | 秒数差值形式的 `Retry-After`（已知时） |
 
-`PROFILE_VERSION_REQUIRED` 表示 `If-Match` 头部缺失；格式错误、弱、通配符、列表、重复、零、负或非规范验证器使用 `INVALID_PROFILE_VERSION`。挑战和临时认证失败永远不会暴露令牌、声明、提供者、发行者、主题或签名密钥的详细信息。
+`PROFILE_VERSION_REQUIRED` 表示缺少 `If-Match` 请求头；格式错误、弱验证器、通配符验证器、列表形式、重复值、零值、负值或非规范形式的验证器使用
+`INVALID_PROFILE_VERSION`。认证质询和临时认证故障绝不会暴露令牌、声明、身份提供商、颁发者、主体标识或签名密钥的详细信息。
 
-## CORS 合约
+## CORS 技术契约
 
-已部署的源地址保持为显式的 HTTPS 值。API 接受以下方法：
+部署环境中的 CORS 源始终采用明确指定的 HTTPS 地址。API 接受以下方法：
 
 ```text
 GET, POST, PUT, PATCH, DELETE, OPTIONS
 ```
 
-预检（Preflight）允许以下头信息：
+预检请求允许以下请求头：
 
 ```text
 Authorization, Content-Type, X-Session-Id, X-Request-Id,
 Idempotency-Key, If-Match, If-None-Match
 ```
 
-浏览器客户端可以读取以下头信息：
+浏览器客户端可以读取以下响应头：
 
 ```text
 X-Request-Id, ETag, Retry-After
 ```
 
-原生的 Flutter 请求不依赖 CORS，但此协议防止了 web 工具需要更广泛的通配符或凭证行为。
+原生 Flutter 请求不依赖 CORS，但此契约可以避免 Web 工具要求更宽泛的通配符配置或凭证携带行为。
 
-## 账户拥有和删除扩展
+## 账户专属数据与删除扩展
 
-Phase 4 现在仅在独立账户、库和写入权限允许时才发布库路由。保存操作不需要句柄或条款接受；远程同步还需要绑定纪元的 `/v1/me` 账户验证。中立提供方的身份管理边界现在有一个有界的 Keycloak 实现，仅由专用删除工作者使用。每个 `DELETE /v1/me` 尝试，包括在响应丢失后身份范围内的重放，都需要最近的认证。删除验证、持久状态机、签名的外部恢复账本、提供方会话/身份移除以及重放工具均在 `ACCOUNT_DELETION_ENABLED` 后面实现。它们在目标提供方授权、独立账本/备份拓扑、恢复演练、警报和公开披露获得证据之前保持默认关闭。评论功能在独立的读取/发布标志后实现，并且在没有其用户生成内容运营门控的情况下不得启用。
+第 4 阶段目前仅在相互独立的账户、Library 和写入功能开关均允许时，才会开放 Library 路由。保存操作无需用户名或接受条款；远程同步还需要与 epoch 绑定的 `/v1/me` 账户验证。不依赖特定身份提供商的身份管理边界现已提供一个职责范围受限的 Keycloak 实现，且仅供专用删除 worker 进程使用。每次尝试调用 `DELETE /v1/me`，包括在响应丢失后限定于同一身份的重放，都要求近期身份认证。删除验证、持久化状态机、带签名的外部恢复账本、从身份提供商移除会话和身份，以及重放工具，均已实现并受 `ACCOUNT_DELETION_ENABLED` 功能开关控制。在针对目标身份提供商授权、独立账本/备份拓扑、恢复演练、告警和公开披露的证据全部获批之前，这些功能将保持默认关闭。评论功能分别受独立的读取和发布功能开关控制；未满足相应的用户生成内容（UGC）运营准入条件时，不得启用评论功能。
