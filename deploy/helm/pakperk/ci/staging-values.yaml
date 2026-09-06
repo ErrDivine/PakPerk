@@ -82,9 +82,6 @@ paperWorker:
   llmChatModel: staging-chat
   llmEmbeddingModel: staging-embedding
 
-visualAssets:
-  existingClaim: pakperk-staging-visual-assets
-
 deletionLedger:
   existingClaim: pakperk-staging-deletion-ledger
   environmentId: staging

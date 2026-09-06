@@ -1,44 +1,162 @@
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  protectMarkdownForTranslation,
+  normalizeSurplusMarkdownHardBreaks,
+  removeAddedMarkdownLinks,
+  restoreAndValidateTranslation,
+  splitMarkdown,
+  validateTranslationStructure,
+} from "./translation-structure.mjs";
+import {
+  modelProtectedLiteralsFor,
+  TRANSLATION_POLICY_VERSION,
+  translationPolicyDigest,
+  translationSystemPrompt,
+} from "./translation-policy.mjs";
+import {
+  normalizeTranslationTerminology,
+  validateTranslationQuality,
+} from "./translation-quality.mjs";
+import {
+  createTranslationSegmentCacheKey,
+  deleteTranslationSegment,
+  readValidatedTranslationSegment,
+  revalidateCompatibleTranslationSegment,
+  resolveTranslationCacheRoot,
+  TRANSLATION_OPTIONS_VERSION,
+  TRANSLATION_REQUEST_OPTIONS,
+  writeTranslationSegment,
+} from "./translation-cache.mjs";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const sourceRoot = path.join(root, "docs");
 const outputRoot = path.join(root, "docs-site", "content", "zh");
+const manifestPath = path.join(outputRoot, ".source-digests.json");
 const model = process.env.PAKPERK_TRANSLATION_MODEL || "qwen3:8b";
 const force = process.argv.includes("--force");
+const requestTimeoutMilliseconds = Number(process.env.PAKPERK_TRANSLATION_TIMEOUT_MS || 180_000);
+const requestedFile = process.env.PAKPERK_TRANSLATION_FILE?.split(path.sep).join("/");
+const segmentCacheRoot = resolveTranslationCacheRoot(process.env.PAKPERK_TRANSLATION_CACHE_DIR);
+if (!force) console.log(`Translation segment cache: ${segmentCacheRoot}`);
 
-const files = (await walk(sourceRoot))
+const allFiles = (await walk(sourceRoot))
   .filter((file) => file.endsWith(".md"))
-  .sort((a, b) => a.localeCompare(b));
+  .sort(comparePaths);
+const files = requestedFile
+  ? allFiles.filter((file) => path.relative(sourceRoot, file).split(path.sep).join("/") === requestedFile)
+  : allFiles;
+if (requestedFile && files.length === 0) throw new Error(`Unknown documentation path: ${requestedFile}`);
+const manifest = await readJson(manifestPath, {});
+const publishedPaths = new Set(
+  allFiles.map((file) => path.relative(sourceRoot, file).split(path.sep).join("/")),
+);
+for (const relativePath of Object.keys(manifest)) {
+  if (!publishedPaths.has(relativePath)) delete manifest[relativePath];
+}
 
+const failures = [];
 for (const [index, sourcePath] of files.entries()) {
-  const relativePath = path.relative(sourceRoot, sourcePath);
+  const relativePath = path.relative(sourceRoot, sourcePath).split(path.sep).join("/");
   const outputPath = path.join(outputRoot, relativePath);
-  if (!force && (await isCurrent(sourcePath, outputPath))) {
+  const source = await readFile(sourcePath, "utf8");
+  const sourceSha256 = sha256(source);
+  const policyDigest = translationPolicyDigest(relativePath);
+  if (!force && (await isCurrent(source, sourceSha256, policyDigest, outputPath, manifest[relativePath], relativePath))) {
     console.log(`[${index + 1}/${files.length}] current ${relativePath}`);
     continue;
   }
 
-  const source = await readFile(sourcePath, "utf8");
-  const segments = splitMarkdown(source);
-  const translated = [];
-  console.log(`[${index + 1}/${files.length}] translating ${relativePath} (${segments.length} segments)`);
+  try {
+    const segments = splitMarkdown(source);
+    const translated = [];
+    const segmentCacheKeys = [];
+    console.log(`[${index + 1}/${files.length}] translating ${relativePath} (${segments.length} segments)`);
 
-  for (const [segmentIndex, segment] of segments.entries()) {
-    let response;
-    try {
-      response = await translate(segment, relativePath, segmentIndex + 1, segments.length);
-    } catch (error) {
-      if (!String(error.message).includes("code block")) throw error;
-      console.log(`  preserving code blocks separately for ${relativePath} part ${segmentIndex + 1}`);
-      response = await translateAroundCode(segment, relativePath, segmentIndex + 1, segments.length);
+    for (const [segmentIndex, segment] of segments.entries()) {
+      const part = segmentIndex + 1;
+      const total = segments.length;
+      let response = null;
+      let cacheKey = null;
+      let cacheInput = null;
+      if (!force) {
+        cacheInput = {
+          segment,
+          relativePath,
+          part,
+          total,
+          policyDigest,
+          model,
+          optionsVersion: TRANSLATION_OPTIONS_VERSION,
+          requestOptions: TRANSLATION_REQUEST_OPTIONS,
+        };
+        cacheKey = createTranslationSegmentCacheKey(cacheInput);
+        segmentCacheKeys.push(cacheKey);
+        response = await readValidatedTranslationSegment({
+          cacheRoot: segmentCacheRoot,
+          cacheInput,
+          validate: (candidate) => processCandidateTranslation(segment, candidate, relativePath, part, total),
+        });
+        if (response !== null) console.log(`  cached part ${part}/${total}`);
+        else {
+          try {
+            response = await revalidateCompatibleTranslationSegment({
+              cacheRoot: segmentCacheRoot,
+              cacheInput,
+              validate: (candidate) =>
+                processCandidateTranslation(segment, candidate, relativePath, part, total),
+            });
+            if (response !== null) console.log(`  revalidated cached part ${part}/${total}`);
+          } catch (error) {
+            console.warn(`  unable to promote a compatible cached part ${part}/${total}: ${error.message}`);
+          }
+        }
+      }
+      if (response === null) {
+        response = await translate(segment, relativePath, part, total);
+        if (!force) {
+          try {
+            await writeTranslationSegment({ cacheRoot: segmentCacheRoot, cacheInput, translation: response });
+          } catch (error) {
+            console.warn(`  unable to cache part ${part}/${total}: ${error.message}`);
+          }
+        }
+        console.log(`  completed part ${part}/${total}`);
+      }
+      const trailingSpace = segment.match(/\s*$/)?.[0] || "";
+      translated.push(`${response.trimEnd()}${trailingSpace}`);
     }
-    const trailingSpace = segment.match(/\s*$/)?.[0] || "";
-    translated.push(`${restoreTechnicalText(segment, response.trimEnd())}${trailingSpace}`);
-  }
 
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, `${translated.join("").trimEnd()}\n`, "utf8");
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    const output = `${translated.join("").trimEnd()}\n`;
+    try {
+      validateTranslationStructure(source, output, relativePath);
+      validateTranslationQuality(source, output, relativePath, relativePath);
+    } catch (error) {
+      if (!force) await clearCachedSegments(segmentCacheKeys, relativePath);
+      throw error;
+    }
+    await writeFileAtomically(outputPath, output);
+    manifest[relativePath] = {
+      sourceSha256,
+      translationSha256: sha256(output),
+      policyVersion: TRANSLATION_POLICY_VERSION,
+      policyDigest,
+      model,
+    };
+    await writeManifest();
+    if (!force) await clearCachedSegments(segmentCacheKeys, relativePath);
+  } catch (error) {
+    failures.push({ relativePath, message: error.message });
+    console.error(`[${index + 1}/${files.length}] failed ${relativePath}: ${error.message}`);
+  }
+}
+
+await writeManifest();
+if (failures.length > 0) {
+  const summary = failures.map(({ relativePath, message }) => `- ${relativePath}: ${message}`).join("\n");
+  throw new Error(`Translation failed for ${failures.length} document(s):\n${summary}`);
 }
 
 async function walk(directory) {
@@ -52,132 +170,144 @@ async function walk(directory) {
   return files;
 }
 
-async function isCurrent(sourcePath, outputPath) {
+async function isCurrent(source, sourceSha256, policyDigest, outputPath, record, relativePath) {
   try {
-    const [sourceInfo, outputInfo] = await Promise.all([stat(sourcePath), stat(outputPath)]);
-    return outputInfo.mtimeMs >= sourceInfo.mtimeMs;
+    const output = await readFile(outputPath, "utf8");
+    if (
+      record?.sourceSha256 !== sourceSha256 ||
+      record?.translationSha256 !== sha256(output) ||
+      record?.policyVersion !== TRANSLATION_POLICY_VERSION ||
+      record?.policyDigest !== policyDigest
+    ) return false;
+    validateTranslationStructure(source, output, relativePath);
+    validateTranslationQuality(source, output, relativePath, relativePath);
+    return true;
   } catch {
     return false;
   }
 }
 
-function splitMarkdown(source) {
-  const paragraphs = [];
-  let paragraph = "";
-  let inFence = false;
-  for (const line of source.match(/.*(?:\n|$)/g) || []) {
-    if (!line) continue;
-    paragraph += line;
-    if (/^```/.test(line)) inFence = !inFence;
-    if (!inFence && /^\s*$/.test(line)) {
-      paragraphs.push(paragraph);
-      paragraph = "";
-    }
-  }
-  if (paragraph) paragraphs.push(paragraph);
-
-  const segments = [];
-  let buffer = "";
-  for (const block of paragraphs) {
-    if (buffer && buffer.length + block.length > 11_000) {
-      segments.push(buffer);
-      buffer = "";
-    }
-    buffer += block;
-  }
-  if (buffer) segments.push(buffer);
-  return segments;
+async function writeManifest() {
+  const ordered = Object.fromEntries(Object.entries(manifest).sort(([left], [right]) => comparePaths(left, right)));
+  await mkdir(outputRoot, { recursive: true });
+  await writeFileAtomically(manifestPath, `${JSON.stringify(ordered, null, 2)}\n`);
 }
 
-function restoreTechnicalText(source, translation) {
-  let output = translation;
-  output = restoreMatches(output, /```[\s\S]*?```/g, source.match(/```[\s\S]*?```/g) || [], "code block");
-
-  const sourceTargets = outsideCode(source).match(/(?<=\]\()[^)\s]+(?=\))/g) || [];
-  const outputOutsideCode = outsideCode(output);
-  const outputTargets = outputOutsideCode.match(/(?<=\]\()[^)\s]+(?=\))/g) || [];
-  if (sourceTargets.length !== outputTargets.length) {
-    throw new Error(`Translation changed the number of Markdown link targets (${sourceTargets.length} → ${outputTargets.length})`);
+async function readJson(file, fallback) {
+  try {
+    return JSON.parse(await readFile(file, "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") return fallback;
+    throw error;
   }
-  for (const [index, target] of outputTargets.entries()) output = output.replace(target, sourceTargets[index]);
-  return output;
 }
 
-function restoreMatches(output, pattern, originals, label) {
-  const matches = output.match(pattern) || [];
-  if (matches.length !== originals.length) {
-    throw new Error(`Translation changed the number of ${label}s (${originals.length} → ${matches.length})`);
-  }
-  let restored = output;
-  for (const [index, match] of matches.entries()) restored = restored.replace(match, originals[index]);
-  return restored;
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
 }
 
-function outsideCode(source) {
-  return source.replace(/```[\s\S]*?```/g, "");
+async function writeFileAtomically(file, content) {
+  const temporaryPath = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryPath, content, "utf8");
+    await rename(temporaryPath, file);
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
 }
 
 async function translate(markdown, file, part, total) {
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const response = await fetch("http://127.0.0.1:11434/api/chat", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        model,
-        stream: false,
-        think: false,
-        options: { temperature: attempt === 1 ? 0.1 : 0, num_ctx: 8_192 },
-        messages: [
-          {
-            role: "system",
-            content:
-              "Translate the supplied software documentation from English to Simplified Chinese. " +
-              "Preserve every Markdown marker, heading level, list number, table, link destination, inline-code span, and fenced code block. " +
-              "Never translate or change text inside backticks or fenced code blocks. " +
-              "Keep Pakperk, arXiv, Rust, Flutter, API, OIDC, Keycloak, PostgreSQL, Kubernetes, Helm, and OpenTelemetry in English. " +
-              "Do not summarize, omit, add commentary, or wrap the result in another code fence. Return only the translated Markdown.",
+  const protectedMarkdown = protectMarkdownForTranslation(
+    markdown,
+    `${file} part ${part}/${total}`,
+    { protectedLiterals: modelProtectedLiteralsFor(file) },
+  );
+  let validationFeedback = "";
+  for (let attempt = 1; attempt <= TRANSLATION_REQUEST_OPTIONS.attempts; attempt += 1) {
+    let response;
+    try {
+      response = await fetch("http://127.0.0.1:11434/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        signal: AbortSignal.timeout(requestTimeoutMilliseconds),
+        body: JSON.stringify({
+          model,
+          stream: TRANSLATION_REQUEST_OPTIONS.stream,
+          think: TRANSLATION_REQUEST_OPTIONS.think,
+          keep_alive: TRANSLATION_REQUEST_OPTIONS.keepAlive,
+          options: {
+            temperature: attempt === 1
+              ? TRANSLATION_REQUEST_OPTIONS.initialTemperature
+              : TRANSLATION_REQUEST_OPTIONS.retryTemperature,
+            num_ctx: TRANSLATION_REQUEST_OPTIONS.numContextTokens,
           },
-          { role: "user", content: markdown },
-        ],
-      }),
-    });
+          messages: [
+            {
+              role: "system",
+              content: `${translationSystemPrompt(file)}${validationFeedback}`,
+            },
+            { role: "user", content: protectedMarkdown.masked },
+          ],
+        }),
+      });
+    } catch (error) {
+      if (attempt === TRANSLATION_REQUEST_OPTIONS.attempts) {
+        throw new Error(`Ollama request failed: ${error.message}`);
+      }
+      validationFeedback = "\n\nThe previous request failed before validation. Return the complete translation now.";
+      continue;
+    }
 
     if (!response.ok) {
-      if (attempt === 3) throw new Error(`Ollama returned ${response.status}: ${await response.text()}`);
+      if (attempt === TRANSLATION_REQUEST_OPTIONS.attempts) {
+        throw new Error(`Ollama returned ${response.status}: ${await response.text()}`);
+      }
+      validationFeedback = `\n\nThe previous request returned HTTP ${response.status}. Return the complete translation now.`;
       continue;
     }
     const payload = await response.json();
     const content = payload?.message?.content;
     if (!content) {
-      if (attempt === 3) throw new Error("Ollama returned no translated content");
+      if (attempt === TRANSLATION_REQUEST_OPTIONS.attempts) {
+        throw new Error("Ollama returned no translated content");
+      }
+      validationFeedback = "\n\nThe previous response was empty. Return the complete translated Markdown now.";
       continue;
     }
     try {
-      restoreTechnicalText(markdown, content);
-      return content;
+      const restored = protectedMarkdown.restore(content);
+      return processCandidateTranslation(markdown, restored, file, part, total);
     } catch (error) {
-      if (attempt === 3) throw new Error(`${file} part ${part}/${total}: ${error.message}`);
+      if (attempt === TRANSLATION_REQUEST_OPTIONS.attempts) {
+        throw new Error(`${file} part ${part}/${total}: ${error.message}`);
+      }
+      console.warn(`  retrying part ${part}/${total} after validation failure: ${error.message}`);
+      validationFeedback =
+        `\n\nYour previous response failed an automated structure check: ${error.message}. ` +
+        "Translate the original text again and correct that exact problem. Return the complete translated Markdown only.";
     }
   }
   throw new Error(`${file} part ${part}/${total}: translation failed`);
 }
 
-async function translateAroundCode(markdown, file, part, total) {
-  const pieces = markdown.split(/(```[\s\S]*?```)/g);
-  const translated = [];
-  for (const piece of pieces) {
-    if (!piece) continue;
-    if (piece.startsWith("```")) {
-      translated.push(piece);
-      continue;
-    }
-    if (!piece.trim()) {
-      translated.push(piece);
-      continue;
-    }
-    const trailingSpace = piece.match(/\s*$/)?.[0] || "";
-    const response = await translate(piece, file, part, total);
-    translated.push(`${restoreTechnicalText(piece, response.trimEnd())}${trailingSpace}`);
-  }
-  return translated.join("");
+function processCandidateTranslation(markdown, candidate, file, part, total) {
+  const label = `${file} part ${part}/${total}`;
+  const normalized = normalizeTranslationTerminology(markdown, candidate, file, label);
+  const linksCleaned = removeAddedMarkdownLinks(markdown, normalized);
+  const hardBreaksNormalized = normalizeSurplusMarkdownHardBreaks(markdown, linksCleaned, label);
+  const validated = restoreAndValidateTranslation(markdown, hardBreaksNormalized, label);
+  validateTranslationQuality(markdown, validated, file, label);
+  return validated;
+}
+
+async function clearCachedSegments(keys, relativePath) {
+  const results = await Promise.allSettled(
+    keys.map((key) => deleteTranslationSegment(segmentCacheRoot, key)),
+  );
+  const failure = results.find((result) => result.status === "rejected");
+  if (failure) console.warn(`  unable to clear segment cache for ${relativePath}: ${failure.reason?.message}`);
+}
+
+function comparePaths(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
 }

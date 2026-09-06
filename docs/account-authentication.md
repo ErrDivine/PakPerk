@@ -19,6 +19,14 @@ routes remain available and the account routes fail closed.
 
 ## Reference development provider
 
+Every shell block in this section starts at the repository root. The account
+topology runs the API on the host, so stop any Compose API before taking port
+8080:
+
+```bash
+docker compose stop api
+```
+
 The optional Compose profile starts the pinned development-only Keycloak realm,
 its separate PostgreSQL database, and Mailpit:
 
@@ -55,7 +63,14 @@ production secrets or production identity policy.
 
 Run the account-enabled API on the host so both it and the native client see
 the exact `localhost` issuer. First copy `.env.example` to `.env`, replace
-the arXiv contact placeholder as documented in the root README, then:
+the arXiv contact placeholder as documented in the root README, and create the
+owner-only account keyrings before starting the API:
+
+```bash
+./scripts/prepare_dev_account_secrets.sh
+```
+
+Then run:
 
 ```bash
 set -a
@@ -66,6 +81,7 @@ DATABASE_URL=postgres://pakperk:pakperk@127.0.0.1:5432/pakperk \
 OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
 API_ORIGIN_HASH_SECRET_FILE="$PWD/.local/pakperk-secrets/API_ORIGIN_HASH_SECRET" \
 API_CURSOR_ENCRYPTION_KEYS_FILE="$PWD/.local/pakperk-secrets/API_CURSOR_ENCRYPTION_KEYS" \
+ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE="$PWD/.local/pakperk-secrets/ACCOUNT_IDENTITY_FINGERPRINT_KEYS" \
 API_BIND=127.0.0.1:8080 \
 cargo run --manifest-path backend/Cargo.toml -p pakperk-api
 ```
@@ -74,6 +90,29 @@ Do not start the Compose `api` service for this topology. Inside that
 container, `localhost` is the API container itself; changing only the backend
 issuer to `keycloak:8080` would then violate exact issuer validation for the
 native client.
+
+The command above enables accounts only. To use the complete checked-in mobile
+`config/dev.json`, stop that API with Ctrl-C and run the same command with these
+four additional switches:
+
+```bash
+LIBRARY_ENABLED=true \
+LIBRARY_WRITES_ENABLED=true \
+COMMENTS_ENABLED=true \
+COMMENT_CREATION_ENABLED=true \
+ACCOUNTS_ENABLED=true \
+DATABASE_URL=postgres://pakperk:pakperk@127.0.0.1:5432/pakperk \
+OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
+API_ORIGIN_HASH_SECRET_FILE="$PWD/.local/pakperk-secrets/API_ORIGIN_HASH_SECRET" \
+API_CURSOR_ENCRYPTION_KEYS_FILE="$PWD/.local/pakperk-secrets/API_CURSOR_ENCRYPTION_KEYS" \
+ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE="$PWD/.local/pakperk-secrets/ACCOUNT_IDENTITY_FINGERPRINT_KEYS" \
+API_BIND=127.0.0.1:8080 \
+cargo run --manifest-path backend/Cargo.toml -p pakperk-api
+```
+
+Run this from the repository root after exporting `.env` as shown above. These
+are distinct read/write gates: enabling a Library or comments switch in Flutter
+does not register or enable the corresponding API operation.
 
 Backend account configuration is read only when `ACCOUNTS_ENABLED=true`:
 
