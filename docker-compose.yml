@@ -51,7 +51,7 @@ services:
 
   keycloak:
     profiles: ["accounts"]
-    image: quay.io/keycloak/keycloak:26.7.0@sha256:0f198be292568439d700cdbfb893e69a6009bb43a94a06a945b1d3d506c76b13
+    image: quay.io/keycloak/keycloak:26.7.3-1@sha256:29be7252db0a106f1cd2ac17b9a56ff2668073da645638a38b9fc67deeb2d6c4
     command: ["start-dev", "--import-realm", "--health-enabled=true"]
     environment:
       KC_DB: postgres
