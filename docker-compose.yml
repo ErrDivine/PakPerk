@@ -76,7 +76,7 @@ services:
     restart: unless-stopped
 
   grobid:
-    image: grobid/grobid:0.9.0-crf@sha256:24ba90eb1c959f65d812bcdb2cf79c677fa5fd7b95235de616b8bc9fa1317849
+    image: grobid/grobid:0.9.1-crf@sha256:223957791ac2bbe48609dcc58a689b16b60baeae13a8734ef440ae6bfb38f4cd
     init: true
     ulimits:
       core: 0
