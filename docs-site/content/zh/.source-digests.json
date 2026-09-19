@@ -318,6 +318,61 @@
       "workflow": "scripts/accept-translations.mjs"
     }
   },
+  "phase-reports/phase-2.md": {
+    "sourceSha256": "a923768a3081b84bf3e13dd8df0ef8488659dcbac36d13d48f20ad037feced13",
+    "translationSha256": "4facec7b42f02b00b7c89b1d0702281e50a761a89019476c52441d5d792df540",
+    "policyVersion": "zh-CN-professional-v4",
+    "policyDigest": "d6319364c7ecbd881b9f6affec268fd678f5876e5e53838d56a63f7449e8a80f",
+    "acceptance": {
+      "method": "human-review",
+      "acceptedAt": "2026-09-04T08:46:31.903Z",
+      "workflow": "scripts/accept-translations.mjs"
+    }
+  },
+  "phase-reports/phase-3.md": {
+    "sourceSha256": "29b7f156ef39e3580697116da99de562f626451a6d855ff669bf9fb4fbcce7d7",
+    "translationSha256": "221ef75659ba9f6b4a03d283722a4f60fbfe57b6a8d041a75846a40e5ea60ad5",
+    "policyVersion": "zh-CN-professional-v4",
+    "policyDigest": "d6319364c7ecbd881b9f6affec268fd678f5876e5e53838d56a63f7449e8a80f",
+    "acceptance": {
+      "method": "human-review",
+      "acceptedAt": "2026-09-05T13:55:43.421Z",
+      "workflow": "scripts/accept-translations.mjs"
+    }
+  },
+  "phase-reports/phase-4.md": {
+    "sourceSha256": "1c7653a78312568584c2bedde6babbd5833c525cc78bd552f9a7d2b75a8a3df9",
+    "translationSha256": "3c206be3cb0a48ecfaff1ec4aa457858baf656750a22c6fbc234f9f0886091b7",
+    "policyVersion": "zh-CN-professional-v4",
+    "policyDigest": "d6319364c7ecbd881b9f6affec268fd678f5876e5e53838d56a63f7449e8a80f",
+    "acceptance": {
+      "method": "human-review",
+      "acceptedAt": "2026-09-04T08:19:46.994Z",
+      "workflow": "scripts/accept-translations.mjs"
+    }
+  },
+  "phase-reports/phase-5.md": {
+    "sourceSha256": "7a435d277d4796883d639d9e2996c54e52ade19de99646a2d29aade179abdbff",
+    "translationSha256": "381d2479b493f88b006fb3a9cd98cb03e0fa406a66ddc89974cc30783daa7015",
+    "policyVersion": "zh-CN-professional-v4",
+    "policyDigest": "d6319364c7ecbd881b9f6affec268fd678f5876e5e53838d56a63f7449e8a80f",
+    "acceptance": {
+      "method": "human-review",
+      "acceptedAt": "2026-09-04T08:35:58.403Z",
+      "workflow": "scripts/accept-translations.mjs"
+    }
+  },
+  "phase-reports/phase-6-mobile.md": {
+    "sourceSha256": "aacd1d54b89309c2cbe2d9a1c629668c4f5f196054d6316c383fa8d2c1375b20",
+    "translationSha256": "92da841489e977bb450c95ce5873ff0e41cf2d9395191cd2130987e320da3ec6",
+    "policyVersion": "zh-CN-professional-v4",
+    "policyDigest": "95d688e704edbc09a531bcfe19df3134f538e0dd6574d19f67cf2194e8866bf9",
+    "acceptance": {
+      "method": "human-review",
+      "acceptedAt": "2026-09-05T14:11:49.245Z",
+      "workflow": "scripts/accept-translations.mjs"
+    }
+  },
   "phase-reports/to-read-first-phase-0.md": {
     "sourceSha256": "bf1a08a517b44307e68d4a886aa8d872ff448c34d3c9b2d7e62368133a5958da",
     "translationSha256": "c2c4d0e9b1ccbd529721c0fc4079c00c8f4166e04ebae52026024fc6d5d03431",
@@ -351,6 +406,17 @@
       "workflow": "scripts/accept-translations.mjs"
     }
   },
+  "runbooks/backend-load-testing.md": {
+    "sourceSha256": "c3e71c9783839f299b00d101d30f608a91408e7f1d6423703c9cab51840a0b03",
+    "translationSha256": "3b7bb293cc5f6d3ad9a441db60bf4752059148e00ac5c6b02074f30102480a1a",
+    "policyVersion": "zh-CN-professional-v4",
+    "policyDigest": "d6319364c7ecbd881b9f6affec268fd678f5876e5e53838d56a63f7449e8a80f",
+    "acceptance": {
+      "method": "human-review",
+      "acceptedAt": "2026-09-05T13:42:40.578Z",
+      "workflow": "scripts/accept-translations.mjs"
+    }
+  },
   "runbooks/deep-reader-rollout.md": {
     "sourceSha256": "1d790a1e6ce5ed15420597ca68b3beead65003ca8ac35f4f2feee007d40db1fa",
     "translationSha256": "7a9ca51b9fdedd611e63264e430e6d6120c6c53476a1b892c3de2815bbb5303b",
@@ -370,6 +436,17 @@
     "acceptance": {
       "method": "human-review",
       "acceptedAt": "2026-09-02T11:52:15.807Z",
+      "workflow": "scripts/accept-translations.mjs"
+    }
+  },
+  "runbooks/moderation.md": {
+    "sourceSha256": "94814b0cbb0bee419c6704fd5fe01d449db79b1158292c49a275815831b675af",
+    "translationSha256": "fb21bbb162bd105ff569a061e0cbb24fa08ec9f4bf503c923420180c8da98b00",
+    "policyVersion": "zh-CN-professional-v4",
+    "policyDigest": "753e6013a7572a17a328d6b8047b40512fa2b6152d81d58081fe275e2a19cd7b",
+    "acceptance": {
+      "method": "human-review",
+      "acceptedAt": "2026-09-04T08:40:48.500Z",
       "workflow": "scripts/accept-translations.mjs"
     }
   },
