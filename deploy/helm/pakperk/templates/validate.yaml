@@ -338,6 +338,9 @@
 {{- if and .Values.features.assistantV2 (not .Values.features.deepReader) -}}
 {{- fail "features.assistantV2 requires features.deepReader" -}}
 {{- end -}}
+{{- if and .Values.features.assistantTools (not .Values.features.assistantV2) -}}
+{{- fail "features.assistantTools requires features.assistantV2" -}}
+{{- end -}}
 {{- if and .Values.features.annotations (not (and .Values.features.accounts .Values.features.deepReader)) -}}
 {{- fail "features.annotations requires features.accounts and features.deepReader" -}}
 {{- end -}}

@@ -129,6 +129,8 @@ pub struct FeatureFlags {
     pub visual_objects: bool,
     /// Enables the evidence-ID-validated assistant contract.
     pub assistant_v2: bool,
+    /// Enables bounded native model tool selection for Assistant v2.
+    pub assistant_tools: bool,
     /// Enables private synchronized annotations and evidence cards.
     pub annotations: bool,
     /// Enables private reviewable research-memory items.
@@ -142,6 +144,9 @@ pub struct FeatureFlags {
 
 impl FeatureFlags {
     pub(crate) fn validate(self) -> anyhow::Result<Self> {
+        if self.assistant_tools && !self.assistant_v2 {
+            anyhow::bail!("ASSISTANT_TOOLS_ENABLED requires ASSISTANT_V2_ENABLED");
+        }
         if self.library && !self.accounts {
             anyhow::bail!("LIBRARY_ENABLED requires ACCOUNTS_ENABLED");
         }
@@ -1358,6 +1363,7 @@ impl ApiConfig {
             semantic_facets: env_bool("SEMANTIC_FACETS_ENABLED", false)?,
             visual_objects: env_bool("VISUAL_OBJECTS_ENABLED", false)?,
             assistant_v2: env_bool("ASSISTANT_V2_ENABLED", false)?,
+            assistant_tools: env_bool("ASSISTANT_TOOLS_ENABLED", false)?,
             annotations: env_bool("ANNOTATIONS_ENABLED", false)?,
             research_memory: env_bool("RESEARCH_MEMORY_ENABLED", false)?,
             version_diff: env_bool("VERSION_DIFF_ENABLED", false)?,
@@ -1505,6 +1511,11 @@ impl ApiConfig {
         }
         if self.request_timeout.is_zero() || self.chat_request_timeout.is_zero() {
             anyhow::bail!("API request timeouts must be greater than zero");
+        }
+        if self.features.assistant_tools && self.chat_request_timeout < Duration::from_secs(55) {
+            anyhow::bail!(
+                "ASSISTANT_TOOLS_ENABLED requires CHAT_REQUEST_TIMEOUT_SECONDS of at least 55"
+            );
         }
         if self.prepare_requests_per_minute == 0 || self.chat_requests_per_minute == 0 {
             anyhow::bail!("API rate limits must be greater than zero");
@@ -1953,6 +1964,7 @@ mod tests {
                 semantic_facets: true,
                 visual_objects: true,
                 assistant_v2: true,
+                assistant_tools: true,
                 annotations: true,
                 research_memory: true,
                 version_diff: true,
@@ -2293,6 +2305,25 @@ mod tests {
         assert!(!defaults.semantic_facets);
         assert!(!defaults.visual_objects);
         assert!(!defaults.assistant_v2);
+        assert!(!defaults.assistant_tools);
+        assert!(
+            FeatureFlags {
+                assistant_tools: true,
+                ..FeatureFlags::default()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            FeatureFlags {
+                assistant_tools: true,
+                assistant_v2: true,
+                deep_reader: true,
+                ..FeatureFlags::default()
+            }
+            .validate()
+            .is_ok()
+        );
         assert!(!defaults.annotations);
         assert!(!defaults.research_memory);
         assert!(!defaults.version_diff);

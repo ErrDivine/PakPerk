@@ -70,7 +70,7 @@ CREATE TABLE document_blocks (
     text text NOT NULL CHECK (
         char_length(text) BETWEEN 1 AND 1000000
         AND btrim(text) <> ''
-        AND position(chr(0) IN text) = 0
+
     ),
     content_hash text NOT NULL CHECK (content_hash ~ '^[0-9a-f]{64}$'),
     page_start integer CHECK (page_start IS NULL OR page_start > 0),
@@ -120,7 +120,7 @@ CREATE TABLE paper_figures (
         asset_key IS NULL OR (
             char_length(asset_key) BETWEEN 1 AND 512
             AND asset_key = btrim(asset_key)
-            AND position(chr(0) IN asset_key) = 0
+
         )
     ),
     width integer CHECK (width IS NULL OR width > 0),
@@ -168,7 +168,7 @@ CREATE TABLE paper_tables (
     plain_text text NOT NULL CHECK (
         char_length(plain_text) BETWEEN 1 AND 500000
         AND btrim(plain_text) <> ''
-        AND position(chr(0) IN plain_text) = 0
+
     ),
     extraction_status text NOT NULL DEFAULT 'ready' CHECK (
         extraction_status IN ('ready', 'partial', 'uncertain', 'unavailable')
@@ -305,7 +305,7 @@ CREATE TABLE term_definitions (
     definition text NOT NULL CHECK (
         char_length(definition) BETWEEN 1 AND 100000
         AND btrim(definition) <> ''
-        AND position(chr(0) IN definition) = 0
+
     ),
     model_id text CHECK (
         model_id IS NULL OR (char_length(model_id) BETWEEN 1 AND 128 AND model_id = btrim(model_id))

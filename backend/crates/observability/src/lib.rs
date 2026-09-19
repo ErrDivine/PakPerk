@@ -739,6 +739,65 @@ pub enum AssistantMetricPhase {
     ProvenanceLookup,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssistantToolMetricKind {
+    Search,
+    Outline,
+    Read,
+    Object,
+    Citation,
+}
+
+impl AssistantToolMetricKind {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Search => "search_paper_evidence",
+            Self::Outline => "get_paper_outline",
+            Self::Read => "read_paper_blocks",
+            Self::Object => "get_object_evidence",
+            Self::Citation => "get_citation_context",
+        }
+    }
+}
+
+/// Closed tool labels and bounded counts, never model arguments or source IDs.
+pub fn record_assistant_tool(
+    kind: AssistantToolMetricKind,
+    outcome: AssistantMetricOutcome,
+    duration: Duration,
+    source_count: u64,
+) {
+    static COUNT: OnceLock<Counter<u64>> = OnceLock::new();
+    static DURATION: OnceLock<Histogram<f64>> = OnceLock::new();
+    static SOURCES: OnceLock<Histogram<u64>> = OnceLock::new();
+    let attributes = [
+        KeyValue::new("assistant.tool", kind.as_str()),
+        KeyValue::new("assistant.outcome", outcome.as_str()),
+    ];
+    COUNT
+        .get_or_init(|| {
+            global::meter("pakperk")
+                .u64_counter("pakperk.assistant.tool.count")
+                .build()
+        })
+        .add(1, &attributes);
+    DURATION
+        .get_or_init(|| {
+            global::meter("pakperk")
+                .f64_histogram("pakperk.assistant.tool.duration")
+                .with_unit("s")
+                .build()
+        })
+        .record(duration.as_secs_f64(), &attributes);
+    SOURCES
+        .get_or_init(|| {
+            global::meter("pakperk")
+                .u64_histogram("pakperk.assistant.tool.sources")
+                .build()
+        })
+        .record(source_count.min(40), &attributes);
+}
+
 impl AssistantMetricPhase {
     const fn as_str(self) -> &'static str {
         match self {

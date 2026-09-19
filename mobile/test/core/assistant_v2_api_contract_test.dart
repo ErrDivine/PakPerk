@@ -30,6 +30,8 @@ void main() {
     expect(body['scope'], containsPair('kind', 'selection'));
     expect(body['answer_style'], 'expert');
     expect(body['thread_id'], _threadId);
+    expect(adapter.receiveTimeout, const Duration(seconds: 65));
+    expect(dio.options.receiveTimeout, isNull);
     expect(answer.status, AssistantAnswerStatus.partial);
     expect(answer.responseId, _responseId);
     expect(answer.claims.single.evidence.single, isA<AssistantEvidence>());
@@ -67,6 +69,7 @@ void main() {
     );
 
     expect(adapter.path, '/v1/papers/$_paperId/assistant/feedback');
+    expect(adapter.receiveTimeout, isNull);
     expect(jsonDecode(adapter.body), {
       'operation_id': _operationId,
       'paper_id': _paperId,
@@ -365,6 +368,7 @@ final class _Adapter implements HttpClientAdapter {
   String body = '';
   String path = '';
   int fetches = 0;
+  Duration? receiveTimeout;
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
@@ -373,6 +377,7 @@ final class _Adapter implements HttpClientAdapter {
   ) async {
     fetches += 1;
     path = options.path;
+    receiveTimeout = options.receiveTimeout;
     final bytes = <int>[];
     if (requestStream != null) {
       await for (final chunk in requestStream) {

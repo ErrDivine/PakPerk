@@ -112,6 +112,7 @@ struct AssistantGenerationFailure {
     )
 )]
 #[axum::debug_handler]
+#[allow(clippy::too_many_lines)]
 pub(crate) async fn assistant(
     State(state): State<AppState>,
     principal: RequestPrincipal,
@@ -121,101 +122,173 @@ pub(crate) async fn assistant(
     Json(body): Json<AssistantRequestBody>,
 ) -> Result<impl IntoResponse, ApiError> {
     let request_id = RequestId(principal.request_id);
-    let mut observation = AssistantObservation::new(request_id, paper_id);
-    let provenance_principal = authorize_assistant_request(
-        &state,
-        request_id,
-        principal,
-        remote.0,
-        &headers,
-        paper_id,
-        &mut observation,
-    )
-    .await?;
-    let request = body
-        .into_domain(paper_id)
-        .inspect_err(|_| observation.outcome = AssistantMetricOutcome::RejectedRequest)
-        .map_err(|_| invalid_assistant_request(request_id))?;
-    observation.generation = Some(request.generation);
-    observation.scope = Some(scope_name(request.scope.kind));
+    let use_tools = state.feature_flags().assistant_tools
+        && state
+            .model_provider
+            .as_ref()
+            .is_some_and(|provider| provider.supports_assistant_tools());
+    let deadline = tokio::time::Instant::now() + crate::assistant_tools::OPERATION_TIMEOUT;
+    let operation = async {
+        let mut observation = AssistantObservation::new(request_id, paper_id);
+        let provenance_principal = authorize_assistant_request(
+            &state,
+            request_id,
+            principal,
+            remote.0,
+            &headers,
+            paper_id,
+            &mut observation,
+        )
+        .await?;
+        let request = body
+            .into_domain(paper_id)
+            .inspect_err(|_| observation.outcome = AssistantMetricOutcome::RejectedRequest)
+            .map_err(|_| invalid_assistant_request(request_id))?;
+        observation.generation = Some(request.generation);
+        observation.scope = Some(scope_name(request.scope.kind));
 
-    let repository = state.database.assistant_context();
-    let retrieval_started = Instant::now();
-    let context = match repository.retrieve(&request).await {
-        Ok(context) => {
-            record_assistant_phase(
-                AssistantMetricPhase::Retrieval,
-                AssistantMetricOutcome::Success,
-                retrieval_started.elapsed(),
-            );
-            context
-        }
-        Err(error) => {
-            let outcome = assistant_db_metric_outcome(&error);
-            observation.outcome = outcome;
-            record_assistant_phase(
-                AssistantMetricPhase::Retrieval,
-                outcome,
-                retrieval_started.elapsed(),
-            );
-            return Err(assistant_db_error(request_id, &error));
-        }
-    };
-    observation.evidence_count = context.blocks.len();
-    let session = repository
-        .open_thread(provenance_principal, &request)
-        .await
-        .map_err(|error| {
-            observation.outcome = assistant_db_metric_outcome(&error);
-            assistant_db_error(request_id, &error)
-        })?;
-    let answer_started = Instant::now();
-    let (completion, provider_id) =
-        match generate_answer(&state, request_id, &request, &context, session.recent_turns).await {
-            Ok(result) => result,
-            Err(failure) => {
-                observation.outcome = failure.outcome;
+        let repository = state.database.assistant_context();
+        let retrieval_started = Instant::now();
+        let mut context = match repository.retrieve(&request).await {
+            Ok(context) => {
                 record_assistant_phase(
-                    AssistantMetricPhase::Answer,
-                    failure.outcome,
-                    answer_started.elapsed(),
+                    AssistantMetricPhase::Retrieval,
+                    AssistantMetricOutcome::Success,
+                    retrieval_started.elapsed(),
                 );
-                return Err(failure.error);
+                context
+            }
+            Err(error) => {
+                let outcome = assistant_db_metric_outcome(&error);
+                observation.outcome = outcome;
+                record_assistant_phase(
+                    AssistantMetricPhase::Retrieval,
+                    outcome,
+                    retrieval_started.elapsed(),
+                );
+                return Err(assistant_db_error(request_id, &error));
             }
         };
-    let answer_outcome = assistant_answer_outcome(completion.answer.status);
-    record_assistant_phase(
-        AssistantMetricPhase::Answer,
-        answer_outcome,
-        answer_started.elapsed(),
-    );
-    record_assistant_completion_cost(&completion);
-    let answer = completion.answer;
-    let response_id = repository
-        .persist_exchange(
-            provenance_principal,
-            &request,
-            session.thread_id,
-            &context,
-            &answer,
-            provider_id,
-        )
-        .await
-        .map_err(|error| {
-            observation.outcome = assistant_db_metric_outcome(&error);
-            assistant_db_error(request_id, &error)
-        })?;
-    observation.outcome = answer_outcome;
-    observation.claim_count = answer.claims.len();
-    Ok((
-        StatusCode::OK,
-        Json(AssistantAnswerEnvelope::new(
-            session.thread_id,
-            response_id,
-            request.generation,
-            answer,
-        )),
-    ))
+        observation.evidence_count = context.blocks.len();
+        let session = repository
+            .open_thread(provenance_principal, &request)
+            .await
+            .map_err(|error| {
+                observation.outcome = assistant_db_metric_outcome(&error);
+                assistant_db_error(request_id, &error)
+            })?;
+        let answer_started = Instant::now();
+        let mut tool_usage = use_tools.then(crate::assistant_tools::ToolUsage::default);
+        if let Some(usage) = &mut tool_usage {
+            let provider = state
+                .model_provider
+                .as_ref()
+                .expect("tool capability checked above");
+            crate::assistant_tools::gather(
+                provider.as_ref(),
+                &repository,
+                &request,
+                &mut context,
+                session.recent_turns.clone(),
+                usage,
+                deadline,
+            )
+            .await
+            .map_err(|error| match error {
+                crate::assistant_tools::ToolRunError::Database(error) => {
+                    observation.outcome = assistant_db_metric_outcome(&error);
+                    assistant_db_error(request_id, &error)
+                }
+                crate::assistant_tools::ToolRunError::Provider(error) => {
+                    observation.outcome = assistant_provider_metric_outcome(&error);
+                    provider_error(request_id, &error)
+                }
+            })?;
+            usage.begin_call();
+        }
+        observation.evidence_count = context.blocks.len();
+        let (completion, provider_id) =
+            match generate_answer(&state, request_id, &request, &context, session.recent_turns)
+                .await
+            {
+                Ok(result) => result,
+                Err(failure) => {
+                    observation.outcome = failure.outcome;
+                    record_assistant_phase(
+                        AssistantMetricPhase::Answer,
+                        failure.outcome,
+                        answer_started.elapsed(),
+                    );
+                    return Err(failure.error);
+                }
+            };
+        let answer_outcome = assistant_answer_outcome(completion.answer.status);
+        record_assistant_phase(
+            AssistantMetricPhase::Answer,
+            answer_outcome,
+            answer_started.elapsed(),
+        );
+        if let Some(usage) = &mut tool_usage {
+            usage.report(completion.token_usage);
+        } else {
+            record_assistant_completion_cost(&completion);
+        }
+        let mut answer = completion.answer;
+        if use_tools {
+            answer.prompt_version = format!(
+                "{}+{}",
+                answer.prompt_version,
+                llm_provider::ASSISTANT_TOOLS_PROMPT_VERSION
+            );
+            validate_answer_boundary(&request, &context, &answer).map_err(|()| {
+                provider_error(
+                    request_id,
+                    &ProviderError::InvalidResponse("tool answer provenance is invalid".into()),
+                )
+            })?;
+            enforce_derived_policy(&state, request_id, paper_id).await?;
+        }
+        let response_id = repository
+            .persist_exchange(
+                provenance_principal,
+                &request,
+                session.thread_id,
+                &context,
+                &answer,
+                provider_id,
+            )
+            .await
+            .map_err(|error| {
+                observation.outcome = assistant_db_metric_outcome(&error);
+                assistant_db_error(request_id, &error)
+            })?;
+        observation.outcome = answer_outcome;
+        observation.claim_count = answer.claims.len();
+        Ok((
+            StatusCode::OK,
+            Json(AssistantAnswerEnvelope::new(
+                session.thread_id,
+                response_id,
+                request.generation,
+                answer,
+            )),
+        ))
+    };
+    if use_tools {
+        tokio::time::timeout_at(deadline, operation)
+            .await
+            .map_err(|_| {
+                ApiError::new(
+                    request_id,
+                    StatusCode::GATEWAY_TIMEOUT,
+                    "REQUEST_TIMEOUT",
+                    "The request took too long. Please try again.",
+                    true,
+                )
+            })?
+    } else {
+        operation.await
+    }
 }
 
 #[utoipa::path(

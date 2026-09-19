@@ -61,7 +61,8 @@ pub use account_deletion::{
 pub use accounts::{AccountRepository, ProfilePatch, ProfileUpdateOutcome};
 pub use assistant_v2::{
     AssistantContextRepository, AssistantEvidenceFeedbackOutcome, AssistantRetentionCleanup,
-    AssistantRetrievalContext, AssistantSession, RetrievedAssistantBlock,
+    AssistantRetrievalContext, AssistantSession, AssistantToolRead, AssistantToolSource,
+    RetrievedAssistantBlock,
 };
 pub use comments::{
     CommentCreateOutcome, CommentCreatePrecondition, CommentCreateResolution,

@@ -72,7 +72,7 @@ CREATE TABLE saved_searches (
     CONSTRAINT saved_searches_query_check CHECK (
         normalized_query = btrim(normalized_query)
         AND char_length(normalized_query) BETWEEN 2 AND 300
-        AND position(chr(0) IN normalized_query) = 0
+
     ),
     CONSTRAINT saved_searches_categories_check CHECK (
         cardinality(categories) <= 8

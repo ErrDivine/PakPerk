@@ -7,7 +7,7 @@ ALTER TABLE annotation_conflicts
         merged_body IS NULL OR (
             char_length(merged_body) BETWEEN 1 AND 100000
             AND btrim(merged_body) <> ''
-            AND position(chr(0) IN merged_body) = 0
+
         )
     );
 

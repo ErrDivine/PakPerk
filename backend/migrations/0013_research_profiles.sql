@@ -50,7 +50,7 @@ CREATE TABLE topics (
         AND normalized_label = lower(btrim(normalized_label))
         AND char_length(label) BETWEEN 1 AND 200
         AND char_length(normalized_label) BETWEEN 1 AND 200
-        AND position(chr(0) IN label) = 0
+
     ),
     CONSTRAINT topics_vocabulary_check CHECK (
         source_vocabulary = lower(btrim(source_vocabulary))
@@ -104,7 +104,7 @@ CREATE TABLE profile_topics (
             source = 'explicit'
             AND user_alias = btrim(user_alias)
             AND char_length(user_alias) BETWEEN 1 AND 160
-            AND position(chr(0) IN user_alias) = 0
+
         )
     ),
     CONSTRAINT profile_topics_provenance_check CHECK (
@@ -130,12 +130,12 @@ CREATE TABLE profile_authors (
     CONSTRAINT profile_authors_key_check CHECK (
         author_key = lower(btrim(author_key))
         AND char_length(author_key) BETWEEN 1 AND 256
-        AND position(chr(0) IN author_key) = 0
+
     ),
     CONSTRAINT profile_authors_display_name_check CHECK (
         display_name = btrim(display_name)
         AND char_length(display_name) BETWEEN 1 AND 200
-        AND position(chr(0) IN display_name) = 0
+
     ),
     CONSTRAINT profile_authors_provenance_check CHECK (
         (source = 'explicit' AND explanation_source_id IS NULL)

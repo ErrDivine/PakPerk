@@ -42,6 +42,7 @@ final class AssistantV2Api {
           'thread_id': threadId,
         },
         options: pakPerkRequestOptions(
+          receiveTimeout: const Duration(seconds: 65),
           auth: RequestAuthPolicy.required,
           retry: AuthRetryPolicy.never,
           expectedAuthEpoch: expectedAuthEpoch,

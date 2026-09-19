@@ -1,6 +1,6 @@
 # Assistant tools: minimal-change implementation plan
 
-Status: proposal only; no implementation has been changed. Inspected on 2026-09-06.
+Status: original proposal, inspected on 2026-09-06. Implementation has since begun; see [implementation and testing status](assistant-tools-implementation-status.md) for current results and unresolved release gates. The sections below preserve the original planning scope, not a claim that implementation is complete.
 
 ## 1. Recommendation
 

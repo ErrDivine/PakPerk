@@ -98,7 +98,7 @@
         "recommendations", "recommendationEvents", "searchLookup", "searchExplore",
         "savedQueries", "readingBriefs", "subscriptions", "notifications",
         "deepReader", "paperPassport", "semanticFacets", "visualObjects",
-        "assistantV2", "annotations", "researchMemory", "versionDiff",
+        "assistantV2", "assistantTools", "annotations", "researchMemory", "versionDiff",
         "doclingExperiment"
       ],
       "properties": {
@@ -128,6 +128,7 @@
         "semanticFacets": { "type": "boolean" },
         "visualObjects": { "type": "boolean" },
         "assistantV2": { "type": "boolean" },
+        "assistantTools": { "type": "boolean" },
         "annotations": { "type": "boolean" },
         "researchMemory": { "type": "boolean" },
         "versionDiff": { "type": "boolean" },

@@ -88,6 +88,7 @@ features:
   semanticFacets: false
   visualObjects: false
   assistantV2: false
+  assistantTools: false
   annotations: false
   researchMemory: false
   versionDiff: false

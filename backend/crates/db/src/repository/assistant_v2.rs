@@ -1,5 +1,8 @@
 use std::collections::HashSet;
 
+mod tools;
+pub use tools::{AssistantToolRead, AssistantToolSource};
+
 use chrono::{DateTime, Utc};
 use domain::{
     AssistantAnswer, AssistantClaim, AssistantEvidenceFeedback, AssistantRequest,
@@ -788,6 +791,19 @@ impl<'a> AssistantExchangePersistence<'a> {
         &self,
         transaction: &mut Transaction<'_, Postgres>,
     ) -> Result<(), DbError> {
+        // Serialize publication with account deletion/moderation. Do not hold this
+        // lock during inference; deletion accepted first must prevent persistence.
+        if let Some(owner_user_id) = self.owner_user_id {
+            let active = sqlx::query_scalar::<_, Uuid>(
+                "SELECT id FROM users WHERE id = $1 AND status = 'active' FOR SHARE",
+            )
+            .bind(owner_user_id)
+            .fetch_optional(&mut **transaction)
+            .await?;
+            if active.is_none() {
+                return Err(DbError::InvalidAssistantThread);
+            }
+        }
         let valid_thread = sqlx::query_scalar::<_, Uuid>(LOCK_ASSISTANT_THREAD)
             .bind(self.thread_id)
             .bind(self.owner_user_id)

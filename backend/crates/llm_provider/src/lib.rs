@@ -6,6 +6,7 @@
 mod deterministic;
 mod openai;
 mod prompt;
+mod tools;
 mod traits;
 mod types;
 mod validation;
@@ -13,6 +14,11 @@ mod validation;
 pub use deterministic::DeterministicProvider;
 pub use openai::{OpenAiCompatibleConfig, OpenAiCompatibleProvider};
 pub use prompt::{ASSISTANT_V2_PROMPT_VERSION, CHAT_PROMPT_VERSION, RELATIONSHIP_PROMPT_VERSION};
+pub use tools::{
+    ASSISTANT_TOOL_MAX_CALLS_PER_ROUND, ASSISTANT_TOOL_MAX_ROUNDS, ASSISTANT_TOOL_RESULT_BYTES,
+    ASSISTANT_TOOLS_PROMPT_VERSION, AssistantToolCall, AssistantToolExchange,
+    AssistantToolFunction, AssistantToolStep, AssistantToolStepRequest,
+};
 pub use traits::{AssistantProvider, ChatProvider, EmbeddingProvider, RelationshipProvider};
 pub use types::{
     AssistantCompletion, AssistantCompletionRequest, AssistantTokenUsage, BlockEvidenceExcerpt,

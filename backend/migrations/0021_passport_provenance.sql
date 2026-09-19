@@ -259,7 +259,7 @@ CREATE TABLE paper_passport_fields (
     value_text text CHECK (
         value_text IS NULL OR (
             char_length(value_text) BETWEEN 1 AND 10000
-            AND btrim(value_text) <> '' AND position(chr(0) IN value_text) = 0
+            AND btrim(value_text) <> ''
         )
     ),
     value_json jsonb CHECK (
@@ -321,7 +321,7 @@ CREATE TABLE paper_passport_feedback_evaluations (
     detail text CHECK (
         detail IS NULL OR (
             char_length(detail) BETWEEN 1 AND 2000
-            AND btrim(detail) <> '' AND position(chr(0) IN detail) = 0
+            AND btrim(detail) <> ''
         )
     ),
     evaluation_status text NOT NULL DEFAULT 'received' CHECK (
@@ -413,7 +413,7 @@ CREATE TABLE assistant_messages (
     role text NOT NULL CHECK (role IN ('user', 'assistant')),
     content text NOT NULL CHECK (
         char_length(content) BETWEEN 1 AND 32000
-        AND btrim(content) <> '' AND position(chr(0) IN content) = 0
+        AND btrim(content) <> ''
     ),
     provenance_id uuid REFERENCES provenance_records(id) ON DELETE CASCADE,
     evidence_map jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (
@@ -476,7 +476,7 @@ CREATE TABLE assistant_evidence_feedback_evaluations (
         detail IS NULL OR (
             char_length(detail) BETWEEN 1 AND 1000
             AND detail = btrim(detail)
-            AND position(chr(0) IN detail) = 0
+
         )
     ),
     created_at timestamptz NOT NULL DEFAULT now(),

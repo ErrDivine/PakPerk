@@ -41,7 +41,7 @@ CREATE TABLE annotations (
         body IS NULL OR (
             char_length(body) BETWEEN 1 AND 100000
             AND btrim(body) <> ''
-            AND position(chr(0) IN body) = 0
+
         )
     ),
     color_role text CHECK (
@@ -51,19 +51,19 @@ CREATE TABLE annotations (
         quote_exact IS NULL OR (
             char_length(quote_exact) BETWEEN 1 AND 20000
             AND quote_exact <> ''
-            AND position(chr(0) IN quote_exact) = 0
+
         )
     ),
     quote_prefix text CHECK (
         quote_prefix IS NULL OR (
             char_length(quote_prefix) BETWEEN 1 AND 2000
-            AND position(chr(0) IN quote_prefix) = 0
+
         )
     ),
     quote_suffix text CHECK (
         quote_suffix IS NULL OR (
             char_length(quote_suffix) BETWEEN 1 AND 2000
-            AND position(chr(0) IN quote_suffix) = 0
+
         )
     ),
     start_offset integer CHECK (start_offset IS NULL OR start_offset >= 0),
@@ -140,14 +140,14 @@ CREATE TABLE annotation_conflicts (
         attempted_body IS NULL OR (
             char_length(attempted_body) BETWEEN 1 AND 100000
             AND btrim(attempted_body) <> ''
-            AND position(chr(0) IN attempted_body) = 0
+
         )
     ),
     server_body text CHECK (
         server_body IS NULL OR (
             char_length(server_body) BETWEEN 1 AND 100000
             AND btrim(server_body) <> ''
-            AND position(chr(0) IN server_body) = 0
+
         )
     ),
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -188,18 +188,18 @@ CREATE TABLE annotation_reanchor_attempts (
     source_quote_exact text NOT NULL CHECK (
         char_length(source_quote_exact) BETWEEN 1 AND 20000
         AND source_quote_exact <> ''
-        AND position(chr(0) IN source_quote_exact) = 0
+
     ),
     source_quote_prefix text CHECK (
         source_quote_prefix IS NULL OR (
             char_length(source_quote_prefix) BETWEEN 1 AND 2000
-            AND position(chr(0) IN source_quote_prefix) = 0
+
         )
     ),
     source_quote_suffix text CHECK (
         source_quote_suffix IS NULL OR (
             char_length(source_quote_suffix) BETWEEN 1 AND 2000
-            AND position(chr(0) IN source_quote_suffix) = 0
+
         )
     ),
     source_start_offset integer CHECK (source_start_offset IS NULL OR source_start_offset >= 0),
@@ -265,21 +265,21 @@ CREATE TABLE evidence_cards (
         title IS NULL OR (
             char_length(title) BETWEEN 1 AND 500
             AND btrim(title) <> ''
-            AND position(chr(0) IN title) = 0
+
         )
     ),
     claim_or_question text CHECK (
         claim_or_question IS NULL OR (
             char_length(claim_or_question) BETWEEN 1 AND 10000
             AND btrim(claim_or_question) <> ''
-            AND position(chr(0) IN claim_or_question) = 0
+
         )
     ),
     user_note text CHECK (
         user_note IS NULL OR (
             char_length(user_note) BETWEEN 1 AND 100000
             AND btrim(user_note) <> ''
-            AND position(chr(0) IN user_note) = 0
+
         )
     ),
     source_block_ids uuid[] NOT NULL DEFAULT '{}'::uuid[] CHECK (
@@ -405,14 +405,14 @@ CREATE TABLE memory_items (
         prompt_text IS NULL OR (
             char_length(prompt_text) BETWEEN 1 AND 10000
             AND btrim(prompt_text) <> ''
-            AND position(chr(0) IN prompt_text) = 0
+
         )
     ),
     answer_text text CHECK (
         answer_text IS NULL OR (
             char_length(answer_text) BETWEEN 1 AND 100000
             AND btrim(answer_text) <> ''
-            AND position(chr(0) IN answer_text) = 0
+
         )
     ),
     status text NOT NULL CHECK (status IN ('active', 'snoozed', 'retired')),

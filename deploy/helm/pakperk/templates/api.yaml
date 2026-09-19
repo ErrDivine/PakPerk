@@ -115,6 +115,7 @@ spec:
             - { name: VISUAL_ASSET_MAX_BYTES, value: {{ .Values.visualAssets.maximumAssetBytes | quote }} }
             {{- end }}
             - { name: ASSISTANT_V2_ENABLED, value: {{ include "pakperk.bool" .Values.features.assistantV2 | quote }} }
+            - { name: ASSISTANT_TOOLS_ENABLED, value: {{ include "pakperk.bool" .Values.features.assistantTools | quote }} }
             - { name: ANNOTATIONS_ENABLED, value: {{ include "pakperk.bool" .Values.features.annotations | quote }} }
             - { name: RESEARCH_MEMORY_ENABLED, value: {{ include "pakperk.bool" .Values.features.researchMemory | quote }} }
             - { name: VERSION_DIFF_ENABLED, value: {{ include "pakperk.bool" .Values.features.versionDiff | quote }} }

@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use chrono::{TimeDelta, Utc};
-use db::{Database, PaperRepository};
+use db::{Database, FeedQuery, PaperRepository};
 use domain::{
     ArxivIdentifier, Author, Chunk, Connection, IntroductionDetection, PaperMetadata,
     ParsedCitationContext, ParsedPaper, ParsedParagraph, ParsedReference, ParsedSection,
@@ -28,8 +28,20 @@ async fn postgres_prepare_leases_and_version_invalidation() {
     let repository = database.papers();
     let unique = Uuid::now_v7().simple().to_string();
     let base_id = format!("test.{unique}");
-    let metadata = metadata(&base_id, 1, Utc::now());
+    let mut metadata = metadata(&base_id, 1, Utc::now());
+    let feed_category = format!("cs.T{}", &unique[..12]);
+    metadata.categories.push(feed_category.clone());
     let paper = repository.upsert_metadata(&metadata).await.unwrap();
+    let feed = repository
+        .feed(&FeedQuery {
+            category: Some(feed_category),
+            ..FeedQuery::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(feed.items.len(), 1);
+    assert_eq!(feed.items[0].paper_id, paper.id);
+    assert!(feed.items[0].capabilities.metadata);
 
     let mut tasks = tokio::task::JoinSet::new();
     for _ in 0..24 {

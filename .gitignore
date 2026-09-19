@@ -28,3 +28,4 @@ __pycache__/
 *.swo
 .idea/
 .vscode/
+competition_file/

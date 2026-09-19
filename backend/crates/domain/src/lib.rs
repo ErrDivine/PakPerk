@@ -5,6 +5,7 @@
 
 mod account;
 mod account_deletion;
+mod assistant_tools;
 mod assistant_v2;
 mod chat;
 mod comment;
@@ -29,6 +30,10 @@ pub use account::{
 pub use account_deletion::{
     AccountDeletionOperation, AccountDeletionState, AccountDeletionStateParseError,
     IdentityFingerprint, IdentityFingerprintError,
+};
+pub use assistant_tools::{
+    AssistantObjectKind, AssistantTool, CitationEvidence, ObjectEvidence, PaperOutline,
+    ReadPaperBlocks, SearchPaperEvidence,
 };
 pub use assistant_v2::{
     ASSISTANT_ANSWER_MAX_SCALARS, ASSISTANT_CLAIM_SEPARATOR, ASSISTANT_FEEDBACK_DETAIL_MAX_SCALARS,

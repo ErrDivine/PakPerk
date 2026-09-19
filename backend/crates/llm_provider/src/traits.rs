@@ -8,6 +8,19 @@ use crate::{
 
 #[async_trait]
 pub trait AssistantProvider: Send + Sync {
+    fn supports_assistant_tools(&self) -> bool {
+        false
+    }
+
+    async fn select_assistant_tools(
+        &self,
+        _request: &crate::AssistantToolStepRequest,
+    ) -> Result<crate::AssistantToolStep, ProviderError> {
+        Err(ProviderError::InvalidConfiguration(
+            "assistant tools are not supported".into(),
+        ))
+    }
+
     /// Stable, non-secret identifier recorded in bounded provenance. This is
     /// the adapter family, not a credential, endpoint, or provider request ID.
     fn provenance_provider_id(&self) -> &'static str;

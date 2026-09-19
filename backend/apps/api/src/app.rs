@@ -151,7 +151,8 @@ impl AppState {
                 .paper_resolution
                 .policy(config.arxiv.minimum_interval, config.arxiv_cache_ttl)?,
         );
-        let model_provider = build_model_provider(config.llm.clone())?;
+        let model_provider =
+            build_model_provider(config.llm.clone(), config.features.assistant_tools)?;
         let services = build_application_services(&database, config)?;
         let discovery_search = (config.features.search_lookup
             || config.features.search_explore
@@ -299,6 +300,7 @@ fn validate_composition(config: &ApiConfig, auth: &AuthRuntime) -> anyhow::Resul
 
 fn build_model_provider(
     config: Option<ApiModelConfig>,
+    assistant_tools: bool,
 ) -> anyhow::Result<Option<Arc<dyn ApiModelProvider>>> {
     match config {
         Some(ApiModelConfig::Deterministic {
@@ -306,9 +308,9 @@ fn build_model_provider(
         }) => Ok(Some(Arc::new(DeterministicProvider::new(
             embedding_dimension,
         )?))),
-        Some(ApiModelConfig::OpenAiCompatible(config)) => {
-            Ok(Some(Arc::new(OpenAiCompatibleProvider::new(*config)?)))
-        }
+        Some(ApiModelConfig::OpenAiCompatible(config)) => Ok(Some(Arc::new(
+            OpenAiCompatibleProvider::new(*config)?.with_assistant_tools(assistant_tools),
+        ))),
         None => Ok(None),
     }
 }
@@ -1128,6 +1130,7 @@ mod tests {
             semantic_facets: true,
             visual_objects: true,
             assistant_v2: true,
+            assistant_tools: true,
             annotations: true,
             research_memory: true,
             version_diff: true,

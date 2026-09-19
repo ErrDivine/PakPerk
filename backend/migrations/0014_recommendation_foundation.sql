@@ -36,7 +36,7 @@ CREATE TABLE recommendation_batches (
     CONSTRAINT recommendation_batches_query_key_check CHECK (
         char_length(query_key) BETWEEN 1 AND 160
         AND query_key = btrim(query_key)
-        AND position(chr(0) IN query_key) = 0
+
     ),
     CONSTRAINT recommendation_batches_revision_check CHECK (
         (profile_revision IS NULL OR profile_revision >= 0)

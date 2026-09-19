@@ -28,6 +28,9 @@ use tower::ServiceExt as _;
 use url::Url;
 use uuid::Uuid;
 
+#[path = "postgres_chat_api/assistant_tools.rs"]
+mod assistant_tools;
+
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn postgres_backed_router_serves_scoped_chat_and_prepared_capabilities() {

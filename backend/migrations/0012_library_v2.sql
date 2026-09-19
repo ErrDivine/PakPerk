@@ -42,7 +42,6 @@ ALTER TABLE user_paper_library
             AND private_note = btrim(private_note)
             AND position(E'\n' IN private_note) = 0
             AND position(E'\r' IN private_note) = 0
-            AND position(chr(0) IN private_note) = 0
         )
     ),
     ADD CONSTRAINT user_paper_library_save_source_check CHECK (
@@ -79,7 +78,6 @@ ALTER TABLE library_operations
             AND accepted_private_note = btrim(accepted_private_note)
             AND position(E'\n' IN accepted_private_note) = 0
             AND position(E'\r' IN accepted_private_note) = 0
-            AND position(chr(0) IN accepted_private_note) = 0
         )
     ),
     ADD CONSTRAINT library_operations_save_source_check CHECK (
@@ -144,13 +142,11 @@ CREATE TABLE library_lists (
         AND name = btrim(name)
         AND char_length(normalized_name) BETWEEN 1 AND 100
         AND normalized_name = lower(btrim(normalized_name))
-        AND position(chr(0) IN name) = 0
     ),
     CONSTRAINT library_lists_description_check CHECK (
         description IS NULL OR (
             char_length(description) BETWEEN 1 AND 500
             AND description = btrim(description)
-            AND position(chr(0) IN description) = 0
         )
     ),
     CONSTRAINT library_lists_timestamps_check CHECK (
@@ -186,7 +182,6 @@ CREATE TABLE library_list_items (
         note IS NULL OR (
             char_length(note) BETWEEN 1 AND 500
             AND note = btrim(note)
-            AND position(chr(0) IN note) = 0
         )
     ),
     CONSTRAINT library_list_items_timestamps_check CHECK (
@@ -216,7 +211,6 @@ CREATE TABLE library_tags (
         AND name = btrim(name)
         AND char_length(normalized_name) BETWEEN 1 AND 60
         AND normalized_name = lower(btrim(normalized_name))
-        AND position(chr(0) IN name) = 0
     ),
     CONSTRAINT library_tags_timestamps_check CHECK (
         updated_at >= created_at

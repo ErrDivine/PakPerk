@@ -99,10 +99,8 @@ CREATE TABLE recommendation_generation_jobs (
     ),
     next_published_at timestamptz,
     next_paper_id uuid REFERENCES papers(id) ON DELETE RESTRICT,
-    state text NOT NULL DEFAULT 'queued' CHECK (
-        state IN ('queued', 'running', 'completed', 'superseded', 'failed')
-    ),
-    attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    state text NOT NULL DEFAULT 'queued',
+    attempts integer NOT NULL DEFAULT 0,
     max_attempts integer NOT NULL CHECK (max_attempts BETWEEN 1 AND 10),
     available_at timestamptz NOT NULL DEFAULT statement_timestamp(),
     lease_owner text,
@@ -114,7 +112,7 @@ CREATE TABLE recommendation_generation_jobs (
     CONSTRAINT recommendation_generation_jobs_query_key_check CHECK (
         char_length(query_key) BETWEEN 1 AND 160
         AND query_key = btrim(query_key)
-        AND position(chr(0) IN query_key) = 0
+
     ),
     CONSTRAINT recommendation_generation_jobs_revision_check CHECK (
         profile_revision IS NULL OR profile_revision >= 0
@@ -127,13 +125,13 @@ CREATE TABLE recommendation_generation_jobs (
         (next_published_at IS NULL) = (next_paper_id IS NULL)
     ),
     CONSTRAINT recommendation_generation_jobs_attempts_check CHECK (
-        attempts <= max_attempts
+        attempts BETWEEN 0 AND max_attempts
     ),
     CONSTRAINT recommendation_generation_jobs_lease_owner_check CHECK (
         lease_owner IS NULL OR (
             char_length(lease_owner) BETWEEN 1 AND 96
             AND lease_owner = btrim(lease_owner)
-            AND position(chr(0) IN lease_owner) = 0
+
         )
     ),
     CONSTRAINT recommendation_generation_jobs_error_code_check CHECK (

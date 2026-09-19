@@ -5,6 +5,7 @@
 //! without growing another monolithic application module.
 
 pub mod app;
+mod assistant_tools;
 pub mod auth_bootstrap;
 pub mod config;
 mod deletion_config;

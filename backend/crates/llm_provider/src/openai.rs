@@ -79,6 +79,7 @@ impl Default for OpenAiCompatibleConfig {
 pub struct OpenAiCompatibleProvider {
     config: Arc<OpenAiCompatibleConfig>,
     http: Client,
+    assistant_tools: bool,
 }
 
 impl OpenAiCompatibleProvider {
@@ -92,7 +93,16 @@ impl OpenAiCompatibleProvider {
         Ok(Self {
             config: Arc::new(config),
             http,
+            assistant_tools: false,
         })
+    }
+
+    /// Explicit deployment opt-in; compatible endpoint names do not imply
+    /// that the configured model supports native function tools.
+    #[must_use]
+    pub const fn with_assistant_tools(mut self, enabled: bool) -> Self {
+        self.assistant_tools = enabled;
+        self
     }
 
     async fn post_json(&self, path: &str, payload: &Value) -> Result<Vec<u8>, ProviderError> {
@@ -182,6 +192,52 @@ impl ChatProvider for OpenAiCompatibleProvider {
 
 #[async_trait]
 impl AssistantProvider for OpenAiCompatibleProvider {
+    fn supports_assistant_tools(&self) -> bool {
+        self.assistant_tools
+    }
+
+    async fn select_assistant_tools(
+        &self,
+        request: &crate::AssistantToolStepRequest,
+    ) -> Result<crate::AssistantToolStep, ProviderError> {
+        if !self.assistant_tools {
+            return Err(ProviderError::InvalidConfiguration(
+                "assistant tools are disabled".into(),
+            ));
+        }
+        let payload = crate::tools::tool_payload(request, &self.config.chat_model)?;
+        let bytes = self.post_json("chat/completions", &payload).await?;
+        let response: ToolEnvelope =
+            serde_json::from_slice(&bytes).map_err(|_| crate::tools::invalid_tool_response())?;
+        if response.choices.len() != 1 {
+            return Err(crate::tools::invalid_tool_response());
+        }
+        let choice = response
+            .choices
+            .into_iter()
+            .next()
+            .ok_or_else(crate::tools::invalid_tool_response)?;
+        let calls = choice.message.tool_calls.unwrap_or_default();
+        if (calls.is_empty() && choice.finish_reason != "stop")
+            || (!calls.is_empty() && choice.finish_reason != "tool_calls")
+        {
+            return Err(crate::tools::invalid_tool_response());
+        }
+        let mut seen = request
+            .exchanges
+            .iter()
+            .flat_map(|exchange| exchange.calls.iter().map(|call| call.id.clone()))
+            .collect();
+        crate::tools::validate_calls(&calls, &mut seen)?;
+        Ok(crate::AssistantToolStep {
+            calls,
+            token_usage: response
+                .usage
+                .map(ChatUsage::try_into_assistant_usage)
+                .transpose()?,
+        })
+    }
+
     fn provenance_provider_id(&self) -> &'static str {
         "openai_compatible"
     }
@@ -330,6 +386,24 @@ struct ChatEnvelope {
     model: Option<String>,
     choices: Vec<ChatChoice>,
     usage: Option<ChatUsage>,
+}
+
+#[derive(Deserialize)]
+struct ToolEnvelope {
+    choices: Vec<ToolChoice>,
+    usage: Option<ChatUsage>,
+}
+
+#[derive(Deserialize)]
+struct ToolChoice {
+    message: ToolMessage,
+    finish_reason: String,
+}
+
+#[derive(Deserialize)]
+struct ToolMessage {
+    // Provider prose is deliberately ignored, never published as an answer.
+    tool_calls: Option<Vec<crate::AssistantToolCall>>,
 }
 
 #[derive(Debug, Deserialize)]

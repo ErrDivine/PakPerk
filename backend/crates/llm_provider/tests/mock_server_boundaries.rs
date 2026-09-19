@@ -18,6 +18,155 @@ use url::Url;
 use uuid::Uuid;
 
 #[tokio::test]
+async fn native_assistant_tools_preserve_call_pairs_and_final_answer_contract() {
+    use llm_provider::{AssistantProvider, AssistantToolExchange, AssistantToolStepRequest};
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let completion = tool_completion_fixture();
+    let call = json!({"id":"call_search", "type":"function", "function":{
+        "name":"search_paper_evidence", "arguments":r#"{"query":"azimuth"}"#,
+    }});
+    let final_content = json!({"answer":"The azimuth is measured.","status":"supported", "limitations":[],
+    "claims":[{"text":"The azimuth is measured.","support":"direct","evidence":[{
+        "block_id":completion.evidence[0].block_id,"start":0,"end":23,
+    }]}]});
+    let responses = vec![
+        json!({"choices":[{"finish_reason":"tool_calls","message":{"content":null,"tool_calls":[call]}}],
+            "usage":{"prompt_tokens":11,"completion_tokens":7}}).to_string(),
+        json!({"choices":[{"finish_reason":"stop","message":{"content":"Ready."}}]}).to_string(),
+        json!({"model":"fixture-chat","choices":[{"message":{"content":final_content.to_string()}}]}).to_string(),
+    ];
+    let (sender, mut receiver) = mpsc::unbounded_channel();
+    let server = tokio::spawn(serve_json(listener, responses, sender));
+    let provider = OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
+        base_url: Url::parse(&format!("http://{address}/v1")).unwrap(),
+        chat_model: "fixture-chat".into(),
+        embedding_model: "fixture-embedding".into(),
+        embedding_dimension: 3,
+        maximum_retries: 0,
+        ..OpenAiCompatibleConfig::default()
+    })
+    .unwrap();
+    assert!(!provider.supports_assistant_tools());
+    let provider = provider.with_assistant_tools(true);
+    let mut request = AssistantToolStepRequest {
+        completion,
+        exchanges: vec![],
+    };
+    let first = provider.select_assistant_tools(&request).await.unwrap();
+    assert_eq!(first.calls.len(), 1);
+    assert_eq!(first.token_usage.unwrap().input_tokens, 11);
+    request.exchanges.push(AssistantToolExchange {
+        calls: first.calls,
+        results: vec![json!({"status":"ok","sources":request.completion.evidence}).to_string()],
+    });
+    assert!(
+        provider
+            .select_assistant_tools(&request)
+            .await
+            .unwrap()
+            .calls
+            .is_empty()
+    );
+    let answer = provider
+        .answer_with_evidence(&request.completion)
+        .await
+        .unwrap();
+    assert_eq!(answer.answer.claims[0].evidence[0].page_start, Some(3));
+    server.await.unwrap();
+    let first: Value = serde_json::from_slice(&receiver.recv().await.unwrap().body).unwrap();
+    let second: Value = serde_json::from_slice(&receiver.recv().await.unwrap().body).unwrap();
+    let final_request: Value =
+        serde_json::from_slice(&receiver.recv().await.unwrap().body).unwrap();
+    assert_eq!(first["tools"].as_array().unwrap().len(), 5);
+    assert_eq!(second["messages"][2]["tool_calls"][0]["id"], "call_search");
+    assert_eq!(second["messages"][3]["role"], "tool");
+    assert_eq!(second["messages"][3]["tool_call_id"], "call_search");
+    assert!(final_request.get("tools").is_none());
+    assert_eq!(
+        final_request["response_format"]["json_schema"]["strict"],
+        true
+    );
+}
+
+#[tokio::test]
+async fn native_assistant_tools_reject_untrusted_protocol_shapes() {
+    use llm_provider::{AssistantProvider, AssistantToolStepRequest};
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let valid = json!({"id":"call_1","type":"function","function":{"name":"get_paper_outline","arguments":"{}"}});
+    let invalid = [
+        json!({"finish_reason":"tool_calls","message":{"tool_calls":[{"id":"call_1","type":"function","function":{"name":"run_shell","arguments":"{}"}}]}}),
+        json!({"finish_reason":"tool_calls","message":{"tool_calls":[valid.clone(),valid.clone()]}}),
+        json!({"finish_reason":"tool_calls","message":{"tool_calls":[valid.clone(),valid.clone(),valid.clone()]}}),
+        json!({"finish_reason":"length","message":{"tool_calls":[valid]}}),
+        json!({"finish_reason":"stop","message":{"tool_calls":[]}}),
+    ];
+    let responses = invalid
+        .iter()
+        .map(|choice| json!({"choices":[choice]}).to_string())
+        .collect();
+    let (sender, _receiver) = mpsc::unbounded_channel();
+    let server = tokio::spawn(serve_json(listener, responses, sender));
+    let provider = OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
+        base_url: Url::parse(&format!("http://{address}/v1")).unwrap(),
+        chat_model: "fixture-chat".into(),
+        embedding_model: "fixture-embedding".into(),
+        embedding_dimension: 3,
+        maximum_retries: 0,
+        ..OpenAiCompatibleConfig::default()
+    })
+    .unwrap()
+    .with_assistant_tools(true);
+    let request = AssistantToolStepRequest {
+        completion: tool_completion_fixture(),
+        exchanges: vec![],
+    };
+    for _ in 0..4 {
+        assert!(provider.select_assistant_tools(&request).await.is_err());
+    }
+    assert!(
+        provider
+            .select_assistant_tools(&request)
+            .await
+            .unwrap()
+            .calls
+            .is_empty()
+    );
+    server.await.unwrap();
+}
+
+fn tool_completion_fixture() -> llm_provider::AssistantCompletionRequest {
+    let paper_id = Uuid::new_v4();
+    llm_provider::AssistantCompletionRequest {
+        paper_title: "Fixture".into(),
+        request: domain::AssistantRequest {
+            paper_id,
+            generation: 1,
+            question: "What is measured?".into(),
+            scope: domain::AssistantScope {
+                kind: domain::AssistantScopeKind::Paper,
+                section_kinds: vec![],
+                object_ids: vec![],
+                selection: None,
+                passport_field: None,
+            },
+            answer_style: domain::AssistantAnswerStyle::Concise,
+            thread_id: None,
+        },
+        recent_turns: vec![],
+        evidence: vec![llm_provider::BlockEvidenceExcerpt {
+            block_id: Uuid::new_v4(),
+            paper_id,
+            generation: 1,
+            section_heading: Some("Results".into()),
+            page_start: Some(3),
+            text: "The azimuth is measured.".into(),
+        }],
+    }
+}
+
+#[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn mocked_provider_exercises_all_boundaries_and_rebuilds_trusted_sources() {
     let Some(listener) = bind_loopback().await else {

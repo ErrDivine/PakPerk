@@ -43,7 +43,11 @@ impl PaperRepository {
                 processing.metadata_ready,
                 processing.introduction_ready,
                 processing.chat_ready,
-                processing.connections_ready
+                processing.connections_ready,
+                processing.visual_objects_ready,
+                processing.terms_ready,
+                processing.semantic_facets_ready,
+                processing.paper_passport_ready
             FROM papers AS p
             JOIN paper_processing AS processing ON processing.paper_id = p.id
             WHERE 1 = 1

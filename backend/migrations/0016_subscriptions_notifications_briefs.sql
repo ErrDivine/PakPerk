@@ -134,12 +134,12 @@ CREATE TABLE subscriptions (
     CONSTRAINT subscriptions_key_check CHECK (
         char_length(key) BETWEEN 1 AND 160
         AND key = btrim(key)
-        AND position(chr(0) IN key) = 0
+
     ),
     CONSTRAINT subscriptions_label_check CHECK (
         char_length(label) BETWEEN 1 AND 160
         AND label = btrim(label)
-        AND position(chr(0) IN label) = 0
+
     ),
     CONSTRAINT subscriptions_query_check CHECK (
         (kind = 'saved_query') = (query_definition IS NOT NULL)
@@ -418,7 +418,7 @@ CREATE TABLE notifications (
         batch_key IS NULL OR (
             char_length(batch_key) BETWEEN 1 AND 96
             AND batch_key = btrim(batch_key)
-            AND position(chr(0) IN batch_key) = 0
+
         )
     ),
     CONSTRAINT notifications_authority_check CHECK (
@@ -509,7 +509,7 @@ CREATE TABLE notification_work_items (
     CONSTRAINT notification_work_window_key_check CHECK (
         char_length(window_key) BETWEEN 1 AND 96
         AND window_key = btrim(window_key)
-        AND position(chr(0) IN window_key) = 0
+
     ),
     CONSTRAINT notification_work_payload_check CHECK (
         jsonb_typeof(payload) = 'object' AND pg_column_size(payload) <= 2048
@@ -521,7 +521,7 @@ CREATE TABLE notification_work_items (
         lease_owner IS NULL OR (
             char_length(lease_owner) BETWEEN 1 AND 128
             AND lease_owner = btrim(lease_owner)
-            AND position(chr(0) IN lease_owner) = 0
+
         )
     ),
     CONSTRAINT notification_work_error_check CHECK (
