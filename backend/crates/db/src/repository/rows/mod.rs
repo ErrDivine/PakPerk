@@ -373,7 +373,8 @@ pub(super) fn build_introduction_content(
     for (section_index, row) in rows.into_iter().enumerate() {
         let parsed: Vec<domain::ParsedParagraph> = serde_json::from_value(row.paragraphs)
             .map_err(|error| DbError::InvalidData(error.to_string()))?;
-        for (paragraph_index, paragraph) in parsed.into_iter().enumerate() {
+        for (paragraph_index, mut paragraph) in parsed.into_iter().enumerate() {
+            document_model::normalize_persisted_paragraph(&mut paragraph);
             let legacy_paragraph = paragraph.citations.is_empty();
             let mut citations = paragraph
                 .citations
@@ -388,10 +389,24 @@ pub(super) fn build_introduction_content(
                     if citation.end < citation.start || marker != citation.marker {
                         return None;
                     }
-                    let references = resolved_citation_references(
-                        &citation.reference_ordinals,
-                        &resolved_references,
-                    )?;
+                    let references = citation
+                        .reference_ordinals
+                        .iter()
+                        .filter_map(|ordinal| resolved_references.get(ordinal))
+                        .fold(Vec::new(), |mut references, reference| {
+                            if !references
+                                .iter()
+                                .any(|existing: &IntroductionCitationReference| {
+                                    existing.paper_id == reference.paper_id
+                                })
+                            {
+                                references.push(reference.clone());
+                            }
+                            references
+                        });
+                    if references.is_empty() {
+                        return None;
+                    }
                     Some(IntroductionCitation {
                         start: citation.start,
                         end: citation.end,

@@ -8,6 +8,7 @@ import '../../app/library_providers.dart';
 import '../../core/api/request_cancellation.dart';
 import '../../core/document/assistant_v2_api.dart';
 import '../../core/models/assistant_v2.dart';
+import '../../core/providers.dart';
 import '../../design_system/sizes.dart';
 import 'assistant_evidence_feedback.dart';
 
@@ -33,6 +34,7 @@ class AssistantV2Sheet extends ConsumerStatefulWidget {
     this.generationIsCurrent = true,
     this.initialQuestion,
     this.submitInitialQuestion = false,
+    this.anonymousSessionId,
     super.key,
   });
   final String paperId, readerKey, paperTitle;
@@ -43,6 +45,7 @@ class AssistantV2Sheet extends ConsumerStatefulWidget {
   final VoidCallback onClose;
   final String? initialQuestion;
   final bool submitInitialQuestion;
+  final String? anonymousSessionId;
 
   @override
   ConsumerState<AssistantV2Sheet> createState() => _AssistantV2SheetState();
@@ -71,7 +74,9 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
     super.initState();
     final initialQuestion = _normalizedQuestion(widget.initialQuestion);
     _question = TextEditingController(text: initialQuestion ?? '');
-    _openingScope = ref.read(verifiedLibraryScopeProvider);
+    _openingScope = widget.anonymousSessionId == null
+        ? ref.read(verifiedLibraryScopeProvider)
+        : null;
     _activeScope = widget.scope;
     _scopeChoices = _buildScopeChoices(widget.scope);
     if (widget.submitInitialQuestion && initialQuestion != null) {
@@ -113,17 +118,20 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
       );
       return;
     }
-    final scope = ref.read(verifiedLibraryScopeProvider);
-    if (!widget.enabled ||
-        !widget.generationIsCurrent ||
-        scope == null ||
-        scope != _openingScope) {
+    final anonymousSessionId = widget.anonymousSessionId;
+    final scope = anonymousSessionId == null
+        ? ref.read(verifiedLibraryScopeProvider)
+        : null;
+    final sessionIsCurrent = anonymousSessionId == null
+        ? scope != null && scope == _openingScope
+        : ref.read(anonymousSessionIdProvider) == anonymousSessionId;
+    if (!widget.enabled || !widget.generationIsCurrent || !sessionIsCurrent) {
       setState(
         () => _error = !widget.generationIsCurrent
             ? 'The prepared paper changed. Close and reopen Assistant for the current source.'
-            : scope != _openingScope
-            ? 'The active account changed. Close and reopen Assistant.'
-            : 'A new answer needs a connection and an active account.',
+            : !sessionIsCurrent
+            ? 'The active session changed. Close and reopen Assistant.'
+            : 'A new answer needs a connection and a current session.',
       );
       return;
     }
@@ -141,14 +149,17 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
         question: text,
         scope: _activeScope,
         answerStyle: _answerStyle,
-        expectedAuthEpoch: scope.authEpoch,
+        expectedAuthEpoch: scope?.authEpoch,
+        anonymousSessionId: anonymousSessionId,
         threadId: _answer?.threadId,
         cancellation: request,
       );
-      final current = ref.read(verifiedLibraryScopeProvider);
+      final sessionStillCurrent = anonymousSessionId == null
+          ? ref.read(verifiedLibraryScopeProvider) == scope
+          : ref.read(anonymousSessionIdProvider) == anonymousSessionId;
       if (mounted &&
           !request.isCancelled &&
-          current == scope &&
+          sessionStillCurrent &&
           widget.generationIsCurrent) {
         setState(() {
           _resetFeedback('A newer Assistant answer replaced this report.');
@@ -158,7 +169,9 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
     } catch (_) {
       if (mounted &&
           !request.isCancelled &&
-          ref.read(verifiedLibraryScopeProvider) == scope) {
+          (anonymousSessionId == null
+              ? ref.read(verifiedLibraryScopeProvider) == scope
+              : ref.read(anonymousSessionIdProvider) == anonymousSessionId)) {
         setState(
           () => _error =
               'Assistant v2 could not answer. Nothing was sent to legacy chat.',
@@ -356,21 +369,43 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
 
   @override
   Widget build(BuildContext context) {
-    final currentScope = ref.watch(verifiedLibraryScopeProvider);
+    final isAnonymous = widget.anonymousSessionId != null;
+    final currentScope = isAnonymous
+        ? null
+        : ref.watch(verifiedLibraryScopeProvider);
+    final currentSessionId = isAnonymous
+        ? ref.watch(anonymousSessionIdProvider)
+        : null;
     final scopeIsCurrent =
-        widget.generationIsCurrent && currentScope == _openingScope;
-    ref.listen<ActiveLibraryScope?>(verifiedLibraryScopeProvider, (_, next) {
-      if (next == _openingScope) return;
-      _request?.cancel('The active Assistant account changed.');
-      _provenanceRequest?.cancel('The active Assistant account changed.');
-      if (!mounted) return;
-      setState(() {
-        _resetFeedback('The active Assistant account changed.');
-        _answer = null;
-        _sending = false;
-        _error = 'The active account changed. Close and reopen Assistant.';
+        widget.generationIsCurrent &&
+        (isAnonymous
+            ? currentSessionId == widget.anonymousSessionId
+            : currentScope == _openingScope);
+    if (isAnonymous) {
+      ref.listen<String>(anonymousSessionIdProvider, (_, next) {
+        if (next == widget.anonymousSessionId) return;
+        _request?.cancel('The anonymous Assistant session changed.');
+        if (!mounted) return;
+        setState(() {
+          _answer = null;
+          _sending = false;
+          _error = 'The active session changed. Close and reopen Assistant.';
+        });
       });
-    });
+    } else {
+      ref.listen<ActiveLibraryScope?>(verifiedLibraryScopeProvider, (_, next) {
+        if (next == _openingScope) return;
+        _request?.cancel('The active Assistant account changed.');
+        _provenanceRequest?.cancel('The active Assistant account changed.');
+        if (!mounted) return;
+        setState(() {
+          _resetFeedback('The active Assistant account changed.');
+          _answer = null;
+          _sending = false;
+          _error = 'The active account changed. Close and reopen Assistant.';
+        });
+      });
+    }
     final answer = scopeIsCurrent ? _answer : null;
     return SafeArea(
       child: Column(
@@ -651,7 +686,8 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                       child: OutlinedButton.icon(
                         key: const ValueKey('assistant-feedback-open'),
                         onPressed:
-                            widget.enabled &&
+                            !isAnonymous &&
+                                widget.enabled &&
                                 scopeIsCurrent &&
                                 !_sending &&
                                 !_feedbackSending
@@ -688,7 +724,9 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                       minHeight: PakPerkSizes.minimumInteractive,
                     ),
                     child: TextButton(
-                      onPressed: () => _inspectProvenance(answer),
+                      onPressed: isAnonymous
+                          ? null
+                          : () => _inspectProvenance(answer),
                       child: const Text('Inspect provenance'),
                     ),
                   ),

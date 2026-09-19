@@ -80,11 +80,25 @@ pub struct OpenAiCompatibleProvider {
     config: Arc<OpenAiCompatibleConfig>,
     http: Client,
     assistant_tools: bool,
+    assistant_json_object: bool,
+    embedding_enabled: bool,
 }
 
 impl OpenAiCompatibleProvider {
     pub fn new(config: OpenAiCompatibleConfig) -> Result<Self, ProviderError> {
-        validate_config(&config)?;
+        Self::new_with_mode(config, true)
+    }
+
+    /// Assistant-only provider: no embedding endpoint or model is required.
+    pub fn new_assistant_only(config: OpenAiCompatibleConfig) -> Result<Self, ProviderError> {
+        Self::new_with_mode(config, false)
+    }
+
+    fn new_with_mode(
+        config: OpenAiCompatibleConfig,
+        embedding_enabled: bool,
+    ) -> Result<Self, ProviderError> {
+        validate_config_for_mode(&config, embedding_enabled)?;
         let http = Client::builder()
             .redirect(Policy::none())
             .connect_timeout(config.connect_timeout)
@@ -94,6 +108,8 @@ impl OpenAiCompatibleProvider {
             config: Arc::new(config),
             http,
             assistant_tools: false,
+            assistant_json_object: !embedding_enabled,
+            embedding_enabled,
         })
     }
 
@@ -103,6 +119,26 @@ impl OpenAiCompatibleProvider {
     pub const fn with_assistant_tools(mut self, enabled: bool) -> Self {
         self.assistant_tools = enabled;
         self
+    }
+
+    fn assistant_payload(
+        &self,
+        request: &AssistantCompletionRequest,
+    ) -> Result<Value, ProviderError> {
+        let mut payload = assistant_v2_payload(request, &self.config.chat_model)?;
+        if self.assistant_json_object {
+            // JSON mode checks syntax only. Keep the same output contract in the
+            // prompt when the endpoint does not support json_schema.
+            let schema = payload["response_format"]["json_schema"]["schema"].to_string();
+            let system = payload["messages"][0]["content"].as_str().ok_or_else(|| {
+                ProviderError::InvalidRequest("missing assistant system prompt".into())
+            })?;
+            payload["messages"][0]["content"] = Value::String(format!(
+                "{system}\n\nReturn a JSON object matching this schema exactly. Include every required field and no extra fields: {schema}"
+            ));
+            payload["response_format"] = serde_json::json!({"type": "json_object"});
+        }
+        Ok(payload)
     }
 
     async fn post_json(&self, path: &str, payload: &Value) -> Result<Vec<u8>, ProviderError> {
@@ -246,7 +282,7 @@ impl AssistantProvider for OpenAiCompatibleProvider {
         &self,
         request: &AssistantCompletionRequest,
     ) -> Result<AssistantCompletion, ProviderError> {
-        let payload = assistant_v2_payload(request, &self.config.chat_model)?;
+        let payload = self.assistant_payload(request)?;
         let bytes = self.post_json("chat/completions", &payload).await?;
         let response: ChatEnvelope = serde_json::from_slice(&bytes).map_err(|_| {
             ProviderError::InvalidResponse(
@@ -293,6 +329,11 @@ impl AssistantProvider for OpenAiCompatibleProvider {
 #[async_trait]
 impl EmbeddingProvider for OpenAiCompatibleProvider {
     async fn embed(&self, request: &EmbeddingRequest) -> Result<EmbeddingResponse, ProviderError> {
+        if !self.embedding_enabled {
+            return Err(ProviderError::InvalidConfiguration(
+                "assistant-only provider cannot generate embeddings".into(),
+            ));
+        }
         request.validate()?;
         let payload = json!({
             "model": self.config.embedding_model,
@@ -456,7 +497,10 @@ struct EmbeddingItem {
     embedding: Vec<f32>,
 }
 
-fn validate_config(config: &OpenAiCompatibleConfig) -> Result<(), ProviderError> {
+fn validate_config_for_mode(
+    config: &OpenAiCompatibleConfig,
+    embedding_required: bool,
+) -> Result<(), ProviderError> {
     let host_is_loopback = config.base_url.host().is_some_and(|host| match host {
         url::Host::Domain(host) => host.eq_ignore_ascii_case("localhost"),
         url::Host::Ipv4(address) => address.is_loopback(),
@@ -470,14 +514,14 @@ fn validate_config(config: &OpenAiCompatibleConfig) -> Result<(), ProviderError>
         || config.base_url.fragment().is_some()
         || (config.require_https && (config.base_url.scheme() != "https" || host_is_loopback))
         || config.chat_model.trim().is_empty()
-        || config.embedding_model.trim().is_empty()
-        || config.embedding_dimension == 0
+        || (embedding_required
+            && (config.embedding_model.trim().is_empty() || config.embedding_dimension == 0))
         || config.connect_timeout.is_zero()
         || config.request_timeout.is_zero()
         || config.maximum_response_bytes == 0
         || config.maximum_retries > 5
         || !is_safe_provider_identifier(&config.chat_model)
-        || !is_safe_provider_identifier(&config.embedding_model)
+        || (embedding_required && !is_safe_provider_identifier(&config.embedding_model))
     {
         return Err(ProviderError::InvalidConfiguration(
             "a credential-free provider URL, safe model IDs, dimension, positive timeouts/limit, and at most five retries are required; deployed endpoints require non-loopback HTTPS".into(),
@@ -566,6 +610,109 @@ fn backoff_delay(attempt: usize) -> Duration {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn assistant_only_uses_json_object_and_keeps_local_validation() {
+        use domain::{AssistantAnswerStyle, AssistantRequest, AssistantScope, AssistantScopeKind};
+
+        let paper_id = Uuid::new_v4();
+        let request = AssistantCompletionRequest {
+            paper_title: "Test paper".to_owned(),
+            request: AssistantRequest {
+                paper_id,
+                generation: 1,
+                question: "What does retrieval augment?".to_owned(),
+                scope: AssistantScope {
+                    kind: AssistantScopeKind::Paper,
+                    section_kinds: Vec::new(),
+                    object_ids: Vec::new(),
+                    selection: None,
+                    passport_field: None,
+                },
+                answer_style: AssistantAnswerStyle::Concise,
+                thread_id: None,
+            },
+            recent_turns: Vec::new(),
+            evidence: vec![crate::BlockEvidenceExcerpt {
+                block_id: Uuid::new_v4(),
+                paper_id,
+                generation: 1,
+                section_heading: Some("Introduction".to_owned()),
+                page_start: Some(1),
+                text: "Retrieval augments generation with passages.".to_owned(),
+            }],
+        };
+        let config = OpenAiCompatibleConfig {
+            base_url: Url::parse("https://api.deepseek.com").unwrap(),
+            chat_model: "deepseek-flash".to_owned(),
+            ..OpenAiCompatibleConfig::default()
+        };
+        assert!(OpenAiCompatibleProvider::new(config.clone()).is_err());
+        let provider = OpenAiCompatibleProvider::new_assistant_only(config).unwrap();
+        let payload = provider.assistant_payload(&request).unwrap();
+        assert_eq!(payload["response_format"]["type"], "json_object");
+        let system = payload["messages"][0]["content"].as_str().unwrap();
+        let schema = system.split_once("no extra fields: ").unwrap().1;
+        let schema: Value = serde_json::from_str(schema).unwrap();
+        assert_eq!(
+            schema["required"],
+            json!(["answer", "status", "claims", "limitations"])
+        );
+        assert_eq!(
+            schema["properties"]["claims"]["items"]["required"],
+            json!(["text", "support", "evidence"])
+        );
+        assert_eq!(
+            schema["properties"]["claims"]["items"]["properties"]["evidence"]["items"]["required"],
+            json!(["block_id", "start", "end"])
+        );
+        assert!(
+            provider
+                .embed(&EmbeddingRequest {
+                    inputs: vec!["test".to_owned()],
+                })
+                .await
+                .is_err()
+        );
+
+        let not_found = serde_json::json!({
+            "answer": "Not found in this paper.",
+            "status": "not_found",
+            "claims": [],
+            "limitations": [],
+        });
+        assert!(validate_assistant_output(
+            &not_found.to_string(),
+            &request,
+            Uuid::new_v4(),
+            None,
+            None,
+        )
+        .is_ok());
+        assert!(
+            validate_assistant_output("not json", &request, Uuid::new_v4(), None, None,).is_err()
+        );
+        let unsupported = serde_json::json!({
+            "answer": "Unsupported claim",
+            "status": "supported",
+            "claims": [{
+                "text": "Unsupported claim",
+                "support": "direct",
+                "evidence": [{"block_id": Uuid::new_v4(), "start": 0, "end": 4}],
+            }],
+            "limitations": [],
+        });
+        assert!(
+            validate_assistant_output(
+                &unsupported.to_string(),
+                &request,
+                Uuid::new_v4(),
+                None,
+                None,
+            )
+            .is_err()
+        );
+    }
+
     #[test]
     fn appends_openai_paths_without_dropping_v1() {
         assert_eq!(
@@ -606,15 +753,17 @@ mod tests {
             ..OpenAiCompatibleConfig::default()
         };
 
-        assert!(validate_config(&valid("http://localhost:11434/v1", false)).is_ok());
-        assert!(validate_config(&valid("https://models.pakperk.app/v1", true)).is_ok());
+        assert!(validate_config_for_mode(&valid("http://localhost:11434/v1", false), true).is_ok());
+        assert!(
+            validate_config_for_mode(&valid("https://models.pakperk.app/v1", true), true).is_ok()
+        );
         for url in [
             "https://user:secret@models.pakperk.app/v1",
             "https://models.pakperk.app/v1?api_key=secret",
             "https://models.pakperk.app/v1#secret",
         ] {
             assert!(
-                validate_config(&valid(url, false)).is_err(),
+                validate_config_for_mode(&valid(url, false), true).is_err(),
                 "accepted {url}"
             );
         }
@@ -625,7 +774,7 @@ mod tests {
             "https://[::1]:8443/v1",
         ] {
             assert!(
-                validate_config(&valid(url, true)).is_err(),
+                validate_config_for_mode(&valid(url, true), true).is_err(),
                 "accepted {url}"
             );
         }

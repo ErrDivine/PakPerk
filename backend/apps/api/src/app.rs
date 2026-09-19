@@ -26,7 +26,7 @@ use http_policy::strict_transport_security;
 use library::{LibraryPolicy, LibraryService};
 use llm_provider::{
     AssistantProvider, ChatProvider, DeterministicProvider, EmbeddingProvider,
-    OpenAiCompatibleProvider,
+    OpenAiCompatibleConfig, OpenAiCompatibleProvider,
 };
 use moderation::{ContentModerator, HttpModerationAdapter, ModerationPipeline};
 use paper_resolution::{PaperImportService, PaperResolutionService};
@@ -101,6 +101,7 @@ pub struct AppState {
     pub(crate) cursor_key_epoch: [u8; 32],
     pub(crate) fulltext_policy: FulltextPolicy,
     pub(crate) model_provider: Option<Arc<dyn ApiModelProvider>>,
+    pub(crate) assistant_provider: Option<Arc<dyn AssistantProvider>>,
     pub(crate) request_limiter: PublicRequestRateLimiter,
     pub(crate) accounts: Option<AccountService>,
     pub(crate) account_deletion: Option<AccountDeletionService>,
@@ -112,6 +113,14 @@ pub struct AppState {
 }
 
 impl AppState {
+    pub(crate) fn assistant_provider(&self) -> Option<&dyn AssistantProvider> {
+        self.assistant_provider.as_deref().or_else(|| {
+            self.model_provider
+                .as_deref()
+                .map(|provider| provider as &dyn AssistantProvider)
+        })
+    }
+
     /// Compatibility constructor for guest-only tests and embedders. When
     /// accounts are enabled it installs a fail-closed unavailable runtime;
     /// production startup should perform bounded discovery and call
@@ -153,6 +162,10 @@ impl AppState {
         );
         let model_provider =
             build_model_provider(config.llm.clone(), config.features.assistant_tools)?;
+        let assistant_provider = build_assistant_provider(
+            config.assistant_llm.clone(),
+            config.features.assistant_tools,
+        )?;
         let services = build_application_services(&database, config)?;
         let discovery_search = (config.features.search_lookup
             || config.features.search_explore
@@ -244,6 +257,7 @@ impl AppState {
             cursor_key_epoch,
             fulltext_policy: config.fulltext_policy,
             model_provider,
+            assistant_provider,
             request_limiter,
             accounts: services.accounts,
             account_deletion: services.account_deletion,
@@ -296,6 +310,20 @@ fn validate_composition(config: &ApiConfig, auth: &AuthRuntime) -> anyhow::Resul
         anyhow::bail!("feature configuration and authentication runtime are inconsistent");
     }
     Ok(())
+}
+
+fn build_assistant_provider(
+    config: Option<Box<OpenAiCompatibleConfig>>,
+    assistant_tools: bool,
+) -> anyhow::Result<Option<Arc<dyn AssistantProvider>>> {
+    config
+        .map(|config| {
+            Ok(Arc::new(
+                OpenAiCompatibleProvider::new_assistant_only(*config)?
+                    .with_assistant_tools(assistant_tools),
+            ) as Arc<dyn AssistantProvider>)
+        })
+        .transpose()
 }
 
 fn build_model_provider(
@@ -1099,6 +1127,39 @@ mod tests {
     use tower::ServiceExt as _;
 
     use super::*;
+
+    #[tokio::test]
+    async fn assistant_override_preserves_deterministic_embeddings() {
+        let main = build_model_provider(
+            Some(ApiModelConfig::Deterministic {
+                embedding_dimension: 64,
+            }),
+            false,
+        )
+        .unwrap()
+        .unwrap();
+        let assistant = build_assistant_provider(
+            Some(Box::new(OpenAiCompatibleConfig {
+                base_url: url::Url::parse("https://api.deepseek.com").unwrap(),
+                chat_model: "deepseek-flash".to_owned(),
+                ..OpenAiCompatibleConfig::default()
+            })),
+            false,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(main.provenance_provider_id(), "deterministic");
+        assert_eq!(assistant.provenance_provider_id(), "openai_compatible");
+        assert_eq!(
+            main.embed(&llm_provider::EmbeddingRequest {
+                inputs: vec!["Existing paper text".to_owned()],
+            })
+            .await
+            .unwrap()
+            .model_id,
+            "deterministic-hash-v1-64"
+        );
+    }
 
     #[test]
     #[allow(clippy::too_many_lines)] // One closed expectation makes accidental route drift obvious.

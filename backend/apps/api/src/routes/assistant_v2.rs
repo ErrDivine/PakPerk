@@ -124,8 +124,7 @@ pub(crate) async fn assistant(
     let request_id = RequestId(principal.request_id);
     let use_tools = state.feature_flags().assistant_tools
         && state
-            .model_provider
-            .as_ref()
+            .assistant_provider()
             .is_some_and(|provider| provider.supports_assistant_tools());
     let deadline = tokio::time::Instant::now() + crate::assistant_tools::OPERATION_TIMEOUT;
     let operation = async {
@@ -181,11 +180,10 @@ pub(crate) async fn assistant(
         let mut tool_usage = use_tools.then(crate::assistant_tools::ToolUsage::default);
         if let Some(usage) = &mut tool_usage {
             let provider = state
-                .model_provider
-                .as_ref()
+                .assistant_provider()
                 .expect("tool capability checked above");
             crate::assistant_tools::gather(
-                provider.as_ref(),
+                provider,
                 &repository,
                 &request,
                 &mut context,
@@ -462,8 +460,7 @@ async fn generate_answer(
     recent_turns: Vec<ChatTurn>,
 ) -> Result<(AssistantCompletion, &'static str), AssistantGenerationFailure> {
     let provider = state
-        .model_provider
-        .as_ref()
+        .assistant_provider()
         .ok_or_else(|| AssistantGenerationFailure {
             outcome: AssistantMetricOutcome::Unavailable,
             error: ApiError::new(

@@ -502,9 +502,12 @@ impl PassportRepository {
         let previous_ids = sqlx::query_scalar::<_, Uuid>(
             r"
             SELECT DISTINCT provenance_id
-            FROM semantic_spans
-            WHERE paper_id = $1 AND generation = $2 AND superseded_at IS NULL
-            FOR UPDATE
+            FROM (
+                SELECT provenance_id
+                FROM semantic_spans
+                WHERE paper_id = $1 AND generation = $2 AND superseded_at IS NULL
+                FOR UPDATE
+            ) AS locked_spans
             ",
         )
         .bind(paper_id)
@@ -662,10 +665,13 @@ impl PassportRepository {
         let previous_provenance = sqlx::query_scalar::<_, Uuid>(
             r"
             SELECT DISTINCT provenance_id
-            FROM paper_terms
-            WHERE paper_id = $1 AND generation = $2
-              AND superseded_at IS NULL AND provenance_id IS NOT NULL
-            FOR UPDATE
+            FROM (
+                SELECT provenance_id
+                FROM paper_terms
+                WHERE paper_id = $1 AND generation = $2
+                  AND superseded_at IS NULL AND provenance_id IS NOT NULL
+                FOR UPDATE
+            ) AS locked_terms
             ",
         )
         .bind(paper_id)

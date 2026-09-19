@@ -957,7 +957,9 @@ async fn load_item_change(
                paper.primary_category, paper.categories, paper.published_at,
                paper.updated_at, paper.abs_url, paper.pdf_url,
                processing.metadata_ready, processing.introduction_ready,
-               processing.chat_ready, processing.connections_ready
+               processing.chat_ready, processing.connections_ready,
+               processing.visual_objects_ready, processing.terms_ready,
+               processing.semantic_facets_ready, processing.paper_passport_ready
         FROM papers AS paper
         JOIN paper_processing AS processing ON processing.paper_id = paper.id
         WHERE paper.id = $1

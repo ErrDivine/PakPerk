@@ -40,6 +40,28 @@ void main() {
     expect(answer.claims.single.evidence.single.pageStart, 3);
   });
 
+  test(
+    'anonymous Assistant request uses the existing session header',
+    () async {
+      final adapter = _Adapter();
+      final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test'))
+        ..httpClientAdapter = adapter;
+
+      final answer = await AssistantV2Api(dio).ask(
+        paperId: _paperId,
+        generation: 7,
+        question: 'What changed?',
+        scope: const AssistantRequestScope.paper(),
+        answerStyle: AssistantAnswerStyle.concise,
+        anonymousSessionId: 'session-for-introduction',
+      );
+
+      expect(adapter.path, '/v1/papers/$_paperId/assistant');
+      expect(adapter.sessionId, 'session-for-introduction');
+      expect(answer.claims.single.evidence.single.blockId, _blockId);
+    },
+  );
+
   test('posts exact evidence feedback target and decodes receipt', () async {
     final adapter = _Adapter();
     final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test'))
@@ -369,6 +391,7 @@ final class _Adapter implements HttpClientAdapter {
   String path = '';
   int fetches = 0;
   Duration? receiveTimeout;
+  String? sessionId;
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
@@ -378,6 +401,7 @@ final class _Adapter implements HttpClientAdapter {
     fetches += 1;
     path = options.path;
     receiveTimeout = options.receiveTimeout;
+    sessionId = options.headers['X-Session-Id']?.toString();
     final bytes = <int>[];
     if (requestStream != null) {
       await for (final chunk in requestStream) {

@@ -10,6 +10,7 @@ use std::{
 };
 
 use accounts::{AccountPolicy, AccountPolicyError, IdentityFingerprintKeyring};
+use anyhow::Context as _;
 use arxiv_client::ArxivClientConfig;
 use auth::{OidcAlgorithm, OidcVerifierConfig};
 use axum::http::{HeaderMap, HeaderValue};
@@ -274,6 +275,8 @@ pub struct ApiConfig {
     pub fulltext_policy: FulltextPolicy,
     pub embedding_dimension: Option<usize>,
     pub llm: Option<ApiModelConfig>,
+    /// Optional Assistant V2 chat provider; the main LLM keeps its embedding role.
+    pub assistant_llm: Option<Box<OpenAiCompatibleConfig>>,
     pub prepare_requests_per_minute: u32,
     pub chat_requests_per_minute: u32,
 }
@@ -1440,6 +1443,7 @@ impl ApiConfig {
             .transpose()?;
         let (embedding_dimension, llm) =
             provider_config_from_env(environment, configured_embedding_dimension)?;
+        let assistant_llm = assistant_provider_config_from_env(environment, features.assistant_v2)?;
         let default_chat_timeout = llm
             .as_ref()
             .map_or(Duration::from_secs(65), ApiModelConfig::request_timeout)
@@ -1479,6 +1483,7 @@ impl ApiConfig {
                 .parse()?,
             embedding_dimension,
             llm,
+            assistant_llm,
             prepare_requests_per_minute: env_parse_alias(
                 &[
                     "PREPARE_RATE_LIMIT_PER_MINUTE",
@@ -1497,6 +1502,9 @@ impl ApiConfig {
 
     fn validate(&self) -> anyhow::Result<()> {
         self.features.validate()?;
+        if self.assistant_llm.is_some() && !self.features.assistant_v2 {
+            anyhow::bail!("ASSISTANT_LLM_PROVIDER requires ASSISTANT_V2_ENABLED");
+        }
         self.paper_resolution
             .validate(self.arxiv.minimum_interval, self.arxiv_cache_ttl)?;
         self.reading_feed.validate()?;
@@ -1759,6 +1767,60 @@ fn provider_config_from_env(
         embedding_dimension,
         Some(ApiModelConfig::OpenAiCompatible(Box::new(config))),
     ))
+}
+
+fn assistant_provider_config_from_env(
+    environment: ApiEnvironment,
+    assistant_enabled: bool,
+) -> anyhow::Result<Option<Box<OpenAiCompatibleConfig>>> {
+    let Some(provider) = std::env::var("ASSISTANT_LLM_PROVIDER")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return Ok(None);
+    };
+    if !assistant_enabled {
+        anyhow::bail!("ASSISTANT_LLM_PROVIDER requires ASSISTANT_V2_ENABLED");
+    }
+    if !provider.eq_ignore_ascii_case("openai_compatible") {
+        anyhow::bail!("ASSISTANT_LLM_PROVIDER must be openai_compatible");
+    }
+    let mut config = OpenAiCompatibleConfig::default();
+    let base_url =
+        std::env::var("ASSISTANT_LLM_BASE_URL").context("ASSISTANT_LLM_BASE_URL is required")?;
+    config.base_url = Url::parse(&base_url).context("ASSISTANT_LLM_BASE_URL is invalid")?;
+    config.require_https = environment.is_deployed();
+    config.api_key = assistant_model_api_key(environment)?;
+    config.chat_model = std::env::var("ASSISTANT_LLM_CHAT_MODEL")
+        .context("ASSISTANT_LLM_CHAT_MODEL is required")?;
+    config.request_timeout = Duration::from_secs(env_parse("LLM_TIMEOUT_SECONDS", 60_u64)?);
+    config.maximum_response_bytes = env_parse("LLM_MAX_RESPONSE_BYTES", 4 * 1024 * 1024_usize)?;
+    config.maximum_retries = env_parse("LLM_MAX_RETRIES", 2_usize)?;
+    Ok(Some(Box::new(config)))
+}
+
+fn assistant_model_api_key(environment: ApiEnvironment) -> anyhow::Result<Option<SecretString>> {
+    let inline = std::env::var("ASSISTANT_LLM_API_KEY")
+        .ok()
+        .filter(|value| !value.is_empty());
+    let file = std::env::var("ASSISTANT_LLM_API_KEY_FILE")
+        .ok()
+        .filter(|value| !value.is_empty());
+    if inline.is_some() && file.is_some() {
+        anyhow::bail!("set only one of ASSISTANT_LLM_API_KEY or ASSISTANT_LLM_API_KEY_FILE");
+    }
+    if environment.is_deployed() && inline.is_some() {
+        anyhow::bail!(
+            "ASSISTANT_LLM_API_KEY_FILE is required instead of ASSISTANT_LLM_API_KEY in deployed APIs"
+        );
+    }
+    if let Some(path) = file {
+        return Ok(Some(SecretString::from(read_secret_file(
+            "ASSISTANT_LLM_API_KEY_FILE",
+            Path::new(&path),
+        )?)));
+    }
+    Ok(inline.map(SecretString::from))
 }
 
 fn model_api_key(environment: ApiEnvironment) -> anyhow::Result<Option<SecretString>> {
@@ -2937,6 +2999,7 @@ mod tests {
             fulltext_policy: FulltextPolicy::Strict,
             embedding_dimension: None,
             llm: None,
+            assistant_llm: None,
             prepare_requests_per_minute: 30,
             chat_requests_per_minute: 10,
         }

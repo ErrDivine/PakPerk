@@ -1,4 +1,6 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/core/models/introduction.dart';
@@ -11,6 +13,20 @@ import 'package:pakperk/features/paper_reader/paper_processing_controller.dart';
 import 'package:pakperk/features/paper_reader/paper_reader.dart';
 
 import '../support/fakes.dart';
+
+Future<void> tapInlineMarker(WidgetTester tester, int offset) async {
+  final paragraph = tester.renderObject<RenderParagraph>(
+    find.descendant(
+      of: find.byKey(const ValueKey('introduction-paragraph-0')),
+      matching: find.byType(RichText),
+    ),
+  );
+  final caret = paragraph.getOffsetForCaret(
+    TextPosition(offset: offset),
+    Rect.zero,
+  );
+  await tester.tapAt(paragraph.localToGlobal(caret + const Offset(3, 8)));
+}
 
 void main() {
   testWidgets(
@@ -47,25 +63,75 @@ void main() {
         ),
       );
 
-      final link = find.byKey(const ValueKey('citation-marker-0-0'));
-      expect(link, findsOneWidget);
-      final linkSize = tester.getSize(link);
-      expect(linkSize.width, greaterThanOrEqualTo(44));
-      expect(linkSize.height, greaterThanOrEqualTo(44));
-      final linkSemantics = tester.getSemantics(link);
-      expect(linkSemantics.label, '[1], citation to Resolved paper');
-      expect(linkSemantics.flagsCollection.isLink, isTrue);
-      expect(find.byKey(const ValueKey('citation-marker-0-1')), findsNothing);
       final text = tester.widget<Text>(
         find.byKey(const ValueKey('introduction-paragraph-0')),
       );
-      expect(text.textSpan!.toPlainText(), contains('[2]'));
-
-      await tester.tap(link);
+      expect(
+        text.textSpan!.toPlainText(includeSemanticsLabels: false),
+        'We use [1] but retain [2].',
+      );
+      final spans = (text.textSpan! as TextSpan).children!.cast<TextSpan>();
+      expect(spans.where((span) => span.text == '[1]'), hasLength(1));
+      final link = spans.singleWhere((span) => span.text == '[1]');
+      expect(link.recognizer, isA<TapGestureRecognizer>());
+      expect(link.semanticsLabel, '[1], citation to Resolved paper');
+      await tapInlineMarker(tester, 7);
       expect(opened?.references.single.paperId, 'paper-2');
       semantics.dispose();
     },
   );
+
+  testWidgets('compound citation stays in one clickable inline span', (
+    tester,
+  ) async {
+    const paragraph = IntroductionParagraph(
+      ordinal: 0,
+      text: 'Résumé cites [51, 52]. While this continues.',
+      citations: [
+        IntroductionCitation(
+          start: 13,
+          end: 21,
+          marker: '[51, 52]',
+          references: [
+            IntroductionCitationReference(paperId: 'first', title: 'First'),
+            IntroductionCitationReference(paperId: 'second', title: 'Second'),
+          ],
+        ),
+      ],
+    );
+    IntroductionCitation? opened;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 180,
+            child: IntroductionParagraphText(
+              paragraph: paragraph,
+              onOpenCitation: (citation) => opened = citation,
+            ),
+          ),
+        ),
+      ),
+    );
+    final text = tester.widget<Text>(
+      find.byKey(const ValueKey('introduction-paragraph-0')),
+    );
+    expect(
+      text.textSpan!.toPlainText(includeSemanticsLabels: false),
+      paragraph.text,
+    );
+    final spans = (text.textSpan! as TextSpan).children!;
+    expect(spans.whereType<WidgetSpan>(), isEmpty);
+    final marker = spans.whereType<TextSpan>().singleWhere(
+      (span) => span.text == '[51, 52]',
+    );
+    expect(marker.recognizer, isA<TapGestureRecognizer>());
+    await tapInlineMarker(tester, 13);
+    expect(opened?.references.map((reference) => reference.paperId), [
+      'first',
+      'second',
+    ]);
+  });
 
   testWidgets('nested Introduction heading renders as a semantic subheading', (
     tester,

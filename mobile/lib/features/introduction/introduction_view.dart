@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/feature_flags.dart';
 import '../../app/router.dart';
 import '../../core/models/introduction.dart';
 import '../../core/models/paper.dart';
@@ -196,7 +198,7 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
     _ask(value, chatEnabled);
   }
 
-  Future<void> _openChat(bool chatEnabled) async {
+  Future<void> _openChat(bool chatEnabled, {String? initialQuestion}) async {
     if (_chatRouteOpen || !mounted) return;
     setState(() => _chatRouteOpen = true);
     try {
@@ -207,6 +209,11 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
           readerKey: widget.readerKey,
           paperTitle: widget.paper.title,
           chatEnabled: chatEnabled,
+          paperVersionKey: widget.paper.versionKey,
+          generation: widget.processing.processing?.generation,
+          initialQuestion: initialQuestion,
+          submitInitialQuestion: initialQuestion != null,
+          anonymousSessionId: ref.read(anonymousSessionIdProvider),
         ),
       );
     } finally {
@@ -215,6 +222,10 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
   }
 
   void _ask(String question, bool chatEnabled) {
+    if (ref.read(appBuildConfigProvider).features.assistantV2) {
+      unawaited(_openChat(chatEnabled, initialQuestion: question));
+      return;
+    }
     unawaited(_openChat(chatEnabled));
     unawaited(
       ref.read(chatControllerProvider(_chatArgs).notifier).send(question),
@@ -428,7 +439,7 @@ class _IntroductionContent extends StatelessWidget {
   }
 }
 
-class IntroductionParagraphText extends StatelessWidget {
+class IntroductionParagraphText extends StatefulWidget {
   const IntroductionParagraphText({
     required this.paragraph,
     required this.onOpenCitation,
@@ -439,7 +450,24 @@ class IntroductionParagraphText extends StatelessWidget {
   final ValueChanged<IntroductionCitation> onOpenCitation;
 
   @override
+  State<IntroductionParagraphText> createState() =>
+      _IntroductionParagraphTextState();
+}
+
+class _IntroductionParagraphTextState extends State<IntroductionParagraphText> {
+  final List<TapGestureRecognizer> _citationRecognizers = [];
+
+  @override
+  void dispose() {
+    for (final recognizer in _citationRecognizers) {
+      recognizer.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final paragraph = widget.paragraph;
     final characters = paragraph.text.runes.toList(growable: false);
     final citations = [...paragraph.citations]
       ..sort((left, right) => left.start.compareTo(right.start));
@@ -473,22 +501,20 @@ class IntroductionParagraphText extends StatelessWidget {
         );
       }
       final citationIndex = renderedCitationIndex++;
+      if (citationIndex == _citationRecognizers.length) {
+        _citationRecognizers.add(TapGestureRecognizer());
+      }
+      final recognizer = _citationRecognizers[citationIndex]
+        ..onTap = () => widget.onOpenCitation(citation);
       final titles = citation.references
           .map((reference) => reference.title)
           .join(', ');
       spans.add(
-        WidgetSpan(
-          alignment: PlaceholderAlignment.baseline,
-          baseline: TextBaseline.alphabetic,
-          child: _CitationLink(
-            key: ValueKey(
-              'citation-marker-${paragraph.ordinal}-$citationIndex',
-            ),
-            marker: citation.marker,
-            semanticsLabel: '${citation.marker}, citation to $titles',
-            style: linkStyle,
-            onTap: () => onOpenCitation(citation),
-          ),
+        TextSpan(
+          text: citation.marker,
+          style: linkStyle,
+          recognizer: recognizer,
+          semanticsLabel: citation.marker + ', citation to ' + titles,
         ),
       );
       cursor = citation.end;
@@ -501,75 +527,7 @@ class IntroductionParagraphText extends StatelessWidget {
     return SelectionArea(
       child: Text.rich(
         TextSpan(style: bodyStyle, children: spans),
-        key: ValueKey('introduction-paragraph-${paragraph.ordinal}'),
-      ),
-    );
-  }
-}
-
-class _CitationLink extends StatefulWidget {
-  const _CitationLink({
-    required this.marker,
-    required this.semanticsLabel,
-    required this.style,
-    required this.onTap,
-    super.key,
-  });
-
-  final String marker;
-  final String semanticsLabel;
-  final TextStyle? style;
-  final VoidCallback onTap;
-
-  @override
-  State<_CitationLink> createState() => _CitationLinkState();
-}
-
-class _CitationLinkState extends State<_CitationLink> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final reducedMotion = platformPrefersReducedMotion(context);
-    return Semantics(
-      container: true,
-      link: true,
-      label: widget.semanticsLabel,
-      child: ExcludeSemantics(
-        child: AnimatedScale(
-          scale: _pressed ? .98 : 1,
-          duration: reducedMotion
-              ? PakPerkMotion.instant
-              : const Duration(milliseconds: 80),
-          curve: Curves.easeOut,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onHighlightChanged: (pressed) {
-                if (_pressed != pressed) setState(() => _pressed = pressed);
-              },
-              overlayColor: WidgetStateProperty.resolveWith((states) {
-                if (states.contains(WidgetState.pressed)) {
-                  return colors.primary.withValues(alpha: .12);
-                }
-                if (states.contains(WidgetState.focused)) {
-                  return colors.primary.withValues(alpha: .09);
-                }
-                if (states.contains(WidgetState.hovered)) {
-                  return colors.primary.withValues(alpha: .06);
-                }
-                return null;
-              }),
-              onTap: widget.onTap,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-                child: Center(child: Text(widget.marker, style: widget.style)),
-              ),
-            ),
-          ),
-        ),
+        key: ValueKey('introduction-paragraph-' + paragraph.ordinal.toString()),
       ),
     );
   }

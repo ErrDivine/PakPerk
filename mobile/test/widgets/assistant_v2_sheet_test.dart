@@ -11,10 +11,61 @@ import 'package:pakperk/app/library_providers.dart';
 import 'package:pakperk/core/models/assistant_v2.dart';
 import 'package:pakperk/core/models/paper_passport.dart';
 import 'package:pakperk/core/models/provenance.dart';
+import 'package:pakperk/core/providers.dart';
 import 'package:pakperk/features/chat/assistant_v2_sheet.dart';
 import 'package:pakperk/features/passport/paper_passport_card.dart';
 
+import '../support/fakes.dart';
+
 void main() {
+  testWidgets(
+    'anonymous Introduction question uses Assistant V2 and shows evidence',
+    (tester) async {
+      final adapter = _AssistantAdapter();
+      final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test'))
+        ..httpClientAdapter = adapter;
+      final container = ProviderContainer(
+        overrides: [
+          pakPerkDioProvider.overrideWithValue(dio),
+          localStoreProvider.overrideWithValue(MemoryLocalStore()),
+        ],
+      );
+      addTearDown(container.dispose);
+      final sessionId = container.read(anonymousSessionIdProvider);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: AssistantV2Sheet(
+                paperId: _paperId,
+                readerKey: 'introduction-reader',
+                paperTitle: 'Introduction paper',
+                generation: 7,
+                scope: const AssistantRequestScope.paper(),
+                anonymousSessionId: sessionId,
+                initialQuestion: 'What changed?',
+                submitInitialQuestion: true,
+                enabled: true,
+                onClose: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(adapter.lastRequestPath, '/v1/papers/$_paperId/assistant');
+      expect(
+        find.byKey(const ValueKey('assistant-claim-text-0')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Open exact source'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'generation change cancels the request, clears stale answer, and keeps draft',
     (tester) async {

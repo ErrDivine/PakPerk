@@ -1107,6 +1107,7 @@ mod tests {
             fulltext_policy: FulltextPolicy::Prototype,
             embedding_dimension: None,
             llm: None,
+            assistant_llm: None,
             prepare_requests_per_minute: 10,
             chat_requests_per_minute: 10,
         }

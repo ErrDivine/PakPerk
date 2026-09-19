@@ -900,6 +900,127 @@ mod tests {
     }
 
     #[test]
+    fn introduction_projection_repairs_stored_split_groups_and_punctuation() {
+        let text = "Résumé [51, 52] . Then [20, 26, 48] and [64, 55] .";
+        let citation = |marker: &str, ordinal: usize| {
+            let byte_start = text.find(marker).unwrap();
+            let start = text[..byte_start].chars().count();
+            serde_json::json!({
+                "start": start,
+                "end": start + marker.chars().count(),
+                "marker": marker,
+                "reference_ordinals": [ordinal]
+            })
+        };
+        let rows = vec![IntroductionSectionRow {
+            heading: Some("Introduction".to_owned()),
+            paragraphs: serde_json::json!([{
+                "ordinal": 0,
+                "text": text,
+                "citations": [
+                    citation("[51,", 0), citation("52]", 1),
+                    citation("[20,", 2), citation("26,", 3),
+                    citation("48]", 4), citation("[64,", 5)
+                ]
+            }]),
+            detection_confidence: Some(0.99),
+        }];
+        let resolved = (0..6)
+            .filter(|ordinal| *ordinal != 4)
+            .map(|ordinal| IntroductionResolvedReferenceRow {
+                ordinal,
+                paper_id: Uuid::new_v4(),
+                title: format!("Reference {ordinal}"),
+                context_text: None,
+            })
+            .collect();
+        let (_, _, paragraphs) = build_introduction_content(rows, resolved).unwrap();
+        let paragraph = &paragraphs[0];
+        assert_eq!(
+            paragraph.text,
+            "Résumé [51, 52]. Then [20, 26, 48] and [64, 55]."
+        );
+        assert_eq!(
+            paragraph
+                .citations
+                .iter()
+                .map(|citation| citation.marker.as_str())
+                .collect::<Vec<_>>(),
+            ["[51, 52]", "[20, 26, 48]", "[64, 55]"]
+        );
+        assert_eq!(
+            paragraph
+                .citations
+                .iter()
+                .map(|citation| citation.references.len())
+                .collect::<Vec<_>>(),
+            [2, 2, 1]
+        );
+        for citation in &paragraph.citations {
+            assert_eq!(
+                paragraph
+                    .text
+                    .chars()
+                    .skip(citation.start)
+                    .take(citation.end - citation.start)
+                    .collect::<String>(),
+                citation.marker
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_group_keeps_resolved_members_when_another_target_is_unavailable() {
+        let first = Uuid::new_v4();
+        let second = Uuid::new_v4();
+        let text = "Résumé [20, 26, 48] remains readable.";
+        let start = text.find('[').unwrap();
+        let end = text.find(']').unwrap() + 1;
+        let start = text[..start].chars().count();
+        let end = text[..end].chars().count();
+        let rows = vec![IntroductionSectionRow {
+            heading: Some("Introduction".to_owned()),
+            paragraphs: serde_json::json!([{
+                "ordinal": 0,
+                "text": text,
+                "citations": [{
+                    "start": start,
+                    "end": end,
+                    "marker": "[20, 26, 48]",
+                    "reference_ordinals": [0, 1, 2]
+                }]
+            }]),
+            detection_confidence: Some(0.99),
+        }];
+        let resolved = vec![
+            IntroductionResolvedReferenceRow {
+                ordinal: 0,
+                paper_id: first,
+                title: "First".to_owned(),
+                context_text: None,
+            },
+            IntroductionResolvedReferenceRow {
+                ordinal: 1,
+                paper_id: second,
+                title: "Second".to_owned(),
+                context_text: None,
+            },
+        ];
+        let (_, _, paragraphs) = build_introduction_content(rows, resolved).unwrap();
+        assert_eq!(paragraphs[0].citations.len(), 1);
+        let citation = &paragraphs[0].citations[0];
+        assert_eq!(citation.marker, "[20, 26, 48]");
+        assert_eq!(
+            citation
+                .references
+                .iter()
+                .map(|reference| reference.paper_id)
+                .collect::<Vec<_>>(),
+            [first, second]
+        );
+    }
+
+    #[test]
     fn legacy_numeric_citations_handle_unicode_lists_ranges_and_unresolved_markers() {
         let resolved_references = [0usize, 1, 2, 3, 4, 11]
             .into_iter()

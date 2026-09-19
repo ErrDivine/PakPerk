@@ -676,7 +676,6 @@ void main() {
         'PAKPERK_EVIDENCE_CARDS_ENABLED',
         'PAKPERK_RESEARCH_MEMORY_ENABLED',
         'PAKPERK_VERSION_DIFF_ENABLED',
-        'PAKPERK_ASSISTANT_V2_ENABLED',
       ]) {
         expect(
           () => AppBuildConfig.fromValues({key: 'true'}),
@@ -684,6 +683,12 @@ void main() {
           reason: key,
         );
       }
+
+      final assistantOnly = AppBuildConfig.fromValues(const {
+        'PAKPERK_ASSISTANT_V2_ENABLED': 'true',
+      });
+      expect(assistantOnly.features.assistantV2, isTrue);
+      expect(assistantOnly.features.deepReader, isFalse);
 
       final enabled = AppBuildConfig.fromValues({
         ...accountValues,
