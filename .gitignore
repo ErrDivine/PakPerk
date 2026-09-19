@@ -29,3 +29,4 @@ __pycache__/
 .idea/
 .vscode/
 intro_rag.json
+.assistant-tools-target/
