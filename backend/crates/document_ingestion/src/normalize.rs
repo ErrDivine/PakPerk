@@ -129,7 +129,29 @@ fn normalize_blocks(
                 .ok_or(ParseError::InvalidOutput)?;
         }
     }
+    disambiguate_repeated_block_keys(&mut blocks)?;
     Ok(blocks)
+}
+
+// Identical headings (or repeated paragraph text) can share the same content-
+// based key when GROBID emits separate sections with the same heading path.
+// Preserve the first key for existing anchors and number only later occurrences.
+fn disambiguate_repeated_block_keys(blocks: &mut [DocumentBlock]) -> Result<(), ParseError> {
+    let mut occurrences = HashMap::<String, u32>::new();
+    let mut unique_keys = HashSet::new();
+    for block in blocks {
+        let original_key = block.stable_key.clone();
+        let occurrence = occurrences.entry(original_key.clone()).or_insert(0);
+        if *occurrence > 0 {
+            block.stable_key =
+                stable_block_key(&[original_key], block.kind, *occurrence, &block.text);
+        }
+        *occurrence = occurrence.checked_add(1).ok_or(ParseError::InvalidOutput)?;
+        if !unique_keys.insert(block.stable_key.clone()) {
+            return Err(ParseError::InvalidOutput);
+        }
+    }
+    Ok(())
 }
 
 fn normalize_figures(

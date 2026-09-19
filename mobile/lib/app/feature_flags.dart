@@ -632,11 +632,6 @@ class AppBuildConfig {
         'Version comparison requires the deep reader.',
       );
     }
-    if (features.assistantV2 && !features.deepReader) {
-      throw BuildConfigurationException(
-        'Assistant v2 requires the deep reader.',
-      );
-    }
 
     final oidcIssuerUri = _optionalUri(
       values[_oidcIssuerUrlKey],

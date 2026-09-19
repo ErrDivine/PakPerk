@@ -148,6 +148,21 @@ This minimal command leaves accounts and other optional product capabilities
 off. The installed app is `PakPerk Dev` with Android application ID
 `app.pakperk.pakperk.dev`.
 
+On Windows, Kotlin incremental compilation can fail with `this and base files
+have different roots` when the Pub cache and checkout are on different drives.
+For that machine, run the same `flutter run` command from PowerShell with this
+setting in the current terminal session:
+
+```powershell
+$env:GRADLE_OPTS = '-Dorg.gradle.project.kotlin.incremental=false'
+```
+
+This disables Kotlin incremental compilation for Gradle builds started in that
+PowerShell session; it does not disable Gradle dependency verification or
+change pinned versions.
+Keep the ordinary Pub cache if the build succeeds with this setting. A clean
+checkout or `flutter clean` is not required.
+
 After the feed appears, verify the USB mapping from another terminal:
 
 ```bash

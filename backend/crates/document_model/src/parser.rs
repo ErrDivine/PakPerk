@@ -82,7 +82,6 @@ struct CitationMarker {
 struct ObjectReferenceMarker {
     kind: ParsedTeiObjectKind,
     targets: Vec<String>,
-    marker: String,
     start_sentinel: Option<char>,
     end_sentinel: Option<char>,
 }
@@ -626,7 +625,6 @@ fn inline_text(node: &XmlElement) -> InlineText {
                         object_references.push(ObjectReferenceMarker {
                             kind,
                             targets,
-                            marker: marker.clone(),
                             start_sentinel,
                             end_sentinel,
                         });
@@ -688,7 +686,7 @@ fn normalize_inline_text(
     Vec<ParsedCitationMarker>,
     Vec<NormalizedObjectReferenceMarker>,
 ) {
-    let normalized = normalize_text(&inline.text);
+    let normalized = normalize_inline_punctuation(&normalize_text(&inline.text));
     let mut sentinels = HashMap::new();
     for (index, citation) in inline.citations.iter().enumerate() {
         if let Some(sentinel) = citation.start_sentinel {
@@ -748,26 +746,133 @@ fn normalize_inline_text(
             (!reference_ordinals.is_empty()).then(|| ParsedCitationMarker {
                 start,
                 end,
-                marker: citation.marker.clone(),
+                marker: text.chars().skip(start).take(end - start).collect(),
                 reference_ordinals,
             })
         })
         .collect();
+    let citations = group_numeric_citations(&text, citations);
     let object_references = inline
         .object_references
         .iter()
         .enumerate()
         .filter_map(|(index, reference)| {
+            let start = object_starts[index]?;
+            let end = object_ends[index]?;
             Some(NormalizedObjectReferenceMarker {
                 kind: reference.kind,
                 targets: reference.targets.clone(),
-                marker: reference.marker.clone(),
-                start: object_starts[index]?,
-                end: object_ends[index]?,
+                marker: text.chars().skip(start).take(end - start).collect(),
+                start,
+                end,
             })
         })
         .collect();
     (text, citations, object_references)
+}
+
+fn normalize_inline_punctuation(text: &str) -> String {
+    static SPACE_BEFORE_PUNCTUATION: OnceLock<Regex> = OnceLock::new();
+    SPACE_BEFORE_PUNCTUATION
+        .get_or_init(|| Regex::new(r"\s+([.,;:!?])").expect("inline punctuation regex is valid"))
+        .replace_all(text, "$1")
+        .into_owned()
+}
+
+fn group_numeric_citations(
+    text: &str,
+    citations: Vec<ParsedCitationMarker>,
+) -> Vec<ParsedCitationMarker> {
+    static NUMERIC_GROUP: OnceLock<Regex> = OnceLock::new();
+    let groups = NUMERIC_GROUP.get_or_init(|| {
+        Regex::new(r"\[[0-9][0-9, \t\-–]*\]").expect("numeric citation regex is valid")
+    });
+    let mut consumed = vec![false; citations.len()];
+    let mut grouped = Vec::new();
+    for group in groups.find_iter(text) {
+        let start = text[..group.start()].chars().count();
+        let end = start + group.as_str().chars().count();
+        let members = citations
+            .iter()
+            .enumerate()
+            .filter(|(_, citation)| {
+                citation.start >= start
+                    && citation.end <= end
+                    && text
+                        .chars()
+                        .skip(citation.start)
+                        .take(citation.end - citation.start)
+                        .collect::<String>()
+                        == citation.marker
+            })
+            .collect::<Vec<_>>();
+        if members.is_empty() {
+            continue;
+        }
+        let mut reference_ordinals = Vec::new();
+        for (index, citation) in members {
+            consumed[index] = true;
+            for ordinal in &citation.reference_ordinals {
+                if !reference_ordinals.contains(ordinal) {
+                    reference_ordinals.push(*ordinal);
+                }
+            }
+        }
+        grouped.push(ParsedCitationMarker {
+            start,
+            end,
+            marker: group.as_str().to_owned(),
+            reference_ordinals,
+        });
+    }
+    grouped.extend(
+        citations
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, citation)| (!consumed[index]).then_some(citation)),
+    );
+    grouped.sort_by_key(|citation| citation.start);
+    grouped
+}
+
+/// Repair citation ranges and punctuation in paragraphs persisted by older parsers.
+/// Offsets remain Unicode scalar positions, as required by the API.
+pub fn normalize_persisted_paragraph(paragraph: &mut ParsedParagraph) {
+    paragraph.citations =
+        group_numeric_citations(&paragraph.text, std::mem::take(&mut paragraph.citations));
+    let characters = paragraph.text.chars().collect::<Vec<_>>();
+    let mut positions = vec![0; characters.len() + 1];
+    let mut normalized = String::with_capacity(paragraph.text.len());
+    let mut next_offset = 0;
+    for (index, character) in characters.iter().enumerate() {
+        positions[index] = next_offset;
+        let next_visible = characters[index + 1..]
+            .iter()
+            .find(|next| !next.is_whitespace());
+        if character.is_whitespace()
+            && next_visible.is_some_and(|next| matches!(*next, '.' | ',' | ';' | ':' | '!' | '?'))
+        {
+            continue;
+        }
+        normalized.push(*character);
+        next_offset += 1;
+    }
+    positions[characters.len()] = next_offset;
+    if normalized == paragraph.text {
+        return;
+    }
+    let normalized_chars = normalized.chars().collect::<Vec<_>>();
+    for citation in &mut paragraph.citations {
+        if citation.end > characters.len() || citation.start > citation.end {
+            continue;
+        }
+        citation.start = positions[citation.start];
+        citation.end = positions[citation.end];
+        citation.marker = normalized_chars[citation.start..citation.end]
+            .iter()
+            .collect();
+    }
+    paragraph.text = normalized;
 }
 
 fn element_text(node: &XmlElement) -> String {
@@ -1589,6 +1694,46 @@ mod tests {
                     .take(reference.end - reference.start)
                     .collect::<String>(),
                 reference.marker
+            );
+        }
+    }
+
+    #[test]
+    fn groups_split_numeric_citations_and_keeps_scalar_offsets() {
+        let xml = r##"<TEI><text><body><div><head>Introduction</head><p>
+            Résumé base <ref type="bibr" target="#b0">[51,</ref>
+            <ref type="bibr" target="#b1">52]</ref> . More
+            <ref type="bibr" target="#b2">[20,</ref>
+            <ref type="bibr" target="#b3">26,</ref>
+            <ref type="bibr" target="#missing">48]</ref> and
+            <ref type="bibr" target="#b4">[64,</ref> 55] .
+        </p></div></body></text><back><listBibl>
+            <biblStruct xml:id="b0"><analytic><title>One</title></analytic></biblStruct>
+            <biblStruct xml:id="b1"><analytic><title>Two</title></analytic></biblStruct>
+            <biblStruct xml:id="b2"><analytic><title>Three</title></analytic></biblStruct>
+            <biblStruct xml:id="b3"><analytic><title>Four</title></analytic></biblStruct>
+            <biblStruct xml:id="b4"><analytic><title>Five</title></analytic></biblStruct>
+        </listBibl></back></TEI>"##;
+        let paper = parse_tei(xml).unwrap();
+        let paragraph = &paper.sections[0].paragraphs[0];
+        assert!(paragraph.text.contains("[51, 52]. More"));
+        assert!(paragraph.text.contains("[64, 55]."));
+        assert_eq!(paragraph.citations.len(), 3);
+        for (citation, (marker, ordinals)) in paragraph.citations.iter().zip([
+            ("[51, 52]", vec![0, 1]),
+            ("[20, 26, 48]", vec![2, 3]),
+            ("[64, 55]", vec![4]),
+        ]) {
+            assert_eq!(citation.marker, marker);
+            assert_eq!(citation.reference_ordinals, ordinals);
+            assert_eq!(
+                paragraph
+                    .text
+                    .chars()
+                    .skip(citation.start)
+                    .take(citation.end - citation.start)
+                    .collect::<String>(),
+                citation.marker
             );
         }
     }

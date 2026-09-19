@@ -15,7 +15,8 @@ final class AssistantV2Api {
     required String question,
     required AssistantRequestScope scope,
     required AssistantAnswerStyle answerStyle,
-    required int expectedAuthEpoch,
+    int? expectedAuthEpoch,
+    String? anonymousSessionId,
     String? threadId,
     RequestCancellation? cancellation,
   }) async {
@@ -23,7 +24,9 @@ final class AssistantV2Api {
     if (!isValidAssistantUuid(paperId) ||
         generation <= 0 ||
         generation > _signed32Maximum ||
-        expectedAuthEpoch < 0 ||
+        (expectedAuthEpoch == null) == (anonymousSessionId == null) ||
+        (expectedAuthEpoch != null && expectedAuthEpoch < 0) ||
+        (anonymousSessionId != null && anonymousSessionId.trim().isEmpty) ||
         normalizedQuestion.isEmpty ||
         normalizedQuestion.runes.length > 500 ||
         normalizedQuestion.contains('\u0000') ||
@@ -43,9 +46,14 @@ final class AssistantV2Api {
         },
         options: pakPerkRequestOptions(
           receiveTimeout: const Duration(seconds: 65),
-          auth: RequestAuthPolicy.required,
+          auth: anonymousSessionId == null
+              ? RequestAuthPolicy.required
+              : RequestAuthPolicy.none,
           retry: AuthRetryPolicy.never,
           expectedAuthEpoch: expectedAuthEpoch,
+          headers: anonymousSessionId == null
+              ? null
+              : {'X-Session-Id': anonymousSessionId},
         ),
         cancelToken: cancellation?.dioToken,
       );

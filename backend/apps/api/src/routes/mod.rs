@@ -675,6 +675,7 @@ mod tests {
             llm: Some(ApiModelConfig::Deterministic {
                 embedding_dimension: 8,
             }),
+            assistant_llm: None,
             prepare_requests_per_minute: 10,
             chat_requests_per_minute: 10,
         }

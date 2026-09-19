@@ -323,6 +323,10 @@ impl PaperRepository {
                 introduction_ready,
                 chat_ready,
                 connections_ready,
+                visual_objects_ready,
+                terms_ready,
+                semantic_facets_ready,
+                paper_passport_ready,
                 retryable,
                 last_error_category,
                 last_error_code,
@@ -383,7 +387,7 @@ impl PaperRepository {
                     available_at, preparation_trigger_kind, payload
                 )
                 VALUES ($1, $2, $3, 'queued', 0, now(), $4, '{}'::jsonb)
-                ON CONFLICT (paper_id, generation, job_type) DO UPDATE
+                ON CONFLICT (paper_id, generation, job_type, identity_key) DO UPDATE
                 SET state = 'queued',
                     attempts = 0,
                     available_at = now(),

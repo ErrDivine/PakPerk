@@ -11,6 +11,7 @@ async-trait.workspace = true
 base64.workspace = true
 chrono.workspace = true
 domain.workspace = true
+document_model.workspace = true
 discovery_search.workspace = true
 engagement.workspace = true
 jobs.workspace = true

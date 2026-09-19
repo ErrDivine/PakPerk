@@ -54,7 +54,8 @@ impl ScholarlyDocumentParser for GrobidAdapter {
 #[cfg(test)]
 mod tests {
     use domain::{
-        EquationConfidenceStatus, FigureExtractionStatus, InlineSpanKind, TableExtractionStatus,
+        DocumentBlockKind, EquationConfidenceStatus, FigureExtractionStatus, InlineSpanKind,
+        TableExtractionStatus, stable_block_key,
     };
     use uuid::Uuid;
 
@@ -134,5 +135,55 @@ mod tests {
             span.kind == InlineSpanKind::EquationReference
                 && span.target_id.as_deref() == Some(&equation.id.to_string())
         }));
+    }
+    #[tokio::test]
+    async fn repeated_sections_keep_distinct_stable_block_keys() {
+        let tei = r#"<TEI><text><body>
+            <div><head>Repeated heading</head><p>Identical paragraph text.</p></div>
+            <div><head>Repeated heading</head><p>Identical paragraph text.</p></div>
+        </body></text></TEI>"#;
+        let input = ParseInput {
+            paper_id: Uuid::now_v7(),
+            generation: 1,
+            arxiv_version: 1,
+            payload: ParsePayload::GrobidTei(tei.to_owned()),
+        };
+        let adapter = GrobidAdapter::new("0.9.0").unwrap();
+        let first = adapter.parse(input.clone()).await.unwrap();
+        let second = adapter.parse(input).await.unwrap();
+        let keys = first
+            .blocks
+            .iter()
+            .map(|block| block.stable_key.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(keys.len(), 4);
+        assert_eq!(
+            keys.iter()
+                .copied()
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            4
+        );
+        assert_eq!(
+            first
+                .blocks
+                .iter()
+                .map(|block| &block.stable_key)
+                .collect::<Vec<_>>(),
+            second
+                .blocks
+                .iter()
+                .map(|block| &block.stable_key)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            first.blocks[0].stable_key,
+            stable_block_key(
+                &["Repeated heading".to_owned()],
+                DocumentBlockKind::Heading,
+                0,
+                "Repeated heading"
+            )
+        );
     }
 }

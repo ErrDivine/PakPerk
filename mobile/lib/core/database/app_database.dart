@@ -547,7 +547,7 @@ class PakPerkDatabase extends _$PakPerkDatabase {
         name: 'pakperk_content',
         native: DriftNativeOptions(
           shareAcrossIsolates: true,
-          databasePath: () => path,
+          databasePath: _productionDatabasePath,
         ),
       ),
       path,

@@ -197,6 +197,7 @@ class PaperChatRouteData {
     this.assistantScope = const AssistantRequestScope.paper(),
     this.initialQuestion,
     this.submitInitialQuestion = false,
+    this.anonymousSessionId,
   });
 
   final String paperId;
@@ -208,6 +209,7 @@ class PaperChatRouteData {
   final AssistantRequestScope assistantScope;
   final String? initialQuestion;
   final bool submitInitialQuestion;
+  final String? anonymousSessionId;
 
   String? get normalizedInitialQuestion {
     final normalized = initialQuestion?.trim();
@@ -1483,6 +1485,7 @@ class PaperChatRouteScreen extends ConsumerWidget {
         scope: routeData.assistantScope,
         initialQuestion: routeData.normalizedInitialQuestion,
         submitInitialQuestion: routeData.submitInitialQuestion,
+        anonymousSessionId: routeData.anonymousSessionId,
         enabled: routeData.chatEnabled && !offline && generationIsCurrent,
         generationIsCurrent: generationIsCurrent,
         onClose: onClose,

@@ -11,8 +11,9 @@ mod text;
 pub use introduction::{DetectedIntroduction, detect_introduction};
 pub use parser::{
     ParseLimits, ParsedTeiDocument, ParsedTeiEquation, ParsedTeiFigure, ParsedTeiObjectKind,
-    ParsedTeiObjectReference, ParsedTeiTable, ParsedTeiTableCell, classify_section, parse_tei,
-    parse_tei_document, parse_tei_document_with_limits, parse_tei_with_limits,
+    ParsedTeiObjectReference, ParsedTeiTable, ParsedTeiTableCell, classify_section,
+    normalize_persisted_paragraph, parse_tei, parse_tei_document, parse_tei_document_with_limits,
+    parse_tei_with_limits,
 };
 pub use text::normalize_text;
 

@@ -222,7 +222,11 @@ async fn queue_snapshot(
             processing.metadata_ready,
             processing.introduction_ready,
             processing.chat_ready,
-            processing.connections_ready
+            processing.connections_ready,
+            processing.visual_objects_ready,
+            processing.terms_ready,
+            processing.semantic_facets_ready,
+            processing.paper_passport_ready
         FROM user_paper_library AS library
         JOIN papers AS paper ON paper.id = library.paper_id
         JOIN paper_processing AS processing ON processing.paper_id = paper.id
@@ -297,7 +301,11 @@ async fn recommendation_snapshot(
             processing.metadata_ready,
             processing.introduction_ready,
             processing.chat_ready,
-            processing.connections_ready
+            processing.connections_ready,
+            processing.visual_objects_ready,
+            processing.terms_ready,
+            processing.semantic_facets_ready,
+            processing.paper_passport_ready
         FROM papers AS paper
         JOIN paper_processing AS processing ON processing.paper_id = paper.id
         WHERE processing.metadata_ready

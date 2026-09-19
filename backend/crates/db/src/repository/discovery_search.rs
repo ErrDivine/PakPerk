@@ -157,6 +157,10 @@ impl DiscoverySearchRepository {
                     processing.introduction_ready,
                     processing.chat_ready,
                     processing.connections_ready,
+                    processing.visual_objects_ready,
+                    processing.terms_ready,
+                    processing.semantic_facets_ready,
+                    processing.paper_passport_ready,
                     CASE
                         WHEN $2::text IS NOT NULL AND p.arxiv_base_id = $2 THEN 0
                         WHEN p.doi IS NOT NULL AND lower(p.doi) = $1 THEN 1
@@ -801,6 +805,10 @@ const EXPLORE_SEARCH_SQL: &str = r"
             processing.introduction_ready,
             processing.chat_ready,
             processing.connections_ready,
+            processing.visual_objects_ready,
+            processing.terms_ready,
+            processing.semantic_facets_ready,
+            processing.paper_passport_ready,
             CASE
                 WHEN $7 = 'recency' THEN 0
                 ELSE -round(
