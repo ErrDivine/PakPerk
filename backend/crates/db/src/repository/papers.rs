@@ -313,34 +313,11 @@ impl PaperRepository {
             ));
         }
         let mut transaction = self.pool.begin().await?;
-        let Some(locked) = sqlx::query_as::<_, ProcessingRow>(
-            r"
-            SELECT
-                paper_id,
-                generation,
-                stage,
-                metadata_ready,
-                introduction_ready,
-                chat_ready,
-                connections_ready,
-                retryable,
-                last_error_category,
-                last_error_code,
-                last_error_message,
-                started_at,
-                updated_at,
-                completed_at,
-                parser_version,
-                embedding_model,
-                summary_model
-            FROM paper_processing
-            WHERE paper_id = $1
-            FOR UPDATE
-            ",
-        )
-        .bind(paper_id)
-        .fetch_optional(&mut *transaction)
-        .await?
+        let Some(locked) =
+            sqlx::query_as::<_, ProcessingRow>(&format!("{PROCESSING_SELECT} FOR UPDATE"))
+                .bind(paper_id)
+                .fetch_optional(&mut *transaction)
+                .await?
         else {
             transaction.rollback().await?;
             return Ok(None);
@@ -383,7 +360,7 @@ impl PaperRepository {
                     available_at, preparation_trigger_kind, payload
                 )
                 VALUES ($1, $2, $3, 'queued', 0, now(), $4, '{}'::jsonb)
-                ON CONFLICT (paper_id, generation, job_type) DO UPDATE
+                ON CONFLICT (paper_id, generation, job_type, identity_key) DO UPDATE
                 SET state = 'queued',
                     attempts = 0,
                     available_at = now(),

@@ -21,6 +21,8 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certifi
 
 WORKDIR /app
 COPY --chown=10001:10001 --chmod=0444 demo/seed_manifest.json demo/fallback_feed.json /app/demo/
+# COPY --chmod also applies to the newly created destination directory.
+RUN chmod 0555 /app/demo
 COPY --from=builder --chown=10001:10001 --chmod=0555 /build/backend/target/release/pakperk-api /usr/local/bin/pakperk-api
 COPY --from=builder --chown=10001:10001 --chmod=0555 /build/backend/target/release/pakperk-worker /usr/local/bin/pakperk-worker
 COPY --from=builder --chown=10001:10001 --chmod=0555 /build/backend/target/release/pakperk-deletion-worker /usr/local/bin/pakperk-deletion-worker
