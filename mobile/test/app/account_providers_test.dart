@@ -869,6 +869,7 @@ final class _AccountAdapter implements HttpClientAdapter {
           'community_guidelines_accepted_at': '2026-07-30T12:00:00Z',
           'current_community_guidelines_version': '2026-07',
           'community_guidelines_current': true,
+          'comment_profile_complete': true,
           'created_at': '2026-07-30T10:00:00Z',
           'updated_at': '2026-07-30T12:00:00Z',
         },

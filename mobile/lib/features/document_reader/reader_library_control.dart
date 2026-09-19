@@ -24,11 +24,13 @@ class ReaderLibraryControl extends ConsumerWidget {
   const ReaderLibraryControl({
     required this.paper,
     this.saveSourceKind,
+    this.iconOnly = false,
     this.interactionContext,
     super.key,
   });
 
   final PaperSummary paper;
+  final bool iconOnly;
   final LibrarySaveSourceKind? saveSourceKind;
   final PaperInteractionContext? interactionContext;
 
@@ -40,6 +42,7 @@ class ReaderLibraryControl extends ConsumerWidget {
       return PaperSaveControl(
         paper: paper,
         compact: true,
+        iconOnly: iconOnly,
         saveSourceKind: saveSourceKind,
         interactionContext: interactionContext,
       );
@@ -48,6 +51,7 @@ class ReaderLibraryControl extends ConsumerWidget {
     if (!items.hasValue) {
       return _ReaderLibraryStatusControl(
         loading: items.isLoading,
+        iconOnly: iconOnly,
         onRetry: items.hasError
             ? () => ref.invalidate(libraryItemsProvider(scope))
             : null,
@@ -58,12 +62,14 @@ class ReaderLibraryControl extends ConsumerWidget {
       return PaperSaveControl(
         paper: paper,
         compact: true,
+        iconOnly: iconOnly,
         saveSourceKind: saveSourceKind,
         interactionContext: interactionContext,
       );
     }
     return _ReaderLibraryControlButton(
       item: item,
+      iconOnly: iconOnly,
       onPressed: () => unawaited(
         showReaderLibrarySheet(
           context: context,
@@ -78,10 +84,12 @@ class ReaderLibraryControl extends ConsumerWidget {
 class _ReaderLibraryStatusControl extends StatelessWidget {
   const _ReaderLibraryStatusControl({
     required this.loading,
+    required this.iconOnly,
     required this.onRetry,
   });
 
   final bool loading;
+  final bool iconOnly;
   final VoidCallback? onRetry;
 
   @override
@@ -100,9 +108,9 @@ class _ReaderLibraryStatusControl extends StatelessWidget {
           key: const ValueKey('reader-library-status'),
           onTap: onRetry,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
+            constraints: BoxConstraints(
               minWidth: PakPerkSizes.minimumInteractive,
-              minHeight: 56,
+              minHeight: iconOnly ? 48 : 56,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -115,13 +123,14 @@ class _ReaderLibraryStatusControl extends StatelessWidget {
                   )
                 else
                   const Icon(Icons.sync_problem_outlined, size: 22),
-                const SizedBox(height: 4),
-                const Text(
-                  'Library',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                ),
+                if (!iconOnly) const SizedBox(height: 4),
+                if (!iconOnly)
+                  const Text(
+                    'Library',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
               ],
             ),
           ),
@@ -135,10 +144,12 @@ class _ReaderLibraryControlButton extends StatelessWidget {
   const _ReaderLibraryControlButton({
     required this.item,
     required this.onPressed,
+    required this.iconOnly,
   });
 
   final LibraryListItem item;
   final VoidCallback onPressed;
+  final bool iconOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -158,9 +169,9 @@ class _ReaderLibraryControlButton extends StatelessWidget {
           key: const ValueKey('reader-library-control'),
           onTap: onPressed,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
+            constraints: BoxConstraints(
               minWidth: PakPerkSizes.minimumInteractive,
-              minHeight: 56,
+              minHeight: iconOnly ? 48 : 56,
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
@@ -168,21 +179,18 @@ class _ReaderLibraryControlButton extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  pending
-                      ? const SizedBox.square(
-                          dimension: 22,
-                          child: CircularProgressIndicator.adaptive(
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Icon(Icons.local_library_outlined, size: 22),
-                  const SizedBox(height: 4),
-                  Text(
-                    item.state.label,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
+                  Icon(
+                    iconOnly ? Icons.bookmark : Icons.local_library_outlined,
+                    size: 22,
                   ),
+                  if (!iconOnly) const SizedBox(height: 4),
+                  if (!iconOnly)
+                    Text(
+                      item.state.label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                    ),
                 ],
               ),
             ),

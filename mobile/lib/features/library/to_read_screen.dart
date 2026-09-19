@@ -1,3 +1,4 @@
+import 'library_sync_status_button.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -69,17 +70,9 @@ class ToReadScreen extends ConsumerWidget {
               icon: const Icon(Icons.add_rounded),
             ),
           if (sync.pendingCount > 0)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Center(
-                child: Semantics(
-                  label: '${sync.pendingCount} library changes waiting to sync',
-                  child: Badge(
-                    label: Text('${sync.pendingCount}'),
-                    child: const Icon(Icons.cloud_upload_outlined),
-                  ),
-                ),
-              ),
+            LibrarySyncStatusButton(
+              pendingCount: sync.pendingCount,
+              issue: sync.issue,
             ),
         ],
       ),

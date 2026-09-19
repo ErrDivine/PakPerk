@@ -191,7 +191,7 @@ void main() {
   );
 
   testWidgets(
-    'compact paper actions keep full labels and keyboard order at 320 px and 200% text',
+    'compact paper actions keep accessible labels and keyboard order at 320 px and 200% text',
     (tester) async {
       tester.view.physicalSize = const Size(320, 640);
       tester.view.devicePixelRatio = 1;
@@ -247,11 +247,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
-      expect(find.text('Save'), findsOneWidget);
+      expect(find.text('Save'), findsNothing);
+      expect(find.byIcon(Icons.bookmark_outline), findsOneWidget);
       expect(find.text('Comments'), findsOneWidget);
       expect(find.text('arXiv'), findsOneWidget);
       for (final key in const [
-        ValueKey('paper-save-label'),
         ValueKey('paper-comments-label'),
         ValueKey('paper-arxiv-label'),
       ]) {
@@ -277,7 +277,10 @@ void main() {
         centers.add(tester.getCenter(control));
       }
       expect(centers[0].dx, lessThan(centers[1].dx));
-      expect(centers[1].dx, lessThan(centers[2].dx));
+      expect(
+        centers[2].dy > centers[1].dy || centers[2].dx > centers[1].dx,
+        isTrue,
+      );
 
       for (final key in controls) {
         await tester.sendKeyEvent(LogicalKeyboardKey.tab);

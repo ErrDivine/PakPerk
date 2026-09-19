@@ -1,3 +1,4 @@
+import 'library_sync_status_button.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -616,19 +617,9 @@ class _LibraryDestinationViewState extends State<LibraryDestinationView> {
               icon: const Icon(Icons.add_rounded),
             ),
           if (widget.authority.pendingCount > 0)
-            Padding(
-              padding: const EdgeInsetsDirectional.only(end: 16),
-              child: Center(
-                child: Semantics(
-                  label:
-                      '${widget.authority.pendingCount} library changes '
-                      'waiting to sync',
-                  child: Badge(
-                    label: Text('${widget.authority.pendingCount}'),
-                    child: const Icon(Icons.cloud_upload_outlined),
-                  ),
-                ),
-              ),
+            LibrarySyncStatusButton(
+              pendingCount: widget.authority.pendingCount,
+              issue: widget.syncIssue,
             ),
         ],
       ),

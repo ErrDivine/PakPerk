@@ -33,6 +33,7 @@ class PaperActionBar extends ConsumerWidget {
       if (features.library)
         ReaderLibraryControl(
           paper: paper,
+          iconOnly: true,
           saveSourceKind: saveSourceKind,
           interactionContext: interactionContext,
         ),
@@ -46,26 +47,15 @@ class PaperActionBar extends ConsumerWidget {
       color: Theme.of(context).colorScheme.surfaceContainerLow,
       child: FocusTraversalGroup(
         policy: OrderedTraversalPolicy(),
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var index = 0; index < actions.length; index++) ...[
-                if (index > 0)
-                  VerticalDivider(
-                    width: 1,
-                    thickness: 1,
-                    color: Theme.of(context).dividerColor,
-                  ),
-                Expanded(
-                  child: FocusTraversalOrder(
-                    order: NumericFocusOrder(index.toDouble()),
-                    child: actions[index],
-                  ),
-                ),
-              ],
-            ],
-          ),
+        child: Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            for (var index = 0; index < actions.length; index++)
+              FocusTraversalOrder(
+                order: NumericFocusOrder(index.toDouble()),
+                child: actions[index],
+              ),
+          ],
         ),
       ),
     );
@@ -95,21 +85,12 @@ class _PaperArxivControl extends ConsumerWidget {
           key: const ValueKey('paper-arxiv-control'),
           onTap: () => unawaited(_open(context, ref)),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 56),
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.open_in_new, size: 22),
-                  SizedBox(height: 4),
-                  Text(
-                    'arXiv',
-                    key: ValueKey('paper-arxiv-label'),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            child: const Center(
+              widthFactor: 1,
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Text('arXiv', key: ValueKey('paper-arxiv-label')),
               ),
             ),
           ),

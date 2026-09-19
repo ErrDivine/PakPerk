@@ -662,6 +662,8 @@ void main() {
 
       expect(repository.lastCachedFeedCategory, 'cs.CL');
       expect(repository.lastFeedCategory, 'cs.CL');
+      await tester.tap(find.byKey(const ValueKey('guest-category-toggle')));
+      await tester.pump();
       expect(
         find.byKey(const ValueKey('guest-category-filter-cs.CL')),
         findsOneWidget,
@@ -774,7 +776,7 @@ void main() {
       matching: find.text('Next paper'),
     );
     await tester.dragUntilVisible(
-      nextPaper,
+      nextPaper.hitTestable(),
       abstractScroll,
       const Offset(0, -240),
     );

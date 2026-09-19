@@ -22,6 +22,41 @@ void main() {
     },
   );
 
+  test('accepts the API bootstrap profile including comment eligibility', () {
+    final profile = AccountProfile.fromJson(_profileJson());
+    expect(profile.isActive, isTrue);
+    expect(profile.profileVersion, 1);
+    expect(profile.handle, isNull);
+    expect(profile.isProfileComplete, isFalse);
+    expect(profile.canParticipateInComments, isFalse);
+  });
+
+  test('validates required comment eligibility against profile and policies', () {
+    final complete = _profileJson(
+      handle: 'ada_reader',
+      termsVersion: '2026-07',
+      termsAcceptedAt: '2026-07-30T10:00:00Z',
+      termsCurrent: true,
+      communityGuidelinesVersion: '2026-07',
+      communityGuidelinesAcceptedAt: '2026-07-30T10:00:00Z',
+      communityGuidelinesCurrent: true,
+      profileComplete: true,
+      commentProfileComplete: true,
+    );
+    expect(AccountProfile.fromJson(complete).canParticipateInComments, isTrue);
+    final missing = _profileJson()..remove('comment_profile_complete');
+    for (final invalid in [
+      missing,
+      _profileJson(commentProfileComplete: null),
+      _profileJson(commentProfileComplete: 'false'),
+      _profileJson(commentProfileComplete: 0),
+      _profileJson(commentProfileComplete: true),
+      {...complete, 'comment_profile_complete': false},
+    ]) {
+      expect(() => AccountProfile.fromJson(invalid), throwsFormatException);
+    }
+  });
+
   test('rejects unknown fields and inconsistent derived state', () {
     expect(
       () => AccountProfile.fromJson({..._profileJson(), 'subject': 'secret'}),
@@ -76,6 +111,7 @@ Map<String, dynamic> _profileJson({
   Object? communityGuidelinesAcceptedAt,
   Object? communityGuidelinesCurrent = false,
   Object? profileComplete = false,
+  Object? commentProfileComplete = false,
 }) => <String, dynamic>{
   'id': '018f47a6-4b56-7f4c-8c7a-e2656e820001',
   'handle': handle,
@@ -91,6 +127,7 @@ Map<String, dynamic> _profileJson({
   'community_guidelines_accepted_at': communityGuidelinesAcceptedAt,
   'current_community_guidelines_version': '2026-07',
   'community_guidelines_current': communityGuidelinesCurrent,
+  'comment_profile_complete': commentProfileComplete,
   'created_at': '2026-07-30T10:00:00Z',
   'updated_at': '2026-07-30T11:00:00Z',
 };

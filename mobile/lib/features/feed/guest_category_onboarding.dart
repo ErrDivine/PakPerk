@@ -285,7 +285,7 @@ final class _GuestCategoryOnboardingSheetState
   }
 }
 
-final class GuestCategorySelector extends StatelessWidget {
+final class GuestCategorySelector extends StatefulWidget {
   const GuestCategorySelector({
     required this.categories,
     required this.activeCategory,
@@ -300,59 +300,74 @@ final class GuestCategorySelector extends StatelessWidget {
   final VoidCallback onManage;
 
   @override
-  Widget build(BuildContext context) => Semantics(
+  State<GuestCategorySelector> createState() => _GuestCategorySelectorState();
+}
+
+class _GuestCategorySelectorState extends State<GuestCategorySelector> {
+  bool _expanded = false;
+
+  void _select(String? category) {
+    setState(() => _expanded = false);
+    widget.onSelected(category);
+  }
+
+  @override
+  Widget build(BuildContext context) => Material(
     key: const ValueKey('guest-category-selector'),
-    container: true,
-    label: categories.isEmpty
-        ? 'No public category filter selected'
-        : 'Public category filter ${activeCategory ?? 'all recent'}',
-    explicitChildNodes: true,
-    child: Material(
-      color: Theme.of(context).colorScheme.surface,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: PakPerkSpacing.md),
-        child: Row(
-          children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(
-                minHeight: PakPerkSizes.minimumInteractive,
-              ),
-              child: ChoiceChip(
-                key: const ValueKey('guest-category-all'),
-                selected: activeCategory == null,
-                label: const Text('All recent'),
-                onSelected: (_) => onSelected(null),
-              ),
+    color: Theme.of(context).colorScheme.surface,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: PakPerkSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextButton(
+            key: const ValueKey('guest-category-toggle'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              minimumSize: const Size(48, 48),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            for (final category in categories) ...[
-              const SizedBox(width: PakPerkSpacing.xs),
-              ConstrainedBox(
-                constraints: const BoxConstraints(
-                  minHeight: PakPerkSizes.minimumInteractive,
-                ),
-                child: ChoiceChip(
-                  key: ValueKey('guest-category-filter-$category'),
-                  selected: activeCategory == category,
-                  label: Text(category),
-                  onSelected: (_) => onSelected(category),
-                ),
-              ),
-            ],
-            const SizedBox(width: PakPerkSpacing.xs),
-            ConstrainedBox(
-              constraints: const BoxConstraints(
-                minHeight: PakPerkSizes.minimumInteractive,
-              ),
-              child: TextButton.icon(
-                key: const ValueKey('guest-category-manage'),
-                onPressed: onManage,
-                icon: const Icon(Icons.tune_rounded),
-                label: Text(categories.isEmpty ? 'Choose categories' : 'Edit'),
-              ),
+            onPressed: () => setState(() => _expanded = !_expanded),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(widget.activeCategory ?? 'All recent'),
+                Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+              ],
             ),
-          ],
-        ),
+          ),
+          if (_expanded)
+            Wrap(
+              spacing: PakPerkSpacing.xs,
+              children: [
+                ChoiceChip(
+                  key: const ValueKey('guest-category-all'),
+                  selected: widget.activeCategory == null,
+                  label: const Text('All recent'),
+                  onSelected: (_) => _select(null),
+                ),
+                for (final category in widget.categories)
+                  ChoiceChip(
+                    key: ValueKey('guest-category-filter-$category'),
+                    selected: widget.activeCategory == category,
+                    label: Text(category),
+                    onSelected: (_) => _select(category),
+                  ),
+                TextButton.icon(
+                  key: const ValueKey('guest-category-manage'),
+                  onPressed: () {
+                    setState(() => _expanded = false);
+                    widget.onManage();
+                  },
+                  icon: const Icon(Icons.tune_rounded),
+                  label: Text(
+                    widget.categories.isEmpty ? 'Choose categories' : 'Edit',
+                  ),
+                ),
+              ],
+            ),
+        ],
       ),
     ),
   );

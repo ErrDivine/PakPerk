@@ -69,6 +69,9 @@ final class AccountProfile {
     if (json['profile_complete'] != profile.isProfileComplete) {
       throw const FormatException('Inconsistent profile completeness.');
     }
+    if (json['comment_profile_complete'] != profile.canParticipateInComments) {
+      throw const FormatException('Inconsistent comment profile completeness.');
+    }
     final hasTermsVersion = profile.termsVersion != null;
     final hasTermsTime = profile.termsAcceptedAt != null;
     final calculatedTermsCurrent =
@@ -178,6 +181,7 @@ const _profileKeys = <String>{
   'community_guidelines_accepted_at',
   'current_community_guidelines_version',
   'community_guidelines_current',
+  'comment_profile_complete',
   'created_at',
   'updated_at',
 };
