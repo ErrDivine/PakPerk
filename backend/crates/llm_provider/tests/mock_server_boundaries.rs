@@ -51,6 +51,7 @@ async fn native_assistant_tools_preserve_call_pairs_and_final_answer_contract() 
     let provider = provider.with_assistant_tools(true);
     let mut request = AssistantToolStepRequest {
         completion,
+        outline: vec![],
         exchanges: vec![],
     };
     let first = provider.select_assistant_tools(&request).await.unwrap();
@@ -78,7 +79,7 @@ async fn native_assistant_tools_preserve_call_pairs_and_final_answer_contract() 
     let second: Value = serde_json::from_slice(&receiver.recv().await.unwrap().body).unwrap();
     let final_request: Value =
         serde_json::from_slice(&receiver.recv().await.unwrap().body).unwrap();
-    assert_eq!(first["tools"].as_array().unwrap().len(), 5);
+    assert_eq!(first["tools"].as_array().unwrap().len(), 6);
     assert_eq!(second["messages"][2]["tool_calls"][0]["id"], "call_search");
     assert_eq!(second["messages"][3]["role"], "tool");
     assert_eq!(second["messages"][3]["tool_call_id"], "call_search");
@@ -87,6 +88,76 @@ async fn native_assistant_tools_preserve_call_pairs_and_final_answer_contract() 
         final_request["response_format"]["json_schema"]["strict"],
         true
     );
+}
+
+#[tokio::test]
+async fn tool_steps_carry_the_outline_and_use_their_own_thinking_mode() {
+    use llm_provider::{AssistantProvider, AssistantToolStepRequest, ThinkingMode};
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let completion = tool_completion_fixture();
+    let final_content = json!({"answer":"Not found in this paper.","status":"not_found","limitations":[],"claims":[]});
+    let responses = vec![
+        json!({"choices":[{"finish_reason":"stop","message":{"content":"Ready."}}]}).to_string(),
+        json!({"model":"fixture-chat","choices":[{"message":{"content":final_content.to_string()}}]}).to_string(),
+    ];
+    let (sender, mut receiver) = mpsc::unbounded_channel();
+    let server = tokio::spawn(serve_json(listener, responses, sender));
+    let provider = OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
+        base_url: Url::parse(&format!("http://{address}/v1")).unwrap(),
+        chat_model: "fixture-chat".into(),
+        embedding_model: "fixture-embedding".into(),
+        embedding_dimension: 3,
+        maximum_retries: 0,
+        thinking: ThinkingMode::Enabled,
+        tool_thinking: ThinkingMode::Disabled,
+        ..OpenAiCompatibleConfig::default()
+    })
+    .unwrap()
+    .with_assistant_tools(true);
+    let first_block = Uuid::new_v4();
+    let request = AssistantToolStepRequest {
+        completion,
+        outline: vec![domain::AssistantOutlineEntry {
+            first_block_id: first_block,
+            heading: Some("Introduction".into()),
+            kind: "introduction".into(),
+            blocks: 4,
+            chars: 2_400,
+        }],
+        exchanges: vec![],
+    };
+    assert!(
+        provider
+            .select_assistant_tools(&request)
+            .await
+            .unwrap()
+            .calls
+            .is_empty()
+    );
+    provider
+        .answer_with_evidence(&request.completion)
+        .await
+        .unwrap();
+    server.await.unwrap();
+
+    let tool_step: Value = serde_json::from_slice(&receiver.recv().await.unwrap().body).unwrap();
+    let answer_step: Value = serde_json::from_slice(&receiver.recv().await.unwrap().body).unwrap();
+    // Selecting tools never reasons; answering keeps the configured mode.
+    assert_eq!(tool_step["thinking"], json!({"type": "disabled"}));
+    assert_eq!(answer_step["thinking"], json!({"type": "enabled"}));
+    // The user message carries both the request and the outline.
+    let user: Value =
+        serde_json::from_str(tool_step["messages"][1]["content"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        user["outline"][0]["first_block_id"],
+        first_block.to_string()
+    );
+    assert_eq!(user["outline"][0]["blocks"], 4);
+    assert_eq!(user["request"]["paper_title"], "Fixture");
+    // The system prompt states the actual budgets.
+    let system = tool_step["messages"][0]["content"].as_str().unwrap();
+    assert!(system.contains("Up to 3 calls per step and 3 steps"));
 }
 
 #[tokio::test]
@@ -120,6 +191,7 @@ async fn native_assistant_tools_reject_untrusted_protocol_shapes() {
     .with_assistant_tools(true);
     let request = AssistantToolStepRequest {
         completion: tool_completion_fixture(),
+        outline: vec![],
         exchanges: vec![],
     };
     for _ in 0..4 {

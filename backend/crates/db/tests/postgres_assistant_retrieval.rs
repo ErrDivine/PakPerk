@@ -1,8 +1,9 @@
 use chrono::{TimeDelta, Utc};
-use db::Database;
+use db::{AssistantToolRead, Database, DbError};
 use domain::{
     ArxivIdentifier, AssistantAnswerStyle, AssistantRequest, AssistantScope, AssistantScopeKind,
-    Author, PaperMetadata, SectionKind, content_hash,
+    AssistantTool, Author, PaperMetadata, ReadPaperRange, SearchPaperEvidence, SectionKind,
+    content_hash,
 };
 use url::Url;
 use uuid::Uuid;
@@ -547,4 +548,178 @@ async fn a_document_of_only_footnotes_and_headings_prefers_headings_then_footnot
 
     let question = request(paper_id, "What is this?", AssistantScopeKind::Paper, &[]);
     assert_eq!(retrieved(&database, &question).await, [ids[0], ids[1]]);
+}
+
+async fn run(
+    database: &Database,
+    request: &AssistantRequest,
+    tool: AssistantTool,
+) -> Result<AssistantToolRead, DbError> {
+    database
+        .assistant_context()
+        .execute_tool(request, &tool)
+        .await
+}
+
+fn ids_of(read: &AssistantToolRead) -> Vec<Uuid> {
+    read.sources.iter().map(|source| source.block_id).collect()
+}
+
+fn range(start_block_id: Uuid, count: u32) -> AssistantTool {
+    AssistantTool::ReadPaperRange(ReadPaperRange {
+        start_block_id,
+        count,
+    })
+}
+
+fn search(query: &str, section_kinds: Vec<SectionKind>) -> AssistantTool {
+    AssistantTool::SearchPaperEvidence(SearchPaperEvidence {
+        query: query.to_owned(),
+        section_kinds,
+        limit: 6,
+    })
+}
+
+#[tokio::test]
+async fn the_outline_lists_sections_in_reading_order_with_sizes_and_skips_footnote_sections() {
+    let Some(database) = database().await else {
+        return;
+    };
+    let (paper_id, ids) = seed(&database, &body_sections(), &trailing_footnote_layout()).await;
+    let repository = database.assistant_context();
+
+    let whole = request(paper_id, "Overview", AssistantScopeKind::Paper, &[]);
+    let outline = repository.outline(&whole).await.unwrap();
+    let summary = outline
+        .iter()
+        .map(|entry| {
+            (
+                entry.heading.as_deref(),
+                entry.kind.as_str(),
+                entry.first_block_id,
+                entry.blocks,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        summary,
+        [
+            (Some("Introduction"), "introduction", ids[0], 4),
+            (Some("Results"), "result", ids[5], 1),
+            (Some("Conclusion"), "conclusion", ids[7], 1),
+        ]
+    );
+    let intro_chars = [CLAIM, COSTS, PRIOR, LATER]
+        .iter()
+        .map(|text| text.chars().count())
+        .sum::<usize>();
+    assert_eq!(outline[0].chars as usize, intro_chars);
+
+    let section = request(
+        paper_id,
+        "Overview",
+        AssistantScopeKind::Section,
+        &[SectionKind::Result],
+    );
+    let scoped = repository.outline(&section).await.unwrap();
+    assert_eq!(
+        scoped
+            .iter()
+            .map(|entry| entry.first_block_id)
+            .collect::<Vec<_>>(),
+        [ids[5]]
+    );
+}
+
+#[tokio::test]
+async fn range_reads_return_consecutive_blocks_and_name_the_next_one() {
+    let Some(database) = database().await else {
+        return;
+    };
+    let (paper_id, ids) = seed(&database, &body_sections(), &trailing_footnote_layout()).await;
+    let whole = request(paper_id, "Overview", AssistantScopeKind::Paper, &[]);
+
+    let first = run(&database, &whole, range(ids[1], 2)).await.unwrap();
+    assert_eq!(ids_of(&first), [ids[1], ids[2]]);
+    assert!(first.truncated);
+    assert_eq!(first.next_block_id, Some(ids[3]));
+    assert_eq!(first.status, "ok");
+
+    // Continuing from next_block_id reads on; the end of the document has no next block.
+    let tail = run(&database, &whole, range(ids[7], 6)).await.unwrap();
+    assert_eq!(ids_of(&tail), [ids[7], ids[8], ids[9], ids[10]]);
+    assert!(!tail.truncated);
+    assert_eq!(tail.next_block_id, None);
+}
+
+#[tokio::test]
+async fn range_reads_stay_inside_the_scope_and_the_paper() {
+    let Some(database) = database().await else {
+        return;
+    };
+    let (paper_id, ids) = seed(&database, &body_sections(), &trailing_footnote_layout()).await;
+    let (_, other_ids) = seed(&database, &body_sections(), &trailing_footnote_layout()).await;
+
+    let section = request(
+        paper_id,
+        "Results?",
+        AssistantScopeKind::Section,
+        &[SectionKind::Result],
+    );
+    // A block outside the requested section cannot be used as a starting point.
+    assert!(matches!(
+        run(&database, &section, range(ids[1], 2)).await,
+        Err(DbError::InvalidData(_))
+    ));
+    // Inside it, reading stops where the section ends.
+    let inside = run(&database, &section, range(ids[5], 6)).await.unwrap();
+    assert_eq!(ids_of(&inside), [ids[5], ids[6]]);
+    assert_eq!(inside.next_block_id, None);
+    // Another paper's block is never readable.
+    let whole = request(paper_id, "Overview", AssistantScopeKind::Paper, &[]);
+    assert!(matches!(
+        run(&database, &whole, range(other_ids[1], 2)).await,
+        Err(DbError::InvalidData(_))
+    ));
+}
+
+#[tokio::test]
+async fn search_matches_stemmed_content_words_and_ranks_blocks_with_all_of_them_first() {
+    let Some(database) = database().await else {
+        return;
+    };
+    let (paper_id, ids) = seed(&database, &body_sections(), &trailing_footnote_layout()).await;
+    let whole = request(paper_id, "Overview", AssistantScopeKind::Paper, &[]);
+
+    // Two blocks contain both words; one contains only a form of "tune".
+    let both = run(&database, &whole, search("competitive tuning", vec![]))
+        .await
+        .unwrap();
+    let found = ids_of(&both);
+    assert_eq!(found.len(), 3, "{found:?}");
+    assert!(found[..2].contains(&ids[1]) && found[..2].contains(&ids[8]));
+    assert_eq!(found[2], ids[3]);
+
+    // Stemming: "adapting" finds "adapt"; every content word may match.
+    let stemmed = run(&database, &whole, search("adapting downstream", vec![]))
+        .await
+        .unwrap();
+    assert_eq!(ids_of(&stemmed), [ids[2]]);
+
+    // Stop words alone match nothing, and that is not an error.
+    let nothing = run(&database, &whole, search("what is the", vec![]))
+        .await
+        .unwrap();
+    assert_eq!(nothing.status, "no_matches");
+    assert!(nothing.sources.is_empty());
+
+    // The section filter narrows the search.
+    let narrowed = run(
+        &database,
+        &whole,
+        search("tuning", vec![SectionKind::Conclusion]),
+    )
+    .await
+    .unwrap();
+    assert_eq!(ids_of(&narrowed), [ids[8]]);
 }

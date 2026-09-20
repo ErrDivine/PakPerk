@@ -16,7 +16,7 @@ use observability::{
 use tokio::time::Instant;
 
 const MAX_BLOCKS: usize = 10;
-const FINAL_BLOCKS: usize = 6;
+const FINAL_BLOCKS: usize = 8;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ToolRunError {
@@ -105,6 +105,7 @@ pub(crate) async fn gather<P: AssistantProvider + ?Sized>(
         .collect();
     let mut step_request = AssistantToolStepRequest {
         completion: completion_request(request, context, history),
+        outline: repository.outline(request).await?,
         exchanges: vec![],
     };
     let mut seen = HashSet::new();
@@ -137,7 +138,9 @@ pub(crate) async fn gather<P: AssistantProvider + ?Sized>(
             let kind = match operation {
                 AssistantTool::SearchPaperEvidence(_) => AssistantToolMetricKind::Search,
                 AssistantTool::GetPaperOutline(_) => AssistantToolMetricKind::Outline,
-                AssistantTool::ReadPaperBlocks(_) => AssistantToolMetricKind::Read,
+                AssistantTool::ReadPaperBlocks(_) | AssistantTool::ReadPaperRange(_) => {
+                    AssistantToolMetricKind::Read
+                }
                 AssistantTool::GetObjectEvidence(_) => AssistantToolMetricKind::Object,
                 AssistantTool::GetCitationContext(_) => AssistantToolMetricKind::Citation,
             };
@@ -358,14 +361,22 @@ mod tests {
         last.block_id = Uuid::now_v7();
         assert!(!registry.admit(last, 2).unwrap());
         let final_blocks = registry.finish();
-        assert_eq!(final_blocks.len(), 6);
+        assert_eq!(final_blocks.len(), FINAL_BLOCKS);
         assert!(final_blocks.iter().any(|block| block.block_id == expected));
-        assert!(final_blocks.iter().all(|block| {
-            !context
+        // Every block the model read outranks every initial block: the initial
+        // ones only fill the slots that remain (the cumulative cap left room for
+        // six new blocks next to the four seeds).
+        let is_seed = |block: &RetrievedAssistantBlock| {
+            context
                 .blocks
                 .iter()
                 .any(|seed| seed.block_id == block.block_id)
-        }));
+        };
+        assert!(final_blocks[..6].iter().all(|block| !is_seed(block)));
+        assert_eq!(
+            final_blocks.iter().filter(|block| is_seed(block)).count(),
+            FINAL_BLOCKS - 6
+        );
     }
 
     #[test]

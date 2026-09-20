@@ -382,8 +382,21 @@ async fn tool_search_then_read_persists_new_evidence_and_preserves_original_ques
     server.abort();
     assert_eq!(status, StatusCode::OK, "{body}");
     let requests = responses.lock().unwrap().clone();
-    assert_eq!(requests.len(), 3);
-    let final_request = &requests[2];
+    // Three selection steps (search, read, then the model stops calling tools)
+    // and one final answer request.
+    assert_eq!(requests.len(), 4);
+    assert!(
+        requests[..3]
+            .iter()
+            .all(|request| request.get("tools").is_some())
+    );
+    let first_step: Value =
+        serde_json::from_str(requests[0]["messages"][1]["content"].as_str().unwrap()).unwrap();
+    assert!(
+        first_step["outline"].is_array(),
+        "the outline is part of the first step"
+    );
+    let final_request = &requests[3];
     assert!(final_request.get("tools").is_none());
     let final_input = final_request["messages"]
         .as_array()
@@ -419,6 +432,116 @@ async fn tool_search_then_read_persists_new_evidence_and_preserves_original_ques
             .unwrap()
             .contains("paper-assistant-tools-v1")
     );
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn tool_range_read_admits_consecutive_blocks_as_evidence_and_reports_the_next_one() {
+    let Some((database, database_url)) = database().await else {
+        return;
+    };
+    let (paper_id, _) = paper(&database).await;
+    let mut ids = Vec::new();
+    for (ordinal, text) in [
+        (1, "General experiment background."),
+        (2, "More general background on the experiment."),
+        (3, "The azimuth is measured."),
+        (4, "Something that follows the measurement."),
+    ] {
+        ids.push(block(&database, paper_id, ordinal, text, "paragraph").await);
+    }
+    let start = ids[1];
+    let evidence = ids[2];
+    let source_text = "The azimuth is measured.";
+    let responses = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let captured = responses.clone();
+    let handler = move |axum::Json(body): axum::Json<Value>| {
+        let captured = captured.clone();
+        async move {
+            let mut requests = captured.lock().unwrap();
+            let index = requests.len();
+            requests.push(body);
+            let message = match index {
+                0 => json!({"finish_reason":"tool_calls", "message":{"content":null,"tool_calls":[{
+                    "id":"call_range","type":"function","function":{"name":"read_paper_range",
+                    "arguments":json!({"start_block_id":start,"count":2}).to_string()},
+                }]}}),
+                1 => json!({"finish_reason":"stop","message":{"content":"Enough."}}),
+                _ => json!({"finish_reason":"stop","message":{"content":json!({
+                    "answer":source_text,"status":"supported","limitations":[],
+                    "claims":[{"text":source_text,"support":"direct","evidence":[{"block_id":evidence,"start":0,"end":23}]}],
+                }).to_string()}}),
+            };
+            axum::Json(
+                json!({"id":"fixture-request","model":"fixture-chat","choices":[message],
+                "usage":{"prompt_tokens":10,"completion_tokens":5}}),
+            )
+        }
+    };
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            axum::Router::new().route("/v1/chat/completions", axum::routing::post(handler)),
+        )
+        .await
+        .unwrap();
+    });
+    let mut config = api_config(database_url);
+    config.features = FeatureFlags {
+        deep_reader: true,
+        assistant_v2: true,
+        assistant_tools: true,
+        ..FeatureFlags::default()
+    };
+    config.llm = Some(ApiModelConfig::OpenAiCompatible(Box::new(
+        llm_provider::OpenAiCompatibleConfig {
+            base_url: Url::parse(&format!("http://{address}/v1")).unwrap(),
+            chat_model: "fixture-chat".into(),
+            embedding_model: "fixture-embedding".into(),
+            embedding_dimension: 16,
+            maximum_retries: 0,
+            ..llm_provider::OpenAiCompatibleConfig::default()
+        },
+    )));
+    let app = build_router(AppState::new(database.clone(), &config).unwrap(), &config);
+    let response = app
+        .oneshot(connected_json_request(
+            format!("/v1/papers/{paper_id}/assistant"),
+            Uuid::now_v7(),
+            &serde_json::to_value(request(paper_id)).unwrap(),
+        ))
+        .await
+        .unwrap();
+    let status = response.status();
+    let body: Value = response_json(response).await;
+    server.abort();
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let requests = responses.lock().unwrap().clone();
+    // The second selection step sees the range result: two blocks and the next id.
+    let tool_message = requests[1]["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|message| message["role"] == "tool")
+        .expect("the range result is returned to the model");
+    let result: Value = serde_json::from_str(tool_message["content"].as_str().unwrap()).unwrap();
+    assert_eq!(result["sources"].as_array().unwrap().len(), 2);
+    assert_eq!(result["sources"][0]["block_id"], start.to_string());
+    assert_eq!(result["sources"][1]["block_id"], evidence.to_string());
+    assert_eq!(result["next_block_id"], ids[3].to_string());
+    // Blocks the model read explicitly reach the final answer request.
+    let final_input = requests.last().unwrap()["messages"]
+        .as_array()
+        .unwrap()
+        .last()
+        .unwrap()["content"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(final_input.contains(&evidence.to_string()));
 }
 
 #[tokio::test]

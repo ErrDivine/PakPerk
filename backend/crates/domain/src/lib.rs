@@ -33,8 +33,8 @@ pub use account_deletion::{
     IdentityFingerprint, IdentityFingerprintError,
 };
 pub use assistant_tools::{
-    AssistantObjectKind, AssistantTool, CitationEvidence, ObjectEvidence, PaperOutline,
-    ReadPaperBlocks, SearchPaperEvidence,
+    AssistantObjectKind, AssistantOutlineEntry, AssistantTool, CitationEvidence, ObjectEvidence,
+    PaperOutline, ReadPaperBlocks, ReadPaperRange, SearchPaperEvidence,
 };
 pub use assistant_v2::{
     ASSISTANT_ANSWER_MAX_SCALARS, ASSISTANT_CLAIM_SEPARATOR, ASSISTANT_FEEDBACK_DETAIL_MAX_SCALARS,

@@ -4,12 +4,13 @@ Updated: 2026-09-07. **Implemented behind a default-off flag; integration verifi
 
 ## Implementation
 
-The existing Assistant v2 endpoint now has a native, bounded tool-selection branch. It supports five read-only operations:
+The existing Assistant v2 endpoint now has a native, bounded tool-selection branch. It supports six read-only operations, and every tool-enabled request starts with an outline of the authorized scope (the sections in reading order, each with the ID of its first block and its size) so that the model can choose what to read without spending a call on navigation:
 
 | Tool | Purpose |
 | --- | --- |
-| `search_paper_evidence` | Positive-match lexical search over current-paper source blocks |
+| `search_paper_evidence` | Positive-match lexical search over current-paper source blocks: any stemmed content word matches, and blocks that contain all of them rank first |
 | `get_paper_outline` | Bounded heading navigation, available only for paper/section scopes |
+| `read_paper_range` | Up to six consecutive blocks in reading order from a known block, with the ID of the next block; paper/section scopes only |
 | `read_paper_blocks` | Exact canonical source text and optional in-scope adjacent blocks |
 | `get_object_evidence` | Existing source blocks linked to figures, tables, or equations, with extraction status |
 | `get_citation_context` | Current-paper passages citing a verified reference; no remote paper fetch |
@@ -26,9 +27,11 @@ Paper, generation, and original scope come from the server request, not model ar
 
 The original final answer, evidence navigation, history, feedback, and provenance formats remain in place. Tool transcripts and raw arguments/results are not persisted or logged. The final evidence set is persisted, and the final prompt version is tagged `paper-assistant-tools-v1`. No migration, worker, vector index, external browsing, memory write, or queue mutation was added.
 
-Limits: two selection rounds, two calls per round, then one final answer request; at most ten accumulated and six final blocks; 20,000 Unicode scalars per block and 100,000 in final evidence; 256 KiB cumulative tool-result JSON. There is no wall-clock deadline on the tool-enabled operation: the round/call budgets above bound the work, and a slow provider is allowed to finish instead of being cut off mid-inference. `LLM_TIMEOUT_SECONDS` remains the only time budget, covering one provider call and its retries. Repository reads have a two-second SQL statement timeout and do not hold transactions across model calls. Infrastructure failures remain errors rather than factual “not found” answers.
+Limits: three selection rounds, three calls per round, then one final answer request; at most ten accumulated and eight final blocks; 20,000 Unicode scalars per block and 100,000 in final evidence; 256 KiB cumulative tool-result JSON. There is no wall-clock deadline on the tool-enabled operation: the round/call budgets above bound the work, and a slow provider is allowed to finish instead of being cut off mid-inference. `LLM_TIMEOUT_SECONDS` remains the only time budget, covering one provider call and its retries. Repository reads have a two-second SQL statement timeout and do not hold transactions across model calls. Infrastructure failures remain errors rather than factual “not found” answers.
 
 ## Configuration and rollback
+
+Tool-selection steps use their own thinking mode, `ASSISTANT_LLM_TOOL_THINKING` (`LLM_TOOL_THINKING` for the main provider): selecting tools needs no reasoning, and DeepSeek rejects the next step of a tool loop with HTTP 400 unless the reasoning of every earlier step is sent back while thinking is on. It defaults to `disabled` whenever `ASSISTANT_LLM_THINKING` is set explicitly, so the final answer can keep reasoning while the selection steps do not. Set it explicitly for a provider whose thinking is on by default.
 
 Keep `ASSISTANT_TOOLS_ENABLED=false` until integration tests pass. After verification, enabling requires:
 

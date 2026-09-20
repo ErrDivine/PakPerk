@@ -130,6 +130,11 @@ pub struct OpenAiCompatibleConfig {
     pub api_key: Option<SecretString>,
     pub structured_output: StructuredOutputMode,
     pub thinking: ThinkingMode,
+    /// Thinking mode for assistant tool-selection steps; `ProviderDefault`
+    /// means the same as `thinking`. `DeepSeek` requires the reasoning of every
+    /// earlier step of a tool loop to be sent back while thinking is on, and
+    /// selecting tools needs no reasoning, so operators disable it here.
+    pub tool_thinking: ThinkingMode,
     pub chat_model: String,
     pub embedding_model: String,
     pub embedding_dimension: usize,
@@ -157,6 +162,7 @@ impl std::fmt::Debug for OpenAiCompatibleConfig {
             .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
             .field("structured_output", &self.structured_output)
             .field("thinking", &self.thinking)
+            .field("tool_thinking", &self.tool_thinking)
             .field("chat_model", &self.chat_model)
             .field("embedding_model", &self.embedding_model)
             .field("embedding_dimension", &self.embedding_dimension)
@@ -180,6 +186,7 @@ impl Default for OpenAiCompatibleConfig {
             api_key: None,
             structured_output: StructuredOutputMode::default(),
             thinking: ThinkingMode::default(),
+            tool_thinking: ThinkingMode::default(),
             chat_model: String::new(),
             embedding_model: String::new(),
             embedding_dimension: 0,
@@ -261,8 +268,13 @@ impl OpenAiCompatibleProvider {
     }
 
     async fn post_json(&self, path: &str, payload: &Value) -> Result<Vec<u8>, ProviderError> {
-        self.post_json_within(path, payload, self.config.request_timeout)
-            .await
+        self.post_json_within(
+            path,
+            payload,
+            self.config.request_timeout,
+            self.config.thinking,
+        )
+        .await
     }
 
     /// Posts within an explicit total budget that covers every retry.
@@ -271,8 +283,9 @@ impl OpenAiCompatibleProvider {
         path: &str,
         payload: &Value,
         budget: Duration,
+        thinking: ThinkingMode,
     ) -> Result<Vec<u8>, ProviderError> {
-        let payload = self.adapt_payload(path, payload);
+        let payload = self.adapt_payload_with(path, payload, thinking);
         timeout(budget, self.post_json_with_retries(path, &payload, budget))
             .await
             .map_err(|_| ProviderError::OperationTimeout)?
@@ -280,13 +293,23 @@ impl OpenAiCompatibleProvider {
 
     /// Applies the endpoint-specific adjustments configured for this provider.
     /// Only `chat/completions` requests carry them.
+    #[cfg(test)]
     fn adapt_payload<'a>(&self, path: &str, payload: &'a Value) -> Cow<'a, Value> {
+        self.adapt_payload_with(path, payload, self.config.thinking)
+    }
+
+    fn adapt_payload_with<'a>(
+        &self,
+        path: &str,
+        payload: &'a Value,
+        thinking: ThinkingMode,
+    ) -> Cow<'a, Value> {
         let mut adapted = match self.config.structured_output {
             StructuredOutputMode::JsonSchema => None,
             StructuredOutputMode::JsonObject => json_object_payload(payload),
         };
         if path == "chat/completions"
-            && let Some(thinking) = self.config.thinking.request_value()
+            && let Some(thinking) = thinking.request_value()
         {
             adapted.get_or_insert_with(|| payload.clone())["thinking"] = thinking;
         }
@@ -387,7 +410,18 @@ impl AssistantProvider for OpenAiCompatibleProvider {
             ));
         }
         let payload = crate::tools::tool_payload(request, &self.config.chat_model)?;
-        let bytes = self.post_json("chat/completions", &payload).await?;
+        let thinking = match self.config.tool_thinking {
+            ThinkingMode::ProviderDefault => self.config.thinking,
+            explicit => explicit,
+        };
+        let bytes = self
+            .post_json_within(
+                "chat/completions",
+                &payload,
+                self.config.request_timeout,
+                thinking,
+            )
+            .await?;
         let response: ToolEnvelope =
             serde_json::from_slice(&bytes).map_err(|_| crate::tools::invalid_tool_response())?;
         if response.choices.len() != 1 {
@@ -601,6 +635,7 @@ impl DocumentVisionProvider for OpenAiCompatibleProvider {
                 "chat/completions",
                 &payload,
                 self.config.vision_request_timeout,
+                self.config.thinking,
             )
             .await?;
         let reply = parse_chat_content(&bytes, "page transcription", model)?;

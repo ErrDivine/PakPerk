@@ -19,7 +19,7 @@ use domain::{
     COMMENT_MAX_BYTES, COMMENT_MAX_SCALARS, COMMENT_MAX_URLS, CommunityGuidelinesVersion,
     FulltextPolicy, TermsVersion,
 };
-use llm_provider::OpenAiCompatibleConfig;
+use llm_provider::{OpenAiCompatibleConfig, ThinkingMode};
 use moderation::HttpModerationConfig;
 use opaque_cursor::OpaqueCursorCodec;
 use paper_resolution::{PaperResolutionPolicy, PaperResolutionPolicyError};
@@ -1731,6 +1731,7 @@ fn provider_config_from_env(
         .unwrap_or_default()
         .parse()?;
     config.thinking = std::env::var("LLM_THINKING").unwrap_or_default().parse()?;
+    config.tool_thinking = tool_thinking_from_env("LLM_TOOL_THINKING", config.thinking)?;
     config.chat_model = std::env::var("LLM_CHAT_MODEL")
         .map_err(|_| anyhow::anyhow!("LLM_CHAT_MODEL is required when LLM_PROVIDER is enabled"))?;
     config.embedding_model = std::env::var("LLM_EMBEDDING_MODEL").map_err(|_| {
@@ -1776,10 +1777,28 @@ fn assistant_provider_config_from_env(
         .unwrap_or_default()
         .parse()
         .context("ASSISTANT_LLM_THINKING must be default, enabled, or disabled")?;
+    config.tool_thinking = tool_thinking_from_env("ASSISTANT_LLM_TOOL_THINKING", config.thinking)?;
     config.request_timeout = Duration::from_secs(env_parse("LLM_TIMEOUT_SECONDS", 60_u64)?);
     config.maximum_response_bytes = env_parse("LLM_MAX_RESPONSE_BYTES", 4 * 1024 * 1024_usize)?;
     config.maximum_retries = env_parse("LLM_MAX_RETRIES", 2_usize)?;
     Ok(Some(Box::new(config)))
+}
+
+/// Thinking mode for assistant tool-selection steps. Selecting tools needs no
+/// reasoning, and while `DeepSeek` reasons it demands every earlier step's
+/// reasoning back, so where thinking is configured explicitly (the provider
+/// supports the parameter) tool steps default to no thinking.
+fn tool_thinking_from_env(name: &str, thinking: ThinkingMode) -> anyhow::Result<ThinkingMode> {
+    match std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    {
+        Some(value) => value
+            .parse::<ThinkingMode>()
+            .with_context(|| format!("{name} must be default, enabled, or disabled")),
+        None if thinking == ThinkingMode::ProviderDefault => Ok(ThinkingMode::ProviderDefault),
+        None => Ok(ThinkingMode::Disabled),
+    }
 }
 
 fn assistant_model_api_key(environment: ApiEnvironment) -> anyhow::Result<Option<SecretString>> {

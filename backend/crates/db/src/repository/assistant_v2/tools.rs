@@ -1,6 +1,6 @@
 //! Bounded source reads. The request, not model arguments, owns authorization.
 
-use domain::{AssistantObjectKind, AssistantTool};
+use domain::{AssistantObjectKind, AssistantOutlineEntry, AssistantTool};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -27,6 +27,10 @@ pub struct AssistantToolRead {
     pub truncated: bool,
     pub sources: Vec<AssistantToolSource>,
     pub object_status: Option<String>,
+    /// For range reads: the block that follows the last one returned, so the
+    /// model can continue reading in order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_block_id: Option<Uuid>,
 }
 
 impl AssistantContextRepository {
@@ -84,6 +88,20 @@ impl AssistantContextRepository {
                 .fetch_all(&mut *transaction)
                 .await?;
             if ids.len() != args.block_ids.len() {
+                return Err(tool_scope_error());
+            }
+        }
+        if let AssistantTool::ReadPaperRange(args) = tool {
+            let mut check = scoped_query(request);
+            check
+                .push(" SELECT id FROM scoped WHERE id = ")
+                .push_bind(args.start_block_id);
+            if check
+                .build_query_scalar::<Uuid>()
+                .fetch_optional(&mut *transaction)
+                .await?
+                .is_none()
+            {
                 return Err(tool_scope_error());
             }
         }
@@ -149,9 +167,23 @@ impl AssistantContextRepository {
                         )
                         .push(")");
                 }
-                query.push(" AND to_tsvector('simple', block.text) @@ plainto_tsquery('simple', ")
-                    .push_bind(args.query.clone()).push(") ORDER BY ts_rank_cd(to_tsvector('simple', block.text), plainto_tsquery('simple', ")
-                    .push_bind(args.query.clone()).push(")) DESC, block.ordinal");
+                // Any content word may match (stemmed, stop words ignored); blocks
+                // that contain all of them rank first. A query without usable
+                // words matches nothing.
+                let any_words = super::keyword_query(&args.query);
+                if any_words.is_empty() {
+                    query.push(" AND false");
+                } else {
+                    let all_words = any_words.replace(" | ", " & ");
+                    query
+                        .push(" AND to_tsvector('english', block.text) @@ to_tsquery('english', ")
+                        .push_bind(any_words.clone())
+                        .push(") ORDER BY (to_tsvector('english', block.text) @@ to_tsquery('english', ")
+                        .push_bind(all_words)
+                        .push(")) DESC, ts_rank(to_tsvector('english', block.text), to_tsquery('english', ")
+                        .push_bind(any_words)
+                        .push("), 1) DESC, block.ordinal");
+                }
                 args.limit
             }
             AssistantTool::GetPaperOutline(args) => {
@@ -174,6 +206,13 @@ impl AssistantContextRepository {
                     .push_bind(args.block_ids.clone())
                     .push(")) DESC, block.ordinal");
                 6
+            }
+            AssistantTool::ReadPaperRange(args) => {
+                query
+                    .push(" AND block.ordinal >= (SELECT anchor.ordinal FROM scoped anchor WHERE anchor.id = ")
+                    .push_bind(args.start_block_id)
+                    .push(") ORDER BY block.ordinal");
+                args.count
             }
             AssistantTool::GetObjectEvidence(args) => {
                 query.push(" AND (");
@@ -206,6 +245,11 @@ impl AssistantContextRepository {
             .fetch_all(&mut *transaction)
             .await?;
         let truncated = rows.len() > limit as usize;
+        let next_block_id = if matches!(tool, AssistantTool::ReadPaperRange(_)) {
+            rows.get(limit as usize).map(|row| row.block_id)
+        } else {
+            None
+        };
         rows.truncate(limit as usize);
         // Do not disclose out-of-scope object metadata even when its UUID exists.
         if object_status.is_some() && rows.is_empty() {
@@ -215,6 +259,7 @@ impl AssistantContextRepository {
                 truncated: false,
                 sources: vec![],
                 object_status: None,
+                next_block_id: None,
             });
         }
         let sources = rows
@@ -234,7 +279,74 @@ impl AssistantContextRepository {
             truncated,
             sources,
             object_status,
+            next_block_id,
         })
+    }
+}
+
+#[derive(FromRow)]
+struct OutlineRow {
+    first_block_id: Uuid,
+    heading: Option<String>,
+    kind: String,
+    blocks: i32,
+    chars: i32,
+}
+
+impl AssistantContextRepository {
+    /// Sections of the authorized scope with the id of each one's first block and
+    /// its size, in reading order. It is shown to the model before the first
+    /// tool step so navigation does not cost a call. Sections that hold only
+    /// headings or footnotes are left out; footnotes stay reachable by search.
+    /// Only paper and section scopes have an outline.
+    pub async fn outline(
+        &self,
+        request: &AssistantRequest,
+    ) -> Result<Vec<AssistantOutlineEntry>, DbError> {
+        request.validate().map_err(|_| tool_scope_error())?;
+        if !matches!(
+            request.scope.kind,
+            AssistantScopeKind::Paper | AssistantScopeKind::Section
+        ) {
+            return Ok(vec![]);
+        }
+        let mut transaction = self.pool.begin().await?;
+        sqlx::query("SET LOCAL statement_timeout = '2000ms'")
+            .execute(&mut *transaction)
+            .await?;
+        let mut query = scoped_query(request);
+        query.push(
+            " SELECT (array_agg(block.id ORDER BY block.ordinal))[1] AS first_block_id,
+                section.heading AS heading,
+                section.kind AS kind,
+                (count(*) FILTER (WHERE block.kind NOT IN ('heading', 'footnote')))::int AS blocks,
+                (COALESCE(sum(char_length(block.text)) FILTER (WHERE block.kind NOT IN ('heading', 'footnote')), 0))::int AS chars
+            FROM scoped block
+            JOIN paper_sections section
+              ON section.id = block.section_id
+             AND section.paper_id = block.paper_id
+             AND section.generation = block.generation
+            GROUP BY section.id, section.heading, section.kind
+            HAVING count(*) FILTER (WHERE block.kind NOT IN ('heading', 'footnote')) > 0
+            ORDER BY min(block.ordinal)
+            LIMIT 60",
+        );
+        let rows = query
+            .build_query_as::<OutlineRow>()
+            .fetch_all(&mut *transaction)
+            .await?;
+        transaction.commit().await?;
+        rows.into_iter()
+            .map(|row| {
+                Ok(AssistantOutlineEntry {
+                    first_block_id: row.first_block_id,
+                    heading: row.heading,
+                    kind: row.kind,
+                    blocks: u32::try_from(row.blocks).map_err(|_| tool_scope_error())?,
+                    chars: u32::try_from(row.chars).map_err(|_| tool_scope_error())?,
+                })
+            })
+            .collect()
     }
 }
 
