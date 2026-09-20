@@ -107,7 +107,9 @@ async fn five_tools_read_exact_sources_and_reject_foreign_or_stale_data() {
     });
     let result = repository.execute_tool(&request, &search).await.unwrap();
     assert_eq!(result.status, "ok");
-    assert_eq!(result.sources.len(), 2);
+    // The heading "Azimuth experiments" is listed by the outline, not searched.
+    assert_eq!(result.sources.len(), 1);
+    assert_eq!(result.sources[0].block_id, evidence);
     assert!(
         result
             .sources

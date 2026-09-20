@@ -323,6 +323,87 @@ async fn keyword_matches_come_first_and_footnotes_are_matched_but_never_pad() {
 }
 
 #[tokio::test]
+async fn a_matching_heading_never_takes_a_keyword_slot_from_the_paragraph_below_it() {
+    let Some(database) = database().await else {
+        return;
+    };
+    // Short headings rank high for a single shared word but carry no content.
+    // Here two headings and four wordier paragraphs all outrank the paragraph
+    // that actually answers the question.
+    let sections = vec![
+        SectionSpec {
+            kind: "introduction",
+            heading: Some("Introduction"),
+        },
+        SectionSpec {
+            kind: "method",
+            heading: Some("Training"),
+        },
+        SectionSpec {
+            kind: "method",
+            heading: Some("Optimizer"),
+        },
+    ];
+    let blocks = vec![
+        BlockSpec {
+            kind: "paragraph",
+            section: 0,
+            text: CLAIM,
+        },
+        BlockSpec {
+            kind: "heading",
+            section: 1,
+            text: "Training",
+        },
+        BlockSpec {
+            kind: "paragraph",
+            section: 1,
+            text: "This section describes the training regime for our models.",
+        },
+        BlockSpec {
+            kind: "paragraph",
+            section: 1,
+            text: "The code we used to train and evaluate our models is available online.",
+        },
+        BlockSpec {
+            kind: "paragraph",
+            section: 1,
+            text: "We trained our models on one machine, and each training step took a second.",
+        },
+        BlockSpec {
+            kind: "paragraph",
+            section: 1,
+            text: "Table 2 compares how the models we trained with this code perform on the task.",
+        },
+        BlockSpec {
+            kind: "heading",
+            section: 2,
+            text: "Optimizer",
+        },
+        BlockSpec {
+            kind: "paragraph",
+            section: 2,
+            text: "We used the Adam optimizer with a learning rate of 0.001 for all experiments.",
+        },
+    ];
+    let (paper_id, ids) = seed(&database, &sections, &blocks).await;
+
+    let question = request(
+        paper_id,
+        "Which optimizer is used to train the models?",
+        AssistantScopeKind::Paper,
+        &[],
+    );
+    let blocks = retrieved(&database, &question).await;
+
+    assert!(blocks.contains(&ids[7]), "{blocks:?}");
+    assert!(
+        !blocks.contains(&ids[1]) && !blocks.contains(&ids[6]),
+        "{blocks:?}"
+    );
+}
+
+#[tokio::test]
 async fn a_question_made_only_of_stop_words_falls_back_to_orientation() {
     let Some(database) = database().await else {
         return;
@@ -712,6 +793,12 @@ async fn search_matches_stemmed_content_words_and_ranks_blocks_with_all_of_them_
         .unwrap();
     assert_eq!(nothing.status, "no_matches");
     assert!(nothing.sources.is_empty());
+
+    // Headings are not searched; the outline lists them.
+    let heading = run(&database, &whole, search("results", vec![]))
+        .await
+        .unwrap();
+    assert_eq!(heading.status, "no_matches");
 
     // The section filter narrows the search.
     let narrowed = run(

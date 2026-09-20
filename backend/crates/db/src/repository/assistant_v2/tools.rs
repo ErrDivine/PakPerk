@@ -168,15 +168,16 @@ impl AssistantContextRepository {
                         .push(")");
                 }
                 // Any content word may match (stemmed, stop words ignored); blocks
-                // that contain all of them rank first. A query without usable
-                // words matches nothing.
+                // that contain all of them rank first. Headings are left out: the
+                // outline lists them and the paragraph below one matches on its
+                // own. A query without usable words matches nothing.
                 let any_words = super::keyword_query(&args.query);
                 if any_words.is_empty() {
                     query.push(" AND false");
                 } else {
                     let all_words = any_words.replace(" | ", " & ");
                     query
-                        .push(" AND to_tsvector('english', block.text) @@ to_tsquery('english', ")
+                        .push(" AND block.kind <> 'heading' AND to_tsvector('english', block.text) @@ to_tsquery('english', ")
                         .push_bind(any_words.clone())
                         .push(") ORDER BY (to_tsvector('english', block.text) @@ to_tsquery('english', ")
                         .push_bind(all_words)

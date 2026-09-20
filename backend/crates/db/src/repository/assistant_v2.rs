@@ -27,8 +27,11 @@ const ASSISTANT_RETRIEVAL_KEYWORD_BLOCKS: i64 = 5;
 /// best rank first; the remaining slots hold the opening of the scope and the
 /// start of its conclusion, so a question that shares no words with the text
 /// (for example "what is the main claim?") still reaches the paper's own
-/// statements. Footnotes, headings and captions can match by keyword but never
-/// pad the context; a scope with only such blocks falls back to its first blocks.
+/// statements. Footnotes and captions can match by keyword but never pad the
+/// context, and headings never match at all: a short heading such as "Optimizer"
+/// outranks the paragraph under it on a single shared word yet carries no
+/// content, and the paragraph matches on its own. A scope with only such blocks
+/// falls back to its first blocks.
 const SCOPED_RETRIEVAL: &str = r"
     WITH in_scope AS (
         SELECT block.*, section.kind AS section_kind
@@ -50,6 +53,7 @@ const SCOPED_RETRIEVAL: &str = r"
         FROM in_scope AS block
         CROSS JOIN query
         WHERE query.terms IS NOT NULL
+          AND block.kind <> 'heading'
           AND to_tsvector('english', block.text) @@ query.terms
         ORDER BY score DESC, block.ordinal
         LIMIT $5

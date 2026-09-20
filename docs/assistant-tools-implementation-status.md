@@ -8,7 +8,7 @@ The existing Assistant v2 endpoint now has a native, bounded tool-selection bran
 
 | Tool | Purpose |
 | --- | --- |
-| `search_paper_evidence` | Positive-match lexical search over current-paper source blocks: any stemmed content word matches, and blocks that contain all of them rank first |
+| `search_paper_evidence` | Positive-match lexical search over current-paper source blocks: any stemmed content word matches, and blocks that contain all of them rank first; headings are not searched (the outline lists them) |
 | `get_paper_outline` | Bounded heading navigation, available only for paper/section scopes |
 | `read_paper_range` | Up to six consecutive blocks in reading order from a known block, with the ID of the next block; paper/section scopes only |
 | `read_paper_blocks` | Exact canonical source text and optional in-scope adjacent blocks |
