@@ -174,6 +174,10 @@ pub struct ParsedTeiDocument {
     pub object_references: Vec<ParsedTeiObjectReference>,
 }
 
+/// Source id of the trailing section that holds the page footnotes GROBID puts
+/// directly under `<body>`. Normalization marks its blocks as footnotes.
+pub const BODY_FOOTNOTES_SECTION_ID: &str = "body-footnotes";
+
 pub fn parse_tei(xml: &str) -> Result<ParsedPaper, DocumentError> {
     parse_tei_with_limits(xml, ParseLimits::default())
 }
@@ -215,15 +219,15 @@ pub fn parse_tei_document_with_limits(
     let mut object_references = Vec::new();
     let mut occurrences = HashMap::new();
 
-    let body_paragraphs = collect_paragraphs_excluding_divs(body);
-    if !body_paragraphs.is_empty() {
+    let loose_paragraphs = collect_loose_body_paragraphs(body);
+    if !loose_paragraphs.is_empty() {
         push_section(
             body,
             "body-root".into(),
             None,
             Some(SectionKind::Other),
             None,
-            body_paragraphs,
+            loose_paragraphs,
             &mut sections,
             &mut contexts,
             &mut object_references,
@@ -240,6 +244,26 @@ pub fn parse_tei_document_with_limits(
         &mut occurrences,
         &reference_ordinals,
     );
+    // GROBID writes page footnotes as `<note place="foot">` children of `<body>`
+    // after the last division. They keep their text but must not take the first
+    // block ordinals, which readers, retrieval and introduction fallback treat
+    // as the start of the paper.
+    let footnote_paragraphs = collect_body_footnote_paragraphs(body);
+    if !footnote_paragraphs.is_empty() {
+        push_section(
+            body,
+            BODY_FOOTNOTES_SECTION_ID.into(),
+            None,
+            Some(SectionKind::Other),
+            None,
+            footnote_paragraphs,
+            &mut sections,
+            &mut contexts,
+            &mut object_references,
+            &mut occurrences,
+            &reference_ordinals,
+        );
+    }
     contexts.retain(|context| reference_ids.contains(context.reference_source_id.as_str()));
 
     let (figures, tables) = extract_figures_and_tables(body);
@@ -562,12 +586,49 @@ fn push_section(
 }
 
 fn collect_paragraphs_excluding_divs(node: &XmlElement) -> Vec<&XmlElement> {
-    fn walk<'a>(node: &'a XmlElement, root: bool, output: &mut Vec<&'a XmlElement>) {
+    collect_paragraphs(node, false)
+}
+
+/// Paragraphs that sit directly in `<body>` outside every division, without
+/// the paragraphs of `<note>` elements (see [`collect_body_footnote_paragraphs`]).
+fn collect_loose_body_paragraphs(body: &XmlElement) -> Vec<&XmlElement> {
+    collect_paragraphs(body, true)
+}
+
+/// Paragraphs of the `<note>` elements that sit outside every division.
+fn collect_body_footnote_paragraphs(body: &XmlElement) -> Vec<&XmlElement> {
+    fn walk<'a>(node: &'a XmlElement, output: &mut Vec<&'a XmlElement>) {
+        for child in node.direct_elements() {
+            if child.name == "note" {
+                output.extend(collect_paragraphs(child, false));
+            } else if !matches!(
+                child.name.as_str(),
+                "div" | "listBibl" | "biblStruct" | "figure" | "table"
+            ) {
+                walk(child, output);
+            }
+        }
+    }
+    let mut output = Vec::new();
+    walk(body, &mut output);
+    output
+}
+
+fn collect_paragraphs(node: &XmlElement, skip_notes: bool) -> Vec<&XmlElement> {
+    fn walk<'a>(
+        node: &'a XmlElement,
+        root: bool,
+        skip_notes: bool,
+        output: &mut Vec<&'a XmlElement>,
+    ) {
         for child in node.direct_elements() {
             if child.name == "div" && !root {
                 continue;
             }
             if child.name == "div" {
+                continue;
+            }
+            if skip_notes && child.name == "note" {
                 continue;
             }
             if child.name == "p" {
@@ -576,12 +637,12 @@ fn collect_paragraphs_excluding_divs(node: &XmlElement) -> Vec<&XmlElement> {
                 child.name.as_str(),
                 "listBibl" | "biblStruct" | "figure" | "table"
             ) {
-                walk(child, false, output);
+                walk(child, false, skip_notes, output);
             }
         }
     }
     let mut output = Vec::new();
-    walk(node, true, &mut output);
+    walk(node, true, skip_notes, &mut output);
     output
 }
 
@@ -1802,6 +1863,124 @@ mod tests {
         assert_eq!(
             classify_section(Some("Effect of Model Size"), None),
             SectionKind::Result
+        );
+    }
+
+    fn long_paragraph(prefix: &str) -> String {
+        format!(
+            "{prefix} {}",
+            "This sentence carries enough text to count as substantial body content. ".repeat(4)
+        )
+    }
+
+    #[test]
+    fn page_footnotes_follow_the_sections_instead_of_leading_them() {
+        // GROBID emits footnotes as `<note place="foot"><p>` children of <body>,
+        // after the last division.
+        let xml = format!(
+            r#"<TEI><text><body>
+                <div><head>Introduction</head><p>{}</p></div>
+                <div><head>Method</head><p>{}</p></div>
+                <note place="foot" n="1"><p><s>First footnote.</s></p></note>
+                <note place="foot" n="2"><p><s>https://example.org/data</s></p></note>
+            </body></text></TEI>"#,
+            long_paragraph("Introduction body."),
+            long_paragraph("Method body."),
+        );
+        let paper = parse_tei(&xml).unwrap();
+
+        let ids = paper
+            .sections
+            .iter()
+            .map(|section| section.source_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, ["section-0", "section-1", "body-footnotes"]);
+        assert!(!ids.contains(&"body-root"));
+        let footnotes = &paper.sections[2];
+        assert_eq!(footnotes.kind, SectionKind::Other);
+        assert_eq!(footnotes.heading, None);
+        assert_eq!(
+            footnotes
+                .paragraphs
+                .iter()
+                .map(|paragraph| paragraph.text.as_str())
+                .collect::<Vec<_>>(),
+            ["First footnote.", "https://example.org/data"]
+        );
+        // The footnote section is the last one, so ordinals reflect reading order.
+        assert_eq!(footnotes.ordinal, 2);
+    }
+
+    #[test]
+    fn loose_body_paragraphs_still_precede_the_sections() {
+        let xml = format!(
+            r#"<TEI><text><body>
+                <p>Loose opening paragraph.</p>
+                <div><head>Introduction</head><p>{}</p></div>
+                <note place="foot"><p>A footnote.</p></note>
+            </body></text></TEI>"#,
+            long_paragraph("Introduction body."),
+        );
+        let paper = parse_tei(&xml).unwrap();
+        let ids = paper
+            .sections
+            .iter()
+            .map(|section| section.source_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, ["body-root", "section-1", "body-footnotes"]);
+        assert_eq!(
+            paper.sections[0].paragraphs[0].text,
+            "Loose opening paragraph."
+        );
+        assert!(
+            paper.sections[0]
+                .paragraphs
+                .iter()
+                .all(|paragraph| !paragraph.text.contains("footnote"))
+        );
+    }
+
+    #[test]
+    fn notes_inside_a_division_stay_with_their_section() {
+        let xml = format!(
+            r#"<TEI><text><body>
+                <div><head>Introduction</head><p>{}</p>
+                    <note place="foot"><p>Inline footnote.</p></note></div>
+            </body></text></TEI>"#,
+            long_paragraph("Introduction body."),
+        );
+        let paper = parse_tei(&xml).unwrap();
+        assert_eq!(paper.sections.len(), 1);
+        assert!(
+            paper.sections[0]
+                .paragraphs
+                .iter()
+                .any(|paragraph| paragraph.text == "Inline footnote.")
+        );
+    }
+
+    #[test]
+    fn introduction_fallback_reads_the_headless_first_division_not_the_footnotes() {
+        // The shape of a real GROBID result whose "1 INTRODUCTION" heading was
+        // lost: the introduction is a division without <head>, followed later by
+        // page footnotes.
+        let xml = format!(
+            r#"<TEI><text><body>
+                <div><p>{}</p></div>
+                <div><head>Method</head><p>{}</p></div>
+                <note place="foot"><p>{}</p></note>
+            </body></text></TEI>"#,
+            long_paragraph("The real introduction text."),
+            long_paragraph("Method body."),
+            long_paragraph("A long footnote that would otherwise look substantial."),
+        );
+        let paper = parse_tei(&xml).unwrap();
+        let introduction = crate::detect_introduction(&paper).unwrap();
+        assert!(introduction.detection.used_fallback);
+        assert!(
+            introduction.paragraphs[0]
+                .text
+                .starts_with("The real introduction text.")
         );
     }
 

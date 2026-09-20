@@ -137,6 +137,53 @@ mod tests {
         }));
     }
     #[tokio::test]
+    async fn page_footnotes_are_footnote_blocks_after_the_body_text() {
+        let document = GrobidAdapter::new("0.9.0")
+            .unwrap()
+            .parse(ParseInput {
+                paper_id: Uuid::now_v7(),
+                generation: 1,
+                arxiv_version: 1,
+                payload: ParsePayload::GrobidTei(
+                    r#"<TEI><text><body>
+                      <div><head>Introduction</head><p>We study a problem in depth.</p></div>
+                      <div><head>Results</head><p>The method wins on every benchmark.</p></div>
+                      <note place="foot" n="1"><p>https://example.org/data</p></note>
+                      <note place="foot" n="2"><p>Batch size was swept.</p></note>
+                    </body></text></TEI>"#
+                        .to_owned(),
+                ),
+            })
+            .await
+            .unwrap();
+
+        let ordered = document
+            .blocks
+            .iter()
+            .map(|block| (block.ordinal, block.kind, block.text.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ordered,
+            [
+                (0, DocumentBlockKind::Heading, "Introduction"),
+                (
+                    1,
+                    DocumentBlockKind::Paragraph,
+                    "We study a problem in depth."
+                ),
+                (2, DocumentBlockKind::Heading, "Results"),
+                (
+                    3,
+                    DocumentBlockKind::Paragraph,
+                    "The method wins on every benchmark."
+                ),
+                (4, DocumentBlockKind::Footnote, "https://example.org/data"),
+                (5, DocumentBlockKind::Footnote, "Batch size was swept."),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn repeated_sections_keep_distinct_stable_block_keys() {
         let tei = r"<TEI><text><body>
             <div><head>Repeated heading</head><p>Identical paragraph text.</p></div>

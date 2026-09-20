@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use document_model::{ParsedTeiDocument, ParsedTeiObjectKind};
+use document_model::{BODY_FOOTNOTES_SECTION_ID, ParsedTeiDocument, ParsedTeiObjectKind};
 use domain::{
     DOCUMENT_SCHEMA_VERSION, DocumentBlock, DocumentBlockKind, DocumentEquation, DocumentFigure,
     DocumentTable, EquationConfidenceStatus, FigureExtractionStatus, InlineSpan, InlineSpanKind,
@@ -79,6 +79,11 @@ fn normalize_blocks(
                 .checked_add(1)
                 .ok_or(ParseError::InvalidOutput)?;
         }
+        let paragraph_kind = if section.source_id == BODY_FOOTNOTES_SECTION_ID {
+            DocumentBlockKind::Footnote
+        } else {
+            DocumentBlockKind::Paragraph
+        };
         for paragraph in &section.paragraphs {
             let text = normalize_document_text(&paragraph.text);
             if text.is_empty() {
@@ -115,7 +120,7 @@ fn normalize_blocks(
                 generation,
                 global_ordinal,
                 local_ordinal,
-                DocumentBlockKind::Paragraph,
+                paragraph_kind,
                 text,
                 section,
                 &section_path,

@@ -16,6 +16,136 @@ use uuid::Uuid;
 use super::DbError;
 
 pub const ASSISTANT_RETRIEVAL_MAX_BLOCKS: i64 = 10;
+/// Slots of the initial evidence set reserved for blocks that match the
+/// question's content words; the rest orients the model in the document.
+const ASSISTANT_RETRIEVAL_KEYWORD_BLOCKS: i64 = 5;
+/// Shared retrieval for the paper and section scopes.
+///
+/// Parameters: `$1` paper, `$2` generation, `$3` OR-joined content words,
+/// `$4` total block limit, `$5` keyword slots, `$6` section kinds (empty means
+/// the whole paper). Blocks that match at least one content word come first,
+/// best rank first; the remaining slots hold the opening of the scope and the
+/// start of its conclusion, so a question that shares no words with the text
+/// (for example "what is the main claim?") still reaches the paper's own
+/// statements. Footnotes, headings and captions can match by keyword but never
+/// pad the context; a scope with only such blocks falls back to its first blocks.
+const SCOPED_RETRIEVAL: &str = r"
+    WITH in_scope AS (
+        SELECT block.*, section.kind AS section_kind
+        FROM document_blocks AS block
+        LEFT JOIN paper_sections AS section
+          ON section.id = block.section_id
+         AND section.paper_id = block.paper_id
+         AND section.generation = block.generation
+        WHERE block.paper_id = $1
+          AND block.generation = $2
+          AND (cardinality($6::text[]) = 0 OR section.kind = ANY($6::text[]))
+    ),
+    query AS (
+        SELECT CASE WHEN $3 = '' THEN NULL ELSE to_tsquery('english', $3) END AS terms
+    ),
+    matched AS (
+        SELECT block.id,
+               ts_rank(to_tsvector('english', block.text), query.terms, 1) AS score
+        FROM in_scope AS block
+        CROSS JOIN query
+        WHERE query.terms IS NOT NULL
+          AND to_tsvector('english', block.text) @@ query.terms
+        ORDER BY score DESC, block.ordinal
+        LIMIT $5
+    ),
+    opening AS (
+        -- The first prose of the scope. When the scope has a recognised
+        -- Abstract or Introduction, only that prose counts: papers parsed
+        -- before footnotes moved to the end still carry them as leading,
+        -- unlabelled paragraphs.
+        SELECT block.id
+        FROM in_scope AS block
+        WHERE block.kind IN ('paragraph', 'list_item', 'quote', 'theorem_definition')
+          AND char_length(block.text) >= 60
+          AND (
+              block.section_kind IN ('abstract', 'introduction')
+              OR NOT EXISTS (
+                  SELECT 1 FROM in_scope AS other
+                  WHERE other.section_kind IN ('abstract', 'introduction')
+              )
+          )
+        ORDER BY block.ordinal
+        LIMIT 3
+    ),
+    closing AS (
+        SELECT block.id
+        FROM in_scope AS block
+        WHERE block.section_kind = 'conclusion'
+          AND block.kind IN ('paragraph', 'list_item', 'quote', 'theorem_definition')
+          AND char_length(block.text) >= 60
+        ORDER BY block.ordinal
+        LIMIT 2
+    ),
+    fallback AS (
+        -- Tiny or unusual documents (only short blocks, or only headings and
+        -- footnotes) must still yield evidence when the scope has any block.
+        SELECT block.id
+        FROM in_scope AS block
+        WHERE NOT EXISTS (SELECT 1 FROM matched)
+          AND NOT EXISTS (SELECT 1 FROM opening)
+          AND NOT EXISTS (SELECT 1 FROM closing)
+        ORDER BY (block.kind = 'footnote'), (block.kind = 'heading'), block.ordinal
+        LIMIT 5
+    ),
+    picked AS (
+        SELECT id, 0 AS tier, score FROM matched
+        UNION ALL SELECT id, 1, 0::real FROM opening
+        UNION ALL SELECT id, 2, 0::real FROM closing
+        UNION ALL SELECT id, 3, 0::real FROM fallback
+    ),
+    best AS (
+        SELECT DISTINCT ON (id) id, tier, score FROM picked ORDER BY id, tier
+    )
+    SELECT
+        block.id AS block_id,
+        block.paper_id,
+        block.generation,
+        NULLIF(block.section_path[array_length(block.section_path, 1)], '')
+            AS section_heading,
+        block.page_start,
+        block.text
+    FROM best
+    JOIN document_blocks AS block ON block.id = best.id
+    ORDER BY best.tier, best.score DESC, block.ordinal
+    LIMIT $4
+";
+
+/// Content words of a question as a `to_tsquery` OR expression, or an empty
+/// string when nothing usable remains. Stop words and stemming are left to the
+/// `english` configuration; words that only refer to the document itself are
+/// dropped so that "this paper" does not match every block.
+fn keyword_query(question: &str) -> String {
+    const ABOUT_THE_DOCUMENT: [&str; 8] = [
+        "paper", "article", "work", "study", "authors", "author", "section", "text",
+    ];
+    let mut words = Vec::<String>::new();
+    for token in question.split(|character: char| !character.is_alphanumeric()) {
+        let token = token.to_lowercase();
+        let length = token.chars().count();
+        let numeric = token.chars().all(|character| character.is_ascii_digit());
+        if length == 0 || length > 40 || (length == 1 && !numeric) || words.contains(&token) {
+            continue;
+        }
+        words.push(token);
+    }
+    let focused = words
+        .iter()
+        .filter(|word| !ABOUT_THE_DOCUMENT.contains(&word.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    let selected = if focused.is_empty() { words } else { focused };
+    selected
+        .into_iter()
+        .take(16)
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AssistantRetentionCleanup {
@@ -420,34 +550,7 @@ impl AssistantContextRepository {
         &self,
         request: &AssistantRequest,
     ) -> Result<Vec<RetrievedAssistantBlockRow>, DbError> {
-        Ok(sqlx::query_as::<_, RetrievedAssistantBlockRow>(
-            r"
-            WITH query AS (
-                SELECT plainto_tsquery('simple', $3) AS value
-            )
-            SELECT
-                block.id AS block_id,
-                block.paper_id,
-                block.generation,
-                NULLIF(block.section_path[array_length(block.section_path, 1)], '')
-                    AS section_heading,
-                block.page_start,
-                block.text
-            FROM document_blocks AS block
-            CROSS JOIN query
-            WHERE block.paper_id = $1 AND block.generation = $2
-            ORDER BY
-                ts_rank_cd(to_tsvector('simple', block.text), query.value) DESC,
-                block.ordinal
-            LIMIT $4
-            ",
-        )
-        .bind(request.paper_id)
-        .bind(request.generation)
-        .bind(&request.question)
-        .bind(ASSISTANT_RETRIEVAL_MAX_BLOCKS)
-        .fetch_all(&self.pool)
-        .await?)
+        self.scoped_blocks(request, &[]).await
     }
 
     async fn section_blocks(
@@ -461,43 +564,25 @@ impl AssistantContextRepository {
             .copied()
             .map(section_kind_name)
             .collect::<Vec<_>>();
-        Ok(sqlx::query_as::<_, RetrievedAssistantBlockRow>(
-            r"
-            WITH query AS (
-                SELECT plainto_tsquery('simple', $4) AS value
-            )
-            SELECT
-                block.id AS block_id,
-                block.paper_id,
-                block.generation,
-                COALESCE(
-                    section.heading,
-                    NULLIF(block.section_path[array_length(block.section_path, 1)], '')
-                ) AS section_heading,
-                block.page_start,
-                block.text
-            FROM document_blocks AS block
-            JOIN paper_sections AS section
-              ON section.id = block.section_id
-             AND section.paper_id = block.paper_id
-             AND section.generation = block.generation
-            CROSS JOIN query
-            WHERE block.paper_id = $1
-              AND block.generation = $2
-              AND section.kind = ANY($3::text[])
-            ORDER BY
-                ts_rank_cd(to_tsvector('simple', block.text), query.value) DESC,
-                block.ordinal
-            LIMIT $5
-            ",
+        self.scoped_blocks(request, &section_kinds).await
+    }
+
+    async fn scoped_blocks(
+        &self,
+        request: &AssistantRequest,
+        section_kinds: &[&str],
+    ) -> Result<Vec<RetrievedAssistantBlockRow>, DbError> {
+        Ok(
+            sqlx::query_as::<_, RetrievedAssistantBlockRow>(SCOPED_RETRIEVAL)
+                .bind(request.paper_id)
+                .bind(request.generation)
+                .bind(keyword_query(&request.question))
+                .bind(ASSISTANT_RETRIEVAL_MAX_BLOCKS)
+                .bind(ASSISTANT_RETRIEVAL_KEYWORD_BLOCKS)
+                .bind(section_kinds)
+                .fetch_all(&self.pool)
+                .await?,
         )
-        .bind(request.paper_id)
-        .bind(request.generation)
-        .bind(&section_kinds)
-        .bind(&request.question)
-        .bind(ASSISTANT_RETRIEVAL_MAX_BLOCKS)
-        .fetch_all(&self.pool)
-        .await?)
     }
 
     async fn passport_field_blocks(
@@ -1337,5 +1422,39 @@ mod tests {
         let mut changed = value;
         changed.detail = Some("Different private correction.".to_owned());
         assert!(!row.matches(&changed));
+    }
+
+    #[test]
+    fn keyword_query_keeps_content_words_and_drops_talk_about_the_document() {
+        assert_eq!(
+            keyword_query("What is the main claim of this paper"),
+            "what | is | the | main | claim | of | this"
+        );
+        assert_eq!(
+            keyword_query("How does LoRA reduce trainable parameters?"),
+            "how | does | lora | reduce | trainable | parameters"
+        );
+    }
+
+    #[test]
+    fn keyword_query_keeps_numbers_but_not_stray_letters() {
+        assert_eq!(
+            keyword_query("BLEU 28.4 on WMT 2014, rank r = 8"),
+            "bleu | 28 | 4 | on | wmt | 2014 | rank | 8"
+        );
+    }
+
+    #[test]
+    fn keyword_query_deduplicates_lowercases_and_bounds_its_length() {
+        assert_eq!(keyword_query("Résumé RÉSUMÉ résumé"), "résumé");
+        assert_eq!(keyword_query(" ?! ... "), "");
+        let long = (0..40)
+            .map(|n| format!("term{n}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(keyword_query(&long).split(" | ").count(), 16);
+        // A question that only talks about the document keeps the rest.
+        assert_eq!(keyword_query("this paper"), "this");
+        assert_eq!(keyword_query("paper"), "paper");
     }
 }
