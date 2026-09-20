@@ -4,9 +4,10 @@ use std::{
 };
 
 use domain::{
-    ASSISTANT_ANSWER_MAX_SCALARS, AssistantAnswer, AssistantAnswerStatus, AssistantClaim,
-    AssistantClaimSupport, AssistantEvidenceReference, ChatAnswer, ChatEvidence, RelationType,
-    SectionKind, SuggestedFollowUp, assistant_text_contains_link,
+    ASSISTANT_ANSWER_MAX_SCALARS, ASSISTANT_PARTIAL_LIMITATION, AssistantAnswer,
+    AssistantAnswerStatus, AssistantClaim, AssistantClaimSupport, AssistantEvidenceReference,
+    ChatAnswer, ChatEvidence, RelationType, SectionKind, SuggestedFollowUp,
+    assistant_text_contains_link, canonical_assistant_answer,
 };
 use regex::Regex;
 use serde::Deserialize;
@@ -21,10 +22,16 @@ use crate::{
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawAssistantAnswer {
-    answer: String,
+    /// Accepted for older prompts but never used: the rendered answer is derived
+    /// from the validated claims.
+    #[serde(default, rename = "answer")]
+    _answer: Option<String>,
     status: AssistantAnswerStatus,
     claims: Vec<RawAssistantClaim>,
-    limitations: Vec<String>,
+    /// Accepted for older prompts but never used: the closed limitation notice
+    /// follows from the status.
+    #[serde(default, rename = "limitations")]
+    _limitations: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,8 +46,14 @@ struct RawAssistantClaim {
 #[serde(deny_unknown_fields)]
 struct RawAssistantEvidence {
     block_id: Uuid,
-    start: u32,
-    end: u32,
+    /// A passage copied verbatim from the block; the server finds its range.
+    #[serde(default)]
+    quote: Option<String>,
+    /// Explicit Unicode-scalar range, accepted for older prompts.
+    #[serde(default)]
+    start: Option<u32>,
+    #[serde(default)]
+    end: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -87,16 +100,7 @@ pub fn validate_assistant_output(
 ) -> Result<AssistantAnswer, ValidationError> {
     let raw: RawAssistantAnswer =
         serde_json::from_str(json).map_err(|_| ValidationError::InvalidJson)?;
-    let rendered_answer = raw.answer.trim();
-    if rendered_answer.is_empty()
-        || rendered_answer.chars().count() > ASSISTANT_ANSWER_MAX_SCALARS
-        || rendered_answer.split_whitespace().count() > 800
-        || contains_html(rendered_answer)
-        || contains_unsafe_markdown(rendered_answer)
-        || assistant_text_contains_link(rendered_answer)
-        || raw.claims.len() > 16
-        || raw.limitations.len() > 1
-    {
+    if raw.claims.len() > 16 {
         return Err(ValidationError::InvalidAssistantAnswer);
     }
     if (raw.status == AssistantAnswerStatus::NotFound && !raw.claims.is_empty())
@@ -129,17 +133,13 @@ pub fn validate_assistant_output(
             let trusted = trusted
                 .get(&source.block_id)
                 .ok_or(ValidationError::InvalidAssistantEvidence)?;
-            if source.start >= source.end
-                || scalar_slice(&trusted.text, source.start, source.end)
-                    .is_none_or(|selected| selected.trim().is_empty())
-            {
-                return Err(ValidationError::InvalidAssistantEvidence);
-            }
-            if seen.insert((source.block_id, source.start, source.end)) {
+            let (start, end) = resolve_evidence_range(&source, &trusted.text)
+                .ok_or(ValidationError::InvalidAssistantEvidence)?;
+            if seen.insert((source.block_id, start, end)) {
                 evidence.push(AssistantEvidenceReference {
                     block_id: source.block_id,
-                    start: source.start,
-                    end: source.end,
+                    start,
+                    end,
                     page_start: trusted.page_start,
                     section: trusted.section_heading.clone(),
                 });
@@ -155,22 +155,26 @@ pub fn validate_assistant_output(
         });
     }
 
-    let mut limitations = Vec::with_capacity(raw.limitations.len());
-    for limitation in raw.limitations {
-        let limitation = limitation.trim();
-        if limitation.is_empty()
-            || limitation.chars().count() > 600
-            || contains_html(limitation)
-            || contains_unsafe_markdown(limitation)
-            || assistant_text_contains_link(limitation)
-        {
-            return Err(ValidationError::InvalidAssistantAnswer);
-        }
-        limitations.push(limitation.to_owned());
+    // The rendered answer and the limitation notice follow from the validated
+    // claims and the status; nothing the model wrote outside a claim is shown.
+    let rendered_answer = canonical_assistant_answer(raw.status, &claims)
+        .ok_or(ValidationError::InvalidAssistantAnswer)?;
+    if rendered_answer.chars().count() > ASSISTANT_ANSWER_MAX_SCALARS
+        || rendered_answer.split_whitespace().count() > 800
+        || contains_html(&rendered_answer)
+        || contains_unsafe_markdown(&rendered_answer)
+        || assistant_text_contains_link(&rendered_answer)
+    {
+        return Err(ValidationError::InvalidAssistantAnswer);
     }
+    let limitations = if raw.status == AssistantAnswerStatus::Partial {
+        vec![ASSISTANT_PARTIAL_LIMITATION.to_owned()]
+    } else {
+        Vec::new()
+    };
 
     let answer = AssistantAnswer {
-        answer: rendered_answer.to_owned(),
+        answer: rendered_answer,
         status: raw.status,
         claims,
         limitations,
@@ -183,6 +187,71 @@ pub fn validate_assistant_output(
         return Err(ValidationError::InvalidAssistantAnswer);
     }
     Ok(answer)
+}
+
+/// Longest quote the model may cite, in Unicode scalars.
+const MAX_QUOTE_SCALARS: usize = 600;
+
+/// The Unicode-scalar range a piece of evidence cites inside its block.
+///
+/// A `quote` is located in the trusted block text; an explicit range is checked
+/// against it. Either way the returned range lies inside the block, so the
+/// stored evidence is always text the paper contains.
+fn resolve_evidence_range(evidence: &RawAssistantEvidence, text: &str) -> Option<(u32, u32)> {
+    if let Some(quote) = &evidence.quote {
+        return locate_quote(text, quote);
+    }
+    let (start, end) = (evidence.start?, evidence.end?);
+    if start >= end || scalar_slice(text, start, end).is_none_or(|slice| slice.trim().is_empty()) {
+        return None;
+    }
+    Some((start, end))
+}
+
+/// Finds `quote` in `text` and returns its Unicode-scalar range. Runs of
+/// whitespace compare equal and typographic quotes and dashes are folded,
+/// because models normalise them when they copy; the range always refers to the
+/// original characters. The first occurrence wins.
+fn locate_quote(text: &str, quote: &str) -> Option<(u32, u32)> {
+    let (needle, _) = fold_for_matching(quote);
+    let needle_scalars = needle.chars().count();
+    if needle_scalars == 0 || needle_scalars > MAX_QUOTE_SCALARS {
+        return None;
+    }
+    let (haystack, origin) = fold_for_matching(text);
+    let first = haystack[..haystack.find(&needle)?].chars().count();
+    let start = *origin.get(first)?;
+    let end = origin.get(first + needle_scalars - 1)? + 1;
+    Some((u32::try_from(start).ok()?, u32::try_from(end).ok()?))
+}
+
+/// The text with whitespace runs collapsed to one space (leading and trailing
+/// whitespace dropped) and typographic quotes and dashes folded to ASCII, plus
+/// the index in the original text of every character kept.
+fn fold_for_matching(value: &str) -> (String, Vec<usize>) {
+    let mut folded = String::with_capacity(value.len());
+    let mut origin = Vec::with_capacity(value.len());
+    let mut pending_space = None;
+    for (index, character) in value.chars().enumerate() {
+        if character.is_whitespace() {
+            pending_space.get_or_insert(index);
+            continue;
+        }
+        if let Some(space) = pending_space.take()
+            && !folded.is_empty()
+        {
+            folded.push(' ');
+            origin.push(space);
+        }
+        folded.push(match character {
+            '\u{2018}' | '\u{2019}' | '\u{201B}' | '\u{2032}' => '\'',
+            '\u{201C}' | '\u{201D}' | '\u{201E}' => '"',
+            '\u{2010}'..='\u{2015}' | '\u{2212}' => '-',
+            other => other,
+        });
+        origin.push(index);
+    }
+    (folded, origin)
 }
 
 fn scalar_slice(value: &str, start: u32, end: u32) -> Option<String> {
@@ -915,7 +984,7 @@ mod tests {
     }
 
     #[test]
-    fn assistant_rejects_extra_answer_statement_without_a_claim_record() {
+    fn assistant_never_shows_answer_prose_that_is_not_a_validated_claim() {
         let request = assistant_request("A supported method is reported.");
         let output = serde_json::json!({
             "answer": "A supported method is reported.\n\nIt beats every competing method.",
@@ -932,11 +1001,13 @@ mod tests {
             "limitations": []
         });
 
-        assert_eq!(
-            validate_assistant_output(&output.to_string(), &request, Uuid::now_v7(), None, None,)
-                .unwrap_err(),
-            ValidationError::InvalidAssistantAnswer
-        );
+        // The rendered answer is derived from the claims, so the extra sentence
+        // the model wrote outside a claim is dropped instead of displayed.
+        let answer =
+            validate_assistant_output(&output.to_string(), &request, Uuid::now_v7(), None, None)
+                .unwrap();
+        assert_eq!(answer.answer, "A supported method is reported.");
+        assert_eq!(answer.claims.len(), 1);
     }
 
     #[test]
@@ -961,7 +1032,7 @@ mod tests {
         assert_eq!(
             validate_assistant_output(&output.to_string(), &request, Uuid::now_v7(), None, None,)
                 .unwrap_err(),
-            ValidationError::InvalidAssistantAnswer
+            ValidationError::InvalidAssistantClaim
         );
     }
 
@@ -1001,7 +1072,6 @@ mod tests {
     fn assistant_partial_uses_only_closed_non_claim_limitation_metadata() {
         let request = assistant_request("A supported method is reported.");
         let mut output = serde_json::json!({
-            "answer": "A supported method is reported.",
             "status": "partial",
             "claims": [{
                 "text": "A supported method is reported.",
@@ -1011,20 +1081,171 @@ mod tests {
                     "start": 0,
                     "end": 31
                 }]
-            }],
-            "limitations": ["Only claim-backed portions of the requested answer are shown."]
+            }]
         });
 
-        validate_assistant_output(&output.to_string(), &request, Uuid::now_v7(), None, None)
-            .unwrap();
+        let answer =
+            validate_assistant_output(&output.to_string(), &request, Uuid::now_v7(), None, None)
+                .unwrap();
+        assert_eq!(
+            answer.limitations,
+            ["Only claim-backed portions of the requested answer are shown."]
+        );
 
+        // Whatever limitation prose the model adds is ignored, never displayed.
         output["limitations"] =
             serde_json::json!(["The paper did not test this method in deployment."]);
+        let answer =
+            validate_assistant_output(&output.to_string(), &request, Uuid::now_v7(), None, None)
+                .unwrap();
         assert_eq!(
-            validate_assistant_output(&output.to_string(), &request, Uuid::now_v7(), None, None,)
-                .unwrap_err(),
-            ValidationError::InvalidAssistantAnswer
+            answer.limitations,
+            ["Only claim-backed portions of the requested answer are shown."]
         );
+
+        // A supported answer carries no limitation at all.
+        output["status"] = serde_json::json!("supported");
+        let answer =
+            validate_assistant_output(&output.to_string(), &request, Uuid::now_v7(), None, None)
+                .unwrap();
+        assert!(answer.limitations.is_empty());
+    }
+
+    fn quoted_claim(request: &AssistantCompletionRequest, quote: &str) -> serde_json::Value {
+        serde_json::json!({
+            "status": "supported",
+            "claims": [{
+                "text": "The reported method is described.",
+                "support": "direct",
+                "evidence": [{"block_id": request.evidence[0].block_id, "quote": quote}]
+            }]
+        })
+    }
+
+    fn cited_range(output: &serde_json::Value, request: &AssistantCompletionRequest) -> (u32, u32) {
+        let answer =
+            validate_assistant_output(&output.to_string(), request, Uuid::now_v7(), None, None)
+                .unwrap();
+        let evidence = &answer.claims[0].evidence[0];
+        (evidence.start, evidence.end)
+    }
+
+    #[test]
+    fn assistant_quotes_are_located_as_unicode_scalar_ranges() {
+        // "α🙂 " is three scalars but six UTF-8 bytes; the range must count scalars.
+        let request = assistant_request("α🙂 The method uses low-rank updates. Later text.");
+        assert_eq!(
+            cited_range(
+                &quoted_claim(&request, "The method uses low-rank updates."),
+                &request
+            ),
+            (3, 36)
+        );
+        // The first occurrence wins.
+        let request = assistant_request("repeat here and repeat here");
+        assert_eq!(
+            cited_range(&quoted_claim(&request, "repeat here"), &request),
+            (0, 11)
+        );
+    }
+
+    #[test]
+    fn assistant_quotes_tolerate_whitespace_and_typographic_punctuation() {
+        let request = assistant_request(
+            "The model\u{a0}uses\n  low\u{2011}rank updates \u{201c}efficiently\u{201d} and it\u{2019}s fast.",
+        );
+        // Whitespace runs, non-breaking hyphens and curly quotes are normalised on both
+        // sides, and the range still refers to the original characters.
+        let quote = "model uses low-rank updates \"efficiently\" and it's fast.";
+        let (start, end) = cited_range(&quoted_claim(&request, quote), &request);
+        let cited = scalar_slice(&request.evidence[0].text, start, end).unwrap();
+        assert_eq!(cited, request.evidence[0].text.trim_start_matches("The "));
+        assert!(cited.starts_with("model") && cited.ends_with("fast."));
+    }
+
+    #[test]
+    fn assistant_quotes_that_are_not_in_the_block_are_rejected() {
+        let request = assistant_request("The method uses low-rank updates.");
+        for quote in [
+            "The method uses full-rank updates.",
+            "the method uses low-rank updates.",
+            "",
+            "   ",
+            &"x".repeat(601),
+        ] {
+            assert_eq!(
+                validate_assistant_output(
+                    &quoted_claim(&request, quote).to_string(),
+                    &request,
+                    Uuid::now_v7(),
+                    None,
+                    None,
+                )
+                .unwrap_err(),
+                ValidationError::InvalidAssistantEvidence,
+                "{quote:?}"
+            );
+        }
+        // A quote of another block is not accepted for this block id either.
+        let mut output = quoted_claim(&request, "The method uses low-rank updates.");
+        output["claims"][0]["evidence"][0]["block_id"] = serde_json::json!(Uuid::now_v7());
+        assert_eq!(
+            validate_assistant_output(&output.to_string(), &request, Uuid::now_v7(), None, None)
+                .unwrap_err(),
+            ValidationError::InvalidAssistantEvidence
+        );
+    }
+
+    #[test]
+    fn assistant_evidence_needs_a_quote_or_a_full_range() {
+        let request = assistant_request("The method uses low-rank updates.");
+        for evidence in [
+            serde_json::json!({"block_id": request.evidence[0].block_id}),
+            serde_json::json!({"block_id": request.evidence[0].block_id, "start": 0}),
+            serde_json::json!({"block_id": request.evidence[0].block_id, "end": 5}),
+        ] {
+            let mut output = quoted_claim(&request, "unused");
+            output["claims"][0]["evidence"] = serde_json::json!([evidence]);
+            assert_eq!(
+                validate_assistant_output(
+                    &output.to_string(),
+                    &request,
+                    Uuid::now_v7(),
+                    None,
+                    None
+                )
+                .unwrap_err(),
+                ValidationError::InvalidAssistantEvidence
+            );
+        }
+    }
+
+    #[test]
+    fn assistant_derives_the_answer_from_claims_and_the_fixed_not_found_text() {
+        let request = assistant_request("First fact. Second fact.");
+        let output = serde_json::json!({
+            "status": "supported",
+            "claims": [
+                {"text": "It states the first fact.", "support": "direct",
+                 "evidence": [{"block_id": request.evidence[0].block_id, "quote": "First fact."}]},
+                {"text": "It states the second fact.", "support": "direct",
+                 "evidence": [{"block_id": request.evidence[0].block_id, "quote": "Second fact."}]},
+            ]
+        });
+        let answer =
+            validate_assistant_output(&output.to_string(), &request, Uuid::now_v7(), None, None)
+                .unwrap();
+        assert_eq!(
+            answer.answer,
+            "It states the first fact.\n\nIt states the second fact."
+        );
+        assert!(answer.limitations.is_empty());
+
+        let not_found = serde_json::json!({"status": "not_found", "claims": []});
+        let answer =
+            validate_assistant_output(&not_found.to_string(), &request, Uuid::now_v7(), None, None)
+                .unwrap();
+        assert_eq!(answer.answer, "Not found in this paper.");
     }
 
     #[test]

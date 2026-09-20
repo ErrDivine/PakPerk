@@ -29,6 +29,12 @@ The original final answer, evidence navigation, history, feedback, and provenanc
 
 Limits: three selection rounds, three calls per round, then one final answer request; at most ten accumulated and eight final blocks; 20,000 Unicode scalars per block and 100,000 in final evidence; 256 KiB cumulative tool-result JSON. There is no wall-clock deadline on the tool-enabled operation: the round/call budgets above bound the work, and a slow provider is allowed to finish instead of being cut off mid-inference. `LLM_TIMEOUT_SECONDS` remains the only time budget, covering one provider call and its retries. Repository reads have a two-second SQL statement timeout and do not hold transactions across model calls. Infrastructure failures remain errors rather than factual “not found” answers.
 
+## Answer contract with quoted evidence
+
+Prompt version `paper-assistant-v2-quoted-claims-v1` changes what the model writes, not what the API returns. The model returns `status` and `claims`; each claim cites `block_id` plus a `quote`, a passage copied verbatim from that block. The server finds the quote in the exact block that was supplied (runs of whitespace compare equal and typographic quotes and dashes are folded, the first occurrence wins) and stores its Unicode-scalar range, so a quote that is not in the block, or a block that was not supplied, is rejected as before. Explicit `start`/`end` ranges are still accepted for older prompts and provider doubles.
+
+The rendered `answer` and the closed `limitations` notice are no longer taken from the model: the answer is the validated claim texts joined in order (or the fixed not-found sentence) and a `partial` answer carries the fixed notice, so nothing the model writes outside a claim can be shown. Measured on `deepseek-flash` with thinking off, the old contract (exact character ranges plus a verbatim `answer` and `limitations`) passed about one attempt in three.
+
 ## Configuration and rollback
 
 Tool-selection steps use their own thinking mode, `ASSISTANT_LLM_TOOL_THINKING` (`LLM_TOOL_THINKING` for the main provider): selecting tools needs no reasoning, and DeepSeek rejects the next step of a tool loop with HTTP 400 unless the reasoning of every earlier step is sent back while thinking is on. It defaults to `disabled` whenever `ASSISTANT_LLM_THINKING` is set explicitly, so the final answer can keep reasoning while the selection steps do not. Set it explicitly for a provider whose thinking is on by default.

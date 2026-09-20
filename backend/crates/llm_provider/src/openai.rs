@@ -959,17 +959,14 @@ mod tests {
         let system = payload["messages"][0]["content"].as_str().unwrap();
         let schema = system.split_once("no extra fields: ").unwrap().1;
         let schema: Value = serde_json::from_str(schema).unwrap();
-        assert_eq!(
-            schema["required"],
-            json!(["answer", "status", "claims", "limitations"])
-        );
+        assert_eq!(schema["required"], json!(["status", "claims"]));
         assert_eq!(
             schema["properties"]["claims"]["items"]["required"],
             json!(["text", "support", "evidence"])
         );
         assert_eq!(
             schema["properties"]["claims"]["items"]["properties"]["evidence"]["items"]["required"],
-            json!(["block_id", "start", "end"])
+            json!(["block_id", "quote"])
         );
         assert!(
             provider
