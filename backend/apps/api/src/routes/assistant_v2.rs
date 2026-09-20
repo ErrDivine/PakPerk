@@ -22,7 +22,7 @@ use observability::{
     AssistantMetricOutcome, AssistantMetricPhase, AssistantUsageAvailability,
     record_assistant_cost, record_assistant_phase, record_assistant_shape,
 };
-use tracing::info;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -436,6 +436,12 @@ fn record_assistant_completion_cost(completion: &AssistantCompletion) {
     }
 }
 
+/// Models occasionally miscount the exact Unicode-scalar ranges the contract
+/// demands, so output that fails evidence validation is regenerated a bounded
+/// number of times. Transport and HTTP failures already retry inside the
+/// provider and are never repeated here.
+const MAX_GENERATION_ATTEMPTS: usize = 4;
+
 async fn generate_answer(
     state: &AppState,
     request_id: RequestId,
@@ -455,7 +461,7 @@ async fn generate_answer(
                 true,
             ),
         })?;
-    let completion = AssistantCompletionRequest {
+    let completion_request = AssistantCompletionRequest {
         paper_title: context.paper_title.clone(),
         request: request.clone(),
         recent_turns,
@@ -472,25 +478,56 @@ async fn generate_answer(
             })
             .collect(),
     };
-    let completion = provider
-        .answer_with_evidence(&completion)
-        .await
-        .map_err(|error| AssistantGenerationFailure {
-            outcome: assistant_provider_metric_outcome(&error),
-            error: provider_error(request_id, &error),
-        })?;
-    validate_answer_boundary(request, context, &completion.answer).map_err(|()| {
-        AssistantGenerationFailure {
-            outcome: AssistantMetricOutcome::RejectedUnsupportedOutput,
-            error: ApiError::new(
-                request_id,
-                StatusCode::BAD_GATEWAY,
-                "MODEL_INVALID_EVIDENCE",
-                "The model response could not be validated against the supplied evidence.",
-                true,
-            ),
+    let mut attempt = 0;
+    let completion = loop {
+        attempt += 1;
+        let completion = match provider.answer_with_evidence(&completion_request).await {
+            Ok(completion) => completion,
+            Err(ProviderError::StructuredOutput(reason)) => {
+                // The reason is a fixed, content-free validation message.
+                warn!(
+                    request_id = %request_id.0,
+                    attempt,
+                    %reason,
+                    "assistant output failed validation"
+                );
+                if attempt < MAX_GENERATION_ATTEMPTS {
+                    continue;
+                }
+                let error = ProviderError::StructuredOutput(reason);
+                return Err(AssistantGenerationFailure {
+                    outcome: assistant_provider_metric_outcome(&error),
+                    error: provider_error(request_id, &error),
+                });
+            }
+            Err(error) => {
+                return Err(AssistantGenerationFailure {
+                    outcome: assistant_provider_metric_outcome(&error),
+                    error: provider_error(request_id, &error),
+                });
+            }
+        };
+        if validate_answer_boundary(request, context, &completion.answer).is_ok() {
+            break completion;
         }
-    })?;
+        warn!(
+            request_id = %request_id.0,
+            attempt,
+            "assistant answer failed the evidence boundary check"
+        );
+        if attempt >= MAX_GENERATION_ATTEMPTS {
+            return Err(AssistantGenerationFailure {
+                outcome: AssistantMetricOutcome::RejectedUnsupportedOutput,
+                error: ApiError::new(
+                    request_id,
+                    StatusCode::BAD_GATEWAY,
+                    "MODEL_INVALID_EVIDENCE",
+                    "The model response could not be validated against the supplied evidence.",
+                    true,
+                ),
+            });
+        }
+    };
     Ok((completion, provider.provenance_provider_id()))
 }
 
