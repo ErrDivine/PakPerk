@@ -1508,7 +1508,7 @@ version = "0.2.0"
 dependencies = [
  "chrono",
  "domain",
- "rand 0.9.5",
+ "rand 0.10.2",
  "serde",
  "serde_json",
  "sha2",
@@ -2004,7 +2004,7 @@ dependencies = [
  "opaque_cursor",
  "paper_resolution",
  "pgvector",
- "rand 0.9.5",
+ "rand 0.10.2",
  "reading_feed",
  "recommendations",
  "research_profiles",
