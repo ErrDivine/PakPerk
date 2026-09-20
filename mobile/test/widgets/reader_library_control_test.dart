@@ -11,6 +11,55 @@ import 'package:pakperk/features/document_reader/reader_library_control.dart';
 import '../support/fakes.dart';
 
 void main() {
+  testWidgets('locally saved pending item shows bookmark without loading', (
+    tester,
+  ) async {
+    const scope = (
+      accountId: '018f47a6-4b56-7f4c-8c7a-e2656e820001',
+      authEpoch: 7,
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          featureFlagsProvider.overrideWithValue(
+            const FeatureFlags(
+              accounts: true,
+              library: true,
+              comments: false,
+              openingMotion: false,
+              libraryV2Enabled: true,
+            ),
+          ),
+          libraryDisplayScopeProvider.overrideWithValue(scope),
+          libraryItemsProvider.overrideWith(
+            (ref, _) => Stream.value([
+              LibraryListItem(
+                paper: samplePaper,
+                savedAt: DateTime.utc(2026, 8, 19),
+                savedState: const LibrarySavedState(
+                  saved: true,
+                  syncPending: true,
+                ),
+              ),
+            ]),
+          ),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: ReaderLibraryControl(paper: samplePaper, iconOnly: true),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.bookmark), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(
+      find.bySemanticsLabel(RegExp('Library state: .*pending sync')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('reader exposes canonical Library controls at 200 percent text', (
     tester,
   ) async {

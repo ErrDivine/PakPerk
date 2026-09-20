@@ -524,26 +524,35 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                       ReadingFeedMode.finishingQueue => null,
                     };
                     final interactionContext = _interactionContext(feed, index);
-                    return ResponsiveReaderFrame(
-                      key: ValueKey('responsive-reader-$readerKey'),
-                      child: PaperReader(
-                        key: ValueKey('feed-paper-$readerKey'),
-                        paper: paper,
-                        readerKey: readerKey,
-                        isActive:
-                            readBranchActive &&
-                            index == _currentIndex &&
-                            routes.isEmpty,
-                        entryContext: _entryContextForReader(feed, index),
-                        onPreviousPaper: index > 0
-                            ? () => _goToPaper(index - 1)
-                            : null,
-                        onNextPaper: index + 1 < feed.items.length
-                            ? () => _goToPaper(index + 1)
-                            : null,
-                        contextualAction: recommendationControl,
-                        saveSourceKind: saveSourceKind,
-                        interactionContext: interactionContext,
+                    return MediaQuery.removePadding(
+                      context: context,
+                      // The feed header has already applied the top safe area.
+                      removeTop:
+                          !feed.personalized ||
+                          recommendationsAreSafe ||
+                          feed.mode == ReadingFeedMode.toRead ||
+                          feed.origin == DataOrigin.bundledDemo,
+                      child: ResponsiveReaderFrame(
+                        key: ValueKey('responsive-reader-$readerKey'),
+                        child: PaperReader(
+                          key: ValueKey('feed-paper-$readerKey'),
+                          paper: paper,
+                          readerKey: readerKey,
+                          isActive:
+                              readBranchActive &&
+                              index == _currentIndex &&
+                              routes.isEmpty,
+                          entryContext: _entryContextForReader(feed, index),
+                          onPreviousPaper: index > 0
+                              ? () => _goToPaper(index - 1)
+                              : null,
+                          onNextPaper: index + 1 < feed.items.length
+                              ? () => _goToPaper(index + 1)
+                              : null,
+                          contextualAction: recommendationControl,
+                          saveSourceKind: saveSourceKind,
+                          interactionContext: interactionContext,
+                        ),
                       ),
                     );
                   },
@@ -1185,9 +1194,9 @@ class _GuestDiscoveryControls extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
           PakPerkSpacing.md,
-          PakPerkSpacing.xs,
+          0,
           PakPerkSpacing.md,
-          PakPerkSpacing.sm,
+          0,
         ),
         child: _ScrollableModeSegments<_GuestDiscoveryMode>(
           segments: [

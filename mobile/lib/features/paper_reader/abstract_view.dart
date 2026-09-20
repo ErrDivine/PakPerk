@@ -16,6 +16,7 @@ class AbstractView extends ConsumerStatefulWidget {
     required this.scrollController,
     required this.onStageRequested,
     this.passportGeneration,
+    this.headerActions,
     this.paperPassportReady = false,
     this.active = true,
     this.onPreviousPaper,
@@ -24,6 +25,7 @@ class AbstractView extends ConsumerStatefulWidget {
   });
 
   final PaperSummary paper;
+  final Widget? headerActions;
   final ScrollController scrollController;
   final ValueChanged<PaperStage> onStageRequested;
   final int? passportGeneration;
@@ -84,14 +86,22 @@ class _AbstractViewState extends ConsumerState<AbstractView> {
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
           sliver: SliverList.list(
             children: [
-              Text(
-                '${paper.primaryCategory}  ·  ${_dateLabel(paper.publishedAt)}',
-                style: Theme.of(context).textTheme.labelSmall,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${paper.primaryCategory}  ·  ${_dateLabel(paper.publishedAt)}',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ),
+                  if (widget.headerActions != null)
+                    Flexible(child: widget.headerActions!),
+                ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 4),
               Semantics(
                 header: true,
                 child: Text(
@@ -106,7 +116,7 @@ class _AbstractViewState extends ConsumerState<AbstractView> {
                 onToggle: () =>
                     setState(() => _authorsExpanded = !_authorsExpanded),
               ),
-              const SizedBox(height: 26),
+              const SizedBox(height: 16),
               Text('ABSTRACT', style: Theme.of(context).textTheme.labelSmall),
               const SizedBox(height: 10),
               Text(

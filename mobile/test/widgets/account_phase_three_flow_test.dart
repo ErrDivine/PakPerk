@@ -937,6 +937,7 @@ Map<String, Object?> _profileJson({
   'community_guidelines_accepted_at': complete ? '2026-07-30T12:00:00Z' : null,
   'current_community_guidelines_version': policyVersion,
   'community_guidelines_current': complete,
+  'comment_profile_complete': complete,
   'created_at': '2026-07-30T10:00:00Z',
   'updated_at': complete ? '2026-07-30T12:00:00Z' : '2026-07-30T11:00:00Z',
 };

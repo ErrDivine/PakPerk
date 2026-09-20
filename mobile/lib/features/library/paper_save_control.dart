@@ -23,6 +23,7 @@ class PaperSaveControl extends ConsumerStatefulWidget {
   const PaperSaveControl({
     required this.paper,
     this.compact = false,
+    this.iconOnly = false,
     this.saveSourceKind,
     this.interactionContext,
     super.key,
@@ -30,6 +31,7 @@ class PaperSaveControl extends ConsumerStatefulWidget {
 
   final PaperSummary paper;
   final bool compact;
+  final bool iconOnly;
   final LibrarySaveSourceKind? saveSourceKind;
   final PaperInteractionContext? interactionContext;
 
@@ -60,6 +62,7 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
       state: state,
       busy: _committing || value.isLoading,
       compact: widget.compact,
+      iconOnly: widget.iconOnly,
       disabledReason: readOnlyStatus == null
           ? null
           : _libraryReadOnlyMessage(readOnlyStatus),
@@ -300,6 +303,7 @@ class PaperSaveControlView extends StatelessWidget {
     required this.onPressed,
     this.busy = false,
     this.compact = false,
+    this.iconOnly = false,
     this.disabledReason,
     super.key,
   });
@@ -308,6 +312,7 @@ class PaperSaveControlView extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool busy;
   final bool compact;
+  final bool iconOnly;
   final String? disabledReason;
 
   @override
@@ -317,7 +322,7 @@ class PaperSaveControlView extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final icon = AnimatedSwitcher(
       duration: const Duration(milliseconds: 160),
-      child: busy || state.syncPending
+      child: busy
           ? SizedBox.square(
               key: const ValueKey('save-sync-pending'),
               dimension: 20,
@@ -353,13 +358,18 @@ class PaperSaveControlView extends StatelessWidget {
           key: const ValueKey('paper-save-control'),
           onTap: busy ? null : onPressed,
           child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: compact ? 56 : 48),
+            constraints: BoxConstraints(
+              minWidth: 48,
+              minHeight: iconOnly ? 48 : (compact ? 56 : 48),
+            ),
             child: Padding(
               padding: EdgeInsets.symmetric(
                 horizontal: compact ? 4 : 16,
                 vertical: compact ? 8 : 6,
               ),
-              child: compact
+              child: iconOnly
+                  ? icon
+                  : compact
                   ? Column(
                       mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,

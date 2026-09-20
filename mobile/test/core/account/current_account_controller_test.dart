@@ -275,6 +275,7 @@ final class _DelayedAdapter implements HttpClientAdapter {
           'community_guidelines_accepted_at': null,
           'current_community_guidelines_version': '2026-07',
           'community_guidelines_current': false,
+          'comment_profile_complete': false,
           'created_at': '2026-07-30T10:00:00Z',
           'updated_at': '2026-07-30T11:00:00Z',
         },

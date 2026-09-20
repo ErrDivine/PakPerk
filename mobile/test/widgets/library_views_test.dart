@@ -271,7 +271,9 @@ void main() {
       ),
     );
     expect(find.bySemanticsLabel('Remove from To Read'), findsOneWidget);
-    expect(find.byKey(const ValueKey('save-sync-pending')), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('save-sync-pending')), findsNothing);
+    expect(find.byIcon(Icons.bookmark), findsOneWidget);
   });
 
   testWidgets(

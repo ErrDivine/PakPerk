@@ -50,6 +50,52 @@ void main() {
   });
 
   testWidgets(
+    'category filter starts collapsed and collapses after selection',
+    (tester) async {
+      String? category;
+      var managed = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) => GuestCategorySelector(
+                categories: const ['cs.AI', 'cs.CL'],
+                activeCategory: category,
+                onSelected: (value) => setState(() => category = value),
+                onManage: () => managed = true,
+              ),
+            ),
+          ),
+        ),
+      );
+      final toggle = find.byKey(const ValueKey('guest-category-toggle'));
+      final ai = find.byKey(const ValueKey('guest-category-filter-cs.AI'));
+      expect(ai, findsNothing);
+      await tester.tap(toggle);
+      await tester.pump();
+      expect(ai, findsOneWidget);
+      await tester.tap(ai);
+      await tester.pump();
+      expect(category, 'cs.AI');
+      expect(ai, findsNothing);
+      expect(find.text('cs.AI'), findsOneWidget);
+      await tester.tap(toggle);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('guest-category-all')));
+      await tester.pump();
+      expect(category, isNull);
+      expect(ai, findsNothing);
+      await tester.tap(toggle);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('guest-category-manage')));
+      await tester.pump();
+      expect(managed, isTrue);
+      expect(ai, findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'category onboarding is explicit, bounded, scrollable, and motion-safe',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(320, 568));

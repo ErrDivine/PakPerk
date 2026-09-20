@@ -318,9 +318,10 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
                     _ReaderEntryBadge(entryContext: widget.entryContext),
                     ReaderModeSelector(readerKey: widget.readerKey),
                   ],
-                  if (features.library ||
-                      features.comments ||
-                      widget.contextualAction != null)
+                  if (navigation.stageIndex != PaperStage.abstractView.index &&
+                      (features.library ||
+                          features.comments ||
+                          widget.contextualAction != null))
                     PaperActionBar(
                       paper: widget.paper,
                       contextualAction: widget.contextualAction,
@@ -352,6 +353,17 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
                 children: [
                   AbstractView(
                     paper: widget.paper,
+                    headerActions:
+                        (features.library ||
+                            features.comments ||
+                            widget.contextualAction != null)
+                        ? PaperActionBar(
+                            paper: widget.paper,
+                            contextualAction: widget.contextualAction,
+                            saveSourceKind: widget.saveSourceKind,
+                            interactionContext: widget.interactionContext,
+                          )
+                        : null,
                     scrollController: _abstractController,
                     onStageRequested: _goToStage,
                     passportGeneration: processing.processing?.generation,

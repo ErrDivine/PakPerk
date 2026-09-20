@@ -67,7 +67,7 @@ class _PaperStageIndicatorState extends State<PaperStageIndicator> {
       container: true,
       label: 'Paper views',
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
         child: LayoutBuilder(
           builder: (context, constraints) {
             final layout = _StageLayout.resolve(context, constraints);
