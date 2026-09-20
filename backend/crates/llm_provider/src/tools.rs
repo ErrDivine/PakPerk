@@ -29,22 +29,55 @@ pub struct AssistantToolFunction {
     pub arguments: String,
 }
 
+/// A tool call as an OpenAI-compatible provider serializes it in a response.
+/// `DeepSeek` also numbers the calls of a non-streamed response (`index`); every
+/// other field stays closed.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct WireToolCall {
+    #[serde(default, rename = "index")]
+    _index: Option<u32>,
+    id: String,
+    #[serde(rename = "type")]
+    kind: String,
+    function: AssistantToolFunction,
+}
+
+impl From<WireToolCall> for AssistantToolCall {
+    fn from(call: WireToolCall) -> Self {
+        Self {
+            id: call.id,
+            kind: call.kind,
+            function: call.function,
+        }
+    }
+}
+
 impl AssistantToolCall {
     pub fn operation(&self) -> Result<AssistantTool, ProviderError> {
         if self.kind != "function"
             || !valid_call_id(&self.id)
             || self.function.arguments.len() > 8192
         {
-            return Err(invalid_tool_response());
+            return Err(invalid_tool_response_because(
+                "assistant tool call is not a bounded function call",
+            ));
         }
-        let arguments: Value =
-            serde_json::from_str(&self.function.arguments).map_err(|_| invalid_tool_response())?;
+        let arguments: Value = serde_json::from_str(&self.function.arguments).map_err(|_| {
+            invalid_tool_response_because("assistant tool call arguments are not JSON")
+        })?;
         let operation: AssistantTool = serde_json::from_value(json!({
             "name": self.function.name, "arguments": arguments,
         }))
-        .map_err(|_| invalid_tool_response())?;
+        .map_err(|_| {
+            invalid_tool_response_because(
+                "assistant tool call names an unknown tool or unknown arguments",
+            )
+        })?;
         if !operation.is_valid() {
-            return Err(invalid_tool_response());
+            return Err(invalid_tool_response_because(
+                "assistant tool call arguments are out of bounds",
+            ));
         }
         Ok(operation)
     }
@@ -76,7 +109,13 @@ pub struct AssistantToolStep {
 }
 
 pub(crate) fn invalid_tool_response() -> ProviderError {
-    ProviderError::InvalidResponse("assistant tool protocol or arguments are invalid".into())
+    invalid_tool_response_because("assistant tool protocol or arguments are invalid")
+}
+
+/// The reason is a fixed string: it is logged when a tool step is unusable and
+/// must never carry provider or document text.
+pub(crate) fn invalid_tool_response_because(reason: &'static str) -> ProviderError {
+    ProviderError::InvalidResponse(reason.into())
 }
 
 fn valid_call_id(id: &str) -> bool {
@@ -92,12 +131,16 @@ pub(crate) fn validate_calls(
     seen: &mut HashSet<String>,
 ) -> Result<(), ProviderError> {
     if calls.len() > ASSISTANT_TOOL_MAX_CALLS_PER_ROUND {
-        return Err(invalid_tool_response());
+        return Err(invalid_tool_response_because(
+            "assistant tool step has too many calls",
+        ));
     }
     for call in calls {
         call.operation()?;
         if !seen.insert(call.id.clone()) {
-            return Err(invalid_tool_response());
+            return Err(invalid_tool_response_because(
+                "assistant tool call identifier repeats",
+            ));
         }
     }
     Ok(())
@@ -296,6 +339,32 @@ mod tests {
             assert!(!names.contains(&"read_paper_range".to_owned()));
             assert!(!names.contains(&"get_paper_outline".to_owned()));
         }
+    }
+
+    #[test]
+    fn unusable_calls_report_a_fixed_reason_that_never_echoes_the_call() {
+        let secret = "SECRET-ARGUMENT";
+        for (arguments, reason) in [
+            (format!("not json {secret}"), "arguments are not JSON"),
+            (
+                format!(r#"{{"query":"{secret}","paper_id":"foreign"}}"#),
+                "unknown tool or unknown arguments",
+            ),
+            (
+                format!(r#"{{"query":"{secret}","limit":7}}"#),
+                "out of bounds",
+            ),
+        ] {
+            let message = call(&arguments).operation().unwrap_err().to_string();
+            assert!(message.contains(reason), "{message}");
+            assert!(!message.contains(secret), "{message}");
+        }
+        let mut seen = HashSet::new();
+        let valid = call(r#"{"query":"evidence"}"#);
+        let message = validate_calls(&[valid.clone(), valid], &mut seen)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("identifier repeats"), "{message}");
     }
 
     #[test]

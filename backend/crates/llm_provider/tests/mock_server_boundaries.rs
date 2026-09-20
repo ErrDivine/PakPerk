@@ -161,6 +161,60 @@ async fn tool_steps_carry_the_outline_and_use_their_own_thinking_mode() {
 }
 
 #[tokio::test]
+async fn deepseek_shaped_tool_responses_parse_and_only_the_known_extra_field_is_tolerated() {
+    use llm_provider::{AssistantProvider, AssistantToolStepRequest};
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    // DeepSeek numbers the calls of a non-streamed response and adds fields of
+    // its own around them.
+    let numbered = json!({"index":0,"id":"call_0_1f0e2c","type":"function",
+        "function":{"name":"get_paper_outline","arguments":"{}"}});
+    let unknown = json!({"index":0,"id":"call_0_1f0e2d","type":"function","extra":true,
+        "function":{"name":"get_paper_outline","arguments":"{}"}});
+    let responses = vec![
+        json!({"id":"a1","object":"chat.completion","model":"deepseek-flash","system_fingerprint":"fp",
+            "choices":[{"index":0,"logprobs":null,"finish_reason":"tool_calls","message":{
+                "role":"assistant","content":"","reasoning_content":null,"tool_calls":[numbered]}}],
+            "usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18,
+                "prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":11}})
+        .to_string(),
+        json!({"choices":[{"finish_reason":"tool_calls","message":{"tool_calls":[unknown]}}]}).to_string(),
+    ];
+    let (sender, _receiver) = mpsc::unbounded_channel();
+    let server = tokio::spawn(serve_json(listener, responses, sender));
+    let provider = OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
+        base_url: Url::parse(&format!("http://{address}/v1")).unwrap(),
+        chat_model: "fixture-chat".into(),
+        embedding_model: "fixture-embedding".into(),
+        embedding_dimension: 3,
+        maximum_retries: 0,
+        ..OpenAiCompatibleConfig::default()
+    })
+    .unwrap()
+    .with_assistant_tools(true);
+    let request = AssistantToolStepRequest {
+        completion: tool_completion_fixture(),
+        outline: vec![],
+        exchanges: vec![],
+    };
+    let step = provider.select_assistant_tools(&request).await.unwrap();
+    assert_eq!(step.calls.len(), 1);
+    assert_eq!(step.calls[0].id, "call_0_1f0e2c");
+    assert_eq!(step.token_usage.unwrap().output_tokens, 7);
+    // Any other extra field on a call is still refused, with a fixed reason.
+    let error = provider
+        .select_assistant_tools(&request)
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.to_string(),
+        "model-provider response has an invalid envelope: assistant tool response is not the expected envelope"
+    );
+    server.await.unwrap();
+}
+
+#[tokio::test]
 async fn native_assistant_tools_reject_untrusted_protocol_shapes() {
     use llm_provider::{AssistantProvider, AssistantToolStepRequest};
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

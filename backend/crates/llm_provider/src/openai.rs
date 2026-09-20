@@ -422,21 +422,34 @@ impl AssistantProvider for OpenAiCompatibleProvider {
                 thinking,
             )
             .await?;
-        let response: ToolEnvelope =
-            serde_json::from_slice(&bytes).map_err(|_| crate::tools::invalid_tool_response())?;
+        let response: ToolEnvelope = serde_json::from_slice(&bytes).map_err(|_| {
+            crate::tools::invalid_tool_response_because(
+                "assistant tool response is not the expected envelope",
+            )
+        })?;
         if response.choices.len() != 1 {
-            return Err(crate::tools::invalid_tool_response());
+            return Err(crate::tools::invalid_tool_response_because(
+                "assistant tool response does not have exactly one choice",
+            ));
         }
-        let choice = response
-            .choices
+        let choice = response.choices.into_iter().next().ok_or_else(|| {
+            crate::tools::invalid_tool_response_because(
+                "assistant tool response does not have exactly one choice",
+            )
+        })?;
+        let calls = choice
+            .message
+            .tool_calls
+            .unwrap_or_default()
             .into_iter()
-            .next()
-            .ok_or_else(crate::tools::invalid_tool_response)?;
-        let calls = choice.message.tool_calls.unwrap_or_default();
+            .map(crate::AssistantToolCall::from)
+            .collect::<Vec<_>>();
         if (calls.is_empty() && choice.finish_reason != "stop")
             || (!calls.is_empty() && choice.finish_reason != "tool_calls")
         {
-            return Err(crate::tools::invalid_tool_response());
+            return Err(crate::tools::invalid_tool_response_because(
+                "assistant tool finish reason does not match its calls",
+            ));
         }
         let mut seen = request
             .exchanges
@@ -744,7 +757,7 @@ struct ToolChoice {
 #[derive(Deserialize)]
 struct ToolMessage {
     // Provider prose is deliberately ignored, never published as an answer.
-    tool_calls: Option<Vec<crate::AssistantToolCall>>,
+    tool_calls: Option<Vec<crate::tools::WireToolCall>>,
 }
 
 #[derive(Debug, Deserialize)]

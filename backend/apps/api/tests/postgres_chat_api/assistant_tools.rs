@@ -546,6 +546,167 @@ async fn tool_range_read_admits_consecutive_blocks_as_evidence_and_reports_the_n
     assert!(final_input.contains(&evidence.to_string()));
 }
 
+/// A chat-completions server that answers with the scripted `choices` in order
+/// (the last one repeats) and records every request body.
+struct ScriptedProvider {
+    address: std::net::SocketAddr,
+    requests: Arc<Mutex<Vec<Value>>>,
+    server: tokio::task::JoinHandle<()>,
+}
+
+async fn scripted_provider(choices: Vec<Value>) -> ScriptedProvider {
+    let requests = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let captured = requests.clone();
+    let choices = Arc::new(choices);
+    let handler = move |axum::Json(body): axum::Json<Value>| {
+        let captured = captured.clone();
+        let choices = choices.clone();
+        async move {
+            let mut requests = captured.lock().unwrap();
+            let index = requests.len();
+            requests.push(body);
+            let choice = choices.get(index).or(choices.last()).cloned().unwrap();
+            axum::Json(
+                json!({"id":"fixture-request","model":"fixture-chat","choices":[choice],
+                "usage":{"prompt_tokens":10,"completion_tokens":5}}),
+            )
+        }
+    };
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            axum::Router::new().route("/v1/chat/completions", axum::routing::post(handler)),
+        )
+        .await
+        .unwrap();
+    });
+    ScriptedProvider {
+        address,
+        requests,
+        server,
+    }
+}
+
+async fn ask_with_tools(
+    database: &Database,
+    database_url: String,
+    provider: &ScriptedProvider,
+    paper_id: Uuid,
+) -> (StatusCode, Value) {
+    let mut config = api_config(database_url);
+    config.features = FeatureFlags {
+        deep_reader: true,
+        assistant_v2: true,
+        assistant_tools: true,
+        ..FeatureFlags::default()
+    };
+    config.llm = Some(ApiModelConfig::OpenAiCompatible(Box::new(
+        llm_provider::OpenAiCompatibleConfig {
+            base_url: Url::parse(&format!("http://{}/v1", provider.address)).unwrap(),
+            chat_model: "fixture-chat".into(),
+            embedding_model: "fixture-embedding".into(),
+            embedding_dimension: 16,
+            maximum_retries: 0,
+            ..llm_provider::OpenAiCompatibleConfig::default()
+        },
+    )));
+    let app = build_router(AppState::new(database.clone(), &config).unwrap(), &config);
+    let response = app
+        .oneshot(connected_json_request(
+            format!("/v1/papers/{paper_id}/assistant"),
+            Uuid::now_v7(),
+            &serde_json::to_value(request(paper_id)).unwrap(),
+        ))
+        .await
+        .unwrap();
+    let status = response.status();
+    let body: Value = response_json(response).await;
+    provider.server.abort();
+    (status, body)
+}
+
+fn quoted_answer(block_id: Uuid, text: &str) -> Value {
+    json!({"finish_reason":"stop","message":{"content":json!({
+        "status":"supported",
+        "claims":[{"text":text,"support":"direct","evidence":[{"block_id":block_id,"quote":text}]}],
+    }).to_string()}})
+}
+
+#[tokio::test]
+async fn an_unusable_tool_step_answers_from_plain_retrieval_instead_of_failing() {
+    let Some((database, database_url)) = database().await else {
+        return;
+    };
+    let (paper_id, _) = paper(&database).await;
+    // Plain retrieval finds this block by the question's word "experiment".
+    let source_text = "The azimuth is measured in the experiment.";
+    let evidence = block(&database, paper_id, 1, source_text, "paragraph").await;
+    // The model asks for a tool the contract does not have; the answer step is fine.
+    let provider = scripted_provider(vec![
+        json!({"finish_reason":"tool_calls","message":{"tool_calls":[{
+            "id":"call_shell","type":"function","function":{"name":"run_shell","arguments":"{}"}}]}}),
+        quoted_answer(evidence, source_text),
+    ])
+    .await;
+
+    let (status, body) = ask_with_tools(&database, database_url, &provider, paper_id).await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "supported");
+    let requests = provider.requests.lock().unwrap().clone();
+    // One tool step, then the answer with the plain retrieval evidence.
+    assert_eq!(requests.len(), 2);
+    assert!(requests[0].get("tools").is_some());
+    assert!(requests[1].get("tools").is_none());
+    let final_input = requests[1]["messages"].as_array().unwrap().last().unwrap()["content"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(final_input.contains(&evidence.to_string()));
+}
+
+#[tokio::test]
+async fn a_call_the_scope_rejects_is_reported_to_the_model_and_does_not_fail_the_request() {
+    let Some((database, database_url)) = database().await else {
+        return;
+    };
+    let (paper_id, _) = paper(&database).await;
+    let (_, foreign_block) = paper(&database).await;
+    let source_text = "The azimuth is measured.";
+    let evidence = block(&database, paper_id, 1, source_text, "paragraph").await;
+    let provider = scripted_provider(vec![
+        json!({"finish_reason":"tool_calls","message":{"tool_calls":[{
+            "id":"call_foreign","type":"function","function":{"name":"read_paper_blocks",
+            "arguments":json!({"block_ids":[foreign_block]}).to_string()}}]}}),
+        json!({"finish_reason":"stop","message":{"content":"Enough."}}),
+        quoted_answer(evidence, source_text),
+    ])
+    .await;
+
+    let (status, body) = ask_with_tools(&database, database_url, &provider, paper_id).await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let requests = provider.requests.lock().unwrap().clone();
+    assert_eq!(requests.len(), 3);
+    let tool_message = requests[1]["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|message| message["role"] == "tool")
+        .expect("the rejection is returned to the model");
+    let result: Value = serde_json::from_str(tool_message["content"].as_str().unwrap()).unwrap();
+    assert_eq!(result["status"], "rejected");
+    assert!(result["sources"].as_array().unwrap().is_empty());
+    // Nothing from the other paper reached the answer step.
+    let final_input = requests[2]["messages"].as_array().unwrap().last().unwrap()["content"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(!final_input.contains(&foreign_block.to_string()));
+}
+
 #[tokio::test]
 async fn deletion_accepted_during_inference_prevents_exchange_publication() {
     let Some((database, _)) = database().await else {

@@ -97,6 +97,7 @@ pub(crate) async fn gather<P: AssistantProvider + ?Sized>(
     history: Vec<ChatTurn>,
     usage: &mut ToolUsage,
 ) -> Result<(), ToolRunError> {
+    let retrieved = context.blocks.clone();
     let mut evidence = EvidenceRegistry::new(request, context)?;
     context.blocks = evidence
         .blocks
@@ -110,12 +111,28 @@ pub(crate) async fn gather<P: AssistantProvider + ?Sized>(
     };
     let mut seen = HashSet::new();
     let mut result_bytes = 0usize;
+    let mut unusable_step = false;
     for _ in 0..ASSISTANT_TOOL_MAX_ROUNDS {
         usage.begin_call();
-        let step = provider.select_assistant_tools(&step_request).await?;
+        // Tools only ever add evidence. A step the provider or the model gets
+        // wrong (an unexpected response shape, an unknown tool, out-of-range
+        // arguments) therefore must not cost the user the answer: stop using
+        // tools and continue with the evidence in hand. Availability and
+        // database faults, and any breach of the evidence rules below, still fail.
+        let step = match provider.select_assistant_tools(&step_request).await {
+            Ok(step) => step,
+            Err(ProviderError::InvalidResponse(reason)) => {
+                note_unusable_step(&reason);
+                unusable_step = true;
+                break;
+            }
+            Err(error) => return Err(error.into()),
+        };
         usage.report(step.token_usage);
         if step.calls.len() > ASSISTANT_TOOL_MAX_CALLS_PER_ROUND {
-            return Err(invalid_output().into());
+            note_unusable_step("assistant tool step has too many calls");
+            unusable_step = true;
+            break;
         }
         // Validate the entire batch before executing anything, including doubles.
         let operations = step
@@ -123,11 +140,22 @@ pub(crate) async fn gather<P: AssistantProvider + ?Sized>(
             .iter()
             .map(|call| {
                 if !seen.insert(call.id.clone()) {
-                    return Err(invalid_output());
+                    return Err(ProviderError::InvalidResponse(
+                        "assistant tool call identifier repeats".into(),
+                    ));
                 }
                 call.operation()
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>();
+        let operations = match operations {
+            Ok(operations) => operations,
+            Err(ProviderError::InvalidResponse(reason)) => {
+                note_unusable_step(&reason);
+                unusable_step = true;
+                break;
+            }
+            Err(error) => return Err(error.into()),
+        };
         if operations.is_empty() {
             break;
         }
@@ -172,7 +200,21 @@ pub(crate) async fn gather<P: AssistantProvider + ?Sized>(
                 tool.latency_ms = started.elapsed().as_millis(),
                 "bounded assistant tool completed"
             );
-            let mut result = result?;
+            let mut result = match result {
+                Ok(value) => value,
+                // A call the request's scope rejects (an unknown or foreign block,
+                // a navigation tool outside a paper or section) returns nothing and
+                // the model is told. A stale generation or a database fault still
+                // fails the request.
+                Err(db::DbError::InvalidData(_)) => db::AssistantToolRead {
+                    status: "rejected",
+                    truncated: false,
+                    sources: vec![],
+                    object_status: None,
+                    next_block_id: None,
+                },
+                Err(error) => return Err(error.into()),
+            };
             if !matches!(operation, AssistantTool::GetPaperOutline(_)) {
                 let priority = if matches!(operation, AssistantTool::SearchPaperEvidence(_)) {
                     1
@@ -214,8 +256,23 @@ pub(crate) async fn gather<P: AssistantProvider + ?Sized>(
             results,
         });
     }
+    if unusable_step && step_request.exchanges.is_empty() {
+        // Nothing was read, so answer exactly as without tools.
+        context.blocks = retrieved;
+        return Ok(());
+    }
     context.blocks = evidence.finish();
     Ok(())
+}
+
+/// `reason` is one of the provider's fixed strings and never carries provider or
+/// document text.
+fn note_unusable_step(reason: &str) {
+    tracing::warn!(
+        metric.name = "assistant_tool_step_unusable",
+        error.detail = reason,
+        "assistant tool step was unusable; continuing with the evidence in hand"
+    );
 }
 
 struct EvidenceRegistry {
