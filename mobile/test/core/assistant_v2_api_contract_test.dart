@@ -30,7 +30,7 @@ void main() {
     expect(body['scope'], containsPair('kind', 'selection'));
     expect(body['answer_style'], 'expert');
     expect(body['thread_id'], _threadId);
-    expect(adapter.receiveTimeout, const Duration(seconds: 65));
+    expect(adapter.receiveTimeout, Duration.zero);
     expect(dio.options.receiveTimeout, isNull);
     expect(answer.status, AssistantAnswerStatus.partial);
     expect(answer.responseId, _responseId);

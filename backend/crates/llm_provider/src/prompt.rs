@@ -185,7 +185,7 @@ pub(crate) fn relationship_payload(
     }))
 }
 
-fn unique_delimiter<'a>(contents: impl Iterator<Item = &'a str>) -> String {
+pub(crate) fn unique_delimiter<'a>(contents: impl Iterator<Item = &'a str>) -> String {
     let contents = contents.collect::<Vec<_>>();
     loop {
         let delimiter = format!("PAKPERK_DATA_{}", Uuid::new_v4().simple());

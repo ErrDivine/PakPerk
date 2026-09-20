@@ -30,6 +30,12 @@ pub enum Command {
         content_evaluation: PathBuf,
         output: PathBuf,
     },
+    /// Runs page-image recovery on one local PDF without a database, GROBID, or
+    /// arXiv, and prints what would be stored.
+    RecoverPdf {
+        pdf: PathBuf,
+        markdown: Option<PathBuf>,
+    },
 }
 
 impl Cli {
@@ -83,9 +89,16 @@ impl Cli {
                     output: options.required_path("--output")?,
                 }
             }
+            "recover-pdf" => {
+                let options = Options::parse(rest)?;
+                Command::RecoverPdf {
+                    pdf: options.required_path("--pdf")?,
+                    markdown: options.optional("--markdown").map(PathBuf::from),
+                }
+            }
             other => bail!(
                 "unknown command `{other}`; expected run, sync-metadata, prepare-demo, verify-demo, \
-                 or validate-demo-content"
+                 validate-demo-content, or recover-pdf"
             ),
         };
         Ok(Self { command })
@@ -211,6 +224,36 @@ mod tests {
                 output: PathBuf::from("/reports/verification.json"),
             }
         );
+    }
+
+    #[test]
+    fn parses_the_local_pdf_recovery_command() {
+        assert_eq!(
+            Cli::parse(args(&[
+                "pakperk-worker",
+                "recover-pdf",
+                "--pdf",
+                "/papers/scan.pdf",
+                "--markdown",
+                "/tmp/scan.md",
+            ]))
+            .unwrap()
+            .command,
+            Command::RecoverPdf {
+                pdf: PathBuf::from("/papers/scan.pdf"),
+                markdown: Some(PathBuf::from("/tmp/scan.md")),
+            }
+        );
+        assert_eq!(
+            Cli::parse(args(&["pakperk-worker", "recover-pdf", "--pdf", "a.pdf"]))
+                .unwrap()
+                .command,
+            Command::RecoverPdf {
+                pdf: PathBuf::from("a.pdf"),
+                markdown: None,
+            }
+        );
+        assert!(Cli::parse(args(&["pakperk-worker", "recover-pdf"])).is_err());
     }
 
     #[test]

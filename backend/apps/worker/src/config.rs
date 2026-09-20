@@ -10,7 +10,7 @@ use anyhow::{Context as _, Result};
 use arxiv_client::ArxivClientConfig;
 use domain::FulltextPolicy;
 use grobid_client::GrobidConfig;
-use llm_provider::OpenAiCompatibleConfig;
+use llm_provider::{ImageDetail, OpenAiCompatibleConfig};
 use secrecy::SecretString;
 use url::{Host, Url};
 use uuid::Uuid;
@@ -114,6 +114,19 @@ impl WorkerModelConfig {
     }
 }
 
+/// The model-assisted fallbacks that may run when GROBID fails. Both are off
+/// by default and need a network model provider.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RecoveryFallbacks {
+    /// A model classifies GROBID's own output when it cannot be normalized.
+    /// Every word of the result still comes from GROBID.
+    pub text: bool,
+    /// A vision model transcribes rendered page images when GROBID produced no
+    /// usable text at all. The words of such a document are model-authored, so
+    /// this also needs `LLM_VISION_MODEL`.
+    pub page_images: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct WorkerConfig {
     pub environment: WorkerEnvironment,
@@ -133,6 +146,7 @@ pub struct WorkerConfig {
     pub fulltext_policy: FulltextPolicy,
     pub parser_version: String,
     pub model: WorkerModelConfig,
+    pub recovery: RecoveryFallbacks,
     pub relationship_minimum_confidence: f32,
     /// Optional shared private root. Its `sources/` subtree is an
     /// operator-controlled ingest boundary; only re-encoded `generated/`
@@ -171,24 +185,10 @@ impl WorkerConfig {
                 embedding_dimension,
             }
         } else if provider.eq_ignore_ascii_case("openai_compatible") {
-            let mut config = OpenAiCompatibleConfig::default();
-            if let Ok(base_url) = std::env::var("LLM_BASE_URL")
-                && !base_url.trim().is_empty()
-            {
-                config.base_url = Url::parse(&base_url)?;
-            }
-            config.require_https = environment.is_deployed();
-            config.api_key = model_api_key(environment)?;
-            config.chat_model =
-                std::env::var("LLM_CHAT_MODEL").context("LLM_CHAT_MODEL is required")?;
-            config.embedding_model =
-                std::env::var("LLM_EMBEDDING_MODEL").context("LLM_EMBEDDING_MODEL is required")?;
-            config.embedding_dimension = embedding_dimension;
-            config.request_timeout = Duration::from_secs(env_parse("LLM_TIMEOUT_SECONDS", 60_u64)?);
-            config.maximum_response_bytes =
-                env_parse("LLM_MAX_RESPONSE_BYTES", 4 * 1024 * 1024_usize)?;
-            config.maximum_retries = env_parse("LLM_MAX_RETRIES", 2_usize)?;
-            WorkerModelConfig::OpenAiCompatible(Box::new(config))
+            WorkerModelConfig::OpenAiCompatible(Box::new(openai_compatible_from_env(
+                environment,
+                embedding_dimension,
+            )?))
         } else {
             anyhow::bail!(
                 "LLM_PROVIDER must be disabled, deterministic, or openai_compatible, got `{provider}`"
@@ -253,6 +253,10 @@ impl WorkerConfig {
             parser_version: std::env::var("PARSER_VERSION")
                 .unwrap_or_else(|_| "grobid-tei-v1".to_owned()),
             model,
+            recovery: RecoveryFallbacks {
+                text: env_bool("LLM_DOCUMENT_RECOVERY_ENABLED", false)?,
+                page_images: env_bool("LLM_VISION_RECOVERY_ENABLED", false)?,
+            },
             relationship_minimum_confidence: env_parse(
                 "RELATIONSHIP_MINIMUM_CONFIDENCE",
                 0.55_f32,
@@ -296,6 +300,11 @@ impl WorkerConfig {
             visual_assets.validate()?;
         }
         validate_service_url(self.environment, "GROBID_URL", &self.grobid.base_url)?;
+        validate_document_recovery(
+            self.recovery.text,
+            matches!(self.model, WorkerModelConfig::Deterministic { .. }),
+        )?;
+        validate_vision_recovery(self.recovery.page_images, &self.model)?;
         validate_deployment_policy(
             self.environment,
             demo_mode,
@@ -303,6 +312,82 @@ impl WorkerConfig {
             self.fulltext_policy,
             matches!(self.model, WorkerModelConfig::Deterministic { .. }),
         )
+    }
+}
+
+/// The `LLM_*` settings of an OpenAI-compatible provider, shared by the worker
+/// and by `recover-pdf`.
+fn openai_compatible_from_env(
+    environment: WorkerEnvironment,
+    embedding_dimension: usize,
+) -> Result<OpenAiCompatibleConfig> {
+    let mut config = OpenAiCompatibleConfig::default();
+    if let Ok(base_url) = std::env::var("LLM_BASE_URL")
+        && !base_url.trim().is_empty()
+    {
+        config.base_url = Url::parse(&base_url)?;
+    }
+    config.require_https = environment.is_deployed();
+    config.api_key = model_api_key(environment)?;
+    config.structured_output = std::env::var("LLM_STRUCTURED_OUTPUT")
+        .unwrap_or_default()
+        .parse()?;
+    config.thinking = std::env::var("LLM_THINKING").unwrap_or_default().parse()?;
+    config.chat_model = std::env::var("LLM_CHAT_MODEL").context("LLM_CHAT_MODEL is required")?;
+    config.embedding_model =
+        std::env::var("LLM_EMBEDDING_MODEL").context("LLM_EMBEDDING_MODEL is required")?;
+    config.embedding_dimension = embedding_dimension;
+    config.request_timeout = Duration::from_secs(env_parse("LLM_TIMEOUT_SECONDS", 60_u64)?);
+    config.maximum_response_bytes = env_parse("LLM_MAX_RESPONSE_BYTES", 4 * 1024 * 1024_usize)?;
+    config.maximum_retries = env_parse("LLM_MAX_RETRIES", 2_usize)?;
+    config.vision_model = std::env::var("LLM_VISION_MODEL")
+        .ok()
+        .map(|model| model.trim().to_owned())
+        .filter(|model| !model.is_empty());
+    config.vision_image_detail =
+        ImageDetail::parse_optional(&std::env::var("LLM_VISION_IMAGE_DETAIL").unwrap_or_default())?;
+    config.vision_request_timeout =
+        Duration::from_secs(env_parse("LLM_VISION_TIMEOUT_SECONDS", 120_u64)?);
+    Ok(config)
+}
+
+/// Provider settings for `recover-pdf`, which runs without a database.
+pub(crate) fn openai_compatible_from_process_env() -> Result<OpenAiCompatibleConfig> {
+    let environment = std::env::var("APP_ENV")
+        .unwrap_or_else(|_| "development".to_owned())
+        .parse::<WorkerEnvironment>()?;
+    let provider = std::env::var("LLM_PROVIDER").unwrap_or_default();
+    if !provider.eq_ignore_ascii_case("openai_compatible") {
+        anyhow::bail!("recover-pdf requires LLM_PROVIDER=openai_compatible");
+    }
+    let embedding_dimension = std::env::var("EMBEDDING_DIMENSION")
+        .ok()
+        .map(|value| value.parse())
+        .transpose()
+        .context("EMBEDDING_DIMENSION must be an integer")?
+        .unwrap_or(384);
+    openai_compatible_from_env(environment, embedding_dimension)
+}
+
+fn validate_document_recovery(enabled: bool, deterministic_model: bool) -> Result<()> {
+    if enabled && deterministic_model {
+        anyhow::bail!("LLM_DOCUMENT_RECOVERY_ENABLED requires LLM_PROVIDER=openai_compatible");
+    }
+    Ok(())
+}
+
+fn validate_vision_recovery(enabled: bool, model: &WorkerModelConfig) -> Result<()> {
+    if !enabled {
+        return Ok(());
+    }
+    match model {
+        WorkerModelConfig::OpenAiCompatible(config) if config.vision_model.is_some() => Ok(()),
+        WorkerModelConfig::OpenAiCompatible(_) => {
+            anyhow::bail!("LLM_VISION_RECOVERY_ENABLED requires LLM_VISION_MODEL")
+        }
+        WorkerModelConfig::Deterministic { .. } => {
+            anyhow::bail!("LLM_VISION_RECOVERY_ENABLED requires LLM_PROVIDER=openai_compatible")
+        }
     }
 }
 
@@ -461,6 +546,32 @@ fn enforce_cross_process_arxiv_gate(config: &mut ArxivClientConfig) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn document_recovery_requires_a_network_model_provider() {
+        validate_document_recovery(false, true).unwrap();
+        validate_document_recovery(false, false).unwrap();
+        validate_document_recovery(true, false).unwrap();
+        assert!(validate_document_recovery(true, true).is_err());
+    }
+
+    #[test]
+    fn vision_recovery_needs_a_network_provider_and_a_vision_model() {
+        let with_model = |vision_model: Option<&str>| {
+            WorkerModelConfig::OpenAiCompatible(Box::new(OpenAiCompatibleConfig {
+                vision_model: vision_model.map(str::to_owned),
+                ..OpenAiCompatibleConfig::default()
+            }))
+        };
+        let deterministic = WorkerModelConfig::Deterministic {
+            embedding_dimension: 4,
+        };
+        validate_vision_recovery(false, &deterministic).unwrap();
+        validate_vision_recovery(false, &with_model(None)).unwrap();
+        validate_vision_recovery(true, &with_model(Some("vision-model"))).unwrap();
+        assert!(validate_vision_recovery(true, &with_model(None)).is_err());
+        assert!(validate_vision_recovery(true, &deterministic).is_err());
+    }
 
     #[test]
     fn arxiv_internal_retries_cannot_bypass_database_gate() {

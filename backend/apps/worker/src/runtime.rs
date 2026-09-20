@@ -34,8 +34,9 @@ use domain::{
 use grobid_client::{GrobidClient, GrobidError};
 use jobs::{ClaimedJob, JobFailure, JobIdentity, JobKind, JobQueue, QueueError};
 use llm_provider::{
-    DeterministicProvider, EmbeddingProvider, EmbeddingRequest, OpenAiCompatibleProvider,
-    ProviderError, RelationshipContext, RelationshipProvider, RelationshipRequest,
+    DeterministicProvider, DocumentRecoveryProvider, DocumentVisionProvider, EmbeddingProvider,
+    EmbeddingRequest, OpenAiCompatibleProvider, ProviderError, RelationshipContext,
+    RelationshipProvider, RelationshipRequest,
 };
 use observability::{
     AnnotationReanchorMetricOutcome, AnnotationReanchorMetricStrategy, OperationClass,
@@ -62,6 +63,11 @@ use crate::{
     cli::{Cli, Command},
     config::{WorkerConfig, WorkerModelConfig},
     evaluation::{ContentEvaluationSummary, validate_content_evaluation_files},
+    recovery::{
+        RecoveryError, RecoveryScope, document_error_hint, parse_error_hint,
+        provider_error_is_temporary, recover_from_tei,
+    },
+    vision_recovery::{ChildRenderer, VisionError, recover_from_pages},
     visual_derivatives::{
         VisualDerivativeError, VisualDerivativeOutcome, VisualDerivativePipeline,
     },
@@ -72,6 +78,7 @@ const TERMS_ARTIFACT_VERSION: &str = "terms-v1";
 const VISUALS_ARTIFACT_VERSION: &str = "visuals-v1";
 const ANNOTATION_REANCHOR_ARTIFACT_VERSION: &str = "annotation-reanchor-v1";
 const ANNOTATION_REANCHOR_PAGE_SIZE: u32 = 200;
+type ParsedDocument = (ParsedPaper, DetectedIntroduction, NormalizedDocument);
 type ExtractedTermOccurrences = Vec<(Uuid, u32, u32)>;
 type ExtractedTerms = BTreeMap<String, (String, ExtractedTermOccurrences)>;
 
@@ -103,7 +110,33 @@ pub struct Worker {
     arxiv: ArxivClient,
     grobid: GrobidClient,
     model: Arc<dyn WorkerModelProvider>,
+    /// Present only when `LLM_DOCUMENT_RECOVERY_ENABLED` is set.
+    recovery: Option<Arc<dyn DocumentRecoveryProvider>>,
+    /// Present only when `LLM_VISION_RECOVERY_ENABLED` is set.
+    vision: Option<VisionRecovery>,
     visual_derivatives: Option<VisualDerivativePipeline>,
+}
+
+/// The model-facing pieces built from the provider configuration.
+struct ModelBackends {
+    model: Arc<dyn WorkerModelProvider>,
+    recovery: Option<Arc<dyn DocumentRecoveryProvider>>,
+    vision: Option<VisionRecovery>,
+}
+
+/// What page-image recovery needs: a vision model and a sandboxed renderer.
+struct VisionRecovery {
+    provider: Arc<dyn DocumentVisionProvider>,
+    renderer: ChildRenderer,
+}
+
+/// How a fallback that produced no document affects the job.
+enum RecoveryFailure {
+    /// A temporary model outage: fail the job so the queue retries it.
+    Retry(PipelineError),
+    /// The document could not be recovered; the next fallback, or the original
+    /// parser error, applies.
+    Unrecovered,
 }
 
 impl Worker {
@@ -128,12 +161,40 @@ impl Worker {
             .context("embedding dimension does not match the database")?;
         let arxiv = ArxivClient::new_with_external_gate(config.arxiv.clone())?;
         let grobid = GrobidClient::new(config.grobid.clone())?;
-        let model: Arc<dyn WorkerModelProvider> = match config.model.clone() {
+        let ModelBackends {
+            model,
+            recovery,
+            vision,
+        } = match config.model.clone() {
             WorkerModelConfig::Deterministic {
                 embedding_dimension,
-            } => Arc::new(DeterministicProvider::new(embedding_dimension)?),
-            WorkerModelConfig::OpenAiCompatible(config) => {
-                Arc::new(OpenAiCompatibleProvider::new(*config)?)
+            } => ModelBackends {
+                model: Arc::new(DeterministicProvider::new(embedding_dimension)?),
+                recovery: None,
+                vision: None,
+            },
+            WorkerModelConfig::OpenAiCompatible(model_config) => {
+                let provider = Arc::new(OpenAiCompatibleProvider::new(*model_config)?);
+                let recovery = config
+                    .recovery
+                    .text
+                    .then(|| Arc::clone(&provider) as Arc<dyn DocumentRecoveryProvider>);
+                let vision = config
+                    .recovery
+                    .page_images
+                    .then(|| {
+                        ChildRenderer::current().map(|renderer| VisionRecovery {
+                            provider: Arc::clone(&provider) as Arc<dyn DocumentVisionProvider>,
+                            renderer,
+                        })
+                    })
+                    .transpose()
+                    .context("could not locate the worker executable for PDF rendering")?;
+                ModelBackends {
+                    model: provider,
+                    recovery,
+                    vision,
+                }
             }
         };
         let visual_derivatives = config
@@ -159,6 +220,8 @@ impl Worker {
             arxiv,
             grobid,
             model,
+            recovery,
+            vision,
             visual_derivatives,
             config,
         })
@@ -169,6 +232,9 @@ impl Worker {
             Command::Run => self.run().await,
             Command::SyncMetadata { .. } => {
                 bail!("sync-metadata must run before full worker initialization")
+            }
+            Command::RecoverPdf { .. } => {
+                bail!("recover-pdf must run before full worker initialization")
             }
             Command::PrepareDemo {
                 manifest,
@@ -500,7 +566,7 @@ impl Worker {
                 &parsed,
                 &introduction.source_section_ids,
                 introduction.detection,
-                &self.config.parser_version,
+                &normalized.parser_version,
             )
             .await?;
         self.documents.persist_document(&normalized).await?;
@@ -510,11 +576,66 @@ impl Worker {
         Ok(())
     }
 
+    /// GROBID is the primary parser. When it fails, the enabled fallbacks are
+    /// tried in order of how much they trust the model:
+    ///
+    /// 1. text recovery, when GROBID returned TEI that could not be turned into
+    ///    a valid document: the model only classifies GROBID's own text;
+    /// 2. page-image recovery, when there is no usable text at all: a vision
+    ///    model transcribes rendered pages, so the words are model-authored.
+    ///
+    /// A fallback failure keeps the original parser error, except a temporary
+    /// model outage, which fails the job as `MODEL_UNAVAILABLE` so the queue
+    /// retries it.
     async fn parse_downloaded_document(
         &self,
         job: &ClaimedJob,
         arxiv_version: u32,
         pdf_path: &Path,
+    ) -> Result<ParsedDocument, PipelineError> {
+        let mut grobid_tei = None;
+        let error = match self
+            .parse_with_grobid(job, arxiv_version, pdf_path, &mut grobid_tei)
+            .await
+        {
+            Ok(parsed) => return Ok(parsed),
+            Err(error) => error,
+        };
+        let scope = RecoveryScope {
+            paper_id: job.paper_id,
+            generation: job.generation,
+            arxiv_version,
+        };
+        if let (Some(provider), Some(tei), Some(hint)) = (
+            self.recovery.as_deref(),
+            grobid_tei.as_deref(),
+            recovery_hint(&error),
+        ) {
+            match recover_document_from_text(job, scope, provider, tei, hint).await {
+                Ok(recovered) => return Ok(recovered),
+                Err(RecoveryFailure::Retry(temporary)) => return Err(temporary),
+                Err(RecoveryFailure::Unrecovered) => {}
+            }
+        }
+        if let (Some(vision), Some(hint)) = (
+            &self.vision,
+            vision_hint(&error, job.attempt >= job.max_attempts),
+        ) {
+            match recover_document_from_pages(job, scope, vision, pdf_path, hint).await {
+                Ok(recovered) => return Ok(recovered),
+                Err(RecoveryFailure::Retry(temporary)) => return Err(temporary),
+                Err(RecoveryFailure::Unrecovered) => {}
+            }
+        }
+        Err(error)
+    }
+
+    async fn parse_with_grobid(
+        &self,
+        job: &ClaimedJob,
+        arxiv_version: u32,
+        pdf_path: &Path,
+        tei_for_recovery: &mut Option<String>,
     ) -> Result<(ParsedPaper, DetectedIntroduction, NormalizedDocument), PipelineError> {
         let grobid_started = Instant::now();
         let tei_result = self.grobid.process_fulltext_file(pdf_path).await;
@@ -549,6 +670,10 @@ impl Worker {
                 return Err(error.into());
             }
         };
+        if self.recovery.is_some() {
+            // Kept so a rejected result can be recovered from GROBID's own output.
+            *tei_for_recovery = Some(tei.clone());
+        }
         let parsed = match parse_tei(&tei) {
             Ok(parsed) => parsed,
             Err(error) => {
@@ -606,7 +731,7 @@ impl Worker {
             ParserOutcome::Success,
             grobid_started.elapsed(),
         );
-        record_normalized_document_metrics(&normalized);
+        record_normalized_document_metrics(&normalized, ParserAdapterClass::Grobid);
         Ok((parsed, introduction, normalized))
     }
 
@@ -2253,37 +2378,30 @@ fn record_claimed_job_metrics(
     }
 }
 
-fn record_normalized_document_metrics(document: &domain::NormalizedDocument) {
+fn record_normalized_document_metrics(
+    document: &domain::NormalizedDocument,
+    adapter: ParserAdapterClass,
+) {
     for (object, count) in [
         (ParsedObjectClass::Block, document.blocks.len()),
         (ParsedObjectClass::Figure, document.figures.len()),
         (ParsedObjectClass::Table, document.tables.len()),
         (ParsedObjectClass::Equation, document.equations.len()),
     ] {
-        record_parsed_object_count(
-            ParserAdapterClass::Grobid,
-            object,
-            u64::try_from(count).unwrap_or(u64::MAX),
-        );
+        record_parsed_object_count(adapter, object, u64::try_from(count).unwrap_or(u64::MAX));
     }
     if !document
         .blocks
         .iter()
         .any(|block| block.kind == DocumentBlockKind::Heading)
     {
-        record_parser_anomaly(ParserAdapterClass::Grobid, ParserAnomalyClass::NoHeading);
+        record_parser_anomaly(adapter, ParserAnomalyClass::NoHeading);
     }
     if document.figures.is_empty() && document.tables.is_empty() && document.equations.is_empty() {
-        record_parser_anomaly(
-            ParserAdapterClass::Grobid,
-            ParserAnomalyClass::NoVisualObjects,
-        );
+        record_parser_anomaly(adapter, ParserAnomalyClass::NoVisualObjects);
     }
     if document.blocks.len() > 5_000 {
-        record_parser_anomaly(
-            ParserAdapterClass::Grobid,
-            ParserAnomalyClass::LargeDocument,
-        );
+        record_parser_anomaly(adapter, ParserAnomalyClass::LargeDocument);
     }
 }
 
@@ -3103,6 +3221,178 @@ fn provider_error_kind(error: &ProviderError) -> &'static str {
     }
 }
 
+/// Maps a rejected GROBID result to a recoverable failure class. Transport and
+/// HTTP failures never carry TEI, and parser resource limits are not
+/// recoverable, so both map to `None`.
+fn recovery_hint(error: &PipelineError) -> Option<domain::RecoveryFailureHint> {
+    match error {
+        PipelineError::Document(error) => document_error_hint(error),
+        PipelineError::Parser(error) => parse_error_hint(error),
+        _ => None,
+    }
+}
+
+/// Whether GROBID's failure is one a vision model may answer, and why.
+///
+/// GROBID keeps the first chance at anything that could succeed on retry, so an
+/// unreachable or failing GROBID (transport errors, HTTP 5xx, 408, 429) only
+/// falls back on the job's final attempt. Its answers that cannot improve on
+/// retry (an empty document, a rejected file, TEI without usable text) fall
+/// back at once. Resource-limit rejections never do: recovery must not become a
+/// way around those bounds.
+fn vision_hint(error: &PipelineError, final_attempt: bool) -> Option<domain::RecoveryFailureHint> {
+    use domain::RecoveryFailureHint;
+
+    match error {
+        PipelineError::Grobid(GrobidError::EmptyDocument | GrobidError::InvalidUtf8) => {
+            Some(RecoveryFailureHint::NoOutput)
+        }
+        PipelineError::Grobid(GrobidError::HttpStatus { status }) => {
+            let retryable = status.is_server_error() || matches!(status.as_u16(), 408 | 429);
+            if retryable {
+                final_attempt.then_some(RecoveryFailureHint::Unavailable)
+            } else if status.is_client_error() {
+                Some(RecoveryFailureHint::RejectedInput)
+            } else {
+                None
+            }
+        }
+        PipelineError::Grobid(GrobidError::Transport(_)) => {
+            final_attempt.then_some(RecoveryFailureHint::Unavailable)
+        }
+        PipelineError::Document(_) | PipelineError::Parser(_) => recovery_hint(error),
+        _ => None,
+    }
+}
+
+/// Text recovery: a model classifies the segments of GROBID's own TEI.
+async fn recover_document_from_text(
+    job: &ClaimedJob,
+    scope: RecoveryScope,
+    provider: &dyn DocumentRecoveryProvider,
+    tei: &str,
+    hint: domain::RecoveryFailureHint,
+) -> Result<ParsedDocument, RecoveryFailure> {
+    let started = Instant::now();
+    match recover_from_tei(provider, scope, tei, hint).await {
+        Ok(outcome) => {
+            record_parser_run(
+                ParserAdapterClass::LlmRecovery,
+                ParserOutcome::Success,
+                started.elapsed(),
+            );
+            record_normalized_document_metrics(&outcome.document, ParserAdapterClass::LlmRecovery);
+            warn!(
+                metric.name = "document_recovery",
+                paper_id = %job.paper_id,
+                generation = job.generation,
+                recovery.source = "tei_text",
+                recovery.failure = hint.as_str(),
+                recovery.provider_calls = outcome.provider_calls,
+                recovery.input_tokens = outcome.input_tokens,
+                recovery.output_tokens = outcome.output_tokens,
+                recovery.model = outcome.model_id.as_deref().unwrap_or("unknown"),
+                outcome = "recovered",
+                "GROBID output was rejected; the document was rebuilt by model-assisted recovery"
+            );
+            Ok((outcome.paper, outcome.introduction, outcome.document))
+        }
+        Err(recovery_error) => {
+            record_parser_run(
+                ParserAdapterClass::LlmRecovery,
+                recovery_error.parser_outcome(),
+                started.elapsed(),
+            );
+            warn!(
+                metric.name = "document_recovery",
+                paper_id = %job.paper_id,
+                generation = job.generation,
+                recovery.source = "tei_text",
+                recovery.failure = hint.as_str(),
+                error.kind = recovery_error.kind(),
+                outcome = "failed",
+                "model-assisted recovery failed"
+            );
+            match recovery_error {
+                RecoveryError::Provider(provider_error)
+                    if provider_error_is_temporary(&provider_error) =>
+                {
+                    Err(RecoveryFailure::Retry(PipelineError::Provider(
+                        provider_error,
+                    )))
+                }
+                _ => Err(RecoveryFailure::Unrecovered),
+            }
+        }
+    }
+}
+
+/// Page-image recovery: a vision model transcribes the rendered pages. The
+/// recovered document's words are model-authored and its provenance says so.
+async fn recover_document_from_pages(
+    job: &ClaimedJob,
+    scope: RecoveryScope,
+    vision: &VisionRecovery,
+    pdf_path: &Path,
+    hint: domain::RecoveryFailureHint,
+) -> Result<ParsedDocument, RecoveryFailure> {
+    let started = Instant::now();
+    match recover_from_pages(&vision.renderer, &vision.provider, scope, pdf_path).await {
+        Ok(outcome) => {
+            record_parser_run(
+                ParserAdapterClass::LlmVisionRecovery,
+                ParserOutcome::Success,
+                started.elapsed(),
+            );
+            record_normalized_document_metrics(
+                &outcome.document,
+                ParserAdapterClass::LlmVisionRecovery,
+            );
+            warn!(
+                metric.name = "document_recovery",
+                paper_id = %job.paper_id,
+                generation = job.generation,
+                recovery.source = "page_images",
+                recovery.failure = hint.as_str(),
+                recovery.pages = outcome.provider_calls,
+                recovery.input_tokens = outcome.input_tokens,
+                recovery.output_tokens = outcome.output_tokens,
+                recovery.model = outcome.model_id.as_deref().unwrap_or("unknown"),
+                outcome = "recovered",
+                "GROBID produced no usable text; the document was transcribed from page images by a vision model"
+            );
+            Ok((outcome.paper, outcome.introduction, outcome.document))
+        }
+        Err(vision_error) => {
+            record_parser_run(
+                ParserAdapterClass::LlmVisionRecovery,
+                vision_error.parser_outcome(),
+                started.elapsed(),
+            );
+            warn!(
+                metric.name = "document_recovery",
+                paper_id = %job.paper_id,
+                generation = job.generation,
+                recovery.source = "page_images",
+                recovery.failure = hint.as_str(),
+                error.kind = vision_error.kind(),
+                outcome = "failed",
+                "page-image recovery failed"
+            );
+            match vision_error {
+                VisionError::Provider(provider_error)
+                    if provider_error_is_temporary(&provider_error) =>
+                {
+                    Err(RecoveryFailure::Retry(PipelineError::Provider(
+                        provider_error,
+                    )))
+                }
+                _ => Err(RecoveryFailure::Unrecovered),
+            }
+        }
+    }
+}
+
 fn pipeline_failure(error: &PipelineError) -> JobFailure {
     let (category, code, message) = match error {
         PipelineError::Arxiv(ArxivError::Transport(_)) => (
@@ -3612,6 +3902,120 @@ mod tests {
         assert_eq!(failure.category, FailureCategory::ExternalTemporary);
         assert_eq!(failure.code, "ARXIV_TEMPORARY");
         assert!(failure.automatically_retryable());
+    }
+
+    #[test]
+    fn only_rejected_grobid_output_is_offered_for_recovery() {
+        use domain::RecoveryFailureHint;
+
+        // GROBID answered but its TEI was unusable: recoverable.
+        assert_eq!(
+            recovery_hint(&PipelineError::Document(DocumentError::MissingBody)),
+            Some(RecoveryFailureHint::MissingBody)
+        );
+        assert_eq!(
+            recovery_hint(&PipelineError::Document(
+                DocumentError::IntroductionNotFound
+            )),
+            Some(RecoveryFailureHint::NoIntroduction)
+        );
+        assert_eq!(
+            recovery_hint(&PipelineError::Parser(ParseError::InvalidOutput)),
+            Some(RecoveryFailureHint::InvalidOutput)
+        );
+        // GROBID returned nothing, or a parser resource limit was hit: never.
+        assert_eq!(
+            recovery_hint(&PipelineError::Grobid(GrobidError::EmptyDocument)),
+            None
+        );
+        assert_eq!(
+            recovery_hint(&PipelineError::Grobid(GrobidError::HttpStatus {
+                status: reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            })),
+            None
+        );
+        assert_eq!(
+            recovery_hint(&PipelineError::Document(DocumentError::TooDeep {
+                maximum_depth: 1
+            })),
+            None
+        );
+        assert_eq!(recovery_hint(&PipelineError::PolicyDenied), None);
+        assert_eq!(recovery_hint(&PipelineError::NoChatCorpus), None);
+    }
+
+    #[test]
+    fn page_image_recovery_covers_only_the_documented_grobid_failures() {
+        use domain::RecoveryFailureHint;
+
+        let status = |code: u16| {
+            PipelineError::Grobid(GrobidError::HttpStatus {
+                status: reqwest::StatusCode::from_u16(code).unwrap(),
+            })
+        };
+        let transport = || {
+            PipelineError::Grobid(GrobidError::Transport(
+                reqwest::Client::new().get("not a url").build().unwrap_err(),
+            ))
+        };
+
+        // Answers that cannot improve on retry fall back at once.
+        for final_attempt in [false, true] {
+            for (error, expected) in [
+                (
+                    PipelineError::Grobid(GrobidError::EmptyDocument),
+                    RecoveryFailureHint::NoOutput,
+                ),
+                (
+                    PipelineError::Grobid(GrobidError::InvalidUtf8),
+                    RecoveryFailureHint::NoOutput,
+                ),
+                (status(400), RecoveryFailureHint::RejectedInput),
+                (status(422), RecoveryFailureHint::RejectedInput),
+                (
+                    PipelineError::Document(DocumentError::MissingBody),
+                    RecoveryFailureHint::MissingBody,
+                ),
+                (
+                    PipelineError::Parser(ParseError::InvalidOutput),
+                    RecoveryFailureHint::InvalidOutput,
+                ),
+            ] {
+                assert_eq!(vision_hint(&error, final_attempt), Some(expected));
+            }
+        }
+
+        // Failures that GROBID may recover from give it its retries first.
+        for error in [
+            status(500),
+            status(503),
+            status(408),
+            status(429),
+            transport(),
+        ] {
+            assert_eq!(vision_hint(&error, false), None, "{error:?}");
+            assert_eq!(
+                vision_hint(&error, true),
+                Some(RecoveryFailureHint::Unavailable),
+                "{error:?}"
+            );
+        }
+
+        // Resource limits, local I/O, configuration, and policy never fall back.
+        for error in [
+            PipelineError::Grobid(GrobidError::TeiTooLarge { maximum_bytes: 1 }),
+            PipelineError::Grobid(GrobidError::PdfTooLarge { maximum_bytes: 1 }),
+            PipelineError::Grobid(GrobidError::InvalidConfiguration("x".into())),
+            PipelineError::Grobid(GrobidError::ReadPdf(std::io::ErrorKind::NotFound.into())),
+            PipelineError::Document(DocumentError::TooDeep { maximum_depth: 1 }),
+            status(301),
+            PipelineError::PolicyDenied,
+            PipelineError::NoChatCorpus,
+        ] {
+            for final_attempt in [false, true] {
+                assert_eq!(vision_hint(&error, final_attempt), None, "{error:?}");
+            }
+        }
     }
 
     #[test]

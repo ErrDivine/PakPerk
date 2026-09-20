@@ -1475,7 +1475,6 @@ fn api_config(
         database_pool_size: 16,
         run_migrations: false,
         request_timeout: Duration::from_secs(5),
-        chat_request_timeout: Duration::from_secs(5),
         max_request_bytes: 64 * 1024,
         cors_allowed_origins: vec![HeaderValue::from_static("https://reader.example")],
         arxiv: ArxivClientConfig {
@@ -1487,6 +1486,7 @@ fn api_config(
         fulltext_policy: FulltextPolicy::Prototype,
         embedding_dimension: None,
         llm: None,
+        assistant_llm: None,
         prepare_requests_per_minute: 100,
         chat_requests_per_minute: 100,
     }

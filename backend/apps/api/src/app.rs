@@ -530,7 +530,6 @@ pub fn build_router(state: AppState, config: &ApiConfig) -> Router {
         .layer(middleware::from_fn_with_state(
             TimeoutConfig {
                 default: config.request_timeout,
-                chat: config.chat_request_timeout,
             },
             timeout_middleware,
         ))

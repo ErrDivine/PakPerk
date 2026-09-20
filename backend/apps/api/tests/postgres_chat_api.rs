@@ -444,7 +444,6 @@ fn api_config(database_url: String) -> ApiConfig {
         database_pool_size: 8,
         run_migrations: false,
         request_timeout: Duration::from_secs(5),
-        chat_request_timeout: Duration::from_secs(5),
         max_request_bytes: 64 * 1024,
         cors_allowed_origins: Vec::new(),
         arxiv,
@@ -454,6 +453,7 @@ fn api_config(database_url: String) -> ApiConfig {
         llm: Some(ApiModelConfig::Deterministic {
             embedding_dimension: 16,
         }),
+        assistant_llm: None,
         prepare_requests_per_minute: 100,
         chat_requests_per_minute: 100,
     }

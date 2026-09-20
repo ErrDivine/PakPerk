@@ -357,7 +357,6 @@ async fn tool_search_then_read_persists_new_evidence_and_preserves_original_ques
         assistant_tools: true,
         ..FeatureFlags::default()
     };
-    config.chat_request_timeout = Duration::from_secs(55);
     config.llm = Some(ApiModelConfig::OpenAiCompatible(Box::new(
         llm_provider::OpenAiCompatibleConfig {
             base_url: Url::parse(&format!("http://{address}/v1")).unwrap(),

@@ -178,7 +178,6 @@ mod tests {
             .layer(middleware::from_fn_with_state(
                 TimeoutConfig {
                     default: Duration::from_millis(1),
-                    chat: Duration::from_millis(1),
                 },
                 timeout_middleware,
             ))

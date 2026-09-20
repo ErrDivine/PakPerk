@@ -31,31 +31,37 @@ void main() {
     expect(profile.canParticipateInComments, isFalse);
   });
 
-  test('validates required comment eligibility against profile and policies', () {
-    final complete = _profileJson(
-      handle: 'ada_reader',
-      termsVersion: '2026-07',
-      termsAcceptedAt: '2026-07-30T10:00:00Z',
-      termsCurrent: true,
-      communityGuidelinesVersion: '2026-07',
-      communityGuidelinesAcceptedAt: '2026-07-30T10:00:00Z',
-      communityGuidelinesCurrent: true,
-      profileComplete: true,
-      commentProfileComplete: true,
-    );
-    expect(AccountProfile.fromJson(complete).canParticipateInComments, isTrue);
-    final missing = _profileJson()..remove('comment_profile_complete');
-    for (final invalid in [
-      missing,
-      _profileJson(commentProfileComplete: null),
-      _profileJson(commentProfileComplete: 'false'),
-      _profileJson(commentProfileComplete: 0),
-      _profileJson(commentProfileComplete: true),
-      {...complete, 'comment_profile_complete': false},
-    ]) {
-      expect(() => AccountProfile.fromJson(invalid), throwsFormatException);
-    }
-  });
+  test(
+    'validates required comment eligibility against profile and policies',
+    () {
+      final complete = _profileJson(
+        handle: 'ada_reader',
+        termsVersion: '2026-07',
+        termsAcceptedAt: '2026-07-30T10:00:00Z',
+        termsCurrent: true,
+        communityGuidelinesVersion: '2026-07',
+        communityGuidelinesAcceptedAt: '2026-07-30T10:00:00Z',
+        communityGuidelinesCurrent: true,
+        profileComplete: true,
+        commentProfileComplete: true,
+      );
+      expect(
+        AccountProfile.fromJson(complete).canParticipateInComments,
+        isTrue,
+      );
+      final missing = _profileJson()..remove('comment_profile_complete');
+      for (final invalid in [
+        missing,
+        _profileJson(commentProfileComplete: null),
+        _profileJson(commentProfileComplete: 'false'),
+        _profileJson(commentProfileComplete: 0),
+        _profileJson(commentProfileComplete: true),
+        {...complete, 'comment_profile_complete': false},
+      ]) {
+        expect(() => AccountProfile.fromJson(invalid), throwsFormatException);
+      }
+    },
+  );
 
   test('rejects unknown fields and inconsistent derived state', () {
     expect(

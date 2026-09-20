@@ -113,6 +113,7 @@ The following controls are implemented and validated at startup:
 | `SEMANTIC_FACETS_ENABLED` | Deep Reader | Enables bounded semantic facets and source-linked definitions. |
 | `VISUAL_OBJECTS_ENABLED` | Deep Reader | Enables source-linked figure, table, and equation objects. |
 | `ASSISTANT_V2_ENABLED` | Deep Reader | Enables the evidence-ID-validated assistant contract. |
+| `ASSISTANT_TOOLS_ENABLED` | Assistant V2 | Opts the configured compatible provider into bounded, read-only native tool selection for Assistant V2. Not release-ready until the assistant-tools integration verification passes. |
 | `ANNOTATIONS_ENABLED` | accounts, Deep Reader | Enables private synchronized annotations and evidence cards. |
 | `RESEARCH_MEMORY_ENABLED` | accounts, Deep Reader, annotations | Enables private reviewable memory items without Library authority. |
 | `VERSION_DIFF_ENABLED` | Deep Reader | Enables generation-aware paper-version and diff surfaces. |

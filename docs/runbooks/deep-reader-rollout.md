@@ -16,7 +16,7 @@ deployment-binding, alert-adapter, or signed-mobile procedures.
 3. GROBID is still the configured default unless the parser benchmark,
    resource budget, fallback, reprocessing, and rollback gates authorize a
    different adapter.
-4. All 30 release switches and all 39 dependency edges reconcile with the
+4. All 31 release switches and all 40 dependency edges reconcile with the
    rendered release contract.
 5. Repository, environment, and Helm Plan 03 switches, plus all ten mobile
    Plan 03 controls, are false until `releaseEvidence.deepReaderReleaseId`
@@ -97,7 +97,11 @@ bounded canary, and record the before/after result.
    accessibility-description regeneration as available.
 5. Enable `ASSISTANT_V2_ENABLED` only after invented evidence IDs are zero,
    unsupported citation and baseline thresholds pass, and model cost/latency
-   stay within budget.
+   stay within budget. Keep `ASSISTANT_TOOLS_ENABLED` false until the
+   assistant-tools integration verification passes and the configured provider
+   supports native function calling. `/chat` and `/assistant` carry no route
+   deadline, so size `LLM_TIMEOUT_SECONDS` and the edge
+   `api.chatTimeoutSeconds` for the slowest answer you accept.
 6. Enable `ANNOTATIONS_ENABLED` after private authorization, sync conflict,
    bounded background re-anchor, manual reattach, export, deletion, offline,
    and signed-device checks pass.
@@ -134,7 +138,7 @@ user data:
 2. `VERSION_DIFF_ENABLED`;
 3. `RESEARCH_MEMORY_ENABLED`;
 4. `ANNOTATIONS_ENABLED`;
-5. `ASSISTANT_V2_ENABLED`;
+5. `ASSISTANT_TOOLS_ENABLED`, then `ASSISTANT_V2_ENABLED`;
 6. `VISUAL_OBJECTS_ENABLED`;
 7. `SEMANTIC_FACETS_ENABLED`;
 8. `PAPER_PASSPORT_ENABLED`;

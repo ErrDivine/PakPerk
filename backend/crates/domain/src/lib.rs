@@ -13,6 +13,7 @@ mod connection;
 mod content_policy;
 mod document;
 mod document_reader;
+mod document_recovery;
 mod error;
 mod library;
 mod paper;
@@ -79,6 +80,14 @@ pub use document_reader::{
     NormalizedDocument, SourceLocator, TABLE_STRUCTURE_SCHEMA_VERSION, TableCell,
     TableExtractionStatus, TableStructure, TermDefinition, TermKind, TermOccurrence, content_hash,
     normalize_document_text, normalize_term, stable_block_key, valid_visual_asset_dimensions,
+};
+pub use document_recovery::{
+    RECOVERY_MAX_HEADING_LEVEL, RECOVERY_MAX_SEGMENT_SCALARS, RECOVERY_MAX_SEGMENTS,
+    RECOVERY_MAX_SOURCE_SCALARS, RECOVERY_PARSER_ID, RECOVERY_PARSER_VERSION,
+    RECOVERY_PREVIEW_SCALARS, RECOVERY_WINDOW_SEGMENTS, RecoveryAnnotation, RecoveryFailureHint,
+    RecoveryHeading, RecoveryRange, RecoverySegment, RecoverySource, TranscribedBlock,
+    TranscribedBlockKind, TranscribedPage, VISION_MAX_BLOCKS_PER_PAGE, VISION_MAX_PAGE_SCALARS,
+    VISION_MAX_PAGES, VISION_MAX_SEGMENTS, VISION_PARSER_ID, VISION_PARSER_VERSION,
 };
 pub use error::{ApiErrorBody, ApiErrorEnvelope, DomainError};
 pub use library::{

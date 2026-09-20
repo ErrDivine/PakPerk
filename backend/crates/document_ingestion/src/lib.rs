@@ -11,6 +11,7 @@ pub mod fixtures;
 mod grobid_adapter;
 mod normalize;
 mod quality;
+mod recovery;
 
 pub use adapter::{
     ParseError, ParseInput, ParsePayload, ParserSelection, ScholarlyDocumentParser, default_parser,
@@ -22,4 +23,8 @@ pub use grobid_adapter::GrobidAdapter;
 pub use quality::{
     BenchmarkGroundTruth, BenchmarkMetrics, BenchmarkResult, DocumentQualityReport,
     evaluate_benchmark, evaluate_quality, run_benchmark,
+};
+pub use recovery::{
+    RecoveredDocument, SourceSegment, assemble_recovered_document, assemble_transcribed_document,
+    split_source_segments, tei_to_plain_text,
 };

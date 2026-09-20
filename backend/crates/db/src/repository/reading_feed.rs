@@ -277,6 +277,7 @@ async fn queue_snapshot(
     })
 }
 
+#[allow(clippy::too_many_lines)] // Most of the length is the SQL text.
 async fn recommendation_snapshot(
     transaction: &mut Transaction<'_, Postgres>,
     request: &ReadingFeedSnapshotRequest,

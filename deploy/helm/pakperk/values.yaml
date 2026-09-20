@@ -140,8 +140,12 @@ api:
     requests: { cpu: 100m, memory: 192Mi }
     limits: { cpu: "1", memory: 768Mi }
   databasePoolSize: 10
+  # Applies to every route except /chat and /assistant, which the API no longer
+  # bounds in process.
   requestTimeoutSeconds: 30
-  chatTimeoutSeconds: 70
+  # Edge budget only: the ingress proxy timeouts for the model-backed routes.
+  # nginx needs a finite value, so keep it above the slowest provider answer.
+  chatTimeoutSeconds: 900
   maxRequestBytes: 65536
   paperSearchMinQueryChars: 3
   paperSearchMaxQueryChars: 300

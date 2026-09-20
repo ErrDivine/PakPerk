@@ -2,9 +2,33 @@ use async_trait::async_trait;
 use domain::{ChatAnswer, RelationType};
 
 use crate::{
-    AssistantCompletion, AssistantCompletionRequest, ChatCompletionRequest, EmbeddingRequest,
-    EmbeddingResponse, ProviderError, RelationshipRequest, RelationshipSummary,
+    AssistantCompletion, AssistantCompletionRequest, ChatCompletionRequest,
+    DocumentRecoveryCompletion, DocumentRecoveryRequest, EmbeddingRequest, EmbeddingResponse,
+    PageTranscriptionCompletion, PageTranscriptionRequest, ProviderError, RelationshipRequest,
+    RelationshipSummary,
 };
+
+/// Classifies numbered text segments of a paper whose primary parser failed.
+/// Implementations return segment roles only; they never return document text.
+#[async_trait]
+pub trait DocumentRecoveryProvider: Send + Sync {
+    async fn annotate_document_structure(
+        &self,
+        request: &DocumentRecoveryRequest,
+    ) -> Result<DocumentRecoveryCompletion, ProviderError>;
+}
+
+/// Transcribes one rendered page of a paper with a vision-capable model.
+///
+/// Unlike [`DocumentRecoveryProvider`], the returned text is *authored* by the
+/// model. Callers must record that in the provenance of anything built from it.
+#[async_trait]
+pub trait DocumentVisionProvider: Send + Sync {
+    async fn transcribe_page(
+        &self,
+        request: &PageTranscriptionRequest<'_>,
+    ) -> Result<PageTranscriptionCompletion, ProviderError>;
+}
 
 #[async_trait]
 pub trait AssistantProvider: Send + Sync {

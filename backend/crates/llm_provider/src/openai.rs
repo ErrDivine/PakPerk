@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -15,11 +16,110 @@ use uuid::Uuid;
 
 use crate::{
     AssistantCompletion, AssistantCompletionRequest, AssistantProvider, AssistantTokenUsage,
-    ChatCompletionRequest, ChatProvider, EmbeddingProvider, EmbeddingRequest, EmbeddingResponse,
-    ProviderError, RelationshipProvider, RelationshipRequest, RelationshipSummary,
+    ChatCompletionRequest, ChatProvider, DocumentRecoveryCompletion, DocumentRecoveryProvider,
+    DocumentRecoveryRequest, DocumentVisionProvider, EmbeddingProvider, EmbeddingRequest,
+    EmbeddingResponse, PageTranscriptionCompletion, PageTranscriptionRequest, ProviderError,
+    RelationshipProvider, RelationshipRequest, RelationshipSummary,
     prompt::{assistant_v2_payload, chat_payload, relationship_payload},
-    validate_assistant_output, validate_chat_output, validate_relationship_output,
+    recovery::recovery_payload,
+    validate_assistant_output, validate_chat_output, validate_recovery_output,
+    validate_relationship_output, validate_transcription_output,
+    vision::transcription_payload,
 };
+
+/// How structured model output is requested. Strict `json_schema` is the
+/// default. Endpoints that only implement JSON mode (for example `DeepSeek`'s
+/// OpenAI-compatible API) need `json_object`, which carries the same schema in
+/// a system instruction instead. Every response is validated identically.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum StructuredOutputMode {
+    #[default]
+    JsonSchema,
+    JsonObject,
+}
+
+impl std::str::FromStr for StructuredOutputMode {
+    type Err = ProviderError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "" | "json_schema" => Ok(Self::JsonSchema),
+            "json_object" => Ok(Self::JsonObject),
+            _ => Err(ProviderError::InvalidConfiguration(
+                "LLM_STRUCTURED_OUTPUT must be json_schema or json_object".into(),
+            )),
+        }
+    }
+}
+
+/// Whether the model reasons before answering, for endpoints that expose the
+/// switch (`DeepSeek` enables it by default). `ProviderDefault` sends nothing,
+/// so endpoints without the parameter are unaffected.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ThinkingMode {
+    #[default]
+    ProviderDefault,
+    Enabled,
+    Disabled,
+}
+
+impl std::str::FromStr for ThinkingMode {
+    type Err = ProviderError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "" | "default" => Ok(Self::ProviderDefault),
+            "enabled" => Ok(Self::Enabled),
+            "disabled" => Ok(Self::Disabled),
+            _ => Err(ProviderError::InvalidConfiguration(
+                "LLM_THINKING must be default, enabled, or disabled".into(),
+            )),
+        }
+    }
+}
+
+impl ThinkingMode {
+    fn request_value(self) -> Option<Value> {
+        match self {
+            Self::ProviderDefault => None,
+            Self::Enabled => Some(json!({"type": "enabled"})),
+            Self::Disabled => Some(json!({"type": "disabled"})),
+        }
+    }
+}
+
+/// The optional `detail` hint on page images. `DeepSeek` documents `low` and
+/// `original`; `OpenAI` documents `low`, `high`, and `auto`. Unset sends nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageDetail {
+    Low,
+    High,
+    Original,
+}
+
+impl ImageDetail {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::High => "high",
+            Self::Original => "original",
+        }
+    }
+
+    /// `None` for an empty value or `auto`, which sends no hint.
+    pub fn parse_optional(value: &str) -> Result<Option<Self>, ProviderError> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "" | "auto" => Ok(None),
+            "low" => Ok(Some(Self::Low)),
+            "high" => Ok(Some(Self::High)),
+            "original" => Ok(Some(Self::Original)),
+            _ => Err(ProviderError::InvalidConfiguration(
+                "LLM_VISION_IMAGE_DETAIL must be auto, low, high, or original".into(),
+            )),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct OpenAiCompatibleConfig {
@@ -28,11 +128,20 @@ pub struct OpenAiCompatibleConfig {
     /// set this to true; development may use a local HTTP model process.
     pub require_https: bool,
     pub api_key: Option<SecretString>,
+    pub structured_output: StructuredOutputMode,
+    pub thinking: ThinkingMode,
     pub chat_model: String,
     pub embedding_model: String,
     pub embedding_dimension: usize,
+    /// Vision-capable model used to transcribe page images. `None` disables
+    /// page transcription.
+    pub vision_model: Option<String>,
+    pub vision_image_detail: Option<ImageDetail>,
     pub connect_timeout: Duration,
     pub request_timeout: Duration,
+    /// Total budget, retries included, for one page transcription. Reading an
+    /// image and writing out a page takes longer than a chat turn.
+    pub vision_request_timeout: Duration,
     pub maximum_response_bytes: usize,
     pub maximum_retries: usize,
 }
@@ -46,11 +155,16 @@ impl std::fmt::Debug for OpenAiCompatibleConfig {
             .field("base_url", &"[REDACTED]")
             .field("require_https", &self.require_https)
             .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
+            .field("structured_output", &self.structured_output)
+            .field("thinking", &self.thinking)
             .field("chat_model", &self.chat_model)
             .field("embedding_model", &self.embedding_model)
             .field("embedding_dimension", &self.embedding_dimension)
+            .field("vision_model", &self.vision_model)
+            .field("vision_image_detail", &self.vision_image_detail)
             .field("connect_timeout", &self.connect_timeout)
             .field("request_timeout", &self.request_timeout)
+            .field("vision_request_timeout", &self.vision_request_timeout)
             .field("maximum_response_bytes", &self.maximum_response_bytes)
             .field("maximum_retries", &self.maximum_retries)
             .finish()
@@ -64,11 +178,16 @@ impl Default for OpenAiCompatibleConfig {
                 .expect("default provider URL is valid"),
             require_https: false,
             api_key: None,
+            structured_output: StructuredOutputMode::default(),
+            thinking: ThinkingMode::default(),
             chat_model: String::new(),
             embedding_model: String::new(),
             embedding_dimension: 0,
+            vision_model: None,
+            vision_image_detail: None,
             connect_timeout: Duration::from_secs(10),
             request_timeout: Duration::from_secs(60),
+            vision_request_timeout: Duration::from_secs(120),
             maximum_response_bytes: 4 * 1024 * 1024,
             maximum_retries: 2,
         }
@@ -142,18 +261,43 @@ impl OpenAiCompatibleProvider {
     }
 
     async fn post_json(&self, path: &str, payload: &Value) -> Result<Vec<u8>, ProviderError> {
-        timeout(
-            self.config.request_timeout,
-            self.post_json_with_retries(path, payload),
-        )
-        .await
-        .map_err(|_| ProviderError::OperationTimeout)?
+        self.post_json_within(path, payload, self.config.request_timeout)
+            .await
+    }
+
+    /// Posts within an explicit total budget that covers every retry.
+    async fn post_json_within(
+        &self,
+        path: &str,
+        payload: &Value,
+        budget: Duration,
+    ) -> Result<Vec<u8>, ProviderError> {
+        let payload = self.adapt_payload(path, payload);
+        timeout(budget, self.post_json_with_retries(path, &payload, budget))
+            .await
+            .map_err(|_| ProviderError::OperationTimeout)?
+    }
+
+    /// Applies the endpoint-specific adjustments configured for this provider.
+    /// Only `chat/completions` requests carry them.
+    fn adapt_payload<'a>(&self, path: &str, payload: &'a Value) -> Cow<'a, Value> {
+        let mut adapted = match self.config.structured_output {
+            StructuredOutputMode::JsonSchema => None,
+            StructuredOutputMode::JsonObject => json_object_payload(payload),
+        };
+        if path == "chat/completions"
+            && let Some(thinking) = self.config.thinking.request_value()
+        {
+            adapted.get_or_insert_with(|| payload.clone())["thinking"] = thinking;
+        }
+        adapted.map_or(Cow::Borrowed(payload), Cow::Owned)
     }
 
     async fn post_json_with_retries(
         &self,
         path: &str,
         payload: &Value,
+        budget: Duration,
     ) -> Result<Vec<u8>, ProviderError> {
         let url = endpoint(&self.config.base_url, path);
         let mut attempt = 0usize;
@@ -162,6 +306,7 @@ impl OpenAiCompatibleProvider {
                 .http
                 .post(url.clone())
                 .headers(observability::current_trace_headers())
+                .timeout(budget)
                 .json(payload);
             if let Some(api_key) = &self.config.api_key {
                 request = request.bearer_auth(api_key.expose_secret());
@@ -421,6 +566,126 @@ impl RelationshipProvider for OpenAiCompatibleProvider {
     }
 }
 
+#[async_trait]
+impl DocumentRecoveryProvider for OpenAiCompatibleProvider {
+    async fn annotate_document_structure(
+        &self,
+        request: &DocumentRecoveryRequest,
+    ) -> Result<DocumentRecoveryCompletion, ProviderError> {
+        let payload = recovery_payload(request, &self.config.chat_model)?;
+        let bytes = self.post_json("chat/completions", &payload).await?;
+        let reply = parse_chat_content(&bytes, "document recovery", &self.config.chat_model)?;
+        let annotation =
+            validate_recovery_output(&reply.content, request).map_err(ProviderError::from)?;
+        Ok(DocumentRecoveryCompletion {
+            annotation,
+            model_id: Some(reply.model_id),
+            provider_request_id: reply.provider_request_id,
+            token_usage: reply.token_usage,
+        })
+    }
+}
+
+#[async_trait]
+impl DocumentVisionProvider for OpenAiCompatibleProvider {
+    async fn transcribe_page(
+        &self,
+        request: &PageTranscriptionRequest<'_>,
+    ) -> Result<PageTranscriptionCompletion, ProviderError> {
+        let model = self.config.vision_model.as_deref().ok_or_else(|| {
+            ProviderError::InvalidConfiguration("LLM_VISION_MODEL is not configured".into())
+        })?;
+        let payload = transcription_payload(request, model, self.config.vision_image_detail)?;
+        let bytes = self
+            .post_json_within(
+                "chat/completions",
+                &payload,
+                self.config.vision_request_timeout,
+            )
+            .await?;
+        let reply = parse_chat_content(&bytes, "page transcription", model)?;
+        let page =
+            validate_transcription_output(&reply.content, request).map_err(ProviderError::from)?;
+        Ok(PageTranscriptionCompletion {
+            page,
+            model_id: Some(reply.model_id),
+            provider_request_id: reply.provider_request_id,
+            token_usage: reply.token_usage,
+        })
+    }
+}
+
+/// What every JSON-mode completion carries once its envelope is checked.
+struct ChatReply {
+    content: String,
+    model_id: String,
+    provider_request_id: Option<String>,
+    token_usage: Option<AssistantTokenUsage>,
+}
+
+fn parse_chat_content(
+    bytes: &[u8],
+    what: &'static str,
+    default_model: &str,
+) -> Result<ChatReply, ProviderError> {
+    let response: ChatEnvelope = serde_json::from_slice(bytes).map_err(|_| {
+        ProviderError::InvalidResponse(format!("{what} response is not the expected JSON envelope"))
+    })?;
+    let token_usage = response
+        .usage
+        .map(ChatUsage::try_into_assistant_usage)
+        .transpose()?;
+    let content = response
+        .choices
+        .into_iter()
+        .next()
+        .map(|choice| choice.message.content)
+        .filter(|content| !content.trim().is_empty())
+        .ok_or_else(|| {
+            ProviderError::InvalidResponse(format!("{what} response contains no content"))
+        })?;
+    let model_id =
+        validated_provider_identifier(response.model.as_deref().unwrap_or(default_model), "model")?;
+    let provider_request_id = response
+        .id
+        .as_deref()
+        .map(|value| validated_provider_identifier(value, "request"))
+        .transpose()?;
+    Ok(ChatReply {
+        content,
+        model_id,
+        provider_request_id,
+        token_usage,
+    })
+}
+
+/// Rewrites a strict `json_schema` request for endpoints that only support
+/// JSON mode. The schema moves into a system instruction placed after the
+/// leading system messages. Requests without a `json_schema` format (tool
+/// selection, embeddings) are left untouched.
+fn json_object_payload(payload: &Value) -> Option<Value> {
+    if payload
+        .pointer("/response_format/type")
+        .and_then(Value::as_str)
+        != Some("json_schema")
+    {
+        return None;
+    }
+    let schema = payload.pointer("/response_format/json_schema/schema")?;
+    let instruction = format!(
+        "Reply with exactly one JSON object and nothing else: no Markdown fences and no commentary. The object must validate against this JSON Schema:\n{schema}"
+    );
+    let mut adapted = payload.clone();
+    adapted["response_format"] = json!({"type": "json_object"});
+    let messages = adapted.get_mut("messages")?.as_array_mut()?;
+    let position = messages
+        .iter()
+        .take_while(|message| message["role"] == "system")
+        .count();
+    messages.insert(position, json!({"role": "system", "content": instruction}));
+    Some(adapted)
+}
+
 #[derive(Debug, Deserialize)]
 struct ChatEnvelope {
     id: Option<String>,
@@ -520,11 +785,17 @@ fn validate_config_for_mode(
         || config.request_timeout.is_zero()
         || config.maximum_response_bytes == 0
         || config.maximum_retries > 5
+        || config.vision_request_timeout.is_zero()
+        || config.vision_request_timeout > Duration::from_secs(15 * 60)
         || !is_safe_provider_identifier(&config.chat_model)
         || (embedding_required && !is_safe_provider_identifier(&config.embedding_model))
+        || config
+            .vision_model
+            .as_deref()
+            .is_some_and(|model| !is_safe_provider_identifier(model))
     {
         return Err(ProviderError::InvalidConfiguration(
-            "a credential-free provider URL, safe model IDs, dimension, positive timeouts/limit, and at most five retries are required; deployed endpoints require non-loopback HTTPS".into(),
+            "a credential-free provider URL, safe model IDs, dimension, positive timeouts/limit (a vision timeout of at most fifteen minutes), and at most five retries are required; deployed endpoints require non-loopback HTTPS".into(),
         ));
     }
     Ok(())
@@ -796,6 +1067,261 @@ mod tests {
         assert!(validated_provider_identifier(&oversized, "model").is_err());
         assert!(is_safe_provider_identifier("text-embedding-3-small"));
         assert!(is_safe_provider_identifier("provider/model:v1"));
+    }
+
+    #[test]
+    fn structured_output_mode_defaults_to_strict_schema_and_rejects_unknown_values() {
+        assert_eq!(
+            OpenAiCompatibleConfig::default().structured_output,
+            StructuredOutputMode::JsonSchema
+        );
+        assert!(matches!(
+            "".parse::<StructuredOutputMode>(),
+            Ok(StructuredOutputMode::JsonSchema)
+        ));
+        assert!(matches!(
+            "json_schema".parse::<StructuredOutputMode>(),
+            Ok(StructuredOutputMode::JsonSchema)
+        ));
+        assert!(matches!(
+            " JSON_OBJECT ".parse::<StructuredOutputMode>(),
+            Ok(StructuredOutputMode::JsonObject)
+        ));
+        assert!("yaml".parse::<StructuredOutputMode>().is_err());
+    }
+
+    #[test]
+    fn json_object_mode_moves_the_schema_into_a_system_instruction() {
+        let payload = json!({
+            "model": "m",
+            "messages": [
+                {"role": "system", "content": "rules"},
+                {"role": "user", "content": "question"},
+            ],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": "x", "strict": true, "schema": {
+                    "type": "object", "additionalProperties": false,
+                    "required": ["answer"], "properties": {"answer": {"type": "string"}},
+                }},
+            },
+        });
+        let adapted = json_object_payload(&payload).expect("json_schema payloads are rewritten");
+        assert_eq!(adapted["response_format"], json!({"type": "json_object"}));
+        let messages = adapted["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0]["content"], "rules");
+        assert_eq!(messages[1]["role"], "system");
+        let instruction = messages[1]["content"].as_str().unwrap();
+        assert!(instruction.contains("JSON"));
+        assert!(instruction.contains(r#""required":["answer"]"#));
+        assert_eq!(messages[2]["content"], "question");
+        assert_eq!(
+            payload["response_format"]["type"], "json_schema",
+            "input is not mutated"
+        );
+    }
+
+    #[test]
+    fn json_object_mode_leaves_other_requests_untouched() {
+        assert!(json_object_payload(&json!({"model": "m", "input": ["a"]})).is_none());
+        assert!(
+            json_object_payload(&json!({
+                "messages": [{"role": "user", "content": "x"}],
+                "response_format": {"type": "json_object"},
+            }))
+            .is_none()
+        );
+    }
+
+    fn provider_with(
+        structured_output: StructuredOutputMode,
+        thinking: ThinkingMode,
+    ) -> OpenAiCompatibleProvider {
+        OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
+            base_url: Url::parse("http://localhost:11434/v1").unwrap(),
+            structured_output,
+            thinking,
+            chat_model: "chat-model".to_owned(),
+            embedding_model: "embedding-model".to_owned(),
+            embedding_dimension: 4,
+            ..OpenAiCompatibleConfig::default()
+        })
+        .unwrap()
+    }
+
+    fn strict_payload() -> Value {
+        json!({
+            "model": "m",
+            "messages": [{"role": "system", "content": "rules"}, {"role": "user", "content": "q"}],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": "x", "strict": true, "schema": {
+                    "type": "object", "additionalProperties": false,
+                    "required": ["a"], "properties": {"a": {"type": "string"}},
+                }},
+            },
+        })
+    }
+
+    #[test]
+    fn thinking_mode_defaults_to_sending_nothing_and_rejects_unknown_values() {
+        assert_eq!(
+            OpenAiCompatibleConfig::default().thinking,
+            ThinkingMode::ProviderDefault
+        );
+        assert_eq!(
+            "".parse::<ThinkingMode>().unwrap(),
+            ThinkingMode::ProviderDefault
+        );
+        assert_eq!(
+            " Default ".parse::<ThinkingMode>().unwrap(),
+            ThinkingMode::ProviderDefault
+        );
+        assert_eq!(
+            "DISABLED".parse::<ThinkingMode>().unwrap(),
+            ThinkingMode::Disabled
+        );
+        assert_eq!(
+            "enabled".parse::<ThinkingMode>().unwrap(),
+            ThinkingMode::Enabled
+        );
+        assert!("high".parse::<ThinkingMode>().is_err());
+    }
+
+    #[test]
+    fn image_detail_parses_the_documented_hints() {
+        assert_eq!(ImageDetail::parse_optional("").unwrap(), None);
+        assert_eq!(ImageDetail::parse_optional(" AUTO ").unwrap(), None);
+        assert_eq!(
+            ImageDetail::parse_optional("original").unwrap(),
+            Some(ImageDetail::Original)
+        );
+        assert_eq!(
+            ImageDetail::parse_optional("Low").unwrap(),
+            Some(ImageDetail::Low)
+        );
+        assert_eq!(
+            ImageDetail::parse_optional("high").unwrap(),
+            Some(ImageDetail::High)
+        );
+        assert!(ImageDetail::parse_optional("ultra").is_err());
+    }
+
+    #[test]
+    fn thinking_is_added_to_chat_requests_only_when_configured() {
+        let payload = strict_payload();
+
+        let unchanged = provider_with(
+            StructuredOutputMode::JsonSchema,
+            ThinkingMode::ProviderDefault,
+        )
+        .adapt_payload("chat/completions", &payload);
+        assert!(matches!(unchanged, Cow::Borrowed(_)), "nothing to adapt");
+
+        let disabled = provider_with(StructuredOutputMode::JsonSchema, ThinkingMode::Disabled)
+            .adapt_payload("chat/completions", &payload);
+        assert_eq!(disabled["thinking"], json!({"type": "disabled"}));
+        assert_eq!(disabled["response_format"]["type"], "json_schema");
+
+        let enabled = provider_with(StructuredOutputMode::JsonSchema, ThinkingMode::Enabled)
+            .adapt_payload("chat/completions", &payload);
+        assert_eq!(enabled["thinking"], json!({"type": "enabled"}));
+
+        // Embeddings never carry it.
+        let embedding = json!({"model": "m", "input": ["a"]});
+        let untouched = provider_with(StructuredOutputMode::JsonSchema, ThinkingMode::Disabled)
+            .adapt_payload("embeddings", &embedding);
+        assert!(untouched.get("thinking").is_none());
+
+        // It combines with JSON mode.
+        let both = provider_with(StructuredOutputMode::JsonObject, ThinkingMode::Disabled)
+            .adapt_payload("chat/completions", &payload);
+        assert_eq!(both["thinking"], json!({"type": "disabled"}));
+        assert_eq!(both["response_format"], json!({"type": "json_object"}));
+        assert_eq!(payload.get("thinking"), None, "input is not mutated");
+    }
+
+    #[test]
+    fn vision_settings_are_validated() {
+        let valid = OpenAiCompatibleConfig {
+            base_url: Url::parse("http://localhost:11434/v1").unwrap(),
+            chat_model: "chat-model".to_owned(),
+            embedding_model: "embedding-model".to_owned(),
+            embedding_dimension: 4,
+            ..OpenAiCompatibleConfig::default()
+        };
+        let check = |config: OpenAiCompatibleConfig| validate_config_for_mode(&config, true);
+        assert!(check(valid.clone()).is_ok());
+        assert!(
+            check(OpenAiCompatibleConfig {
+                vision_model: Some("vision-model".to_owned()),
+                ..valid.clone()
+            })
+            .is_ok()
+        );
+        for model in ["", "vision model", "Bearer token", "vision\nmodel"] {
+            assert!(
+                check(OpenAiCompatibleConfig {
+                    vision_model: Some(model.to_owned()),
+                    ..valid.clone()
+                })
+                .is_err(),
+                "accepted {model:?}"
+            );
+        }
+        for timeout in [Duration::ZERO, Duration::from_secs(16 * 60)] {
+            assert!(
+                check(OpenAiCompatibleConfig {
+                    vision_request_timeout: timeout,
+                    ..valid.clone()
+                })
+                .is_err()
+            );
+        }
+        // An assistant-only provider never validates the embedding settings, but
+        // it still validates the vision ones.
+        assert!(
+            validate_config_for_mode(
+                &OpenAiCompatibleConfig {
+                    embedding_model: String::new(),
+                    ..valid.clone()
+                },
+                false
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_config_for_mode(
+                &OpenAiCompatibleConfig {
+                    embedding_model: String::new(),
+                    vision_model: Some("vision model".to_owned()),
+                    ..valid
+                },
+                false
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn page_transcription_needs_a_configured_vision_model() {
+        let provider = provider_with(
+            StructuredOutputMode::JsonSchema,
+            ThinkingMode::ProviderDefault,
+        );
+        let png = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0];
+        let request = PageTranscriptionRequest {
+            page_number: 1,
+            page_count: 1,
+            png: &png,
+        };
+        let error = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(provider.transcribe_page(&request))
+            .unwrap_err();
+        assert!(matches!(error, ProviderError::InvalidConfiguration(_)));
     }
 
     #[test]

@@ -125,8 +125,7 @@ pub(crate) async fn assistant(
     let use_tools = state.feature_flags().assistant_tools
         && state
             .assistant_provider()
-            .is_some_and(|provider| provider.supports_assistant_tools());
-    let deadline = tokio::time::Instant::now() + crate::assistant_tools::OPERATION_TIMEOUT;
+            .is_some_and(llm_provider::AssistantProvider::supports_assistant_tools);
     let operation = async {
         let mut observation = AssistantObservation::new(request_id, paper_id);
         let provenance_principal = authorize_assistant_request(
@@ -189,7 +188,6 @@ pub(crate) async fn assistant(
                 &mut context,
                 session.recent_turns.clone(),
                 usage,
-                deadline,
             )
             .await
             .map_err(|error| match error {
@@ -272,21 +270,7 @@ pub(crate) async fn assistant(
             )),
         ))
     };
-    if use_tools {
-        tokio::time::timeout_at(deadline, operation)
-            .await
-            .map_err(|_| {
-                ApiError::new(
-                    request_id,
-                    StatusCode::GATEWAY_TIMEOUT,
-                    "REQUEST_TIMEOUT",
-                    "The request took too long. Please try again.",
-                    true,
-                )
-            })?
-    } else {
-        operation.await
-    }
+    operation.await
 }
 
 #[utoipa::path(

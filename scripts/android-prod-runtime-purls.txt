@@ -4,11 +4,18 @@
 # binds this inventory to the checked-in Pub/Gradle inputs and Gradle checksum
 # policy. Regenerate the production SBOM and review the complete purl delta
 # whenever the digest changes.
-# The pinned unorm_dart 0.3.2, characters 1.4.1, and crypto 3.0.7 runtime
-# dependencies are pure Dart and therefore produce no change to
-# prodReleaseRuntimeClasspath; the complete reviewed Maven purl set remains
-# unchanged.
-contract-sha256:5bedc7b483ff5130df995ffcf06cb214bb23413a77e7815aae67f772e7f32e06
+# The pinned unorm_dart 0.3.2, characters 1.4.1, crypto 3.0.7, and xml 7.0.1
+# runtime dependencies and smart_latex 2.1.0 with its transitive flutter_svg,
+# vector_graphics, vector_graphics_codec, vector_graphics_compiler,
+# path_parsing, http, provider, nested, and tuple packages are pure Dart and
+# declare no Android plugin. No existing Android plugin version, Gradle build
+# file, or the Flutter pin changed, and the added Gradle verification entries
+# are Android lint, Kotlin, and Groovy build tooling outside
+# prodReleaseRuntimeClasspath, so the complete reviewed Maven purl set remains
+# unchanged. This was reviewed statically against pubspec.lock, the generated
+# plugin list, and verification-metadata.xml; the CI SBOM job regenerates and
+# validates it.
+contract-sha256:b3643b7d844ebbbcc1037a2fcc2cb55ec33d65f3d9738b54d97eea0c958f9db3
 pkg:maven/androidx.activity/activity-ktx@1.9.0?type=aar
 pkg:maven/androidx.activity/activity@1.9.0?type=aar
 pkg:maven/androidx.annotation/annotation-experimental@1.4.1?type=aar

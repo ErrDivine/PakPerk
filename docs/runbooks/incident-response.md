@@ -16,7 +16,7 @@ Protect anonymous reading while containing narrower writes:
 
 - for a Plan 03 incident, close `DOCLING_EXPERIMENT_ENABLED` first, then
   `VERSION_DIFF_ENABLED`, `RESEARCH_MEMORY_ENABLED`, `ANNOTATIONS_ENABLED`,
-  `ASSISTANT_V2_ENABLED`, `VISUAL_OBJECTS_ENABLED`,
+  `ASSISTANT_TOOLS_ENABLED`, `ASSISTANT_V2_ENABLED`, `VISUAL_OBJECTS_ENABLED`,
   `SEMANTIC_FACETS_ENABLED`, `PAPER_PASSPORT_ENABLED`, and finally
   `DEEP_READER_ENABLED` as the affected dependency requires. Preserve private
   artifacts, legacy Introduction/source access, and schema 24. A parser rollback

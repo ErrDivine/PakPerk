@@ -1,6 +1,6 @@
 //! Request-scoped, read-only tool orchestration. No model text is authority.
 
-use std::{collections::HashSet, time::Duration};
+use std::collections::HashSet;
 
 use db::{AssistantContextRepository, AssistantRetrievalContext, RetrievedAssistantBlock};
 use domain::{AssistantRequest, AssistantScopeKind, AssistantTool, ChatTurn};
@@ -13,10 +13,8 @@ use observability::{
     AssistantMetricOutcome, AssistantToolMetricKind, AssistantUsageAvailability,
     record_assistant_cost, record_assistant_tool,
 };
-use tokio::time::{Instant, timeout_at};
+use tokio::time::Instant;
 
-pub(crate) const OPERATION_TIMEOUT: Duration = Duration::from_secs(50);
-const TOOL_PHASE_TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_BLOCKS: usize = 10;
 const FINAL_BLOCKS: usize = 6;
 
@@ -90,26 +88,8 @@ pub(crate) fn completion_request(
     }
 }
 
-pub(crate) async fn gather<P: AssistantProvider + ?Sized>(
-    provider: &P,
-    repository: &AssistantContextRepository,
-    request: &AssistantRequest,
-    context: &mut AssistantRetrievalContext,
-    history: Vec<ChatTurn>,
-    usage: &mut ToolUsage,
-    deadline: Instant,
-) -> Result<(), ToolRunError> {
-    let tool_deadline = deadline.min(Instant::now() + TOOL_PHASE_TIMEOUT);
-    timeout_at(
-        tool_deadline,
-        gather_inner(provider, repository, request, context, history, usage),
-    )
-    .await
-    .map_err(|_| ProviderError::OperationTimeout)?
-}
-
 #[allow(clippy::too_many_lines)]
-async fn gather_inner<P: AssistantProvider + ?Sized>(
+pub(crate) async fn gather<P: AssistantProvider + ?Sized>(
     provider: &P,
     repository: &AssistantContextRepository,
     request: &AssistantRequest,
@@ -420,52 +400,6 @@ mod tests {
         assert_eq!(blocks[0].block_id, context.blocks[0].block_id);
         assert_eq!(blocks.len(), 5);
         assert_eq!(blocks[0].text, context.blocks[0].text);
-    }
-
-    struct SlowProvider;
-    #[async_trait::async_trait]
-    impl AssistantProvider for SlowProvider {
-        fn provenance_provider_id(&self) -> &'static str {
-            "slow_fixture"
-        }
-        async fn select_assistant_tools(
-            &self,
-            _: &AssistantToolStepRequest,
-        ) -> Result<llm_provider::AssistantToolStep, ProviderError> {
-            std::future::pending().await
-        }
-        async fn answer_with_evidence(
-            &self,
-            _: &AssistantCompletionRequest,
-        ) -> Result<llm_provider::AssistantCompletion, ProviderError> {
-            panic!("selection timeout must never invoke answer generation")
-        }
-    }
-
-    #[tokio::test]
-    async fn selection_deadline_cancels_pending_model_without_dispatching_tools() {
-        let (request, mut context) = fixture();
-        let pool = sqlx::postgres::PgPoolOptions::new()
-            .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
-            .unwrap();
-        let repository = AssistantContextRepository::new(pool);
-        let mut usage = ToolUsage::default();
-        let result = gather(
-            &SlowProvider,
-            &repository,
-            &request,
-            &mut context,
-            vec![],
-            &mut usage,
-            Instant::now() + Duration::from_millis(5),
-        )
-        .await;
-        assert!(matches!(
-            result,
-            Err(ToolRunError::Provider(ProviderError::OperationTimeout))
-        ));
-        assert_eq!(usage.attempts, 1);
-        assert_eq!(usage.reported, 0);
     }
 
     #[test]

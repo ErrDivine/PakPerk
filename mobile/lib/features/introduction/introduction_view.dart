@@ -4,14 +4,12 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/feature_flags.dart';
 import '../../app/router.dart';
 import '../../core/models/introduction.dart';
 import '../../core/models/paper.dart';
 import '../../core/models/processing.dart';
 import '../../core/providers.dart';
 import '../../core/widgets/status_widgets.dart';
-import '../../design_system/motion.dart';
 import '../chat/chat_controller.dart';
 import '../paper_reader/abstract_view.dart';
 import '../paper_reader/paper_processing_controller.dart';
@@ -514,7 +512,7 @@ class _IntroductionParagraphTextState extends State<IntroductionParagraphText> {
           text: citation.marker,
           style: linkStyle,
           recognizer: recognizer,
-          semanticsLabel: citation.marker + ', citation to ' + titles,
+          semanticsLabel: '${citation.marker}, citation to $titles',
         ),
       );
       cursor = citation.end;
@@ -527,7 +525,7 @@ class _IntroductionParagraphTextState extends State<IntroductionParagraphText> {
     return SelectionArea(
       child: Text.rich(
         TextSpan(style: bodyStyle, children: spans),
-        key: ValueKey('introduction-paragraph-' + paragraph.ordinal.toString()),
+        key: ValueKey('introduction-paragraph-${paragraph.ordinal}'),
       ),
     );
   }

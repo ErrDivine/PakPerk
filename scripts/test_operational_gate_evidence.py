@@ -361,6 +361,7 @@ class OperationalGateEvidenceTests(unittest.TestCase):
                 "SEMANTIC_FACETS_ENABLED",
                 "VISUAL_OBJECTS_ENABLED",
                 "ASSISTANT_V2_ENABLED",
+                "ASSISTANT_TOOLS_ENABLED",
                 "ANNOTATIONS_ENABLED",
                 "RESEARCH_MEMORY_ENABLED",
                 "VERSION_DIFF_ENABLED",
@@ -378,7 +379,7 @@ class OperationalGateEvidenceTests(unittest.TestCase):
             r'env_bool\("([A-Z0-9_]+_ENABLED)", false\)\?', config_text
         )
         self.assertCountEqual(api_switches, evidence.RELEASE_FEATURE_SWITCHES)
-        self.assertEqual(len(evidence.RELEASE_FEATURE_SWITCHES), 30)
+        self.assertEqual(len(evidence.RELEASE_FEATURE_SWITCHES), 31)
         self.assertEqual(
             evidence.RELEASE_FEATURE_DEPENDENCIES,
             (
@@ -440,6 +441,7 @@ class OperationalGateEvidenceTests(unittest.TestCase):
                 ("SEMANTIC_FACETS_ENABLED", ("DEEP_READER_ENABLED",)),
                 ("VISUAL_OBJECTS_ENABLED", ("DEEP_READER_ENABLED",)),
                 ("ASSISTANT_V2_ENABLED", ("DEEP_READER_ENABLED",)),
+                ("ASSISTANT_TOOLS_ENABLED", ("ASSISTANT_V2_ENABLED",)),
                 (
                     "ANNOTATIONS_ENABLED",
                     ("ACCOUNTS_ENABLED", "DEEP_READER_ENABLED"),
@@ -456,7 +458,7 @@ class OperationalGateEvidenceTests(unittest.TestCase):
                 ("DOCLING_EXPERIMENT_ENABLED", ("DEEP_READER_ENABLED",)),
             ),
         )
-        self.assertEqual(evidence.RELEASE_FEATURE_DEPENDENCY_EDGE_COUNT, 39)
+        self.assertEqual(evidence.RELEASE_FEATURE_DEPENDENCY_EDGE_COUNT, 40)
         switch_set = set(evidence.RELEASE_FEATURE_SWITCHES)
         self.assertTrue(
             all(
@@ -568,21 +570,21 @@ class OperationalGateEvidenceTests(unittest.TestCase):
         self,
     ) -> None:
         valid = manifest(evidence.MIGRATION_GATE)
-        self.assertEqual(metric(valid, "feature_switches_reconciled")["value"], 30)
+        self.assertEqual(metric(valid, "feature_switches_reconciled")["value"], 31)
         self.assertEqual(
             metric(valid, "feature_switch_dependency_edges_rejected")["value"],
-            39,
+            40,
         )
 
         missing_switch = copy.deepcopy(valid)
-        metric(missing_switch, "feature_switches_reconciled")["value"] = 29
+        metric(missing_switch, "feature_switches_reconciled")["value"] = 30
         with self.assertRaises(evidence.EvidenceError):
             evidence.validate_evidence(reapprove_and_reseal(missing_switch))
 
         missing_dependency = copy.deepcopy(valid)
         metric(missing_dependency, "feature_switch_dependency_edges_rejected")[
             "value"
-        ] = 38
+        ] = 39
         with self.assertRaises(evidence.EvidenceError):
             evidence.validate_evidence(reapprove_and_reseal(missing_dependency))
 

@@ -158,7 +158,7 @@ the Helm approval IDs:
 
 | Gate | Content ID | Closed protected scope |
 | --- | --- | --- |
-| `migration_expand_contract` | `pakperk-migration-exercise-v1:sha256:` | Staging schema 18 to 24; verified restore evidence; reviewed migration image; one migration Job and DDL role; old/new compatibility; all 30 release switches reconciled and all 39 required dependency edges rejected when unsatisfied; private-artifact deletion/restore integrity; schema-compatible code rollback and re-forward; database/privacy/release approvals |
+| `migration_expand_contract` | `pakperk-migration-exercise-v1:sha256:` | Staging schema 18 to 24; verified restore evidence; reviewed migration image; one migration Job and DDL role; old/new compatibility; all 31 release switches reconciled and all 40 required dependency edges rejected when unsatisfied; private-artifact deletion/restore integrity; schema-compatible code rollback and re-forward; database/privacy/release approvals |
 | `live_telemetry_retention` | `pakperk-live-telemetry-v1:sha256:` | Distinct production and staging-copy Collector/gateway/adapter/configuration/receiver/retention identities for one image candidate; reviewed parity diff; production safe-canary delivery and exact 30-day retention boundary; staging valid/hostile/redaction/restart/page/ticket checks; platform/observability/privacy approvals |
 | `mobile_performance_crash` | `pakperk-mobile-performance-v1:sha256:` | Exact signed APK/IPA and version/build; reviewed device/OS matrix; at least 20 cached-frame and opening samples with p95 at most 1,500 ms and opening at most 700 ms; at least 20 sequential requests with 95% hits and no blank cards; at least 20 frame samples; at least 24 hours and 200 aggregate exact-candidate sessions with 99.5% crash-free; mobile/release/privacy approvals |
 
@@ -179,7 +179,7 @@ shape and hashing algorithm did not change. Its closed current-release policy
 did change: a prior manifest for schema 10-to-11, 11-to-16, 11-to-17, or the
 completed Plan 02 schema 11-to-18 gate cannot satisfy the new 18-to-24 subject.
 Neither can an artifact that attests only six or eleven switches. The current
-manifest must bind the exact subject, ordered assertion IDs, 30-switch/39-edge
+manifest must bind the exact subject, ordered assertion IDs, 31-switch/40-edge
 contract, and schema-24 private-data/restore checks; prior content IDs must not
 be reused for this candidate.
 
@@ -546,7 +546,7 @@ observed allowed and disabled request results, then restore the reviewed
 baseline before the next independent case. The six-switch protected-service
 artifact below does not, by itself, attest the additional switches. The
 migration operational manifest is the separate full-map contract: it must
-reconcile all 30 release switches and reject all 39 required dependency edges
+reconcile all 31 release switches and reject all 40 required dependency edges
 when each is individually unsatisfied.
 
 1. Before any feature switch, complete the schema 11-to-18 exercise from a
@@ -842,8 +842,8 @@ switches, artifact, and approvals remain **P/H** until this exact run succeeds.
    [protected auth, write, and switch exercise](#protected-auth-write-and-switch-exercise)
    for the same candidate. Capture only the bounded, sanitized results defined
    by each evidence contract.
-6. Reconcile all 30 switch results with the final rendered feature map and the
-   migration manifest's exact 39-edge dependency contract. The protected-service
+6. Reconcile all 31 switch results with the final rendered feature map and the
+   migration manifest's exact 40-edge dependency contract. The protected-service
    artifact supplies only the legacy six live cases; the independently
    exercised queue-first discovery sequence and Plan 03 rollout bundle supply
    the remaining cases. Do not

@@ -476,6 +476,64 @@ Provider output is parsed as a strict schema. Invented chunk IDs or citation
 context IDs are discarded, and weak relationship output uses an evidence-labeled
 deterministic fallback.
 
+Endpoints that only implement JSON mode reject strict `json_schema` requests;
+DeepSeek's OpenAI-compatible API (`LLM_BASE_URL=https://api.deepseek.com`) is one.
+Set `LLM_STRUCTURED_OUTPUT=json_object` for them: the same schema is sent as an
+instruction and every response is validated identically. A provider's Anthropic
+protocol path (DeepSeek's `/anthropic`) is a different wire format and cannot be
+used as `LLM_BASE_URL`. DeepSeek has no embeddings endpoint, so embedding-backed
+features (the `IndexChat` job and the legacy `/chat` route) need another provider.
+
+DeepSeek also enables thinking mode by default, which is slow for the strict JSON
+calls PakPerk makes. `LLM_THINKING=disabled` sends `{"thinking": {"type":
+"disabled"}}` with every chat request; the default sends nothing, so endpoints
+without the parameter are unaffected. Its current models are `deepseek-flash`
+(vision-capable) and `deepseek-v4-pro`; `deepseek-v4-flash` and
+`deepseek-v4-flash-vision-exp` are retired names that are still accepted.
+
+### Document recovery
+
+GROBID stays the primary parser. When it fails, two opt-in fallbacks (worker only;
+both require `LLM_PROVIDER=openai_compatible` and are off by default) are tried in
+order of how much they trust the model:
+
+1. **Text recovery** (`LLM_DOCUMENT_RECOVERY_ENABLED=true`) applies when GROBID
+   returned TEI that the worker could not normalize (malformed XML, no body, no
+   introduction, failed validation). The TEI's text is split into numbered segments
+   and the model only classifies them: headings and their level, noise, page-break
+   continuations, and the bibliography. It never returns document text, so a
+   recovered document contains only words GROBID already produced. It is recorded
+   with parser `llm-recovery-v1`.
+2. **Page-image recovery** (`LLM_VISION_RECOVERY_ENABLED=true`, plus
+   `LLM_VISION_MODEL`) applies when GROBID produced no usable text at all: an empty
+   document (scanned PDFs), a file it rejected (HTTP 4xx), or, on the job's final
+   attempt only, an outage that outlasted every retry. The PDF is rendered to page
+   images in a sandboxed child process (the worker binary re-executed with an empty
+   environment, CPU and address-space limits, a deadline, and an output cap), and
+   the vision model transcribes each page, three at a time. **Unlike text recovery,
+   the words of such a document are written by the model**, so it is recorded with
+   parser `llm-vision-recovery-v1` and nothing should treat it as parser output. It
+   fails closed: a PDF over 40 pages, a page the model cannot transcribe after one
+   retry, or a transcription that fails validation fails the whole recovery
+   rather than yielding a partial paper. Figure and table content, captions, and
+   display equations are skipped.
+
+Both results pass the same document validation and introduction checks, have no
+figures, tables, equations, or citation contexts (so no Connections), and a repeated
+sibling heading is kept as a paragraph instead of failing validation. Parser
+resource limits (too large, too deep, too many nodes) and policy denials are never
+recoverable. A failed recovery keeps the original `DOCUMENT_EXTRACTION_FAILED` (or
+`GROBID_UNAVAILABLE`) result, except a temporary model outage (rate limit, timeout,
+5xx), which fails the job as retryable `MODEL_UNAVAILABLE`.
+
+To judge page-image quality on a real paper before enabling it, run the recovery on
+one local PDF. It needs only the model settings (no database, GROBID, or arXiv)
+and prints the outline it would store; it spends tokens like a real recovery:
+
+```bash
+pakperk-worker recover-pdf --pdf paper.pdf --markdown transcription.md
+```
+
 ## Full-text policy
 
 `FULLTEXT_POLICY=prototype` keeps PDFs transient and private for local research

@@ -13,7 +13,6 @@ use crate::error::{ApiError, RequestId};
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TimeoutConfig {
     pub(crate) default: Duration,
-    pub(crate) chat: Duration,
 }
 
 pub(crate) async fn timeout_middleware(
@@ -26,13 +25,14 @@ pub(crate) async fn timeout_middleware(
         .get::<RequestId>()
         .copied()
         .unwrap_or_else(|| RequestId(Uuid::now_v7()));
+    // Model-backed answers have no wall-clock ceiling: a slow provider must be
+    // allowed to finish rather than be cut off mid-inference. Every other route
+    // keeps the default deadline.
     let path = request.uri().path();
-    let timeout = if path.ends_with("/chat") || path.ends_with("/assistant") {
-        timeouts.chat
-    } else {
-        timeouts.default
-    };
-    match tokio::time::timeout(timeout, next.run(request)).await {
+    if path.ends_with("/chat") || path.ends_with("/assistant") {
+        return next.run(request).await;
+    }
+    match tokio::time::timeout(timeouts.default, next.run(request)).await {
         Ok(response) => response,
         Err(_) => ApiError::new(
             request_id,

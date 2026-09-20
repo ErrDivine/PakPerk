@@ -6,20 +6,32 @@
 mod deterministic;
 mod openai;
 mod prompt;
+mod recovery;
 mod tools;
 mod traits;
 mod types;
 mod validation;
+mod vision;
 
 pub use deterministic::DeterministicProvider;
-pub use openai::{OpenAiCompatibleConfig, OpenAiCompatibleProvider};
+pub use openai::{
+    ImageDetail, OpenAiCompatibleConfig, OpenAiCompatibleProvider, StructuredOutputMode,
+    ThinkingMode,
+};
 pub use prompt::{ASSISTANT_V2_PROMPT_VERSION, CHAT_PROMPT_VERSION, RELATIONSHIP_PROMPT_VERSION};
+pub use recovery::{
+    DOCUMENT_RECOVERY_PROMPT_VERSION, DocumentRecoveryCompletion, DocumentRecoveryRequest,
+    validate_recovery_output,
+};
 pub use tools::{
     ASSISTANT_TOOL_MAX_CALLS_PER_ROUND, ASSISTANT_TOOL_MAX_ROUNDS, ASSISTANT_TOOL_RESULT_BYTES,
     ASSISTANT_TOOLS_PROMPT_VERSION, AssistantToolCall, AssistantToolExchange,
     AssistantToolFunction, AssistantToolStep, AssistantToolStepRequest,
 };
-pub use traits::{AssistantProvider, ChatProvider, EmbeddingProvider, RelationshipProvider};
+pub use traits::{
+    AssistantProvider, ChatProvider, DocumentRecoveryProvider, DocumentVisionProvider,
+    EmbeddingProvider, RelationshipProvider,
+};
 pub use types::{
     AssistantCompletion, AssistantCompletionRequest, AssistantTokenUsage, BlockEvidenceExcerpt,
     ChatCompletionRequest, EmbeddingRequest, EmbeddingResponse, EvidenceExcerpt,
@@ -28,6 +40,10 @@ pub use types::{
 pub use validation::{
     deterministic_relationship_fallback, validate_assistant_output, validate_chat_output,
     validate_relationship_output,
+};
+pub use vision::{
+    PAGE_TRANSCRIPTION_PROMPT_VERSION, PageTranscriptionCompletion, PageTranscriptionRequest,
+    validate_transcription_output,
 };
 
 use thiserror::Error;
@@ -74,4 +90,8 @@ pub enum ValidationError {
     InvalidAssistantClaim,
     #[error("assistant output cites evidence that was not retrieved and validated")]
     InvalidAssistantEvidence,
+    #[error("document recovery classification is inconsistent with the supplied segments")]
+    InvalidRecoveryAnnotation,
+    #[error("page transcription is out of bounds, repeats itself, or mislabels a heading")]
+    InvalidPageTranscription,
 }

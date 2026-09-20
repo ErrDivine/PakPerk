@@ -665,7 +665,6 @@ mod tests {
             database_pool_size: 6,
             run_migrations: false,
             request_timeout: Duration::from_secs(5),
-            chat_request_timeout: Duration::from_secs(5),
             max_request_bytes: 64 * 1024,
             cors_allowed_origins: Vec::new(),
             arxiv,

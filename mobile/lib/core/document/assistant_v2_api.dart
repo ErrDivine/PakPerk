@@ -45,7 +45,9 @@ final class AssistantV2Api {
           'thread_id': threadId,
         },
         options: pakPerkRequestOptions(
-          receiveTimeout: const Duration(seconds: 65),
+          // No receive ceiling: a tool-enabled answer takes as long as the
+          // model needs, and the server no longer cuts the request short.
+          receiveTimeout: Duration.zero,
           auth: anonymousSessionId == null
               ? RequestAuthPolicy.required
               : RequestAuthPolicy.none,

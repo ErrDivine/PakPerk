@@ -1,0 +1,23 @@
+[package]
+name = "pdf_render"
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+# Synthetic PDF builders for tests in this and dependent crates.
+test-support = []
+
+[dependencies]
+hayro.workspace = true
+image.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix.workspace = true
+
+[lints]
+workspace = true

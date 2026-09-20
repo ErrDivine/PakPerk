@@ -71,11 +71,11 @@ def main() -> int:
         assert environment_name in rollout
         assert environment_name in deployment
 
-    assert len(operational_evidence.RELEASE_FEATURE_SWITCHES) == 30
-    assert operational_evidence.RELEASE_FEATURE_DEPENDENCY_EDGE_COUNT == 39
+    assert len(operational_evidence.RELEASE_FEATURE_SWITCHES) == 31
+    assert operational_evidence.RELEASE_FEATURE_DEPENDENCY_EDGE_COUNT == 40
     for required in (
-        "all 30 release switches",
-        "all 39 dependency edges",
+        "all 31 release switches",
+        "all 40 dependency edges",
         "deepReaderReleaseId",
         "all 23",
         "Never copy a repository digest into an external slot",
@@ -85,8 +85,8 @@ def main() -> int:
         "Unknown or pending queue state remains fail-closed",
     ):
         assert required.lower() in rollout_lower, required
-    assert "all 30 release switches" in release
-    assert "all 39 required dependency edges" in release
+    assert "all 31 release switches" in release
+    assert "all 40 required dependency edges" in release
 
     assert len(deep_evidence.GATES) == 23
     assert "requirements ledger, not a passing evaluation report" in evaluation

@@ -26,7 +26,7 @@ Paper, generation, and original scope come from the server request, not model ar
 
 The original final answer, evidence navigation, history, feedback, and provenance formats remain in place. Tool transcripts and raw arguments/results are not persisted or logged. The final evidence set is persisted, and the final prompt version is tagged `paper-assistant-tools-v1`. No migration, worker, vector index, external browsing, memory write, or queue mutation was added.
 
-Limits: two selection rounds, two calls per round, then one final answer request; at most ten accumulated and six final blocks; 20,000 Unicode scalars per block and 100,000 in final evidence; 256 KiB cumulative tool-result JSON. The total tool-enabled operation deadline is 50 seconds, with at most 20 seconds for selection/tools. Repository reads have a two-second SQL statement timeout and do not hold transactions across model calls. Provider retries remain inside the operation deadline. Infrastructure failures remain errors rather than factual “not found” answers.
+Limits: two selection rounds, two calls per round, then one final answer request; at most ten accumulated and six final blocks; 20,000 Unicode scalars per block and 100,000 in final evidence; 256 KiB cumulative tool-result JSON. There is no wall-clock deadline on the tool-enabled operation: the round/call budgets above bound the work, and a slow provider is allowed to finish instead of being cut off mid-inference. `LLM_TIMEOUT_SECONDS` remains the only time budget, covering one provider call and its retries. Repository reads have a two-second SQL statement timeout and do not hold transactions across model calls. Infrastructure failures remain errors rather than factual “not found” answers.
 
 ## Configuration and rollback
 
@@ -36,10 +36,10 @@ Keep `ASSISTANT_TOOLS_ENABLED=false` until integration tests pass. After verific
 DEEP_READER_ENABLED=true
 ASSISTANT_V2_ENABLED=true
 ASSISTANT_TOOLS_ENABLED=true
-CHAT_REQUEST_TIMEOUT_SECONDS=65
+LLM_TIMEOUT_SECONDS=1800
 ```
 
-Configuration rejects a tool-enabled route timeout below 55 seconds. The existing provider must support native function calling and the existing structured final-answer format; the flag explicitly opts the configured compatible provider into tool use. Unsupported providers retain their original answer path. Mobile `AssistantV2Api.ask` alone has a 65-second receive timeout; feedback and unrelated requests retain their existing limits. Existing mobile feature flags and deployment prerequisites still apply.
+`/chat` and `/assistant` have no route timeout, so `LLM_TIMEOUT_SECONDS` is what decides how long a reader can wait; raise it for slow local models. The existing provider must support native function calling and the existing structured final-answer format; the flag explicitly opts the configured compatible provider into tool use. Unsupported providers retain their original answer path. Mobile `AssistantV2Api.ask` and `sendChat` have no receive timeout; feedback and unrelated requests retain their existing limits. Deployments still bound these routes at the edge through `api.chatTimeoutSeconds`, which now drives only the ingress proxy timeouts. Existing mobile feature flags and deployment prerequisites still apply.
 
 Helm has `features.assistantTools` and dependency validation. Disable the tools flag and restart/redeploy to roll back the tool branch. No database rollback is needed for these changes.
 

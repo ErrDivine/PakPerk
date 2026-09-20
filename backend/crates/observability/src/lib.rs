@@ -531,6 +531,8 @@ impl PaperJobStage {
 pub enum ParserAdapterClass {
     Grobid,
     Docling,
+    LlmRecovery,
+    LlmVisionRecovery,
 }
 
 impl ParserAdapterClass {
@@ -538,6 +540,8 @@ impl ParserAdapterClass {
         match self {
             Self::Grobid => "grobid",
             Self::Docling => "docling",
+            Self::LlmRecovery => "llm_recovery",
+            Self::LlmVisionRecovery => "llm_vision_recovery",
         }
     }
 }

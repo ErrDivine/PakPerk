@@ -230,6 +230,7 @@ async fn mocked_provider_exercises_all_boundaries_and_rebuilds_trusted_sources()
         request_timeout: Duration::from_secs(5),
         maximum_response_bytes: 32 * 1024,
         maximum_retries: 0,
+        ..OpenAiCompatibleConfig::default()
     })
     .unwrap();
 
@@ -388,6 +389,7 @@ async fn provider_never_follows_cross_origin_redirects_with_credentials_or_conte
             request_timeout: Duration::from_secs(2),
             maximum_response_bytes: 4096,
             maximum_retries: 0,
+            ..OpenAiCompatibleConfig::default()
         })
         .unwrap();
         assert!(

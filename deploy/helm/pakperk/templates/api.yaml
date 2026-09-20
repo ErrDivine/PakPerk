@@ -71,7 +71,6 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ .Values.secret.existingSecret }}, key: {{ .Values.secret.apiDatabaseUrlKey }} } }
             - { name: DATABASE_POOL_SIZE, value: {{ .Values.api.databasePoolSize | quote }} }
             - { name: API_REQUEST_TIMEOUT_SECONDS, value: {{ .Values.api.requestTimeoutSeconds | quote }} }
-            - { name: CHAT_REQUEST_TIMEOUT_SECONDS, value: {{ .Values.api.chatTimeoutSeconds | quote }} }
             - { name: API_MAX_REQUEST_BYTES, value: {{ .Values.api.maxRequestBytes | quote }} }
             - { name: PAPER_SEARCH_MIN_QUERY_CHARS, value: {{ .Values.api.paperSearchMinQueryChars | quote }} }
             - { name: PAPER_SEARCH_MAX_QUERY_CHARS, value: {{ .Values.api.paperSearchMaxQueryChars | quote }} }

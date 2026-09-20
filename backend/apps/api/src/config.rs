@@ -267,7 +267,6 @@ pub struct ApiConfig {
     pub database_pool_size: u32,
     pub run_migrations: bool,
     pub request_timeout: Duration,
-    pub chat_request_timeout: Duration,
     pub max_request_bytes: usize,
     pub cors_allowed_origins: Vec<HeaderValue>,
     pub arxiv: ArxivClientConfig,
@@ -1444,15 +1443,6 @@ impl ApiConfig {
         let (embedding_dimension, llm) =
             provider_config_from_env(environment, configured_embedding_dimension)?;
         let assistant_llm = assistant_provider_config_from_env(environment, features.assistant_v2)?;
-        let default_chat_timeout = llm
-            .as_ref()
-            .map_or(Duration::from_secs(65), ApiModelConfig::request_timeout)
-            .saturating_add(Duration::from_secs(5));
-        let chat_request_timeout = Duration::from_secs(env_parse(
-            "CHAT_REQUEST_TIMEOUT_SECONDS",
-            default_chat_timeout.as_secs(),
-        )?);
-
         let config = Self {
             environment,
             features,
@@ -1470,7 +1460,6 @@ impl ApiConfig {
             database_pool_size: env_parse("DATABASE_POOL_SIZE", 10_u32)?,
             run_migrations: env_bool("RUN_MIGRATIONS", true)?,
             request_timeout,
-            chat_request_timeout,
             max_request_bytes,
             cors_allowed_origins,
             arxiv,
@@ -1517,13 +1506,8 @@ impl ApiConfig {
         if self.max_request_bytes == 0 {
             anyhow::bail!("API_MAX_REQUEST_BYTES must be greater than zero");
         }
-        if self.request_timeout.is_zero() || self.chat_request_timeout.is_zero() {
+        if self.request_timeout.is_zero() {
             anyhow::bail!("API request timeouts must be greater than zero");
-        }
-        if self.features.assistant_tools && self.chat_request_timeout < Duration::from_secs(55) {
-            anyhow::bail!(
-                "ASSISTANT_TOOLS_ENABLED requires CHAT_REQUEST_TIMEOUT_SECONDS of at least 55"
-            );
         }
         if self.prepare_requests_per_minute == 0 || self.chat_requests_per_minute == 0 {
             anyhow::bail!("API rate limits must be greater than zero");
@@ -1710,15 +1694,6 @@ pub enum ApiModelConfig {
     OpenAiCompatible(Box<OpenAiCompatibleConfig>),
 }
 
-impl ApiModelConfig {
-    fn request_timeout(&self) -> Duration {
-        match self {
-            Self::Deterministic { .. } => Duration::from_secs(60),
-            Self::OpenAiCompatible(config) => config.request_timeout,
-        }
-    }
-}
-
 fn provider_config_from_env(
     environment: ApiEnvironment,
     embedding_dimension: Option<usize>,
@@ -1752,6 +1727,10 @@ fn provider_config_from_env(
     }
     config.require_https = environment.is_deployed();
     config.api_key = model_api_key(environment)?;
+    config.structured_output = std::env::var("LLM_STRUCTURED_OUTPUT")
+        .unwrap_or_default()
+        .parse()?;
+    config.thinking = std::env::var("LLM_THINKING").unwrap_or_default().parse()?;
     config.chat_model = std::env::var("LLM_CHAT_MODEL")
         .map_err(|_| anyhow::anyhow!("LLM_CHAT_MODEL is required when LLM_PROVIDER is enabled"))?;
     config.embedding_model = std::env::var("LLM_EMBEDDING_MODEL").map_err(|_| {
@@ -1793,6 +1772,10 @@ fn assistant_provider_config_from_env(
     config.api_key = assistant_model_api_key(environment)?;
     config.chat_model = std::env::var("ASSISTANT_LLM_CHAT_MODEL")
         .context("ASSISTANT_LLM_CHAT_MODEL is required")?;
+    config.thinking = std::env::var("ASSISTANT_LLM_THINKING")
+        .unwrap_or_default()
+        .parse()
+        .context("ASSISTANT_LLM_THINKING must be default, enabled, or disabled")?;
     config.request_timeout = Duration::from_secs(env_parse("LLM_TIMEOUT_SECONDS", 60_u64)?);
     config.maximum_response_bytes = env_parse("LLM_MAX_RESPONSE_BYTES", 4 * 1024 * 1024_usize)?;
     config.maximum_retries = env_parse("LLM_MAX_RETRIES", 2_usize)?;
@@ -2991,7 +2974,6 @@ mod tests {
             database_pool_size: 10,
             run_migrations: false,
             request_timeout: Duration::from_secs(30),
-            chat_request_timeout: Duration::from_secs(70),
             max_request_bytes: 64 * 1024,
             cors_allowed_origins: vec![HeaderValue::from_static("https://app.pakperk.org")],
             arxiv: ArxivClientConfig::default(),

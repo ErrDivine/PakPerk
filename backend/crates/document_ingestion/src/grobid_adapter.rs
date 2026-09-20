@@ -138,10 +138,10 @@ mod tests {
     }
     #[tokio::test]
     async fn repeated_sections_keep_distinct_stable_block_keys() {
-        let tei = r#"<TEI><text><body>
+        let tei = r"<TEI><text><body>
             <div><head>Repeated heading</head><p>Identical paragraph text.</p></div>
             <div><head>Repeated heading</head><p>Identical paragraph text.</p></div>
-        </body></text></TEI>"#;
+        </body></text></TEI>";
         let input = ParseInput {
             paper_id: Uuid::now_v7(),
             generation: 1,

@@ -19,6 +19,7 @@ image.workspace = true
 jobs.workspace = true
 llm_provider.workspace = true
 observability.workspace = true
+pdf_render.workspace = true
 reqwest.workspace = true
 retrieval.workspace = true
 rustix.workspace = true
@@ -33,6 +34,8 @@ url.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+async-trait.workspace = true
+pdf_render = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
 
 [lints]

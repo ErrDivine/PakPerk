@@ -62,12 +62,12 @@ def main() -> int:
     normalized_release = " ".join(release.split())
     operational = " ".join(section(release, "Operational gate evidence bundle").split())
     for required in (
-        "all 30 release switches reconciled",
-        "all 39 required dependency edges rejected",
+        "all 31 release switches reconciled",
+        "all 40 required dependency edges rejected",
         "remains schema/domain v1",
         "schema 18 to 24",
         "new 18-to-24 subject",
-        "30-switch/39-edge contract",
+        "31-switch/40-edge contract",
         "schema-24 private-data/restore checks",
     ):
         assert required in operational, required
@@ -96,8 +96,8 @@ def main() -> int:
     )
     assert "`LIBRARY_IMPORT_WRITES_ENABLED` independently" in normalized_rollout
     assert "schema 11-to-18" in normalized_rollout
-    assert "all 30 release switches" in normalized_rollout
-    assert "all 39 required dependency" in normalized_rollout
+    assert "all 31 release switches" in normalized_rollout
+    assert "all 40 required dependency" in normalized_rollout
     assert "decision.policy_version=queue_first_v1" in normalized_rollout
     assert "`TO_READ_FIRST_ENFORCEMENT_ENABLED` only after" in normalized_rollout
     assert "suggestions" in normalized_rollout
@@ -168,12 +168,12 @@ def main() -> int:
     assert "notifications; and enforcement only after compatible-client" in recovery
 
     deployment = " ".join(section(release, "Expand/contract deployment").split())
-    assert "all 30 switch results" in deployment
-    assert "exact 39-edge dependency contract" in deployment
+    assert "all 31 switch results" in deployment
+    assert "exact 40-edge dependency contract" in deployment
 
     completion = " ".join(read("docs/production-v0.0-completion-audit.md").split())
-    assert "all 30 feature-switch states" in completion
-    assert "all 39 required dependency edges" in completion
+    assert "all 31 feature-switch states" in completion
+    assert "all 40 required dependency edges" in completion
     assert (
         "schema-10-to-11, schema-11-to-16, schema-11-to-17, six-switch, eleven-switch, or 21-switch evidence"
         in completion
@@ -224,8 +224,17 @@ def main() -> int:
     assert "provider-backed isolated" in backup
 
     developer = read("docs/developer-guide.md")
-    local = " ".join(section(developer, "Feature flags").split())
-    for required in ("env_file", "`.env`", "run the API on the host"):
+    run_locally = " ".join(section(developer, "Run Pakperk locally").split())
+    assert "`.env`" in run_locally
+    local = " ".join(
+        section(developer, "Enable local accounts only when you need them").split()
+    )
+    for required in (
+        "the API must run on the host",
+        "enable dependencies from the bottom up",
+        "Startup rejects invalid combinations",
+        "runbooks/deep-reader-rollout.md",
+    ):
         assert required in local, required
 
     boundaries = read("docs/deployment-boundaries.md")
@@ -241,8 +250,8 @@ def main() -> int:
             feature in release or feature in deep_reader_rollout
         ), f"release runbooks omit {feature}"
         assert feature in current_boundaries, f"deployment boundary omits {feature}"
-    assert len(evidence.RELEASE_FEATURE_SWITCHES) == 30
-    assert evidence.RELEASE_FEATURE_DEPENDENCY_EDGE_COUNT == 39
+    assert len(evidence.RELEASE_FEATURE_SWITCHES) == 31
+    assert evidence.RELEASE_FEATURE_DEPENDENCY_EDGE_COUNT == 40
 
     discovery = " ".join(read("docs/discovery-and-library.md").split())
     for required in (

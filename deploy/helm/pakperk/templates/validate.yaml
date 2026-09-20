@@ -368,9 +368,10 @@
 {{- if and .Values.features.comments (lt (int .Values.api.databasePoolSize) 2) -}}
 {{- fail "features.comments requires api.databasePoolSize>=2 for coordinated writes" -}}
 {{- end -}}
-{{- $apiMaximumTimeout := max (int .Values.api.requestTimeoutSeconds) (int .Values.api.chatTimeoutSeconds) -}}
-{{- if le (int .Values.api.terminationGracePeriodSeconds) (add $apiMaximumTimeout 5) -}}
-{{- fail "api.terminationGracePeriodSeconds must exceed the maximum request/chat timeout plus the five-second preStop budget" -}}
+{{- /* The model-backed routes have no in-process deadline, so draining cannot be
+       sized against them; only the bounded routes constrain the grace period. */ -}}
+{{- if le (int .Values.api.terminationGracePeriodSeconds) (add (int .Values.api.requestTimeoutSeconds) 5) -}}
+{{- fail "api.terminationGracePeriodSeconds must exceed api.requestTimeoutSeconds plus the five-second preStop budget" -}}
 {{- end -}}
 {{- $serviceAccountBase := default (include "pakperk.fullname" .) .Values.serviceAccount.name -}}
 {{- if not (regexMatch `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$` $serviceAccountBase) -}}

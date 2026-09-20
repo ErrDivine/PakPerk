@@ -254,7 +254,8 @@ class ApiClient {
         data: {'thread_id': threadId, 'message': message},
         options: Options(
           headers: {'X-Session-Id': _sessionId},
-          receiveTimeout: const Duration(seconds: 65),
+          // No receive ceiling: the answer is bounded by the model, not a clock.
+          receiveTimeout: Duration.zero,
         ),
         cancelToken: cancellation?.dioToken,
       );

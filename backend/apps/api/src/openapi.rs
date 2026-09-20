@@ -35,12 +35,13 @@ use crate::{
         ProvenanceEnvelope, ReadingCheckpointWriteBody, RecommendationExplanationCodeResponse,
         RecommendationExplanationEnvelope, RecommendationFeedbackBody,
         RecommendationFeedbackEnvelope, ReportCommentBody, ReportUserBody,
-        ResearchAnnotationImportBody, ResearchAnnotationImportEnvelope, ResearchProfileEnvelope,
-        ResearchProfileExportEnvelope, ResearchProfileInterestsEnvelope, ResetResearchProfileBody,
-        SaveSearchBody, SearchFiltersBody, SearchSortBody, SearchSourceBody, SemanticSpansEnvelope,
-        TableEnvelope, TablesEnvelope, TermsEnvelope, UpdateReadingBriefProgressBody,
-        UpdateResearchProfileBody, UpdateSubscriptionBody, UpsertProfileAuthorBody,
-        UpsertProfileTopicBody, UserReportEnvelope, UserReportResponse,
+        ResearchAnnotationImportBody, ResearchAnnotationImportEnvelope, ResearchExportFormat,
+        ResearchProfileEnvelope, ResearchProfileExportEnvelope, ResearchProfileInterestsEnvelope,
+        ResetResearchProfileBody, SaveSearchBody, SearchFiltersBody, SearchSortBody,
+        SearchSourceBody, SemanticDensityBody, SemanticSpansEnvelope, TableEnvelope,
+        TablesEnvelope, TermsEnvelope, UpdateReadingBriefProgressBody, UpdateResearchProfileBody,
+        UpdateSubscriptionBody, UpsertProfileAuthorBody, UpsertProfileTopicBody,
+        UserReportEnvelope, UserReportResponse,
     },
     routes,
 };
@@ -203,6 +204,7 @@ use crate::{
         DocumentBlocksEnvelope,
         FiguresEnvelope,
         FigureEnvelope,
+        routes::document_reader::FigureAssetVariant,
         TablesEnvelope,
         TableEnvelope,
         EquationsEnvelope,
@@ -211,6 +213,7 @@ use crate::{
         PassportFeedbackBody,
         PassportFeedbackEnvelope,
         SemanticSpansEnvelope,
+        SemanticDensityBody,
         ProvenanceEnvelope,
         DocumentVersionsEnvelope,
         PaperVersionDiffEnvelope,
@@ -222,6 +225,7 @@ use crate::{
         AnnotationPageEnvelope,
         ResearchAnnotationImportBody,
         ResearchAnnotationImportEnvelope,
+        ResearchExportFormat,
         EvidenceCardWriteBody,
         EvidenceCardMutationEnvelope,
         EvidenceCardPageEnvelope,
@@ -2969,6 +2973,46 @@ mod tests {
         assert_eq!(body["properties"]["generation"]["minimum"], 1);
         assert_eq!(body["properties"]["claim_index"]["maximum"], 15);
         assert_eq!(body["properties"]["detail"]["maxLength"], 1000);
+    }
+
+    #[test]
+    fn every_component_reference_in_the_contract_resolves() {
+        fn collect<'a>(value: &'a serde_json::Value, references: &mut Vec<&'a str>) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    for (key, child) in map {
+                        match child.as_str() {
+                            Some(target) if key == "$ref" => references.push(target),
+                            _ => collect(child, references),
+                        }
+                    }
+                }
+                serde_json::Value::Array(items) => {
+                    for item in items {
+                        collect(item, references);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let document = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let mut references = Vec::new();
+        collect(&document, &mut references);
+        assert!(!references.is_empty());
+        let unresolved = references
+            .into_iter()
+            .filter(|target| {
+                target
+                    .strip_prefix("#/components/")
+                    .and_then(|rest| rest.split_once('/'))
+                    .is_none_or(|(kind, name)| document["components"][kind].get(name).is_none())
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            unresolved.is_empty(),
+            "OpenAPI references without a registered component: {unresolved:?}"
+        );
     }
 
     fn assert_schema_enum<T: Serialize>(document: &serde_json::Value, schema: &str, values: &[T]) {

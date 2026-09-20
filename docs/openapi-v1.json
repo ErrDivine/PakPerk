@@ -14316,6 +14316,14 @@
           }
         }
       },
+      "FigureAssetVariant": {
+        "type": "string",
+        "enum": [
+          "small",
+          "medium",
+          "large"
+        ]
+      },
       "FigureEnvelope": {
         "type": "object",
         "required": [
@@ -18556,6 +18564,14 @@
           }
         }
       },
+      "ResearchExportFormat": {
+        "type": "string",
+        "enum": [
+          "json",
+          "markdown",
+          "manifest"
+        ]
+      },
       "ResearchProfileEnvelope": {
         "type": "object",
         "required": [
@@ -18971,6 +18987,14 @@
           "acknowledgment",
           "references",
           "other"
+        ]
+      },
+      "SemanticDensityBody": {
+        "type": "string",
+        "enum": [
+          "off",
+          "key",
+          "detailed"
         ]
       },
       "SemanticDensityResponse": {
