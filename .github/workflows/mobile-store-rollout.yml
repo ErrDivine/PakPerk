@@ -489,7 +489,7 @@ jobs:
 
       - name: Download exact Android candidate by immutable artifact ID
         if: needs.store-client-bootstrap.outputs.candidate_artifact_id != ''
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.store-client-bootstrap.outputs.candidate_artifact_id }}
           path: ${{ runner.temp }}/release-candidate
@@ -501,7 +501,7 @@ jobs:
 
       - name: Download exact Android handoff by immutable artifact ID
         if: needs.store-client-bootstrap.outputs.handoff_artifact_id != ''
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.store-client-bootstrap.outputs.handoff_artifact_id }}
           path: ${{ runner.temp }}/store-upload-handoff
@@ -513,7 +513,7 @@ jobs:
 
       - name: Download Android controls and client by immutable artifact ID
         if: needs.store-client-bootstrap.outputs.transfer_artifact_id != ''
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.store-client-bootstrap.outputs.transfer_artifact_id }}
           path: ${{ runner.temp }}/rollout-transfer
@@ -943,7 +943,7 @@ jobs:
 
       - name: Download exact iOS candidate by immutable artifact ID
         if: needs.store-client-bootstrap.outputs.candidate_artifact_id != ''
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.store-client-bootstrap.outputs.candidate_artifact_id }}
           path: ${{ runner.temp }}/release-candidate
@@ -955,7 +955,7 @@ jobs:
 
       - name: Download exact iOS handoff by immutable artifact ID
         if: needs.store-client-bootstrap.outputs.handoff_artifact_id != ''
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.store-client-bootstrap.outputs.handoff_artifact_id }}
           path: ${{ runner.temp }}/store-upload-handoff
@@ -967,7 +967,7 @@ jobs:
 
       - name: Download iOS controls and client by immutable artifact ID
         if: needs.store-client-bootstrap.outputs.transfer_artifact_id != ''
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.store-client-bootstrap.outputs.transfer_artifact_id }}
           path: ${{ runner.temp }}/rollout-transfer
@@ -976,7 +976,7 @@ jobs:
 
       - name: Download exact Android proof before combined iOS mutation
         if: inputs.platforms == 'both' && needs.android-rollout.outputs.evidence_artifact_id != ''
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.android-rollout.outputs.evidence_artifact_id }}
           path: ${{ runner.temp }}/android-rollout-proof
@@ -1486,7 +1486,7 @@ jobs:
           (inputs.platforms == 'android' || inputs.platforms == 'both') &&
           needs.android-rollout.outputs.evidence_artifact_id != ''
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.android-rollout.outputs.evidence_artifact_id }}
           path: ${{ runner.temp }}/android-outcome
@@ -1499,7 +1499,7 @@ jobs:
           (inputs.platforms == 'ios' || inputs.platforms == 'both') &&
           needs.ios-rollout.outputs.evidence_artifact_id != ''
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.ios-rollout.outputs.evidence_artifact_id }}
           path: ${{ runner.temp }}/ios-outcome
