@@ -481,7 +481,7 @@ jobs:
           PY
       - name: Retain immutable credential-free prepared mobile config
         id: prepared_candidate_upload
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         env:
           ALL_PROXY: ""
           BASH_ENV: /dev/null
@@ -1390,7 +1390,7 @@ jobs:
           /bin/rmdir "$RUNNER_TEMP/android-signing" >/dev/null 2>&1 || true
       - name: Retain isolated signed Android candidate
         id: android_candidate_upload
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         env:
           BASH_ENV: /dev/null
           DYLD_INSERT_LIBRARIES: ""
@@ -2125,7 +2125,7 @@ jobs:
           /bin/rmdir "$HOME" >/dev/null 2>&1 || true
       - name: Retain isolated signed iOS candidate
         id: ios_candidate_upload
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         env:
           BASH_ENV: /dev/null
           DYLD_INSERT_LIBRARIES: ""
@@ -2307,7 +2307,7 @@ jobs:
             --github-step-summary "$GITHUB_STEP_SUMMARY"
       - name: Retain canonical signed candidate
         id: signed_candidate_upload
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         env:
           BASH_ENV: /dev/null
           DYLD_INSERT_LIBRARIES: ""
@@ -2586,7 +2586,7 @@ jobs:
 
       - name: Retain attested store-client transfer
         id: store_client_archive_upload
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         env:
           ALL_PROXY: ""
           BASH_ENV: /dev/null
@@ -3037,7 +3037,7 @@ jobs:
         id: android_evidence_upload
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         env:
           BASH_ENV: /dev/null
           DYLD_INSERT_LIBRARIES: ""
@@ -3459,7 +3459,7 @@ jobs:
         id: ios_evidence_upload
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         env:
           BASH_ENV: /dev/null
           DYLD_INSERT_LIBRARIES: ""
@@ -3635,7 +3635,7 @@ jobs:
         id: handoff_upload
         if: steps.handoff.outcome == 'success'
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         env:
           BASH_ENV: /dev/null
           DYLD_INSERT_LIBRARIES: ""
@@ -3716,7 +3716,7 @@ jobs:
         id: final_outcome_upload
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         env:
           BASH_ENV: /dev/null
           DYLD_INSERT_LIBRARIES: ""
