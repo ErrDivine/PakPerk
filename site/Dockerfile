@@ -1,4 +1,4 @@
-FROM ghcr.io/nginx/nginx-unprivileged:1.29.4-alpine-slim@sha256:93a0458087e8dd06e7e59ceaeb3c54c9e73f64730282ab9387c3fe47a42bfc99
+FROM ghcr.io/nginx/nginx-unprivileged:1.31.8-alpine-slim@sha256:629d3227f39ec10201345e420e2d9d430e463a9893d374b515a8eb6541e71938
 
 USER root
 RUN mkdir -p /usr/share/nginx/html/.well-known && chown 101:101 /usr/share/nginx/html/.well-known
