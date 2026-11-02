@@ -14,7 +14,7 @@ RUN cargo build --locked --release \
     --bin pakperk-admin
 
 # Dated Debian tag plus immutable multi-platform index digest.
-FROM debian:bookworm-20260713-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818 AS runtime
+FROM debian:bookworm-20261027-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3 AS runtime
 
 RUN test -x /bin/sh && test -x /usr/bin/install
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
