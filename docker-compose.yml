@@ -41,7 +41,7 @@ services:
 
   mailpit:
     profiles: ["accounts"]
-    image: axllent/mailpit:v1.30.6@sha256:7f33095f80e901f6ad08028f06ca284aa58fe84942be5496008d041d3b9f4d4d
+    image: axllent/mailpit:v1.33.0@sha256:9b3a463be15354c0f0eba91697d80e3e0d8a5623ef0e627cacc836bc17fd5231
     environment:
       MP_MAX_MESSAGES: 500
       MP_MAX_AGE: 7d
