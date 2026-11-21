@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::{
     ASSISTANT_V2_PROMPT_VERSION, AssistantCompletionRequest, CHAT_PROMPT_VERSION,
     ChatCompletionRequest, RELATIONSHIP_PROMPT_VERSION, RelationshipRequest, RelationshipSummary,
-    ValidationError,
+    ValidationError, recovery::strip_json_fence,
 };
 
 #[derive(Debug, Deserialize)]
@@ -99,7 +99,7 @@ pub fn validate_assistant_output(
     provider_request_id: Option<String>,
 ) -> Result<AssistantAnswer, ValidationError> {
     let raw: RawAssistantAnswer =
-        serde_json::from_str(json).map_err(|_| ValidationError::InvalidJson)?;
+        serde_json::from_str(strip_json_fence(json)).map_err(|_| ValidationError::InvalidJson)?;
     if raw.claims.len() > 16 {
         return Err(ValidationError::InvalidAssistantAnswer);
     }
@@ -277,7 +277,7 @@ pub fn validate_chat_output(
     provider_request_id: Option<String>,
 ) -> Result<ChatAnswer, ValidationError> {
     let raw: RawChatAnswer =
-        serde_json::from_str(json).map_err(|_| ValidationError::InvalidJson)?;
+        serde_json::from_str(strip_json_fence(json)).map_err(|_| ValidationError::InvalidJson)?;
     if raw.answer_markdown.trim().is_empty()
         || raw.answer_markdown.chars().count() > 4_000
         || raw.answer_markdown.split_whitespace().count() > 500
@@ -342,7 +342,7 @@ pub fn validate_relationship_output(
     provider_request_id: Option<String>,
 ) -> Result<RelationshipSummary, ValidationError> {
     let raw: RawRelationship =
-        serde_json::from_str(json).map_err(|_| ValidationError::InvalidJson)?;
+        serde_json::from_str(strip_json_fence(json)).map_err(|_| ValidationError::InvalidJson)?;
     if !raw.confidence.is_finite() || !(0.0..=1.0).contains(&raw.confidence) {
         return Err(ValidationError::InvalidConfidence);
     }
@@ -942,6 +942,48 @@ mod tests {
             scalar_slice(&request.evidence[0].text, 3, 9).unwrap(),
             "method"
         );
+    }
+
+    #[test]
+    fn assistant_accepts_json_in_one_markdown_fence_but_not_surrounding_prose() {
+        let request = assistant_request("α🙂 method result");
+        let output = serde_json::json!({
+            "answer": "A method is reported.",
+            "status": "supported",
+            "claims": [{
+                "text": "A method is reported.",
+                "support": "direct",
+                "evidence": [{
+                    "block_id": request.evidence[0].block_id,
+                    "start": 3,
+                    "end": 9
+                }]
+            }],
+            "limitations": []
+        })
+        .to_string();
+        for wrapped in [
+            format!("```json\n{output}\n```"),
+            format!("  ```\n{output}\n```  "),
+            format!("```JSON\n{output}```"),
+        ] {
+            assert!(
+                validate_assistant_output(&wrapped, &request, Uuid::now_v7(), None, None).is_ok(),
+                "fenced output should be accepted: {wrapped}"
+            );
+        }
+        for rejected in [
+            format!("Here is the answer:\n```json\n{output}\n```"),
+            format!("```json\n{output}\n``` Hope this helps."),
+            "```json\n{not json}\n```".to_owned(),
+        ] {
+            assert_eq!(
+                validate_assistant_output(&rejected, &request, Uuid::now_v7(), None, None)
+                    .unwrap_err(),
+                ValidationError::InvalidJson,
+                "output with prose or broken JSON must stay rejected: {rejected}"
+            );
+        }
     }
 
     #[test]

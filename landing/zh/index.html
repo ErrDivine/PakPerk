@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pakperk — 为手机而生的 arXiv 阅读器</title>
+    <meta name="description" content="Pakperk 是一个为手机而生的 arXiv 阅读器，只有一个核心动作：读摘要，向左进入解析好的引言并就这篇论文提问，再向左看它真正依赖的参考文献。" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#f7f4ec" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#17211b" media="(prefers-color-scheme: dark)" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Pakperk — 为手机而生的 arXiv 阅读器" />
+    <meta property="og:description" content="Pakperk 是一个为手机而生的 arXiv 阅读器，只有一个核心动作：读摘要，向左进入解析好的引言并就这篇论文提问，再向左看它真正依赖的参考文献。" />
+    <meta property="og:image" content="../assets/pakperk_app_icon.png" />
+    <link rel="icon" href="../assets/pakperk_app_icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="../assets/pakperk_app_icon.png" />
+    <link rel="alternate" hreflang="en" href="/site/" />
+    <link rel="alternate" hreflang="zh-Hans" href="/site/zh/" />
+    <link rel="preload" as="image" href="../assets/shots/shot-abstract.webp" />
+    <link rel="stylesheet" href="../styles.css" />
+    <script src="../app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">跳到正文</a>
+
+    <svg width="0" height="0" aria-hidden="true" focusable="false" style="position: absolute">
+      <symbol id="mark" viewBox="0 0 512 512">
+        <path fill="var(--mark-cover)" d="M246 112c-47-29-112-32-166-8a20 20 0 0 0-12 18v254a20 20 0 0 0 28 18c46-20 101-17 150 12V112Z"/>
+        <path fill="var(--mark-cover)" d="M266 112c47-29 112-32 166-8a20 20 0 0 1 12 18v254a20 20 0 0 1-28 18c-46-20-101-17-150 12V112Z"/>
+        <path fill="var(--mark-page)" d="M225 148c-37-17-84-19-124-6v210c40-11 84-6 124 12V148Zm62 0c37-17 84-19 124-6v210c-40-11-84-6-124 12V148Z"/>
+        <path fill="var(--mark-spine)" d="M256 116 283 93v272l-27 34-27-34V93l27 23Z"/>
+      </symbol>
+    </svg>
+
+    <header class="topbar">
+      <div class="shell topbar__inner">
+        <a class="wordmark" href="#main">
+          <svg class="mark" role="img" aria-label="Pakperk"><use href="#mark" /></svg>
+          Pakperk
+        </a>
+        <nav class="topnav" aria-label="语言">
+          <a href="#flow">怎么读</a>
+          <a href="#deeper">再往里</a>
+          <a href="#features">有什么</a>
+          <a href="#stack">底层</a>
+          <a href="#download">下载</a>
+        </nav>
+        <div class="langswitch" role="group" aria-label="语言">
+          <span aria-current="page">中文</span>
+          <a href="../">EN</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero">
+        <div class="shell hero__grid">
+          <div class="hero__copy">
+            <span class="badge reveal" style="--i: 0">
+              <span class="badge__dot" aria-hidden="true"></span>
+              <span class="overline">私测版本</span>
+            </span>
+            <h1 class="display reveal" style="--i: 1">读完摘要，继续往下读。</h1>
+            <p class="lede reveal" style="--i: 2">Pakperk 是一个为手机而生的 arXiv 阅读器，只有一个核心动作。从摘要开始，向左进入解析好的引言并就这篇论文提问，再向左，看这篇论文真正依赖的那些参考文献——并附上解释。</p>
+            <div class="hero__actions reveal" style="--i: 3">
+              <a class="btn btn--primary" href="#flow">
+                看它怎么读
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M5 12h13M13 6l6 6-6 6" />
+                </svg>
+              </a>
+              <a class="btn btn--quiet" href="#download">下载 APK</a>
+            </div>
+          </div>
+
+          <figure class="hero__device reveal" style="--i: 2">
+            <div class="phone phone--lead">
+              <img src="../assets/shots/shot-abstract.webp" width="600" height="1333"
+                   fetchpriority="high" decoding="async"
+                   alt="Pakperk 的摘要阶段，显示一篇 arXiv 论文的标题、作者和摘要。" />
+            </div>
+            <figcaption class="device__caption">
+              <svg class="bob" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 4.5v15M8 8.5l4-4 4 4M8 15.5l4 4 4-4" />
+              </svg>
+              上下滑动切换论文。
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="flow" class="band">
+        <div class="shell">
+          <div class="section-head">
+            <span class="rule reveal" aria-hidden="true"></span>
+            <h2 class="headline reveal" style="--i: 1">一个手势，三个阶段</h2>
+            <p class="lede reveal" style="--i: 2">上下滑动换论文，左右滑动换深度。没有别的要学。</p>
+          </div>
+          <div class="grid stagecycle">
+            <article class="card reveal" style="--i: 0">
+              <span class="step__index tnum" aria-hidden="true">1</span>
+              <h3 class="title">摘要 · Abstract</h3>
+              <p class="body">上下滑动切换上一篇或下一篇。每张卡片都是真实的 arXiv 记录，原文永远只差一次点击。</p>
+            </article>
+            <article class="card reveal" style="--i: 1">
+              <span class="step__index tnum" aria-hidden="true">2</span>
+              <h3 class="title">引言 · Introduction</h3>
+              <p class="body">向左滑。Pakperk 读取 PDF 的真实结构，把引言重新排成适合手机的版式。只有你真正进入这个阶段时才会开始解析，划过卡片不会触发。</p>
+            </article>
+            <article class="card reveal" style="--i: 2">
+              <span class="step__index tnum" aria-hidden="true">3</span>
+              <h3 class="title">关联 · Connections</h3>
+              <p class="body">再向左滑。引言所依赖的参考文献，每条都说明它为什么重要，并链接回原始工作。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="deeper">
+        <div class="shell">
+          <div class="section-head">
+            <span class="rule reveal" aria-hidden="true"></span>
+            <h2 class="headline reveal" style="--i: 1">再往里两屏</h2>
+            <p class="lede reveal" style="--i: 2">让一篇论文在手机上真正可读的两个阶段：作者写下的那节引言，以及你向它提问时拿回的东西。</p>
+          </div>
+          <div class="showcase">
+            <figure class="showcase__item reveal" style="--i: 0">
+              <div class="phone">
+                <img src="../assets/shots/shot-introduction.webp" width="600" height="1333" loading="lazy" decoding="async"
+                     alt="引言阶段，显示解析后的论文引言和底部的提问输入框。" />
+              </div>
+              <figcaption><b>是真解析，不是概括。</b> 这是从 PDF 自身结构里取出的引言那一节，按手机宽度重新排版，而不是把摘要换个说法。提问输入框就在它下面。</figcaption>
+            </figure>
+            <figure class="showcase__item reveal" style="--i: 1">
+              <div class="phone">
+                <img src="../assets/shots/shot-chat.webp" width="600" height="1333" loading="lazy" decoding="async"
+                     alt="一条标记为 Supported 的回答，包含三条结论、Direct 证据标记，以及打开第 2 页精确出处的链接。" />
+              </div>
+              <figcaption><b>向论文提问，而不是向互联网。</b> 回答只在这一篇论文的范围内。每条结论都带 Direct 证据标记，以及一个能打开精确出处页面的链接。论文支撑不了的问题，它会直接说明，而不是猜。</figcaption>
+            </figure>
+          </div>
+          <p class="disclaimer reveal">以上为 Android 设备实拍截图，论文为 arXiv:2505.13425。</p>
+        </div>
+      </section>
+
+      <section id="features" class="band">
+        <div class="shell">
+          <div class="section-head">
+            <span class="rule reveal" aria-hidden="true"></span>
+            <h2 class="headline reveal" style="--i: 1">经得起天天用</h2>
+            <p class="lede reveal" style="--i: 2">在地铁上、排队时、单手就能翻的阅读器——网络不给力的时候也不会乱。</p>
+          </div>
+          <div class="grid">
+            <article class="card reveal" style="--i: 0">
+              <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h12a1 1 0 0 1 1 1v16l-7-4-7 4v-16a1 1 0 0 1 1-1Z"/></svg>
+              <h3 class="title">收藏与待读</h3>
+              <p class="body">把论文存进待读列表。改动立刻在本机生效，联网并登录后自动同步。移除时提供撤销。收藏本身不会触发论文解析。</p>
+            </article>
+            <article class="card reveal" style="--i: 1">
+              <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 18.5A4.5 4.5 0 0 1 7 9.6a5.5 5.5 0 0 1 10.6 1.5 3.7 3.7 0 0 1-.6 7.4Z"/></svg>
+              <h3 class="title">先读缓存，再等网络</h3>
+              <p class="body">Pakperk 先打开缓存或内置的元数据，不等请求返回，然后就地刷新。它记得你停在哪一篇、哪个阶段、滚到哪个位置。</p>
+            </article>
+            <article class="card reveal" style="--i: 2">
+              <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/></svg>
+              <h3 class="title">登录不用在 App 里输密码</h3>
+              <p class="body">登录会打开系统浏览器，走服务自己的身份提供方。Pakperk 从不在 App 内索要账号密码，访问令牌只存在内存里，不落盘。</p>
+            </article>
+            <article class="card reveal" style="--i: 0">
+              <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14 20 4M20 4h-5M20 4v5"/><path d="M19 13.5V19a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19V8a1.5 1.5 0 0 1 1.5-1.5H12"/></svg>
+              <h3 class="title">是阅读器，不是替代品</h3>
+              <p class="body">每篇论文都保留精确的 arXiv 标识和指向原始记录的链接。Pakperk 只是读 arXiv，与 arXiv 没有隶属关系，也不打算替代原文。</p>
+            </article>
+            <article class="card reveal" style="--i: 1">
+              <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 5 6.4v5.2c0 4.2 2.8 7.5 7 8.9 4.2-1.4 7-4.7 7-8.9V6.4Z"/><path d="m9.3 12 1.9 1.9 3.6-3.8"/></svg>
+              <h3 class="title">默认安静</h3>
+              <p class="body">游客阅读不需要账号。运行遥测不包含论文正文、提示词、对话内容、用户名和邮箱。不读通讯录，不要精确位置，没有广告标识符。</p>
+            </article>
+            <article class="card reveal" style="--i: 2">
+              <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 8.2v7.6M8.2 12h7.6"/></svg>
+              <h3 class="title">谁都能用</h3>
+              <p class="body">每个滑动手势都有带文字标签的替代操作。浅色与深色主题、减弱动效、大号字体、读屏语义、键盘焦点和系统返回，都是基线的一部分。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="stack">
+        <div class="shell">
+          <div class="section-head">
+            <span class="rule reveal" aria-hidden="true"></span>
+            <h2 class="headline reveal" style="--i: 1">底层是什么</h2>
+            <p class="lede reveal" style="--i: 2">刻意收窄的技术栈，让阅读循环够快，让服务器够无聊。</p>
+          </div>
+          <div class="stack">
+            <span class="tag reveal" style="--i: 0">Flutter · iOS &amp; Android</span>
+            <span class="tag reveal" style="--i: 1">Rust · Axum API</span>
+            <span class="tag reveal" style="--i: 2">Tokio worker</span>
+            <span class="tag reveal" style="--i: 3">PostgreSQL 16 + pgvector</span>
+            <span class="tag reveal" style="--i: 4">GROBID</span>
+            <span class="tag reveal" style="--i: 5">OpenID Connect</span>
+          </div>
+          <ul class="notes">
+            <li class="reveal" style="--i: 0">
+              <svg class="note__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h16M4 12h16M4 16.5h10"/></svg>
+              <span><b>解析结构，不是爬文本。</b> GROBID 把 PDF 还原成真正的学术结构，所以你读到的引言就是作者写的那一节。</span>
+            </li>
+            <li class="reveal" style="--i: 1">
+              <svg class="note__icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5l3 1.8"/></svg>
+              <span><b>带租约的任务队列。</b> 解析跑在 PostgreSQL 租约任务里，重启之后会把活接着做完，而不是丢掉。</span>
+            </li>
+            <li class="reveal" style="--i: 2">
+              <svg class="note__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5a7.5 7.5 0 1 0 7.5 7.5"/><path d="M12 4.5h7.5V12"/></svg>
+              <span><b>一个克制的 arXiv 客户端。</b> 所有对 arXiv 的请求都走同一个带缓存和限流的客户端，整个后端共用。</span>
+            </li>
+            <li class="reveal" style="--i: 3">
+              <svg class="note__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 16.5V9M9.5 16.5V5M14.5 16.5v-6M19.5 16.5v-9"/></svg>
+              <span><b>能力都是开关。</b> 每项功能按环境单独控制，App 绝不会把服务器上关掉的能力说成可用。</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="download" class="band">
+        <div class="shell">
+          <div class="section-head">
+            <span class="rule reveal" aria-hidden="true"></span>
+            <h2 class="headline reveal" style="--i: 1">下载</h2>
+            <p class="lede reveal" style="--i: 2">私测版 Android 安装包，由服务运营者直接发布。目前还没有应用商店上架。</p>
+          </div>
+
+          <div class="download reveal">
+            <a class="btn btn--primary btn--lg" href="../download/pakperk-0.2.0-dev.apk" download>
+              <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M5 19.5h14"/></svg>
+              下载 APK · 28.6 MB
+            </a>
+            <p class="download__meta tnum">版本 0.2.0-dev · build 2 · app.pakperk.pakperk.dev</p>
+          </div>
+
+          <div class="grid">
+            <article class="card reveal" style="--i: 0">
+              <h3 class="title">运行要求</h3>
+              <p class="body">Android 7.0（API 24）及以上，且为 64 位 ARM 设备（arm64-v8a）——近几年的主流手机都是。这个包不含 32 位引擎；鸿蒙 NEXT 无法安装 APK。</p>
+            </article>
+            <article class="card reveal" style="--i: 1">
+              <h3 class="title">安装方式</h3>
+              <p class="body">浏览器或文件管理器会要求你允许安装来自此来源的应用；该权限是按应用授予的，装完可以收回。如果机器上已装过用不同签名的 Pakperk，需要先卸载。</p>
+            </article>
+            <article class="card reveal" style="--i: 2">
+              <h3 class="title">它连到哪里</h3>
+              <p class="body">这个版本连的是私测服务器，不是正式服务。账号和待读列表是开的，公开讨论是关的。数据是测试数据，偶尔会停机。</p>
+            </article>
+          </div>
+
+          <div class="verify reveal">
+            <h3 class="title">核对你下到的文件</h3>
+            <p class="body">安装前比对一下。文件哈希：</p>
+            <p class="hash tnum">155d34e9a1748f56494d9a8c6749f22cd5e78b6e0e9f92c08e013519d048e08b</p>
+            <p class="body">签名证书（SHA-256）：</p>
+            <p class="hash tnum">fcf345e1a6d4e5d9579f4125ec48d88dc8b7041b20a908ca1f31df358a3d8cd3</p>
+            <p class="body">在 Mac 或 Linux 上：</p>
+            <p class="hash">shasum -a 256 pakperk-0.2.0-dev.apk</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="shell footer__inner">
+        <div>
+          <a class="wordmark" href="#main">
+            <svg class="mark" role="img" aria-label="Pakperk"><use href="#mark" /></svg>
+            Pakperk
+          </a>
+          <p class="footer__legal">Pakperk 阅读托管在 arXiv 上的论文，与 arXiv 及康奈尔大学没有隶属或背书关系。每篇论文都链接回它的原始记录。</p>
+        </div>
+        <nav class="footer__links" aria-label="Pakperk">
+          <a href="https://arxiv.org" rel="noopener noreferrer external">arXiv.org</a>
+          <a href="#flow">怎么读</a>
+          <a href="#download">下载</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

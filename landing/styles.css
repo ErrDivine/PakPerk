@@ -1,0 +1,816 @@
+/* Pakperk product page.
+ *
+ * Every token below is lifted from the Flutter client so the page and the app
+ * cannot drift: colors from mobile/lib/design_system/colors.dart, the type
+ * ramp from typography.dart, corner radii from radii.dart, and the flat
+ * elevation model from elevation.dart (no shadows, outlines carry separation).
+ */
+
+:root {
+  /* colors.dart — PakPerkColors + PakPerkSemanticColors.light */
+  --paper: #f7f4ec;
+  --paper-raised: #fffcf5;
+  --paper-sunken: #ede8dd;
+  --ink: #17211b;
+  --ink-muted: #59635c;
+  --ink-variant: #465049;
+  --moss: #315c47;
+  --moss-soft: #dce9df;
+  --on-moss: #ffffff;
+  --ochre: #9a6326;
+  --ochre-container: #f2e1ca;
+  --outline: #d4cec0;
+  --outline-variant: #e5dfd3;
+
+  /* mark fills, so the logo themes with the page */
+  --mark-cover: #315c47;
+  --mark-page: #f7f4ec;
+  --mark-spine: #9b6427;
+
+  /* radii.dart */
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 24px;
+  --r-pill: 999px;
+
+  /* sizes.dart — contentMaxWidth 760, minimumInteractive 48 */
+  --prose: 760px;
+  --shell: 1120px;
+  --tap: 48px;
+
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-skip: 20;
+
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", "PingFang SC", "Microsoft YaHei",
+    sans-serif;
+  font-synthesis: none;
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* PakPerkSemanticColors.dark */
+    --paper: #17211b;
+    --paper-raised: #202c25;
+    --paper-sunken: #344139;
+    --ink: #f0f5f1;
+    --ink-muted: #bbc7bf;
+    --ink-variant: #bbc7bf;
+    --moss: #a8d5b7;
+    --moss-soft: #294336;
+    --on-moss: #103823;
+    --ochre: #e7ac66;
+    --ochre-container: #503a22;
+    --outline: #536158;
+    --outline-variant: #354139;
+
+    --mark-cover: #dce9df;
+    --mark-page: #17211b;
+    --mark-spine: #d79a51;
+
+    color-scheme: dark;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 88px;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+::selection {
+  background: var(--moss-soft);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--moss);
+  outline-offset: 3px;
+  border-radius: var(--r-xs);
+}
+
+/* ---------- type ramp (typography.dart) ---------- */
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol {
+  margin: 0;
+}
+
+.display {
+  font-size: clamp(2.125rem, 1.3rem + 3.3vw, 3.25rem);
+  line-height: 1.04;
+  font-weight: 700;
+  letter-spacing: -0.028em;
+  text-wrap: balance;
+}
+
+.headline {
+  font-size: clamp(1.5rem, 1.15rem + 1.3vw, 2rem);
+  line-height: 1.14;
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+
+.title {
+  font-size: 1.0625rem;
+  line-height: 1.28;
+  font-weight: 600;
+  letter-spacing: -0.003em;
+  text-wrap: balance;
+}
+
+.lede {
+  font-size: clamp(1.0625rem, 1rem + 0.35vw, 1.1875rem);
+  line-height: 1.5;
+  color: var(--ink-muted);
+  text-wrap: pretty;
+}
+
+.body {
+  font-size: 0.9375rem;
+  line-height: 1.43;
+  color: var(--ink-muted);
+  text-wrap: pretty;
+}
+
+.overline {
+  font-size: 0.75rem;
+  line-height: 1.32;
+  font-weight: 700;
+  letter-spacing: 0.046em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- shell ---------- */
+
+.shell {
+  width: 100%;
+  max-width: var(--shell);
+  margin-inline: auto;
+  padding-inline: 20px;
+}
+
+.skip {
+  position: fixed;
+  top: -6rem;
+  left: 16px;
+  z-index: var(--z-skip);
+  padding: 12px 16px;
+  border-radius: var(--r-sm);
+  background: var(--moss);
+  color: var(--on-moss);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.skip:focus {
+  top: 12px;
+}
+
+/* ---------- top bar (appBarTheme: flat, no shadow) ---------- */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: color-mix(in srgb, var(--paper-raised) 94%, transparent);
+  backdrop-filter: saturate(140%) blur(12px);
+  border-bottom: 1px solid var(--outline-variant);
+}
+
+.topbar.is-stuck {
+  border-bottom-color: var(--outline);
+}
+
+.topbar__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+
+.mark {
+  width: 26px;
+  height: 26px;
+  flex: none;
+}
+
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.topnav a {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding-inline: 12px;
+  border-radius: var(--r-sm);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--ink-variant);
+  text-decoration: none;
+  transition: background-color 160ms ease-out, color 160ms ease-out;
+}
+
+.topnav a:hover {
+  background: color-mix(in srgb, var(--moss) 6%, transparent);
+  color: var(--ink);
+}
+
+@media (max-width: 720px) {
+  .topnav {
+    display: none;
+  }
+}
+
+/* ---------- sections ---------- */
+
+section {
+  padding-block: clamp(56px, 7vw, 96px);
+}
+
+.section-head {
+  max-width: var(--prose);
+  display: grid;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.rule {
+  width: 32px;
+  height: 3px;
+  border-radius: var(--r-pill);
+  background: var(--ochre);
+}
+
+/* ---------- hero ---------- */
+
+.hero {
+  padding-top: clamp(40px, 5vw, 72px);
+  padding-bottom: clamp(48px, 6vw, 88px);
+}
+
+.hero__grid {
+  display: grid;
+  gap: clamp(40px, 5vw, 72px);
+  align-items: center;
+}
+
+@media (min-width: 900px) {
+  .hero__grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 340px);
+  }
+}
+
+.hero__copy {
+  display: grid;
+  gap: 20px;
+  max-width: 36ch;
+}
+
+@media (max-width: 899px) {
+  .hero__copy {
+    max-width: var(--prose);
+  }
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: start;
+  padding: 6px 12px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-pill);
+  background: var(--paper-raised);
+}
+
+.badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--ochre);
+  flex: none;
+}
+
+.hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+/* buttons: filledButtonTheme / outlinedButtonTheme — radius 12, flat, 48 tall */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--tap);
+  padding-inline: 20px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0.003em;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 160ms ease-out, border-color 160ms ease-out,
+    color 160ms ease-out;
+}
+
+.btn--primary {
+  background: var(--moss);
+  color: var(--on-moss);
+}
+
+.btn--primary:hover {
+  background: color-mix(in srgb, var(--moss) 88%, var(--ink));
+}
+
+.btn--quiet {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--outline) 84%, transparent);
+  color: var(--ink);
+}
+
+.btn--quiet:hover {
+  background: color-mix(in srgb, var(--moss) 5%, transparent);
+}
+
+.btn svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+/* ---------- screenshots in a phone frame ---------- */
+
+.hero__device,
+.showcase__item {
+  margin: 0;
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+}
+
+.showcase {
+  display: grid;
+  gap: clamp(36px, 4vw, 56px);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  align-items: start;
+}
+
+.showcase__item figcaption {
+  max-width: 46ch;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  text-wrap: pretty;
+}
+
+.showcase__item figcaption b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.disclaimer {
+  margin-top: 32px;
+  font-size: 0.8125rem;
+  color: var(--ink-muted);
+}
+
+/* The frame is the app's own card treatment: flat, 1px outline, radius 24. */
+.phone {
+  width: 100%;
+  max-width: 320px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background: var(--paper-raised);
+  overflow: hidden;
+  transition: transform 180ms ease-out, border-color 180ms ease-out;
+}
+
+.phone img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.phone:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--moss) 42%, var(--outline));
+}
+
+.device__caption {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  color: var(--ink-muted);
+}
+
+.device__caption svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------- motion ---------- */
+
+/* The start state only exists once JS is running, so a page without it
+   renders complete rather than blank. */
+.js .reveal {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+.js .reveal.is-in {
+  opacity: 1;
+  transform: none;
+  transition: opacity 460ms ease-out, transform 460ms ease-out;
+  transition-delay: calc(var(--i, 0) * 70ms);
+}
+
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+.bob {
+  animation: bob 2.4s ease-in-out infinite;
+}
+
+.bob.is-paused {
+  animation-play-state: paused;
+}
+
+/* ---------- language switch ---------- */
+
+.langswitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--r-pill);
+  background: var(--paper);
+  flex: none;
+}
+
+.langswitch span,
+.langswitch a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 30px;
+  padding-inline: 10px;
+  border-radius: var(--r-pill);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color 160ms ease-out, color 160ms ease-out;
+}
+
+.langswitch span[aria-current] {
+  background: var(--moss-soft);
+  color: var(--moss);
+}
+
+@media (prefers-color-scheme: dark) {
+  .langswitch span[aria-current] {
+    color: var(--ink);
+  }
+}
+
+.langswitch a {
+  color: var(--ink-muted);
+}
+
+.langswitch a:hover {
+  background: color-mix(in srgb, var(--moss) 7%, transparent);
+  color: var(--ink);
+}
+
+/* ---------- download ---------- */
+
+.download {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  margin-bottom: 32px;
+}
+
+.btn--lg {
+  min-height: 56px;
+  padding-inline: 26px;
+  font-size: 1rem;
+}
+
+.btn__icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.btn:active {
+  transform: scale(0.985);
+}
+
+.download__meta {
+  font-size: 0.8125rem;
+  color: var(--ink-muted);
+}
+
+.verify {
+  margin-top: 28px;
+  padding: 24px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 72%, transparent);
+  border-radius: var(--r-md);
+  background: var(--paper-raised);
+  display: grid;
+  gap: 8px;
+  max-width: var(--prose);
+}
+
+.verify .body {
+  margin-top: 6px;
+}
+
+.hash {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--r-xs);
+  padding: 8px 10px;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- cards (cardTheme: flat, 1px outline, radius 16) ---------- */
+
+.card {
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 72%, transparent);
+  border-radius: var(--r-md);
+  background: var(--paper-raised);
+  padding: 24px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 268px), 1fr));
+}
+
+.step__index {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--outline);
+  background: var(--paper);
+  color: var(--ochre);
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 4px;
+}
+
+.card--wide {
+  grid-column: 1 / -1;
+}
+
+.card__icon {
+  width: 22px;
+  height: 22px;
+  margin-bottom: 4px;
+  fill: none;
+  stroke: var(--moss);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Hover and the travelling highlight in .stagecycle share one treatment, so
+   pointing at a card overrides the animation rather than fighting it. */
+.card {
+  transition: border-color 180ms ease-out, background-color 180ms ease-out;
+}
+
+.card:hover,
+.card.is-lit {
+  border-color: color-mix(in srgb, var(--moss) 34%, var(--outline-variant));
+  background: color-mix(in srgb, var(--moss) 4%, var(--paper-raised));
+}
+
+.card.is-lit .step__index {
+  border-color: color-mix(in srgb, var(--ochre) 55%, var(--outline));
+  background: var(--ochre-container);
+  transition: border-color 180ms ease-out, background-color 180ms ease-out;
+}
+
+/* ---------- stack strip ---------- */
+
+.stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag {
+  padding: 7px 12px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--r-xs);
+  background: var(--paper-raised);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink-variant);
+}
+
+.notes {
+  max-width: var(--prose);
+  display: grid;
+  gap: 14px;
+  margin-top: 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.notes li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  text-wrap: pretty;
+}
+
+.notes svg {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  fill: none;
+  stroke: var(--moss);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.notes b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ---------- band ---------- */
+
+.band {
+  border-block: 1px solid var(--outline-variant);
+  background: color-mix(in srgb, var(--paper-raised) 60%, var(--paper));
+}
+
+/* ---------- footer ---------- */
+
+.footer {
+  border-top: 1px solid var(--outline-variant);
+  padding-block: 40px;
+}
+
+.footer__inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px 32px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.footer__legal {
+  font-size: 0.8125rem;
+  color: var(--ink-muted);
+  max-width: 52ch;
+  text-wrap: pretty;
+}
+
+.footer__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.footer__links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding-inline: 12px;
+  border-radius: var(--r-sm);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink-variant);
+  text-decoration: none;
+  transition: background-color 160ms ease-out, color 160ms ease-out;
+}
+
+.footer__links a:hover {
+  background: color-mix(in srgb, var(--moss) 6%, transparent);
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  /* Belt and braces: app.js also reveals everything, but the page must be
+     complete even if the script never runs. */
+  .js .reveal {
+    opacity: 1;
+    transform: none;
+  }
+  .phone:hover {
+    transform: none;
+  }
+  .btn:active {
+    transform: none;
+  }
+}

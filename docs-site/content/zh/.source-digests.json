@@ -120,6 +120,13 @@
       "workflow": "scripts/accept-translations.mjs"
     }
   },
+  "assistant-tools-implementation-plan.md": {
+    "sourceSha256": "feca6d2a3795e091651d14151a998b2207793e709624b5e29c4d96d763a77478",
+    "translationSha256": "5c706bf46f2e47ab74389f6b61f657438bba125d1ff1c05d8b9eafb39477f4c2",
+    "policyVersion": "zh-CN-professional-v4",
+    "policyDigest": "5711c1b79aed8a8f68e88120b7cb4b42c7e0e9679b5325dbf3e976ec5fbee2e1",
+    "model": "claude-sonnet-5 (manual translation, pipeline-validated)"
+  },
   "backend-deployment.md": {
     "sourceSha256": "a10c3c0987b235dbcbcd4e06727eba6999928161794c238bac034f4ceeba076a",
     "translationSha256": "cdff4dedfca094974ecbc1b4758afc248d8ccc50dc3d696d894749c8620f223c",
@@ -285,6 +292,13 @@
       "workflow": "scripts/accept-translations.mjs"
     }
   },
+  "mobile-release.md": {
+    "sourceSha256": "f0510b7d6497feb106f9aeb7ec30ccc3e5f74a38b65d49445af91bbb8119ae28",
+    "translationSha256": "0e046d9709618d21a8ab359aabaffc89b8f7c59748c362366ab35128d5f3e1ec",
+    "policyVersion": "zh-CN-professional-v4",
+    "policyDigest": "04e10e1a6ffb279b63dc9e5dbab8ee7a55324c830f8cd117f15594f537823f92",
+    "model": "claude-sonnet-5 (manual translation, pipeline-validated)"
+  },
   "paper-import.md": {
     "sourceSha256": "bd2811d5c179e66a5ce3518d54a4a58d174cfe1298f75bd943639cc9587fcd19",
     "translationSha256": "a657ed777f77b2268646e77b4d875615b94a79ca5b0221b9b8dac6cfe1743086",
@@ -373,6 +387,13 @@
       "workflow": "scripts/accept-translations.mjs"
     }
   },
+  "phase-reports/phase-6.md": {
+    "sourceSha256": "90d71c201b090dd468d494551366849eac3e0efd738f52d1f2a35048de7b0b84",
+    "translationSha256": "dc16b54e86671c78bc643fa62e2185dbc092c8fceaf1b029a3b0c82a2dbdba35",
+    "policyVersion": "zh-CN-professional-v4",
+    "policyDigest": "d6319364c7ecbd881b9f6affec268fd678f5876e5e53838d56a63f7449e8a80f",
+    "model": "claude-sonnet-5 (manual translation, pipeline-validated)"
+  },
   "phase-reports/to-read-first-phase-0.md": {
     "sourceSha256": "bf1a08a517b44307e68d4a886aa8d872ff448c34d3c9b2d7e62368133a5958da",
     "translationSha256": "c2c4d0e9b1ccbd529721c0fc4079c00c8f4166e04ebae52026024fc6d5d03431",
@@ -383,6 +404,13 @@
       "acceptedAt": "2026-09-02T11:37:23.669Z",
       "workflow": "scripts/accept-translations.mjs"
     }
+  },
+  "production-v0.0-completion-audit.md": {
+    "sourceSha256": "200a0fd6630d9a44cc054ee2f8193d5f9c998e908d8c2e0b2d5fca4634e0dec6",
+    "translationSha256": "b8d23129e9cc2d446a0ceeae680af87c483f7c1c2f7d7f100d09cb56d65ee577",
+    "policyVersion": "zh-CN-professional-v4",
+    "policyDigest": "d6319364c7ecbd881b9f6affec268fd678f5876e5e53838d56a63f7449e8a80f",
+    "model": "claude-sonnet-5 (manual translation, pipeline-validated)"
   },
   "production-v0.0-plan.md": {
     "sourceSha256": "c80caddcb176bc9a1591c01463841d519be2ac94ae76c60efad4b81c1d854f5e",
@@ -406,6 +434,13 @@
       "workflow": "scripts/accept-translations.mjs"
     }
   },
+  "runbooks/account-deletion.md": {
+    "sourceSha256": "2c299161807c9d83d28583fecea3e3a6b4233018fcdb7bd135a4b95c2e171b31",
+    "translationSha256": "cec5d2854e5e342f62d2b62e7d583edcdfd7cd8ada854a4d9eadb52b0fd439df",
+    "policyVersion": "zh-CN-professional-v4",
+    "policyDigest": "753e6013a7572a17a328d6b8047b40512fa2b6152d81d58081fe275e2a19cd7b",
+    "model": "claude-sonnet-5 (manual translation, pipeline-validated)"
+  },
   "runbooks/backend-load-testing.md": {
     "sourceSha256": "c3e71c9783839f299b00d101d30f608a91408e7f1d6423703c9cab51840a0b03",
     "translationSha256": "3b7bb293cc5f6d3ad9a441db60bf4752059148e00ac5c6b02074f30102480a1a",
@@ -416,6 +451,13 @@
       "acceptedAt": "2026-09-05T13:42:40.578Z",
       "workflow": "scripts/accept-translations.mjs"
     }
+  },
+  "runbooks/backup-restore.md": {
+    "sourceSha256": "8cfeeecb3a2bdd68f3a6179263519a81ccb0936ff9532860dcf5c6ae35faf0c0",
+    "translationSha256": "ea46b39f21ad7352bb6935fb687f38340ca8cf8f2f79a302bc3b9945237a4823",
+    "policyVersion": "zh-CN-professional-v4",
+    "policyDigest": "d6319364c7ecbd881b9f6affec268fd678f5876e5e53838d56a63f7449e8a80f",
+    "model": "claude-sonnet-5 (manual translation, pipeline-validated)"
   },
   "runbooks/deep-reader-rollout.md": {
     "sourceSha256": "1d790a1e6ce5ed15420597ca68b3beead65003ca8ac35f4f2feee007d40db1fa",
@@ -449,6 +491,20 @@
       "acceptedAt": "2026-09-04T08:40:48.500Z",
       "workflow": "scripts/accept-translations.mjs"
     }
+  },
+  "runbooks/observability.md": {
+    "sourceSha256": "a95cbd416c0b6c07c1d80d9589a2749a11fe061eadc80a51d2b6baac95541d5b",
+    "translationSha256": "726216de3c14cb30908367ddf0e0f449913e1ade2287d51649cb8aa3dd92a019",
+    "policyVersion": "zh-CN-professional-v4",
+    "policyDigest": "d6319364c7ecbd881b9f6affec268fd678f5876e5e53838d56a63f7449e8a80f",
+    "model": "claude-sonnet-5 (manual translation, pipeline-validated)"
+  },
+  "runbooks/release.md": {
+    "sourceSha256": "a0836d47a0ebf5013bbbe60544241a7071b4f09e67b770743aed1d0e4b9e8406",
+    "translationSha256": "610ecb354460f11384b6767ff1197b18409a55ec675bf024b0f3f4479b99ea45",
+    "policyVersion": "zh-CN-professional-v4",
+    "policyDigest": "d6319364c7ecbd881b9f6affec268fd678f5876e5e53838d56a63f7449e8a80f",
+    "model": "claude-sonnet-5 (manual translation, pipeline-validated)"
   },
   "store/mobile-privacy-review.md": {
     "sourceSha256": "c171f4c12fa5b0ab347fdb5f49c3681846c8410cec29f5240dbca2282ef5f59b",

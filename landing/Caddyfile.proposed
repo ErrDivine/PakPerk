@@ -1,0 +1,24 @@
+www.pakperk.website {
+	# Identity provider: expose only the public OIDC surface. The admin console
+	# and the master realm stay reachable solely through an SSH tunnel to
+	# 127.0.0.1:8081.
+	@identity path /realms/pakperk /realms/pakperk/* /resources/*
+	handle @identity {
+		reverse_proxy 127.0.0.1:8081
+	}
+
+	# Static product page (added 2026-09-21). Additive only: "/" and "/site/..."
+	# are served from disk, every other path still falls through to the API
+	# handler below exactly as before. "/" served nothing (404) until now.
+	redir / /site/ 302
+	redir /site /site/ 308
+	handle_path /site/* {
+		root * /var/www/pakperk-site
+		encode gzip zstd
+		file_server
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:8080
+	}
+}

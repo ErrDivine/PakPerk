@@ -30,3 +30,9 @@ __pycache__/
 .vscode/
 intro_rag.json
 .assistant-tools-target/
+
+# Landing page: the published APK is a build artifact, kept on the server only.
+landing/download/
+
+# Claude
+.claude/

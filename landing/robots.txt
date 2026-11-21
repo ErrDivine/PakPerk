@@ -1,0 +1,5 @@
+# Pakperk is in private testing; keep the test host out of search indexes.
+# Remove this file (and the noindex meta tag in index.html) when the product
+# page becomes public.
+User-agent: *
+Disallow: /

@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pakperk — a phone-first arXiv reader</title>
+    <meta name="description" content="Pakperk is a phone-first arXiv reader built around one interaction: read an abstract, move into a parsed Introduction with paper-grounded chat, then into the references that matter." />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#f7f4ec" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#17211b" media="(prefers-color-scheme: dark)" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Pakperk — a phone-first arXiv reader" />
+    <meta property="og:description" content="Pakperk is a phone-first arXiv reader built around one interaction: read an abstract, move into a parsed Introduction with paper-grounded chat, then into the references that matter." />
+    <meta property="og:image" content="assets/pakperk_app_icon.png" />
+    <link rel="icon" href="assets/pakperk_app_icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="assets/pakperk_app_icon.png" />
+    <link rel="alternate" hreflang="en" href="/site/" />
+    <link rel="alternate" hreflang="zh-Hans" href="/site/zh/" />
+    <link rel="preload" as="image" href="assets/shots/shot-abstract.webp" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <svg width="0" height="0" aria-hidden="true" focusable="false" style="position: absolute">
+      <symbol id="mark" viewBox="0 0 512 512">
+        <path fill="var(--mark-cover)" d="M246 112c-47-29-112-32-166-8a20 20 0 0 0-12 18v254a20 20 0 0 0 28 18c46-20 101-17 150 12V112Z"/>
+        <path fill="var(--mark-cover)" d="M266 112c47-29 112-32 166-8a20 20 0 0 1 12 18v254a20 20 0 0 1-28 18c-46-20-101-17-150 12V112Z"/>
+        <path fill="var(--mark-page)" d="M225 148c-37-17-84-19-124-6v210c40-11 84-6 124 12V148Zm62 0c37-17 84-19 124-6v210c-40-11-84-6-124 12V148Z"/>
+        <path fill="var(--mark-spine)" d="M256 116 283 93v272l-27 34-27-34V93l27 23Z"/>
+      </symbol>
+    </svg>
+
+    <header class="topbar">
+      <div class="shell topbar__inner">
+        <a class="wordmark" href="#main">
+          <svg class="mark" role="img" aria-label="Pakperk"><use href="#mark" /></svg>
+          Pakperk
+        </a>
+        <nav class="topnav" aria-label="Language">
+          <a href="#flow">The read</a>
+          <a href="#deeper">Deeper</a>
+          <a href="#features">What it does</a>
+          <a href="#stack">Under the hood</a>
+          <a href="#download">Download</a>
+        </nav>
+        <div class="langswitch" role="group" aria-label="Language">
+          <span aria-current="page">EN</span>
+          <a href="zh/">中文</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero">
+        <div class="shell hero__grid">
+          <div class="hero__copy">
+            <span class="badge reveal" style="--i: 0">
+              <span class="badge__dot" aria-hidden="true"></span>
+              <span class="overline">Private test build</span>
+            </span>
+            <h1 class="display reveal" style="--i: 1">Read the abstract. Then keep going.</h1>
+            <p class="lede reveal" style="--i: 2">Pakperk is a phone-first arXiv reader built around one interaction. Start at the abstract, move left into a parsed Introduction and ask the paper questions, then left again into the references it actually leans on — explained.</p>
+            <div class="hero__actions reveal" style="--i: 3">
+              <a class="btn btn--primary" href="#flow">
+                See how it reads
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M5 12h13M13 6l6 6-6 6" />
+                </svg>
+              </a>
+              <a class="btn btn--quiet" href="#download">Download the APK</a>
+            </div>
+          </div>
+
+          <figure class="hero__device reveal" style="--i: 2">
+            <div class="phone phone--lead">
+              <img src="assets/shots/shot-abstract.webp" width="600" height="1333"
+                   fetchpriority="high" decoding="async"
+                   alt="The Pakperk abstract stage on an Android phone, showing an arXiv paper&#x27;s title, authors and abstract." />
+            </div>
+            <figcaption class="device__caption">
+              <svg class="bob" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 4.5v15M8 8.5l4-4 4 4M8 15.5l4 4 4-4" />
+              </svg>
+              Up and down changes the paper.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="flow" class="band">
+        <div class="shell">
+          <div class="section-head">
+            <span class="rule reveal" aria-hidden="true"></span>
+            <h2 class="headline reveal" style="--i: 1">One gesture, three stages</h2>
+            <p class="lede reveal" style="--i: 2">Vertical movement changes the paper. Horizontal movement changes how deep you are in it. Nothing else to learn.</p>
+          </div>
+          <div class="grid stagecycle">
+            <article class="card reveal" style="--i: 0">
+              <span class="step__index tnum" aria-hidden="true">1</span>
+              <h3 class="title">Abstract</h3>
+              <p class="body">Move up or down for the next or previous paper. Each card is the real arXiv record, and the original is always one tap away.</p>
+            </article>
+            <article class="card reveal" style="--i: 1">
+              <span class="step__index tnum" aria-hidden="true">2</span>
+              <h3 class="title">Introduction</h3>
+              <p class="body">Move left. Pakperk reads the PDF&#x27;s real structure and lays the introduction out for a phone. Preparation starts on your first committed move into the stage — never from scrolling past a card.</p>
+            </article>
+            <article class="card reveal" style="--i: 2">
+              <span class="step__index tnum" aria-hidden="true">3</span>
+              <h3 class="title">Connections</h3>
+              <p class="body">Move left again. The references the introduction leans on, each with a plain reason it matters and a link to the original work.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="deeper">
+        <div class="shell">
+          <div class="section-head">
+            <span class="rule reveal" aria-hidden="true"></span>
+            <h2 class="headline reveal" style="--i: 1">Two screens deeper</h2>
+            <p class="lede reveal" style="--i: 2">The stages that make a paper legible on a phone: the introduction the authors actually wrote, and what you get back when you question it.</p>
+          </div>
+          <div class="showcase">
+            <figure class="showcase__item reveal" style="--i: 0">
+              <div class="phone">
+                <img src="assets/shots/shot-introduction.webp" width="600" height="1333" loading="lazy" decoding="async"
+                     alt="The Introduction stage, showing the paper&#x27;s parsed introduction and a question field." />
+              </div>
+              <figcaption><b>Really parsed, not summarised.</b> This is the introduction section lifted out of the PDF&#x27;s own structure and re-set for a phone — not a paraphrase of the abstract. The question field sits at the bottom of it.</figcaption>
+            </figure>
+            <figure class="showcase__item reveal" style="--i: 1">
+              <div class="phone">
+                <img src="assets/shots/shot-chat.webp" width="600" height="1333" loading="lazy" decoding="async"
+                     alt="An answer marked Supported, with three claims, Direct evidence chips and links that open the exact source on page 2." />
+              </div>
+              <figcaption><b>Ask the paper, not the internet.</b> Answers stay inside one paper. Every claim carries a Direct evidence chip and a link that opens the exact source page. When the paper cannot support a question, the assistant says so instead of guessing.</figcaption>
+            </figure>
+          </div>
+          <p class="disclaimer reveal">Screenshots from an Android device. The paper is arXiv:2505.13425.</p>
+        </div>
+      </section>
+
+      <section id="features" class="band">
+        <div class="shell">
+          <div class="section-head">
+            <span class="rule reveal" aria-hidden="true"></span>
+            <h2 class="headline reveal" style="--i: 1">Built to be lived in</h2>
+            <p class="lede reveal" style="--i: 2">A reader you open on a train, in a queue, or with one hand — and that behaves when the network does not.</p>
+          </div>
+          <div class="grid">
+            <article class="card reveal" style="--i: 0">
+              <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h12a1 1 0 0 1 1 1v16l-7-4-7 4v-16a1 1 0 0 1 1-1Z"/></svg>
+              <h3 class="title">Library and To Read</h3>
+              <p class="body">Save a paper to To Read. The change lands on the device immediately and synchronizes when you are online and signed in. Removing one offers Undo. Saving never starts a paper&#x27;s preparation.</p>
+            </article>
+            <article class="card reveal" style="--i: 1">
+              <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 18.5A4.5 4.5 0 0 1 7 9.6a5.5 5.5 0 0 1 10.6 1.5 3.7 3.7 0 0 1-.6 7.4Z"/></svg>
+              <h3 class="title">Cached first, then the network</h3>
+              <p class="body">Pakperk opens cached or bundled metadata before it waits for a request, then refreshes in place. It remembers the paper you were on, the stage, and the scroll position.</p>
+            </article>
+            <article class="card reveal" style="--i: 2">
+              <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/></svg>
+              <h3 class="title">Sign in without typing a password</h3>
+              <p class="body">Sign-in opens the system browser and uses the service&#x27;s identity provider. Pakperk never asks for a provider password inside the app, and access tokens stay in memory rather than on disk.</p>
+            </article>
+            <article class="card reveal" style="--i: 0">
+              <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14 20 4M20 4h-5M20 4v5"/><path d="M19 13.5V19a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19V8a1.5 1.5 0 0 1 1.5-1.5H12"/></svg>
+              <h3 class="title">A reader, not a replacement</h3>
+              <p class="body">Every paper keeps its exact arXiv identifier and a link to the source record. Pakperk reads arXiv; it is not affiliated with arXiv and does not stand in for the original.</p>
+            </article>
+            <article class="card reveal" style="--i: 1">
+              <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 5 6.4v5.2c0 4.2 2.8 7.5 7 8.9 4.2-1.4 7-4.7 7-8.9V6.4Z"/><path d="m9.3 12 1.9 1.9 3.6-3.8"/></svg>
+              <h3 class="title">Quiet by default</h3>
+              <p class="body">Guest reading needs no account. Operational telemetry excludes paper text, prompts, chat messages, handles, and email. No contacts, no precise location, no advertising identifier.</p>
+            </article>
+            <article class="card reveal" style="--i: 2">
+              <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 8.2v7.6M8.2 12h7.6"/></svg>
+              <h3 class="title">Reachable by anyone</h3>
+              <p class="body">Every swipe has a labelled alternative. Light and dark themes, reduced motion, large text, screen-reader semantics, keyboard focus, and system back navigation are part of the baseline.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="stack">
+        <div class="shell">
+          <div class="section-head">
+            <span class="rule reveal" aria-hidden="true"></span>
+            <h2 class="headline reveal" style="--i: 1">Under the hood</h2>
+            <p class="lede reveal" style="--i: 2">A deliberately narrow stack, chosen so the reading loop stays fast and the server stays boring.</p>
+          </div>
+          <div class="stack">
+            <span class="tag reveal" style="--i: 0">Flutter · iOS &amp; Android</span>
+            <span class="tag reveal" style="--i: 1">Rust · Axum API</span>
+            <span class="tag reveal" style="--i: 2">Tokio worker</span>
+            <span class="tag reveal" style="--i: 3">PostgreSQL 16 + pgvector</span>
+            <span class="tag reveal" style="--i: 4">GROBID</span>
+            <span class="tag reveal" style="--i: 5">OpenID Connect</span>
+          </div>
+          <ul class="notes">
+            <li class="reveal" style="--i: 0">
+              <svg class="note__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h16M4 12h16M4 16.5h10"/></svg>
+              <span><b>Structure, not scraping.</b> GROBID turns the PDF into real scholarly structure, so the Introduction you read is the introduction the authors wrote.</span>
+            </li>
+            <li class="reveal" style="--i: 1">
+              <svg class="note__icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5l3 1.8"/></svg>
+              <span><b>A leased job queue.</b> Preparation runs as PostgreSQL-leased jobs, so a restart picks the work back up instead of dropping it.</span>
+            </li>
+            <li class="reveal" style="--i: 2">
+              <svg class="note__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5a7.5 7.5 0 1 0 7.5 7.5"/><path d="M12 4.5h7.5V12"/></svg>
+              <span><b>One polite arXiv client.</b> Every request to arXiv goes through a single cached, rate-limited client shared by the whole backend.</span>
+            </li>
+            <li class="reveal" style="--i: 3">
+              <svg class="note__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 16.5V9M9.5 16.5V5M14.5 16.5v-6M19.5 16.5v-9"/></svg>
+              <span><b>Capabilities are switches.</b> Each feature is gated per environment, and the app never advertises a capability the server has turned off.</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="download" class="band">
+        <div class="shell">
+          <div class="section-head">
+            <span class="rule reveal" aria-hidden="true"></span>
+            <h2 class="headline reveal" style="--i: 1">Download</h2>
+            <p class="lede reveal" style="--i: 2">The private test build for Android, published directly by the service operator. There is no store listing yet.</p>
+          </div>
+
+          <div class="download reveal">
+            <a class="btn btn--primary btn--lg" href="download/pakperk-0.2.0-dev.apk" download>
+              <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M5 19.5h14"/></svg>
+              Download APK · 28.6 MB
+            </a>
+            <p class="download__meta tnum">Version 0.2.0-dev · build 2 · app.pakperk.pakperk.dev</p>
+          </div>
+
+          <div class="grid">
+            <article class="card reveal" style="--i: 0">
+              <h3 class="title">Requirements</h3>
+              <p class="body">Android 7.0 (API 24) or newer, on a 64-bit ARM device (arm64-v8a) — which is every mainstream phone sold in the last several years. This build has no 32-bit engine, and HarmonyOS NEXT cannot install APKs at all.</p>
+            </article>
+            <article class="card reveal" style="--i: 1">
+              <h3 class="title">Installing</h3>
+              <p class="body">Your browser or file manager will ask you to allow installing from this source; that permission is per-app and you can revoke it afterwards. If an older Pakperk signed with a different key is already installed, uninstall it first.</p>
+            </article>
+            <article class="card reveal" style="--i: 2">
+              <h3 class="title">What it connects to</h3>
+              <p class="body">This build talks to the private test server, not a production service. Accounts and the To Read library are on; public discussion is off. Expect test data and occasional downtime.</p>
+            </article>
+          </div>
+
+          <div class="verify reveal">
+            <h3 class="title">Verify what you downloaded</h3>
+            <p class="body">Compare before you install. The file hash:</p>
+            <p class="hash tnum">155d34e9a1748f56494d9a8c6749f22cd5e78b6e0e9f92c08e013519d048e08b</p>
+            <p class="body">Signing certificate (SHA-256):</p>
+            <p class="hash tnum">fcf345e1a6d4e5d9579f4125ec48d88dc8b7041b20a908ca1f31df358a3d8cd3</p>
+            <p class="body">On a Mac or Linux box:</p>
+            <p class="hash">shasum -a 256 pakperk-0.2.0-dev.apk</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="shell footer__inner">
+        <div>
+          <a class="wordmark" href="#main">
+            <svg class="mark" role="img" aria-label="Pakperk"><use href="#mark" /></svg>
+            Pakperk
+          </a>
+          <p class="footer__legal">Pakperk reads papers hosted on arXiv and is not affiliated with or endorsed by arXiv or Cornell University. Every paper links back to its original record.</p>
+        </div>
+        <nav class="footer__links" aria-label="Pakperk">
+          <a href="https://arxiv.org" rel="noopener noreferrer external">arXiv.org</a>
+          <a href="#flow">The read</a>
+          <a href="#download">Download</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

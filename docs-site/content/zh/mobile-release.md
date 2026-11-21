@@ -1,45 +1,45 @@
 # 移动端发布流程
 
-这是 Pakperk 移动端 `0.2.0+2` 的发布协议。生产版本 v0.0 是一个里程碑名称；它不允许降低包或商店构建版本。
+这是 Pakperk 移动端 `0.2.0+2` 的发布技术契约。Production v0.0 是一个里程碑名称；它不允许降低包版本或商店构建版本。
 
-## 艺术品身份矩阵
+## 产物身份矩阵
 
-| 环境 | Android 应用程序 ID | iOS 打包 ID | OIDC 回调 | App-link 主机 |
+| 环境 | Android 的应用 ID | iOS Bundle ID 值 | OIDC 回调 | 应用链接主机 |
 | --- | --- | --- | --- | --- |
-| development | `app.pakperk.pakperk.dev` | `app.pakperk.pakperk.dev` | `pakperk-auth-dev` | 仅限回环 HTTP |
-| staging | `app.pakperk.pakperk.staging` | `app.pakperk.pakperk.staging` | `pakperk-auth-staging` | `staging.pakperk.app` |
-| production | `app.pakperk.pakperk` | `app.pakperk.pakperk` | `pakperk-auth` | `pakperk.app` |
+| 开发环境 | `app.pakperk.pakperk.dev` | `app.pakperk.pakperk.dev` | `pakperk-auth-dev` | 仅回环 HTTP |
+| 预发布环境 | `app.pakperk.pakperk.staging` | `app.pakperk.pakperk.staging` | `pakperk-auth-staging` | `staging.pakperk.app` |
+| 生产环境 | `app.pakperk.pakperk` | `app.pakperk.pakperk` | `pakperk-auth` | `pakperk.app` |
 
-调试构建不能默认使用生产环境。测试和生产环境仅允许 HTTPS。所有变体的 Android 备份/恢复功能均被禁用。iOS 排除 Documents、Preferences、Application Support、SQLite 附加文件及其子项的备份，并在设备上应用 `completeUntilFirstUserAuthentication` 数据保护。
+调试构建绝不能默认使用生产环境配置。预发布环境与生产环境只允许 HTTPS。Android 的备份/恢复功能在每一个构建变体中都被禁用。iOS 会将 Documents、Preferences、Application Support、SQLite 附属文件及其子项排除在备份之外，并在设备上应用 `completeUntilFirstUserAuthentication` 数据保护。
 
-## 当前平台提交协议
+## 当前平台提交技术契约
 
-最终的构建产物，而不是 Gradle 或 Xcode 默认值，必须证明这些值：
+最终产物必须证明以下数值，而不是采用 Gradle 或 Xcode 的默认值：
 
-- Android 使用最低 API 24 和编译/目标 API 36。Google Play 要求新手机/平板应用和更新从 [2026 年 8 月 31 日](https://developer.android.com/google/play/requirements/target-sdk) 开始使用 Android 16/API 36。
-- Android 原生编译固定为 NDK `28.2.13676358`；更改此输入需要重新构建并重新运行档案对齐检查。
-- 因为 Pakperk 包含原生共享库，因此 APK 和 AAB 必须具有每个 `arm64-v8a` 和存在 `x86_64` ELF `LOAD` 段，且对齐至少为 16 KiB。APK 还必须通过 `zipalign -c -P 16 -v 4`。Google Play 的 [16 KiB 兼容性要求](https://developer.android.com/guide/practices/page-sizes) 自 2025 年 11 月 1 日起适用于新应用和更新，这些应用和更新的目标 API 为 35 或更高。
-- iOS 使用部署目标 15.0。Apple 将 iOS 15 识别为 Xcode 26 支持的 App Store 上传范围的下限，如其 [Xcode 系统要求](https://developer.apple.com/xcode/system-requirements) 所述。自 [2026 年 4 月 28 日](https://developer.apple.com/news/upcoming-requirements/?id=02032026a) 起，上传的 iOS 应用必须使用 Xcode 26 或更高版本和 iOS 26 SDK 或更高版本构建。
+- Android 使用最低 API 24 与编译/目标 API 36。Google Play 要求新的手机/平板应用及其更新使用 Android 16/API 36，此要求自 [31 年 2026 月](https://developer.android.com/google/play/requirements/target-sdk)起生效。
+- Android 的原生编译被固定为 NDK `28.2.13676358`；更改该输入需要重新构建并重新运行两项归档对齐检查。
+- 由于 Pakperk 打包了原生共享库，APK 与 AAB 都必须使每一个 `arm64-v8a` 以及存在的 `x86_64` ELF `LOAD` 分段，都对齐到至少 16 KiB。APK 还必须通过 `zipalign -c -P 16 -v 4`。Google Play 的[16 KiB 兼容性要求](https://developer.android.com/guide/practices/page-sizes)，自 1 年 2025 月起，已适用于面向 API 35 或更高版本的新应用及其更新。
+- iOS 使用 15.0 作为部署目标。Apple 将 iOS 15 认定为 Xcode 26 所支持 App Store 上传范围的下限，这记录在其[Xcode 系统要求](https://developer.apple.com/xcode/system-requirements)中。自 [28 年 2026 月](https://developer.apple.com/news/upcoming-requirements/?id=02032026a)起，上传的 iOS 应用必须使用 Xcode 26 或更高版本，以及 iOS 26 SDK 或更高版本构建。
 
-`verify_android_release_artifacts.sh` 会发出并要求最低 24、编译/目标 36、一个数值上最新的完整 Build-Tools 安装、16 KiB APK ZIP 对齐和 16 KiB 原生 ELF 对齐。它拒绝调试构建/仅测试归档、Android 调试证书、多个 APK 签名者和缺少 v2 和 v3/v3.1 签名的 APK。其 AAB 检查仅在临时信任库中信任提取的签名者，因此接受正常的自签名 Android 上传证书，而严格的 JAR 完整性、完整的签名、现代算法和 APK/AAB 指纹一致性仍然是强制性的。
+`verify_android_release_artifacts.sh` 会输出并要求最低 24、编译/目标 36、一个数值上最新的完整 Build-Tools 安装、16 KiB 的 APK ZIP 对齐，以及 16 KiB 的原生 ELF 对齐。它会拒绝可调试/仅测试用的归档文件、Android 调试证书、多个 APK 签名者，以及不同时具备 v2 与 v3/v3.1 签名的 APK。其 AAB 检查只在一个临时信任库中信任已提取的签名者，因此一个普通的自签名 Android 上传证书会被接受，同时严格的 JAR 完整性、完整签名、现代算法，以及 APK/AAB 指纹一致性仍是强制性的。
 
-`verify_ios_release_artifact.sh` 会从已签名的 IPA 中发出 Xcode、SDK、平台和最低 OS 元数据，并要求 Xcode/iOS SDK 26+、正好 iOS 15.0、未过期的 App Store 配置文件（不是开发、ad hoc 或企业）、配置文件授权的签名权限、精确的应用程序标识符、环境的精确 ATS 策略和源等效、跟踪为假的应用隐私清单。本地模拟器构建目前记录 Xcode 26.6 (`DTXcode=2660`) 和 SDK 26.5；这只是源代码/模拟器证据，不是已签名的 `iphoneos` IPA 门或 App Store 接受的替代品。
+`verify_ios_release_artifact.sh` 会输出 Xcode、SDK、平台与最低 OS 元数据（来自已签名的 IPA），并要求 Xcode/iOS SDK 26+、确切的 iOS 15.0、一份未过期的 App Store 预置描述文件（非开发、临时或企业版）、经描述文件授权的已签名 entitlement、一个确切的应用标识符、该环境确切的 ATS 策略，以及与来源一致的、不跟踪的应用隐私清单。本地模拟器构建目前记录的是 Xcode 26.6（`DTXcode=2660`）与 SDK 26.5；这只是源代码/模拟器证据，不能替代已签名的 `iphoneos` IPA 门禁或 App Store 验收。
 
-## 可重复的检查和构建
+## 可复现的检查与构建
 
-使用 Flutter `3.44.8`，框架版本为 `058e0af2c2b57e369d905a03ac9748b0ebf543c6`，其捆绑的 Dart `3.12.2`，在发布工作流中依赖解析之前检查的精确稳定 SDK 身份和完整的本地检查。不同的本地 SDK 仅作为开发证据；当其解析的 SDK 与工作流固定值不同时，发布元数据生成会失败。
+请使用 Flutter `3.44.8`，框架修订版本为 `058e0af2c2b57e369d905a03ac9748b0ebf543c6`，配合其内置的 Dart `3.12.2`，这是在发布工作流与完整本地检查中，于依赖解析之前所核验的确切稳定 SDK 身份。使用不同的本地 SDK 只是开发证据；当其解析出的 SDK 与工作流锁定版本不一致时，发布元数据生成将失败并拒绝。
 
-原生 Android 依赖解析和发布构建使用托管 arm64 macOS 运行器的 `JAVA_HOME_17_arm64`，仅在它报告 Eclipse Adoptium Temurin `17.0.19+10` 后。Ubuntu 安全证据独立使用 `JAVA_HOME_17_X64`。两者都保留 `java -version`，运行器漂移会阻止发布。在任何 gem 安装或 Bundler 执行之前，已签名的候选者需要 MRI Ruby `3.4.10` (`RUBY_ENGINE=ruby`) 和 RubyGems `4.0.17`，并记录解析的可执行文件和版本。商店上传使用从 RubyGems 下载的 Bundler `2.6.9`，在本地安装前验证其审查的 SHA-256，然后使用冻结的 Fastlane `2.235.0` 图，其中每个 gem 都有锁定文件校验和。
+原生 Android 依赖解析与发布构建，只有在托管的 arm64 macOS 运行器的 `JAVA_HOME_17_arm64` 报告为 Eclipse Adoptium Temurin `17.0.19+10` 之后，才会使用它；Ubuntu 安全证据则独立使用 `JAVA_HOME_17_X64`。两者都保留 `java -version`，且运行器出现偏差会阻塞发布。在任何 gem 安装或 Bundler 执行之前，已签名候选版本要求使用 MRI Ruby `3.4.10`（`RUBY_ENGINE=ruby`），配合 RubyGems `4.0.17`，并记录已解析的可执行文件与版本。商店上传使用从 RubyGems 下载的 Bundler `2.6.9`，在本地安装之前会针对其经评审的 SHA-256 进行验证，随后使用一个冻结的 Fastlane `2.235.0` 依赖图，其中每一个 gem 都具有一个锁文件校验和。
 
-启动器 PNG 是 canonical `mobile/assets/brand/pakperk_app_icon.svg` 的确定性输出。安装 `rsvg-convert` 和 ImageMagick 的 `magick` 后，每当 SVG 改变时，从仓库根目录重新生成它们：
+启动图标 PNG 是规范的 `mobile/assets/brand/pakperk_app_icon.svg` 的确定性输出结果。在安装了 `rsvg-convert` 与 ImageMagick 的 `magick` 之后，请在每次该 SVG 发生变化、且即将进行带品牌的发布之前，从仓库根目录重新生成它们：
 
 ```sh
 ./scripts/generate_mobile_icons.sh
 ```
 
-不要直接编辑生成的 PNG。生成器强制执行尺寸和透明度；源测试需要 Android 旧版、圆形、自适应和主题化单色声明以及完整的 iOS AppIcon 目录。
+请勿直接编辑生成的 PNG 文件。生成器会强制执行尺寸与不透明度要求；源代码测试要求 Android 旧版、圆形、自适应与主题化单色声明齐全，以及一份完整的不透明 iOS AppIcon 目录。
 
-从 `mobile/` 运行，使用仓库锁定的依赖图：
+请从 `mobile/` 目录下，使用仓库锁定的依赖图运行：
 
 ```sh
 flutter pub get --enforce-lockfile
@@ -55,17 +55,17 @@ flutter build ios --simulator --debug --flavor staging --dart-define-from-file=c
 flutter build ios --simulator --debug --flavor prod --dart-define-from-file=config/prod.json
 ```
 
-对于每个测试或生产制品，检查构建的制品而不是信任源配置：
+对于每一个预发布或生产环境产物，请检查已构建的产物本身，而不要只信任源代码配置：
 
 ```sh
 dart run tool/verify_strict_artifact_assets.dart PATH_TO_APK_AAB_IPA_OR_APP
 ```
 
-验证器需要元数据、法律回退和原生启动器资产。它拒绝所有通过路径、内容哈希或未经批准的资产路径的捆绑原型衍生资产，以及标准 Flutter 启动器或不完整的 Android 旧版/圆形/自适应/单色和 iOS 打包图标集。开发变体故意保留经过审查的演示衍生回退，并不是严格的制品。已签名制品验证还要求 iOS 1024x1024 市场版本为不透明。
+该验证器要求提供元数据、法务后备内容与原生启动器素材。它会按路径、内容哈希或未经批准的素材路径，拒绝每一个内置的、原型派生的素材，也会拒绝库存的 Flutter 启动器，或不完整的 Android 旧版/圆形/自适应/单色以及 iOS 打包图标集。开发构建变体有意保留经评审的、演示派生的后备内容，且不是严格产物。已签名产物的验证还额外要求 iOS 的 1024x1024 营销版本必须不透明。
 
-`PAKPERK_TERMS_DOCUMENT_VERSION` 和 `PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION` 在每个变体配置中是构建时绑定到捆绑接受文档中的发布标记。不匹配的构建配置会被拒绝，服务器广告较新版本会禁用接受，直到安装了更新的应用，已签名的发布证据记录两个精确版本。测试和生产签名还要求捆绑版本等于公共边缘验证使用的受保护 `PAKPERK_PUBLIC_DOCUMENT_VERSION`。
+每个构建变体配置中的 `PAKPERK_TERMS_DOCUMENT_VERSION` 与 `PAKPERK_COMMUNITY_GUIDELINES_DOCUMENT_VERSION`，是构建期与内置验收文档中发布标记之间的绑定。不匹配的构建配置会被拒绝；服务器公布了更新版本时，会一直禁用验收，直到已安装应用被更新为止；已签名发布证据会记录这两个确切版本。预发布环境与生产环境的签名，还要求这两个内置版本都等于公共边缘验证所使用的受保护 `PAKPERK_PUBLIC_DOCUMENT_VERSION`。
 
-在可用的模拟器上运行原生 iOS 保护测试（替换目标 ID）：
+请在一个可用的模拟器上运行原生 iOS 保护测试（请替换目标 ID）：
 
 ```sh
 xcodebuild test -quiet \
@@ -76,29 +76,29 @@ xcodebuild test -quiet \
   -disableAutomaticPackageResolution
 ```
 
-模拟器验证递归备份排除。当在物理设备上运行时，相同的测试保留额外的文件保护类断言，因为模拟器文件系统不暴露 iOS 数据保护类。
+该模拟器会验证递归的备份排除情况。当同一测试在物理设备上运行时，还会保留一项额外的文件保护类断言，因为模拟器文件系统不会公开 iOS 数据保护类。
 
 ## 受保护的签名输入
 
-永远不要提交签名材料或替换调试/个人身份。
+绝不能提交签名材料，也不能用调试/个人身份替代。
 
-手动 `signed-mobile-release` 工作流使用独立的新运行器信任域。无凭证准备作业仅接受经过审查的完整小写 `main` 提交，发出并不可变地上传配置/证据绑定，而在任何候选可执行文件运行之前，永不绑定受保护环境。独立的 Android 和 iOS 签名作业各自重新下载并重新推导该精确绑定，然后仅暴露各自的签名密钥家族。一个新鲜的无凭证作业验证并组装两个结果，形成规范的已签名候选和来源。商店客户端准备是单独无凭证的；新鲜的无检出 Android 和 iOS 上传作业仅接收各自的商店凭证，且一个始终运行的无凭证最终器在失败任何缺失或未成功请求的上传前保留每个平台的关闭结果。从 `main` 分支使用经过审查的完整提交 SHA；每个源边界拒绝精确检出或 `origin/main` 祖先不匹配。配置这些环境秘密：
+手动的 `signed-mobile-release` 工作流使用各自独立的全新运行器信任域。一个不含凭据的准备作业只接受经评审的、完整的小写 `main` 提交，会在任何候选可执行文件运行之前，发出并不可变地上传配置/证据绑定，并且绝不绑定受保护环境。独立的 Android 与 iOS 签名者作业，各自会重新下载并重新推导出那个确切的绑定，然后才公开各自的签名密钥族。一个全新的、不含凭据的作业会验证并组装这两个结果，形成规范的已签名候选版本与溯源信息。商店客户端的准备工作是单独不含凭据的；全新的、无需检出的 Android 与 iOS 上传作业，只接收各自的商店凭据，且一个始终运行的、不含凭据的收尾器，会在判定任何缺失或不成功的已请求上传为失败之前，保留封闭的、按平台划分的结果。请从 `main` 使用经评审的完整提交 SHA 进行派发；每一个来源边界都会拒绝确切检出或 `origin/main` 血统不匹配的情形。请配置以下这些环境密钥：
 
-- Android 构建签名：`PAKPERK_ANDROID_KEYSTORE_BASE64`、`PAKPERK_ANDROID_STORE_PASSWORD`、`PAKPERK_ANDROID_KEY_ALIAS` 和 `PAKPERK_ANDROID_KEY_PASSWORD`。
-- 已安装的 Play 身份用于测试/生产关联文件：`PAKPERK_ANDROID_APP_SIGNING_SHA256`。
-- 苹果签名：`PAKPERK_IOS_DISTRIBUTION_CERTIFICATE_BASE64`、`PAKPERK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`、`PAKPERK_IOS_PROVISIONING_PROFILE_BASE64`、`PAKPERK_DEVELOPMENT_TEAM` 和 `PAKPERK_IOS_PROVISIONING_PROFILE_SPECIFIER`。
-- 店铺上传，仅在 `upload_to_stores=true` 时需要：`PAKPERK_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64`、`PAKPERK_APP_STORE_CONNECT_ISSUER_ID`、`PAKPERK_APP_STORE_CONNECT_KEY_ID` 和 `PAKPERK_APP_STORE_CONNECT_PRIVATE_KEY_BASE64`。
+- Android 构建签名：`PAKPERK_ANDROID_KEYSTORE_BASE64`、`PAKPERK_ANDROID_STORE_PASSWORD`、`PAKPERK_ANDROID_KEY_ALIAS` 与 `PAKPERK_ANDROID_KEY_PASSWORD`。
+- 用于预发布/生产环境关联文件的已安装 Play 身份：`PAKPERK_ANDROID_APP_SIGNING_SHA256`。
+- Apple 签名：`PAKPERK_IOS_DISTRIBUTION_CERTIFICATE_BASE64`、`PAKPERK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`、`PAKPERK_IOS_PROVISIONING_PROFILE_BASE64`、`PAKPERK_DEVELOPMENT_TEAM` 与 `PAKPERK_IOS_PROVISIONING_PROFILE_SPECIFIER`。
+- 商店上传，仅在 `upload_to_stores=true` 时需要：`PAKPERK_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64`、`PAKPERK_APP_STORE_CONNECT_ISSUER_ID`、`PAKPERK_APP_STORE_CONNECT_KEY_ID` 与 `PAKPERK_APP_STORE_CONNECT_PRIVATE_KEY_BASE64`。
 
-环境审查者必须独立阅读每个商店中最高上传的构建，并将其输入工作流。无凭证准备门要求检查入的构建 `2` 大于两个值；它不能在上传凭证被有意隐瞒时推断私有商店历史。工作流始终签署两个平台。`upload_to_stores=true` 请求 Play 内部和 TestFlight 上传；没有单平台快捷方式可以静默省略一个请求的结果。
+环境评审者必须独立读取每个商店中已上传的最高版本，并将其录入工作流输入。不含凭据的准备门禁要求已纳入版本控制的构建 `2` 大于这两个数值；当上传凭据被有意保留时，它无法推断私有的商店历史记录。该工作流始终会为两个平台签名。`upload_to_stores=true` 会同时请求 Play 内部上传与 TestFlight 上传；不存在可以悄悄省略某一项已请求结果的单平台捷径。
 
-Android 发布构建需要以下所有内容：
+Android 发布构建要求以下全部内容：
 
 - `PAKPERK_ANDROID_STORE_FILE`
 - `PAKPERK_ANDROID_STORE_PASSWORD`
 - `PAKPERK_ANDROID_KEY_ALIAS`
 - `PAKPERK_ANDROID_KEY_PASSWORD`
 
-一个未跟踪的 `android/key.properties`，其中包含 `android/key.properties.example` 中显示的密钥，是本地等价物。Gradle 在值缺失或部分时会失败任何发布任务。使用以下命令生成已签名的候选：
+一个未纳入版本控制的 `android/key.properties`（其中的键与 `android/key.properties.example` 中所示相同）是其本地等效物。当数值缺失或不完整时，Gradle 会使任何发布任务失败。请使用以下命令产出已签名候选版本：
 
 ```sh
 flutter build appbundle --release --flavor dev --dart-define-from-file=config/dev.json
@@ -106,12 +106,14 @@ flutter build appbundle --release --flavor staging --dart-define-from-file=confi
 flutter build appbundle --release --flavor prod --dart-define-from-file=config/prod.json
 ```
 
+iOS 的 `Release-*` 配置会强制使用手动 Apple Distribution 签名，并要求由 CI 或已加入 gitignore 的 `ios/Flutter/LocalSigning.xcconfig` 提供受保护设置：
+
 - `PAKPERK_DEVELOPMENT_TEAM`
 - `CODE_SIGN_STYLE = Manual`
 - `CODE_SIGN_IDENTITY = Apple Distribution`
 - `PROVISIONING_PROFILE_SPECIFIER`
 
-The checked-in example contains placeholders only. Build signed candidates:
+已纳入版本控制的示例文件只包含占位符。请按以下方式构建已签名候选版本：
 
 ```sh
 flutter build ipa --release --flavor dev --dart-define-from-file=config/dev.json
@@ -119,172 +121,37 @@ flutter build ipa --release --flavor staging --dart-define-from-file=config/stag
 flutter build ipa --release --flavor prod --dart-define-from-file=config/prod.json
 ```
 
-Before either upload, compare `0.2.0+2` with the highest uploaded store version
-and build number. Increment the checked-in package version if it is not
-strictly newer; store history is external and cannot be inferred from Git.
+在进行任一项上传之前，请将 `0.2.0+2` 与已上传到商店的最高版本及构建号进行比较。如果它并非严格更新，请递增已纳入版本控制的包版本；商店历史记录是外部信息，无法从 Git 中推断得出。
 
-## Protected staged store rollout
+## 受保护的商店分阶段发布
 
-The signed-candidate workflow stops at Google Play's `internal` track and
-TestFlight. Public production mutation is a separate manual workflow,
-`protected-mobile-store-rollout`, bound to the fixed `production-store` GitHub
-environment. Configure that environment with required reviewers, restrict it to
-`main`, and provide the four store credentials listed above with only the store
-permissions needed to promote the exact Play release and manage the exact App
-Store version. A YAML environment name is not evidence that those protections
-were configured.
+已签名候选版本的工作流会在 Google Play 的 `internal` 轨道以及 TestFlight 处停止。公开的生产环境变更是一个独立的手动工作流 `protected-mobile-store-rollout`，绑定到固定的 `production-store` GitHub 环境。请为该环境配置所需的评审者，将其限定为 `main`，并提供上文列出的四项商店凭据，且只赋予推广确切 Play 发布版本与管理确切 App Store 版本所需的商店权限。一个 YAML 环境名称本身，并不能证明那些保护措施已被配置。
 
-Before exposing store credentials, the protected gate must keep two identities
-separate. An uncredentialed bootstrap checks out trusted tooling at the reviewed
-`github.workflow_sha`; the immutable candidate source is a data-only input and
-must never supply credentialed executable code. The bootstrap produces an
-immutable store-client/control closure. Every executable in that closure has a
-workflow-literal SHA-256 that the fresh Android and iOS mutation jobs verify
-before use; those jobs perform no checkout, receive no candidate-provided
-executable, clear shell/language/loader/proxy injection surfaces, and expose
-only the credential for their own platform. Before any candidate artifact is
-accepted or store credential is materialized, the bootstrap queries GitHub's
-Actions API for the supplied run ID. It requires the exact repository,
-`signed-mobile-release` workflow path, `workflow_dispatch` event, `main` branch,
-source SHA, successful completed status and run attempt, plus the exact
-all-success eight-job surface: credential-free preparation, isolated Android
-and iOS signers, `production signed candidate`, uncredentialed store-client
-bootstrap, isolated Android and iOS uploads, and the credential-free signed-
-release finalizer. It then requires one non-expired, attempt-bound candidate,
-handoff, and signed-release-outcome artifact with distinct server-issued IDs
-and SHA-256 digests, and downloads those artifacts by immutable ID (with digest
-mismatch as an error). The exact artifact names are
-`pakperk-production-<version>-<build>-<sha>-<run-id>-<attempt>` and
-`pakperk-production-store-handoff-<version>-<build>-<sha>-<run-id>-<attempt>`,
-plus
-`pakperk-production-store-outcome-<version>-<build>-<sha>-<run-id>-<attempt>`.
-The handoff
-is created only after Play independently reports the exact version code as a
-completed singleton on `internal` and returns the server-side bundle SHA-256
-matching the candidate AAB; App Store Connect must report the exact iOS
-app/build/pre-release-version relationship in `VALID` processing state and a
-single completed `buildUpload` whose direct `build` relationship is that Build
-ID. Its direct `assetFile` must be a completed `ASSET` with UTI
-`com.apple.ipa`, the candidate IPA's exact byte size, and a
-`sourceFileChecksums.file` SHA-256 equal to the candidate IPA digest. The
-gate validates the authenticated canonical Actions record, the
-canonical candidate, provenance, and handoff bytes, the candidate and
-provenance `sha256:` content IDs, production/strict flavor,
-source/version/build/application identities, artifact signer bindings,
-repository/workflow/job/stage, signed-release run ID and run attempt, local AAB
-and IPA hashes, and both authoritative upload readbacks. The handoff uses a
-distinct `store-handoff-v1:sha256:` content ID. The signed-release
-source must equal its recorded workflow revision. A typed content ID without
-the corresponding downloaded bytes, a control closure that differs from its
-literal workflow hashes, a trusted bootstrap checkout that differs from
-`github.workflow_sha`, or candidate-authored code receiving store credentials
-blocks the gate.
+在公开商店凭据之前，受保护门禁必须使两个身份保持独立。一个不含凭据的引导过程，会检出在经评审的 `github.workflow_sha` 处的受信任工具；不可变的候选版本来源是仅数据输入，绝不能提供带凭据的可执行代码。该引导过程会产出一个不可变的商店客户端/控制闭包。该闭包中的每一个可执行文件，都具有一个工作流字面量 SHA-256，全新的 Android 与 iOS 变更作业会在使用之前验证它；这些作业不执行任何检出，不接收任何候选提供的可执行文件，清除 shell/语言/加载器/代理注入面，并且只公开各自平台自己的凭据。在任何候选产物被接受、或任何商店凭据被具体化之前，该引导过程会针对所提供的运行 ID 查询 GitHub 的 Actions API。它要求确切的仓库、`signed-mobile-release` 工作流路径、`workflow_dispatch` 事件、`main` 分支、来源 SHA、成功完成的状态与运行尝试，加上确切的、全部成功的八项作业构成：不含凭据的准备、隔离的 Android 与 iOS 签名者、`production signed candidate`、不含凭据的商店客户端引导、隔离的 Android 与 iOS 上传，以及不含凭据的已签名发布收尾器。随后，它要求一个未过期的、与尝试绑定的候选版本、交接与已签名发布结果产物，且各自具有不同的服务端签发 ID 与 SHA-256 摘要，并按不可变 ID 下载这些产物（摘要不匹配即视为错误）。确切的产物名称是 `pakperk-production-<version>-<build>-<sha>-<run-id>-<attempt>` 与 `pakperk-production-store-handoff-<version>-<build>-<sha>-<run-id>-<attempt>`，外加 `pakperk-production-store-outcome-<version>-<build>-<sha>-<run-id>-<attempt>`。只有在 Play 独立报告确切的版本代码，作为 `internal` 上的一个已完成单例，并返回服务端 bundle SHA-256（其与候选版本 AAB 相匹配）之后，交接文件才会被创建；App Store Connect 必须报告确切的 iOS 应用/构建/预发布版本关系（处于 `VALID` 处理状态），以及一个已完成的、单一的 `buildUpload`，其直接的 `build` 关系正是该 Build ID。其直接的 `assetFile` 必须是一个已完成的 `ASSET`，具有 UTI `com.apple.ipa`、候选版本 IPA 的确切字节大小，以及一个 `sourceFileChecksums.file` SHA-256（其等于候选版本 IPA 摘要）。该门禁会验证已认证的规范 Actions 记录、规范的候选版本、溯源信息与交接字节、候选版本与溯源信息的 `sha256:` 内容 ID、生产/严格构建变体、来源/版本/构建/应用身份、产物签名者绑定、仓库/工作流/作业/阶段、已签名发布的运行 ID 与运行尝试、本地的 AAB 与 IPA 哈希，以及两次权威的上传回读。该交接使用一个独立的 `store-handoff-v1:sha256:` 内容 ID。已签名发布的来源，必须等于其记录的工作流修订版本。一个没有对应已下载字节的、带类型的内容 ID，一个与其字面量工作流哈希不同的控制闭包，一个与 `github.workflow_sha` 不同的受信任引导检出，或者候选版本自身编写的代码接收到商店凭据，都会阻塞该门禁。
 
-First classify each selected platform as an update or its first public
-production version from the independent store history. Do not infer that state
-from Git. The protected staged workflow is update-only. For a normal update:
+请先根据独立的商店历史记录，将每一个所选平台分类为一次更新，或其首个公开生产版本。请勿从 Git 中推断该状态。受保护的分阶段工作流仅适用于更新。对于一次正常更新：
 
-1. Dispatch `signed-mobile-release` for `production` with
-   `upload_to_stores=true`. Wait for the exact AAB to reach Play `internal` and
-   the exact IPA/build to finish TestFlight processing. Retain its run ID,
-   candidate ID, provenance ID, verified store-handoff ID, and
-   protected-environment approval. A successful upload process without the
-   verified handoff is not rollout-eligible.
-   Immediately before each binary send, the workflow fsyncs an owner-only
-   attempt journal bound to the candidate/provenance IDs, exact AAB or IPA
-   digest and byte size, destination, run attempt, source, version, and build.
-   The iOS verification must match both values from that pre-send journal and
-   retain the App Store BuildUpload and BuildUploadFile resource IDs. It retains an
-   always-run `mobile-store-upload-attempt-<run-id>-<attempt>` artifact. A
-   journal without authoritative store readback is
-   `unknown_reconcile_required`, even when the upload client lost only its
-   success response.
-2. Reconcile the two portal records with the signed manifest. Confirm the
-   privacy, age-rating, reviewer-flow, physical-device, performance, crash,
-   legal, and safety gates for this exact build. For Play, identify an eligible
-   prior completed production release that can remain the fallback throughout
-   the update; no prior fallback means this is a first publication and the
-   staged workflow is prohibited. For iOS `start`, identify the exact prior
-   public version; the trusted App Store Connect client must resolve exactly
-   one matching iOS record in current
-   [`appVersionState`](https://developer.apple.com/documentation/appstoreconnectapi/appversionstate)
-   `READY_FOR_DISTRIBUTION`, and the exact target version must be
-   `PREPARE_FOR_SUBMISSION` or `READY_FOR_REVIEW`. No matching prior public
-   version means this is a first publication and the staged workflow refuses
-   it.
-3. Dispatch `protected-mobile-store-rollout` from `main` with operation
-   `start`, the exact signed-release identities (including the store-handoff
-   ID), platform scope, a sanitized
-   change ID, and confirmation `MUTATE_PRODUCTION_MOBILE_STORES`. Android
-   `start` also requires `android_previous_production_version_code`, expected
-   fraction `none`, and target fraction `0.01`; iOS `start` requires
-   `ios_previous_public_version`. Android promotes only that version code from
-   `internal` to a one-percent `production` rollout. After the exact App Store
-   update preflight, iOS submits only that TestFlight build for review with
-   automatic phased release enabled, then requires the exact target phased
-   resource to be `INACTIVE` before it records submission success.
-4. Keep Android at one percent for the approved observation window. Before
-   every `advance`, require no release-blocking alert, the exact-candidate
-   performance checks, at least 99.5% crash-free sessions, and release-owner
-   approval. The reviewed Android fractions are `0.02`, `0.05`, `0.10`,
-   `0.20`, and `0.50`; `complete` is the only operation that accepts `1.00`.
-   Apple's seven-day percentage progression is automatic, so an iOS
-   `advance` observes and retains the current phased-release state rather than
-   forcing a percentage; an `advance` succeeds only from exact `ACTIVE`, while
-   pause/complete are re-observed after the API mutation. Apple documents the
-   phased update schedule and pause
-   behavior in [App Store Connect Help](https://developer.apple.com/help/app-store-connect/update-your-app/release-a-version-update-in-phases/).
-5. Immediately before each live commit/PATCH/submission, write and `fsync` an
-   owner-only attempt journal containing the exact reviewed store pre-state and
-   `unknown_reconcile_required`. Only an authoritative postflight may replace
-   that classification in the receipt with `succeeded_verified`; any error
-   after the send begins remains `unknown_reconcile_required` until an operator
-   reconciles the portal. Other closed classifications are `not_attempted`,
-   `rejected_pre_mutation`, and `proven_not_committed`. In a combined rollout,
-   the receipt requires the canonical journal and postflight to cross-match
-   their pre-state/resource identities. A result without that journal, or with
-   duplicate/non-finite/non-canonical JSON, remains
-   `unknown_reconcile_required`. Apple is not attempted unless Android has this
-   fully journal-bound `succeeded_verified` state, not merely a successful step
-   exit. Upload the receipt before the workflow reports a final
-   failure, and reconcile every unknown state before any retry.
-6. Reconcile every platform outcome with the stores' independent audit/history
-   record. Each content-addressed record binds trusted-tooling revision,
-   candidate source, signed candidate/provenance/handoff, authenticated
-   signed-release run/job/artifact IDs and digests, workflow revision,
-   version/build, requested transition, sanitized change ID,
-   pre/post state, and result. A workflow receipt is not store approval,
-   propagation, crash evidence, or proof that an environment reviewer actually
-   inspected the portal.
+1. 派发 `signed-mobile-release`（目标为 `production`），并设置 `upload_to_stores=true`。等待确切的 AAB 到达 Play 的 `internal`，并等待确切的 IPA/构建完成 TestFlight 处理。请保留其运行 ID、候选版本 ID、溯源信息 ID、已验证的商店交接 ID，以及受保护环境批准。没有已验证交接的成功上传过程，不具备分阶段发布资格。在每次发送二进制文件之前，该工作流都会立即将一份仅限所有者访问的尝试日志进行 fsync，该日志绑定到候选版本/溯源信息 ID、确切的 AAB 或 IPA 摘要与字节大小、目标地、运行尝试、来源、版本与构建。iOS 验证必须与那份发送前日志中的两个数值都相匹配，并保留 App Store 的 BuildUpload 与 BuildUploadFile 资源 ID。它会保留一个始终运行的 `mobile-store-upload-attempt-<run-id>-<attempt>` 产物。一份没有权威商店回读的日志会是 `unknown_reconcile_required`，即便上传客户端只是丢失了成功响应也是如此。
+2. 将两个门户记录与已签名清单进行对账。针对这个确切构建，确认隐私、年龄分级、审核者流程、物理设备、性能、崩溃、法务与安全门禁。对于 Play，请识别一个符合条件的、此前已完成的生产发布版本，它能在本次更新期间一直充当回退版本；没有此前的回退版本，就意味着这是首次发布，此时禁止使用分阶段工作流。对于 iOS 的 `start`，请识别确切的此前公开版本；受信任的 App Store Connect 客户端必须恰好解析出一条匹配的 iOS 记录，该记录处于当前的 [`appVersionState`](https://developer.apple.com/documentation/appstoreconnectapi/appversionstate) `READY_FOR_DISTRIBUTION`，且确切的目标版本必须是 `PREPARE_FOR_SUBMISSION` 或 `READY_FOR_REVIEW`。没有匹配的此前公开版本，就意味着这是首次发布，分阶段工作流会拒绝执行。
+3. 派发 `protected-mobile-store-rollout`（来自 `main`），操作为 `start`，附带确切的已签名发布身份（包括商店交接 ID）、平台范围、一个经脱敏的变更 ID，以及确认信息 `MUTATE_PRODUCTION_MOBILE_STORES`。Android 的 `start` 还需要 `android_previous_production_version_code`、预期比例 `none`，以及目标比例 `0.01`；iOS 的 `start` 需要 `ios_previous_public_version`。Android 只会将该版本代码从 `internal` 推广到百分之一的 `production` 分阶段发布。在确切的 App Store 更新预检之后，iOS 只会提交该 TestFlight 构建以供评审，并启用自动分阶段发布，随后要求确切的目标分阶段资源为 `INACTIVE`，之后才会记录提交成功。
+4. 在已批准的观测窗口内，将 Android 保持在百分之一。在每一次 `advance` 之前，要求不存在任何阻塞发布的告警、确切候选版本的性能检查通过、至少 99.5% 的无崩溃会话率，以及发布负责人批准。经评审的 Android 比例为 `0.02`、`0.05`、`0.10`、`0.20` 与 `0.50`；只有 `complete` 操作才接受 `1.00`。Apple 的七天百分比推进是自动的，因此一个 iOS
+`advance` 会观测并保留当前的分阶段发布状态，而不是强制设定一个百分比；`advance` 只有从确切的 `ACTIVE` 状态才会成功，而暂停/完成操作会在 API 变更操作之后被重新观测。Apple 在 [App Store Connect Help](https://developer.apple.com/help/app-store-connect/update-your-app/release-a-version-update-in-phases/) 中记录了分阶段更新的时间表与暂停行为。
+5. 在每一次实时提交/PATCH/提交操作之前，立即写入并 `fsync` 一份仅限所有者访问的尝试日志，其中包含经评审的确切商店前置状态与 `unknown_reconcile_required`。只有权威的发送后检查，才可以将回执中的该分类替换为 `succeeded_verified`；发送开始之后出现的任何错误，都会一直保持为 `unknown_reconcile_required`，直到某位操作人员对门户进行对账为止。其他封闭分类包括 `not_attempted`、`rejected_pre_mutation` 与 `proven_not_committed`。在一次组合分阶段发布中，回执要求规范日志与发送后检查，就前置状态/资源身份进行交叉匹配。一个没有该日志、或包含重复/非有限/非规范 JSON 的结果，会一直保持为 `unknown_reconcile_required`。除非 Android 具有这个完全绑定日志的 `succeeded_verified` 状态，而不仅仅是一个成功的步骤退出状态，否则不会尝试 Apple 侧操作。请在工作流报告最终失败之前上传该回执，并在任何重试之前，对每一个未知状态进行对账。
+6. 将每一个平台的结果，与各商店独立的审计/历史记录进行对账。每条内容寻址的记录都绑定了受信任的工具修订版本、候选版本来源、已签名的候选版本/溯源信息/交接文件、已认证的已签名发布运行/作业/产物 ID 与摘要、工作流修订版本、版本/构建、所请求的状态迁移、经脱敏的变更 ID、迁移前后状态，以及结果。一份工作流回执并不等同于商店批准、传播完成、崩溃证据，或环境评审者确实检查过门户的证明。
 
-The rollout workflow enforces that sequence with exactly four trust domains:
-an uncredentialed bootstrap, an Android-only-secret mutation job, an
-iOS-only-secret mutation job, and a credential-free `always()` finalizer. For a
-`both` transition, the iOS job downloads by immutable artifact ID and validates
-the Android outcome and journal as `succeeded_verified` before any Apple
-mutation. Each selected platform cleans up its secret and uploads an immutable
-outcome even when the mutation fails; the finalizer then emits the canonical
-schema-v4 aggregate and fails on a missing or unsuccessful selected outcome.
-That aggregate binds the authenticated signed run, candidate, provenance,
-handoff, source, version/build, and requested transition, including exact
-unselected and dependency-skip semantics. GitHub's raw 64-hex upload-artifact
-digest is retained in evidence only after canonical conversion to
-`sha256:<hex>` and cross-checking against the server result.
+该分阶段发布工作流通过恰好四个信任域来强制执行这一顺序：一个不含凭据的引导过程、一个仅持有 Android 密钥的变更作业、一个仅持有 iOS 密钥的变更作业，以及一个不含凭据的 `always()` 收尾器。对于一次 `both` 状态迁移，iOS 作业会按不可变产物 ID 下载，并在任何 Apple 侧变更之前，将 Android 结果与日志验证为 `succeeded_verified`。每一个被选中的平台都会清理其密钥，并上传一个不可变结果，即使变更失败也是如此；随后收尾器会发出规范的 schema-v4 聚合结果，并在任何已选结果缺失或不成功时判定失败。该聚合结果绑定已认证的已签名运行、候选版本、溯源信息、交接文件、来源、版本/构建，以及所请求的状态迁移，包括确切的未选中与依赖跳过语义。GitHub 原始的 64 位十六进制上传产物摘要，只有在规范转换为 `sha256:<hex>` 并与服务端结果交叉核对之后，才会被保留为证据。
 
-谷歌和苹果只允许分阶段/分步发布更新。谷歌表示，首次生产版本会发布到选定国家的100%，并提供无发布比例控制；使用单独批准的首次Play发布流程，而不是`protected-mobile-store-rollout`。保留精确的无先前生产前状态、候选/来源和签名发布绑定、国家、审核/管理发布状态、100%发布操作和UTC时间、观察到的后状态/可用性、独立门户审计和商店所有者批准。详见[Play的首次发布和更新流程](https://support.google.com/googleplay/android-developer/answer/9859348)。
+Google 与 Apple 都只允许针对更新使用分阶段/分批发布。Google 规定，首次生产发布会向所选国家/地区的 100% 发布，且不提供分阶段发布比例控制；请使用一个单独批准的首次 Play 发布流程，而不是 `protected-mobile-store-rollout`。请保留确切的无此前生产版本前置状态、候选版本/溯源信息与已签名发布绑定、国家/地区、评审/受管理发布状态、100% 发布操作与 UTC 时间、观测到的发布后状态/可用性、独立的门户审计，以及商店负责人批准。参见 [Play 的首次发布与更新流程](https://support.google.com/googleplay/android-developer/answer/9859348)。
 
-苹果的分阶段发布同样不适用于首次公开版本。对于首次iOS发布，应排除iOS的分阶段流程，使用单独批准的手动发布流程。保留精确的无先前公开版本前状态；候选/来源和签名发布绑定；应用/版本/构建和提交身份；提交时间和审核结果；选定的`Manually release this version`设置；发布前的`Pending Developer Release`状态；所有者批准；精确的`Release This Version`操作/时间以及观察到的发布后可用性，或故意保留的状态和决定。
-该记录不得声称存在苹果的分阶段状态。详见[App Store版本发布选项](https://developer.apple.com/help/app-store-connect/manage-your-apps-availability/select-an-app-store-version-release-option/)。
-当一个平台是更新，另一个是首次公开版本时，将保护的分阶段流程仅限于更新，并在同一个发布账本中保留单独的首次发布证据。Fastlane的审核商店操作记录在[Google Play](https://docs.fastlane.tools/actions/upload_to_play_store/)和[App Store](https://docs.fastlane.tools/actions/upload_to_app_store/)中。
+Apple 的分阶段发布同样不适用于首个公开版本。对于首次 iOS 发布，请将 iOS 从分阶段工作流中排除，并使用一个单独批准的手动发布流程。请保留确切的无此前公开版本前置状态；候选版本/溯源信息与已签名发布绑定；应用/版本/构建与提交身份；提交时间与评审结果；所选的 `Manually release this version` 设置；发布之前的 `Pending Developer Release` 状态；负责人批准；确切的 `Release This Version` 操作/时间与观测到的发布后可用性，或有意扣留的状态与决定。该记录绝不能声称存在 Apple 分阶段状态。参见 [App Store 版本发布选项](https://developer.apple.com/help/app-store-connect/manage-your-apps-availability/select-an-app-store-version-release-option/)。当一个平台是更新、而另一个平台是首个公开版本时，请将受保护的分阶段工作流范围限定为仅适用于该更新，并将独立的首次发布证据保留在同一份发布台账中。Fastlane 经评审的商店操作，分别记录在 [Google Play](https://docs.fastlane.tools/actions/upload_to_play_store/) 与 [App Store](https://docs.fastlane.tools/actions/upload_to_app_store/) 的文档中。
 
-在完成前的`halt`是Pakperk自动化流程中该候选的终止点。它会停止精确的Play分阶段更新并暂停精确的苹果分阶段更新。已经收到Android更新的用户将保留该更新。苹果明确允许在自动分发暂停期间，任何用户手动下载分阶段更新，因此暂停不是暴露的截止点。当这减少危害时，使用独立的功能开关禁用受影响的后端创建/写入，保留安全的访客读取，记录手动下载的残留暴露，并通过更高版本的构建修复所有签名候选和保护门。
+一次完成前的 `halt`，对 Pakperk 自动化流程中的该候选版本而言是终态的。它会停止确切的 Play 分阶段更新，并暂停确切的 Apple 分阶段更新。已经收到 Android 更新的用户会保留该更新。Apple 明确允许任何用户在自动分发暂停期间，仍手动下载一次分阶段更新，因此暂停并不等同于完全切断曝光。在能够降低危害时，请使用独立的功能开关禁用受影响的后端创建/写入操作，保留安全的访客读取，记录手动下载所造成的残余曝光，并通过每一个已签名候选版本与受保护门禁，使用更高版本号的构建进行前向修复。
 
-当Android更新达到100%后，可以使用单独的保护Play完整发布暂停，使该版本再次对新用户和符合条件的用户可用，但它不会降级安装了不良版本的设备。记录精确的先前回退以及Play前/后状态和所有者决定。谷歌不允许在轨道的首次发布中进行此操作。没有等效的iOS回滚；使用功能开关和更高版本的修复前构建。详见[Play的完整发布暂停限制](https://support.google.com/googleplay/android-developer/answer/16285429)。
-服务器回滚使用兼容的镜像/功能开关，从不使用自动SQL降级。
+在一次 Android 更新达到 100% 之后，一个独立的、受保护的 Play 全面发布暂停操作，可以使确切的、符合条件的、此前已完成的版本，重新面向新用户与符合条件的用户可用，但它不会使已安装该问题版本的设备降级。请记录确切的此前回退版本，加上 Play 发布前/后状态与负责人决定。Google 不允许对某个轨道的首次发布执行此操作。不存在等效的 iOS 回滚；请使用功能开关与更高版本号的前向修复构建。参见 [Play 的全面发布暂停限制](https://support.google.com/googleplay/android-developer/answer/16285429)。服务端回滚使用兼容的镜像/功能开关，且绝不使用自动 SQL 降级。
 
-## 关联和签名工件门
+## 关联与已签名产物门禁
 
-该流程从本地签名的工件中提取Android包/版本和**上传密钥**证书，并要求AAB和APK匹配。该证书仅作为上传授权证据：在Play应用签名中，谷歌使用不同的应用签名证书对安装的APK进行签名。从受保护的Play控制台记录中读取其SHA-256指纹，并存储为`PAKPERK_ANDROID_APP_SIGNING_SHA256`；从不要用`assetlinks.json`中的上传密钥摘要替换。该流程从签名的IPA/配置文件中提取Apple团队/捆绑身份。生成受保护的关联文件，然后运行`docs/mobile-app-links.md`中描述的仓库验证器：
+该工作流会从两个本地已签名产物中，提取 Android 包/版本与 **上传密钥** 证书，并要求 AAB 与 APK 相匹配。该证书只是上传授权证据：在启用 Play App Signing 的情况下，Google 会使用一个不同的应用签名证书为已安装的 APK 签名。请从受保护的 Play Console 记录中读取其 SHA-256 指纹，并将其存储为 `PAKPERK_ANDROID_APP_SIGNING_SHA256`；绝不能在 `assetlinks.json` 中替换为上传密钥摘要。该工作流会从已签名的 IPA/描述文件中提取 Apple 团队/bundle 身份。请渲染受保护的关联文件，然后运行 `docs/mobile-app-links.md` 中所述的仓库验证器：
 
 ```sh
 PAKPERK_RELEASE_ENV=production \
@@ -296,123 +163,167 @@ PAKPERK_APPLE_BUNDLE_ID=app.pakperk.pakperk \
   assetlinks.json apple-app-site-association
 ```
 
-除非部署的`/.well-known/` URL直接返回HTTP 200，使用`application/json`，精确匹配这些签名身份，并在物理设备上打开有效的`/p/*`和`/arxiv/*`链接，否则发布将被阻止。重定向、通配符、过期指纹或占位符值将导致门禁失败。
+除非已部署的两个 `/.well-known/` URL 都直接返回 HTTP 200、使用 `application/json`、确切匹配那些已签名身份，并且能在物理设备上打开有效的 `/p/*` 与 `/arxiv/*` 链接，否则发布会被阻塞。重定向、通配符、陈旧指纹或占位符取值，都会导致该门禁失败。
 
-保留Android身份的证据：验证器的`android_upload_sha256`证明哪个受保护密钥生成了候选，`android_play_app_signing_sha256`证明安装的Play应用将向Android链接验证呈现哪个证书。
+请在证据中保留这两个 Android 身份：验证器的 `android_upload_sha256` 证明是哪一个受保护密钥产出了该候选版本，而 `android_play_app_signing_sha256` 证明的是已安装的 Play 应用，将向 Android 链接验证呈现哪一个证书。
 
-签名的Android证据还必须保留`android_min_sdk=24`，`android_compile_sdk=36`，`android_target_sdk=36`，所选的构建工具版本，`android_apk_zip_alignment=16384`，以及每个归档的本地库计数加上`android_native_elf_load_alignment=16384`。签名的Apple证据必须保留发出的Xcode/SDK/最低OS值，配置文件过期时间，权限结果和打包的隐私清单结果。
+已签名的 Android 证据还必须保留 `android_min_sdk=24`、`android_compile_sdk=36`、`android_target_sdk=36`、所选的 Build-Tools 版本、`android_apk_zip_alignment=16384`，以及按归档统计的原生库数量，加上 `android_native_elf_load_alignment=16384`。已签名的 Apple 证据必须保留所输出的 Xcode/SDK/最低 OS 数值、预置描述文件的过期时间、entitlement 结果，以及打包后的隐私清单结果。
 
-### 受保护的移动功能标志
+### 受保护的移动端功能开关
 
-检查入的生产配置保持账户、库和评论关闭。检查入的测试环境启用它们，以便普通调试构建可以测试完整的功能组合，但绝不会以原样用于签名候选。对于测试和生产环境，签名候选流程会生成一个临时构建配置，并将所有受保护功能默认设置为关闭，除非这些GitHub环境变量显式启用：
+已纳入版本控制的生产配置，会将全部 27 个受保护的移动端能力开关都保持关闭。已纳入版本控制的预发布测试夹具只启用了既定的账户/Library/评论组合，而 24 个与候选版本绑定的 To Read First、Plan 02 与 Plan 03 开关保持关闭，但它绝不会被原样用于一个已签名候选版本。受保护的证据 schema 会控制并绑定以下这既定的十七个开关：
 
 - `PAKPERK_ACCOUNTS_ENABLED`
 - `PAKPERK_LIBRARY_ENABLED`
 - `PAKPERK_COMMENTS_ENABLED`
+- `PAKPERK_PAPER_TITLE_SEARCH_ENABLED`
+- `PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED`
+- `PAKPERK_READING_FEED_ENABLED`
+- `PAKPERK_TO_READ_FIRST_ENFORCEMENT_ENABLED`
+- `PAKPERK_LIBRARY_V2_ENABLED`
+- `PAKPERK_RECOMMENDATIONS_ENABLED`
+- `PAKPERK_RECOMMENDATION_EVENTS_ENABLED`
+- `PAKPERK_SEARCH_LOOKUP_ENABLED`
+- `PAKPERK_SEARCH_EXPLORE_ENABLED`
+- `PAKPERK_SAVED_QUERIES_ENABLED`
+- `PAKPERK_RESEARCH_PROFILES_ENABLED`
+- `PAKPERK_READING_BRIEFS_ENABLED`
+- `PAKPERK_SUBSCRIPTIONS_ENABLED`
+- `PAKPERK_NOTIFICATIONS_ENABLED`
 
-每个值必须是精确的`true`或`false`；缺失的值解析为`false`。除非账户也启用，否则库或评论不能启用。在受保护的`staging`和`production`环境中定义它们，要求在这些环境中进行发布审核者/分支限制，并且只能通过发布审批记录更改它们。它们是非秘密变量，从不发送输入或仓库默认值。该流程在`mobile-feature-flags.json`中保留它们的三个布尔值，并从相同的生成配置构建两个平台。保持独立控制的后端读/写/创建标志兼容；移动标志不授权服务器功能。
+源配置还包含以下这十个默认关闭的 Plan 03 控制项：
 
-## 移动验证通道
+- `PAKPERK_DEEP_READER_ENABLED`
+- `PAKPERK_PAPER_PASSPORT_ENABLED`
+- `PAKPERK_SEMANTIC_FACETS_ENABLED`
+- `PAKPERK_DOCUMENT_VISUAL_OBJECTS_ENABLED`
+- `PAKPERK_READING_CHECKPOINTS_ENABLED`
+- `PAKPERK_ANNOTATIONS_ENABLED`
+- `PAKPERK_EVIDENCE_CARDS_ENABLED`
+- `PAKPERK_RESEARCH_MEMORY_ENABLED`
+- `PAKPERK_VERSION_DIFF_ENABLED`
+- `PAKPERK_ASSISTANT_V2_ENABLED`
 
-普通的CI和签名候选流程运行`dart format`，`flutter analyze`和完整的`flutter test`套件。该套件包括无头的确定性生产环境。它通过受控的测试用例证明本地状态机、缓存、出站、分页、策略和有界小部件不变量；它不是物理设备或部署服务的证据。
+Schema-v6 功能证据与 schema-v4 候选版本/溯源信息清单，现在绑定了这十个数值，且受保护的验收 schema v6 定义了十个 Plan 03 场景。这只是弥合了仓库技术契约方面的缺口。没有签名设备运行、隐私/法务批准、人工评审、实时模型结果、预发布金丝雀检测或发布批准被纳入检查范围；那些门禁仍为 `not_ready`，且启用了某个 Plan 03 数值的候选版本，在没有完整的受保护证据捆绑包时，不能被发布。
 
-手动触发的`mobile-device-integration`流程在显式选择的物理Android或iOS设备上以配置文件模式运行相同的确定性环境。受保护的运行器拒绝模拟器，并保留封闭的平台/操作系统版本记录，至少20个引擎帧样本，一个30条记录的缓存首页加上六个确定性游标页面，覆盖恰好200条记录，10个生成的Flutter拖动和10个生成的Flutter快速滑动，一个基于文件的500页/100保存SQLite测量，包括其WAL/SHM文件，以及一个机器可读的范围文件。它从不上传原始的Flutter日志、设备ID或用户分配的设备名称；分发ID在流程输出中被掩码。生成的`WidgetTester`手势在选定的设备上测试Flutter的指针、手势竞技场、滚动和页面提交路径，但在代表性的网络条件下不计为操作员/操作系统驱动器手势。其性能JSON被分类为测试用例负载，不得用作测试阶段p95或签名候选证据。在附加运行器之前，在固定的`mobile-device-verification` GitHub环境中配置所需的审核者和部署分支限制；YAML名称本身不会使环境受保护。仅将精确的Flutter设备标识符存储为该环境的`PAKPERK_MOBILE_DEVICE_ID`秘密；从不将其作为流程分发输入传递，因为运行元数据保留输入在日志掩码之外。这是隐私/不保留控制，而不是凭证隔离边界：选定的Flutter命令和审核的候选测试必然使用该标识符，并且已经获得了对附加物理设备的授权访问。不要在此测试通道中放置账户凭证或特权设备管理令牌，也不要声称原始选择器未隐藏在候选流程中。分发还要求一个显式的全小写`source_revision`，等于选定的`main`修订和获取的`origin/main`尖端，以及精确的确认短语。这防止了绿色测试用例探针附加到不同的源修订。
+每个数值必须确切为 `true` 或 `false`；缺失的数值会解析为 `false`。除非账户功能也为 true，否则 Library、评论或标题搜索都无法启用。导入写入与阅读 Feed 都需要账户与 Library 两者，且 To Read First 的强制执行需要阅读 Feed。Library v2 需要账户与 Library。推荐与订阅需要账户、Library 与阅读 Feed。Explore 需要 Lookup；已保存查询需要账户与 Explore。研究资料需要账户，阅读简报需要阅读 Feed，通知需要订阅。推荐事件投递是独立门控的，不依赖任何推荐功能；运行时收集仍需要相应的同意。Deep Reader 需要账户、Library、阅读 Feed 与 To Read First 强制执行。Passport、语义分面、视觉对象、检查点、版本差异，以及 Assistant v2，都需要 Deep Reader。标注需要 Deep Reader，证据卡片需要标注，研究记忆需要证据卡片。请在受保护的 `staging` 与 `production` 环境上定义这些开关，在那里要求发布评审者/分支限制，并且只通过发布批准记录来更改它们。它们是非密钥变量，绝不能是派发输入或仓库默认值。该工作流会保留封闭的 schema-6 功能证据（包括全部 27 个布尔值与两个公共文档版本），存放于 `mobile-feature-flags.json` 中，并从同一份生成的配置构建两个平台。规范的 schema-4 候选版本与溯源信息清单，都各自绑定该文件的原始 SHA-256，加上确切的 24 个 To Read First、Plan 02 与 Plan 03 布尔值。组装器、两次签名者重新认证、每一次商店候选版本验证，以及不含凭据的收尾器，都会拒绝未知键、非布尔值、依赖违规、摘要不匹配，或候选版本/溯源信息不一致的情形。请保持独立控制的后端读取/写入/创建开关彼此兼容；移动端开关并不能授权某项服务端能力。
 
-单独手动触发的`protected mobile acceptance`流程是实时测试/设备通道的自动化入口点。它仅接受精确的主尖端源修订和精确的`sha256:`候选和签名发布来源内容ID，仅在受保护的`mobile-device-verification`环境中运行。其精确的源检查出是一个**仅数据**边界：流程拥有的、隔离的Python仅读取有界测试配置和发布版本，且候选检查出中的任何脚本、二进制、shell启动文件、包钩子或其他可执行文件均不得在受保护会话中运行。流程从不将候选衍生数据写入`GITHUB_ENV`；它将`BASH_ENV`和`ENV`固定到`/dev/null`，并在作业和授权驱动器步骤中再次固定，将`PATH`固定到`/usr/bin:/bin`，并使用绝对系统工具路径。
+Library 提醒需要同时具备 `PAKPERK_LIBRARY_V2_ENABLED=true` 与独立的 `PAKPERK_NOTIFICATIONS_ENABLED=true` 能力。在通知关闭的情况下，Add Paper 会显示“Organize paper”（意为“整理论文”），Library 编辑器无法设置或替换提醒，且一个已存储的提醒仍然可见，并可为了回滚安全的清理而被清除。一个已到期的提醒会被展示为已完成，且只有通过阅读器下一次显式的 Library 保存操作才会被清除；关闭其通知绝不会编辑该队列。当通知开关关闭时，服务端的提醒工作处于休眠状态，且超过 24 小时逾期的提醒，在开关重新启用时也不会触发。
 
-所有接受验证和打包均使用固定的根拥有的`/opt/pakperk/bin/pakperk-mobile-acceptance-validator.py`；实时设备控制使用固定的根拥有的`/opt/pakperk/bin/pakperk-mobile-acceptance-driver`。在调用任何之前，流程要求`/`、`/opt`、`/opt/pakperk`和`/opt/pakperk/bin`必须是根拥有的且不可写，然后通过一个无跟随的打开描述符验证每个工具，稳定inode元数据，一个链接，根所有权，不可写模式和其受保护的SHA-256。驱动器也必须可执行。配置这些精确的受保护环境变量：
+## 移动端验证通道
 
-- `PAKPERK_MOBILE_RUNNER_SESSION_ID`;
-- `PAKPERK_MOBILE_ACCEPTANCE_VALIDATOR_SHA256`;
-- `PAKPERK_MOBILE_ACCEPTANCE_DRIVER_SHA256`;
-- `PAKPERK_ANDROID_SIGNER_SHA256`;
-- `PAKPERK_IOS_TEAM_ID`;
+普通的 CI 与已签名候选版本工作流，会运行 `dart format`、`flutter analyze`，以及完整的 `flutter test` 套件。该套件包括无头的确定性生产测试框架。它会使用受控的测试夹具，证明本地状态机、缓存、待同步队列（outbox）、分页、策略与有界组件不变量；这不是物理设备或已部署服务的证据。
+
+手动派发的 `mobile-device-integration` 工作流，会在一台明确选定的物理 Android 或 iOS 设备上，以 profile 模式运行同一个确定性测试框架。受保护的运行器会拒绝模拟器，并保留一份封闭的平台/OS 版本记录、至少 20 个引擎帧样本、一个 30 条记录的已缓存首页，加上六个确定性游标分页（合计恰好 200 条记录）、10 次生成的 Flutter 拖动与 10 次生成的 Flutter 快滑、一次基于文件的 500 论文/100 收藏的 SQLite 测量（包括其 WAL/SHM 文件），以及一份机器可读的范围文件。它绝不会上传原始的 Flutter 日志、设备 ID 或用户指定的设备名称；派发 ID 会在工作流输出中被遮盖。生成的 `WidgetTester` 手势会在所选设备上测试 Flutter 的指针、手势竞技场、滚动与页面提交路径，但在代表性网络条件下，这不能算作操作人员/OS 驱动的手势。其性能 JSON 被归类为一种测试夹具工作负载，绝不能被用作预发布 p95 或已签名候选版本的证据。请在附加运行器之前，为固定的 `mobile-device-verification` GitHub 环境配置所需的评审者与部署分支限制；仅有 YAML 名称并不能使一个环境受到保护。请只将确切的 Flutter 设备标识符，存储为该环境的 `PAKPERK_MOBILE_DEVICE_ID` 密钥；绝不能将其作为工作流派发输入传递，因为运行元数据会在日志遮盖之外保留输入内容。这是一项隐私/不留存控制，而不是凭据隔离边界：所选的 Flutter 命令与经评审的候选版本测试，必然会使用该标识符，且已经拥有对所连接物理设备的授权访问。请勿在此测试夹具通道中放置账户凭据或具有特权的设备管理令牌，也不要声称原始选择器对候选版本进程是隐藏的。派发还要求一个明确的、完整的小写 `source_revision`，其等于所选的 `main` 修订版本以及获取到的 `origin/main` 顶端，加上确切的确认短语。这可以防止一次通过的测试夹具探测，被附加到一个不同的来源修订版本上。
+
+独立的、手动派发的 `protected mobile acceptance` 工作流，是实时预发布/设备通道的自动化入口。它只接受一个确切的 main 顶端来源修订版本，加上确切的 `sha256:` 候选版本与已签名发布溯源信息内容 ID，且只在受保护的 `mobile-device-verification` 环境中运行。其确切来源的检出是一个**仅数据**边界：由工作流拥有的、隔离的 Python 只读取有界的预发布配置与发布版本，且候选版本检出中的任何脚本、二进制文件、shell 启动文件、软件包钩子或其他可执行文件，都不得在受保护会话中运行。该工作流绝不会将候选版本派生的数据写入 `GITHUB_ENV`；它会为该作业以及带凭据的驱动步骤，两次将 `BASH_ENV` 与 `ENV` 都固定为 `/dev/null`，将 `PATH` 固定为 `/usr/bin:/bin`，并使用绝对的系统工具路径。
+
+全部验收验证与打包工作，改为使用固定的、根拥有的 `/opt/pakperk/bin/pakperk-mobile-acceptance-validator.py`；实时设备控制则使用固定的、根拥有的 `/opt/pakperk/bin/pakperk-mobile-acceptance-driver`。在调用两者之前，该工作流要求 `/`、`/opt`、`/opt/pakperk` 与 `/opt/pakperk/bin` 都为根拥有，且对根以外不可写，随后通过一次不跟随符号链接的打开描述符、稳定的 inode 元数据、一个链接、根所有权、不可写模式，以及其受保护的 SHA-256，来验证每一个工具。该驱动程序还必须是可执行的。请配置以下这些确切的受保护环境变量：
+
+- `PAKPERK_MOBILE_RUNNER_SESSION_ID`；
+- `PAKPERK_MOBILE_ACCEPTANCE_VALIDATOR_SHA256`；
+- `PAKPERK_MOBILE_ACCEPTANCE_DRIVER_SHA256`；
+- `PAKPERK_ANDROID_SIGNER_SHA256`；
+- `PAKPERK_IOS_TEAM_ID`；
 - `PAKPERK_IOS_SIGNER_SHA256`。
 
-固定验证器和驱动器必须使用绝对、审核的路径，用于任何Android SDK或其他运行器工具，这些工具不在`/usr/bin:/bin`之外。
+对于任何 Android SDK 或其他运行器工具（如果位于 `/usr/bin:/bin` 之外），固定版本的验证器与驱动程序都必须使用绝对的、经评审的路径。
 
-候选内容 ID 必须解析为一个规范的、由根所有者拥有的清单文件，位于
-`/opt/pakperk/mobile-candidates/<digest>.json`。该清单文件绑定源、预发布环境、应用版本/构建、严格风味、Android 和 iOS 安装工件哈希值、精确的预发布应用 ID
-`app.pakperk.pakperk.staging`、签名摘要、Apple 团队 ID 以及其来源内容 ID。来源必须独立解析到
-`/opt/pakperk/mobile-release-provenance/<digest>.json`，并精确绑定 AAB、APK 和 IPA 的 SHA-256 值到仓库 `ErrDivine/PakPerk`、工作流
-`.github/workflows/mobile-release.yml`、任务 `signed-candidate`、审核工作流/源 SHA、GitHub 运行 ID/尝试以及阶段 `artifacts_verified`。坐标从审核的 `mobile/config/staging.json` 中读取；可变坐标和包/捆绑 ID 变量不被接受。源步骤拒绝重复/非有限 JSON、控制字符、非可逆或不安全的 HTTPS 坐标、符号链接/竞争更改，以及无效的严格风味或发布版本。它会在 `RUNNER_TEMP` 下写入一个独占的、仅所有者拥有的规范版本 2 源绑定，仅包含精确的源版本、环境、应用版本/构建、API 源、应用链接源、OIDC 发行者和 OIDC 客户端 ID。
+候选版本内容 ID 必须解析到一份规范的、schema-4 的、根拥有的清单，该清单位于 `/opt/pakperk/mobile-candidates/<digest>.json`。该清单绑定来源、预发布环境、应用版本/构建、严格构建变体、Android 与 iOS 安装产物哈希、确切的预发布应用 ID `app.pakperk.pakperk.staging`、签名者摘要、Apple 团队 ID，以及其溯源信息内容 ID。它还绑定 schema-6 移动端功能证据 SHA-256，以及四个 To Read First 开关、全部十个 Plan 02 开关与全部十个 Plan 03 开关的确切取值。schema-4 溯源信息必须独立解析到 `/opt/pakperk/mobile-release-provenance/<digest>.json` 之下，并确切地将 AAB、APK 与 IPA 的 SHA-256 数值，绑定到仓库 `ErrDivine/PakPerk`、工作流 `.github/workflows/mobile-release.yml`、作业 `signed-candidate`、经评审的工作流/来源 SHA、GitHub 运行 ID/尝试，以及阶段 `artifacts_verified`。它必须重复相同的移动端功能证据绑定；任何清单、摘要、schema 或布尔值不一致，都会失败并拒绝。坐标是作为数据从经评审的 `mobile/config/staging.json` 中读取的；不接受可变坐标以及包/bundle ID 变量。该来源步骤会拒绝重复/非有限 JSON、控制字符、无法往返转换或不安全的 HTTPS 坐标、符号链接/竞态变更，以及无效的严格构建变体或发布版本。它会写入一份独占的、仅限所有者访问的规范 schema-2 来源绑定，位于 `RUNNER_TEMP` 下，其中只包含确切的来源修订版本、环境、应用版本/构建、API 来源、应用链接来源、OIDC 签发方，以及 OIDC 客户端 ID。只有有界的 ASCII 版本/构建与绑定路径会成为步骤输出；两者都不会成为 shell 启动设置。带凭据的请求构建器会重新打开该绑定，并使用其坐标构建驱动请求。根拥有的验证器会独立重新加载它，要求其与候选版本/溯源信息的来源及版本/构建相匹配，并使用相同的坐标进行最终证据验证。
 
-只有绑定的 ASCII 版本/构建和绑定路径成为步骤输出；没有任何内容成为 shell 启动设置。经过认证的请求构建器重新打开该绑定，并使用其坐标进行驱动请求。根所有者拥有的验证器独立重新加载它，要求其与候选/来源和版本/构建匹配，并使用相同的坐标进行最终证据验证。
+不含凭据的 `signed-candidate` 组装器作业，会产出规范的候选版本与溯源信息文件及其内容 ID，但它无法将它们安装到一个自托管运行器的受保护文件系统中。在完成经认证的产物获取之后，运行器管理员必须验证规范文件摘要，并以根所有权、一个链接、不含群组/所有人写权限的方式，将它们导入到固定的内容寻址根目录中。非 root 的运行器仍需要读取权限；由于这些清单只包含身份与哈希，不含凭据，因此模式 `0444` 是经评审的简单安装选择。这种经认证的根侧导入是一个外部运营边界，而不是由仓库工作流执行或证明的操作。
 
-无凭证的 `signed-candidate` 组装任务会发出规范的候选和来源文件及其内容 ID，但它无法将它们安装到自托管运行器的受保护文件系统中。在经过认证的工件检索后，运行器管理员必须
-验证规范文件的摘要，并以根所有者权限、一个链接、无组/世界写入权限将其导入到固定的地址内容根目录中。非根运行器仍需要读取权限；模式 `0444` 是简单审核的安装选择，因为这些清单包含身份和哈希值，而不是凭证。这个经过认证的根侧导入是一个外部操作边界，而不是仓库工作流执行或证明的操作。
+受保护的环境变量 `PAKPERK_MOBILE_RUNNER_SESSION_ID` 还必须指明一份规范的根拥有证明，位于 `/opt/pakperk/mobile-runner-sessions/<digest>.json`。其封闭 schema 绑定确切的整数 `schema: 1`、分类 `dedicated ephemeral mobile acceptance runner session`、来源修订版本、不透明的会话与主机身份哈希、运行器类别 `dedicated-macos-physical-mobile`、确切的 `dedicated: true` 与 `ephemeral: true` 开关、一个封闭的 `physical_identities` 映射（为每个必需角色各设一个不同的根作键承诺），以及一个不超过八小时的创建/过期时间间隔。相同的受保护父级、根所有者、一个链接、不可写、规范摘要规则均适用。该验证器会拒绝已过期的证明。创建并以根身份安装这份证明与固定版本的验证器/驱动程序、配置一个专用运行器、证明没有更早或不受信任的作业/进程共享该带凭据的会话、隔离主机与所连接设备，以及事后销毁其一次性状态，都仍是外部的、受保护的运行器管理员控制事项。仓库验证、`BASH_ENV`/`ENV` 固定、标签，以及一份声称的 `ephemeral: true` 证明，本身并不能证明运行器组访问权限、单次作业/JIT 注册、进程隔离或主机清理；请为发布保留平台/配置证据与管理员批准。
 
-受保护的环境变量 `PAKPERK_MOBILE_RUNNER_SESSION_ID` 必须也命名一个规范的根所有者拥有的证明文件，位于
-`/opt/pakperk/mobile-runner-sessions/<digest>.json`。其封闭的模式绑定精确的整数 `schema: 1`、分类
-`dedicated ephemeral mobile acceptance runner session`、源版本、不透明会话和主机身份哈希、运行器类别
-`dedicated-macos-physical-mobile`、精确的 `dedicated: true` 和 `ephemeral: true` 标志、一个封闭的 `physical_identities` 映射，每个所需角色都有一个不同的根键承诺，以及创建/过期时间间隔不超过八小时。相同的受保护父级、根所有者、一个链接、不可写、规范摘要规则适用。验证器拒绝过期的证明文件。创建和根安装此证明文件以及固定验证器/驱动器、配置专用运行器、证明没有先前或不可信的任务/进程共享凭证会话、隔离主机和连接的设备、并在之后销毁其一次性状态，仍然是外部受保护的运行器管理员控制。仓库验证、`BASH_ENV`/`ENV` 固定、标签和声称的 `ephemeral: true` 证明文件本身并不证明运行器组访问、单任务/JIT 注册、进程隔离或主机清理；保留平台/配置证据和管理员批准用于发布。
+受保护的运行器会向根拥有的、按摘要固定的驱动程序，公开四个不同的已安装设备密钥：一台 Android 手势导航手机、一台 Android 三按钮手机、一台带主页指示器的 iPhone，以及一台物理键盘 iPad（它同时也是独立的第二同步安装设备）。测试账户与密码是环境密钥，绝不会被写入请求或证据中。
 
-受保护的运行器向根所有者拥有的、摘要固定的驱动器暴露四个不同的安装设备秘密：一个 Android 手势导航手机、一个 Android 三按钮手机、一个带有主页指示器的 iPhone，以及一个也是独立第二同步安装的物理键盘 iPad。测试账户和密码是环境秘密，永远不会写入请求或证据中。
+该驱动程序必须针对一次性的预发布账户，自动化以下每一条路径，并产出封闭的 `mobile-acceptance-evidence.json` 技术契约：
 
-驱动器必须针对一次性预发布账户自动化以下所有路径，并发出封闭的 `mobile-acceptance-evidence.json` 合约：
+1. 全新安装经评审的已签名 APK 与 IPA，且此前无应用数据；保持访客身份，无需登录即可到达已缓存的 Read，阅读已发布的评论，并通过 OS 浏览器（而非内嵌网页视图）打开确切的规范 arXiv URL。
+2. 从已填充的本地缓存冷启动，并收集缓存首个可读帧 p95、健康的本地初始化开场过渡时长，以及原生启动连续性测量结果。
+3. 在受控的延迟与丢包条件下，纵向滑动至少 20 篇论文；记录空白卡片与顺序缓存命中情况。
+4. 确认 Introduction 准备只会在显式的横向意图之后才开始。
+5. 在 Read -> You -> Read 之间切换，并恢复确切的论文、阶段与偏移量。
+6. 针对发布租户，完成系统浏览器 OIDC（使用 PKCE）。
+7. 保存，终止/重新启动已安装的应用，重新连接，并验证同步情况。
+8. 在设备 A 上保存，使 A 离线，将该保存收敛到一台独立安装的设备 B 上，在 B 上将其移除，重新连接 A，要求 A 收到该移除墓碑，并要求两边的投影都收敛为缺失状态。
+9. 从一个访客发帖意图开始，完成发布租户登录，在一个不完整的资料上选择一个用户名，接受当前的条款与社区准则，使用一个稳定的客户端请求 ID 创建评论，向同一条评论重放，编辑，拒绝一次陈旧编辑，删除，并验证其在公开列表中确实消失。
+10. 使用同一个幂等身份两次提交同一条评论举报，要求只产生一条规范的持久举报记录，然后屏蔽该作者，并确认立即且经服务端持久化的隐藏效果。
+11. 使一个真实的访问令牌过期，验证一次成功的刷新，并继续原始操作。
+12. 在一个独立的一次性会话中，使真实的刷新凭据在发布 IdP 处失效，强制刷新，要求转换为访客身份，使刷新记录不可读且账户所有的行不可访问，同时保留公开缓存与确切的论文/阶段/偏移量状态。
+13. 为账户删除重新进行认证，并验证立即停用、会话撤销、提供商清理，以及删除状态路径。
+14. 离线阅读并保存，终止该进程，在网络仍然禁用的情况下重新启动，在任何重新连接之前阅读已缓存的摘要，然后在连接恢复后，验证同一 UUID 的待同步队列（outbox）恢复以及一次服务端写操作。
+15. 在减少动态效果的情况下重复冷/暖启动，并验证静止的、有界的过渡效果。
+16. 使用严格已签名构建变体，并验证元数据/收藏/评论/原始 arXiv 链接保持可用，同时每一个缓存的派生回退都保持被遮蔽状态。
+17. 在 Android 与 iOS 上，从冷启动、暖启动与已在运行状态出发，测试确切的、来源绑定的预发布应用链接来源所部署的 `/p/*` 与 `/arxiv/*` 应用/通用链接，要求 Abstract 能够打开，并证明恶意来源会失败并拒绝、回退到 Read，且不发起论文请求。
+18. 在已签名的已安装设备上，证明 Android 备份已禁用，且一次提取不会恢复任何应用数据；证明 iOS 备份排除与 `completeUntilFirstUserAuthentication` 保护；并验证设备绑定的、
+不可同步的安全凭据属性，且不持久化任何访问凭据。
+19. 测量一个已填充的签名设备数据库，加上 WAL/SHM 文件，并要求至多 500 条已缓存论文记录，以及至多 64 MiB 的物理缓存存储，同时至少一个已收藏论文的固定项保持完整。
+20. 在 Android 与 iOS 上测试浅色与深色外观，保留阅读器状态，且不存在无法阅读、被裁剪或不可见的关键操作。
+21. 在 Android 手势、Android 三按钮与 iPhone 主页指示器模式下，测试根导航安全区域与系统返回操作。
+22. 在 Android 与 iPad 上测试物理键盘的 Tab、Shift-Tab、Enter 与 Escape 路径，包括 200% 文本与最小目标覆盖率。
+23. 在 Android 与 iOS 上，使用一个非空的 To Read 队列登录，验证本地与服务端的队列权威性以及 FIFO 分页，然后移除每一个条目，并在请求或发布推荐之前，要求服务端确认队列权威性为空；已入队的论文绝不能作为推荐出现。
+24. 在两个平台上，针对待处理保存、待处理论文导入、未知/离线连接状态、同步重置以及待处理的最终移除，重复该边界测试。每一种状态都必须在队列/检查/完成权威性方面失败并拒绝，且在最终服务端移除确认之前，不发起推荐请求或解锁。
+25. 在一次 Feed 请求进行期间切换一次性账户，并证明不存在任何旧账户可见帧或旧生成代次的发布内容。在 Android 与 iOS 上测试一次预发布服务端策略的 shadow -> strict -> shadow 回滚周期，在每一次界面切换之前重新验证队列权威性。
+26. 从 Read 与 To Read 两处（在 Android 与 iOS 上），通过裸 arXiv ID、规范的 arXiv URL 与标题添加论文。确切的输入必须绕过标题搜索；而标题搜索本身必须等待其防抖延迟，并要求显式选择候选项。进度是可访问的，占位符绝不会进入规范的 Drift，且规范结果的应用不会触发第二次待同步队列（outbox）保存。
+27. 在两个平台上测试有歧义的标题结果、可重试的搜索/导入错误、不可重试的输入错误，以及导入期间的账户范围变更。重试必须复用确切的操作 ID，并收敛到一次规范保存，不产生任何跨账户结果；保留的证据中不得包含任何原始标题、URL、令牌或账户身份。
+28. 在 Android 与 iOS 上，从 Read 打开 Plan 02 的 Search 目的地；测试规范化的 Lookup、有界的仅元数据建议、诊断性 Explore，以及已认证的已保存查询重放。打开结果绝不能变更 Library，且切换账户时必须确保不会暴露此前账户的已保存查询。
+29. 在两个平台上，验证个性化功能默认从关闭开始；显式的、反馈派生的与推断得出的兴趣，保持分别标注；已存储的模式/简报大小设置能够持久化；导出/重置行为保留队列权威性；且切换账户不会暴露此前的资料行。请在大字号文本与减少动态效果条件下测试这些控件。
+30. 对于一个增强型推荐批次，打开一个封闭的、有证据支持的
+`Why this?` 说明，并使用幂等重试测试相关、不相关与忽略反馈。仅限近期的回退绝不能暴露 Why 操作，非活跃种子只可以出现在历史原因中，被排除的条目必须保持缺失状态，且反馈绝不能推进 Library 修订版本。该表单必须只展示已记录的候选来源、行为是否被采纳、相关性/探索/多样性角色，以及历史种子的存在情况（且不暴露种子标识符），然后直接链接到调整推荐与个性化隐私控件。
+31. 在两个平台上创建并恢复一份阅读简报，涵盖已存储/默认与显式的大小/模式选择、重新启动后的进度、可访问的进度，以及切换账户。在仍有活跃队列条目的情况下，简报进度、完成或耗尽绝不能对 Library 状态执行变更操作，也不能解锁推荐。
+32. 在两个平台上，针对一个活跃队列、活跃论文的选择加入、静默时段、每日预算、全局暂停/静音、一份有界的空队列摘要、已读/关闭、可安全重放的调度，以及切换账户，测试已认证的订阅与应用内通知。要求零条不安全、重复、跨账户、推送或邮件投递。
+33. 在 Android 与 iOS 上，提交进入 Deep Reader 的意图，遍历至少四个有界区块分页，在 Skim/Read/Inspect 之间切换而不丢失位置，打开来源定位符，在一个定义表单之后恢复，并证明不存在提交意图之前的准备、陈旧生成代次的渲染，或捏造的解析器回退。
+34. 在两个平台上测试 Passport，至少包含三个已填充字段、不同的支持/推断/冲突/未找到状态、确切的证据导航，以及可见的论文版本。每一个已填充字段都需要证据，且任何 Passport 操作都不得对 Library 状态执行变更操作。
+35. 只在其显式开关启用时，才在两个平台上测试语义分面与定义。打开确切的出现位置，在定义关闭时保留选择/位置，如实展示不可用的定义，且不创建任何自动 Feed 或 Library 插入。
+36. 在两个平台上，针对确切的生成代次测试图、表与公式卡片。打开每一个来源定位符，验证表格/纯文本与公式的无障碍回退（包括在 SmartMath 输入修复与消毒功能均禁用时，针对格式错误的 LaTeX 或不受支持的 MathML 提供可选的确切来源），保留视觉证据定位符，并要求零个错误素材或未经授权的衍生内容暴露。测试从确切的原子化生成代次范围集合中进行的小、中、大规模选择，并验证有界响应、清单/文件校验和绑定，以及特定变体的缓存身份；缺失或无效的素材必须保留说明文字与原始页面访问权限。
+37. 在两个平台上，跨进程重启与模式变更保存并恢复仅位置的检查点。检查点与文档末尾必须导致零次 Library 修订版本或队列资格变更；只有显式的“标记为已评审”操作，才可以执行预期的 Library 变更操作。
+38. 在 Android 加上独立的 iPad 安装设备上，创建离线高亮/笔记，在进程死亡后存活，幂等地重放，进行同步，在并发冲突时保留两个版本正文，展示重排不确定性，并保留证据锚点。该封闭场景还要求一次确切的导出/导入往返、零条私有正文遥测，以及零条跨账户研究行。导入器已实现，但只有一次受保护的运行才能满足这些设备断言。
+39. 在 Android 与 iOS 上，测试显式的记忆创建、审阅、延后、退役、来源返回、重新启动，以及切换账户。已生成但未选中的内容绝不能成为记忆，已退役的条目必须保持退役状态，且记忆相关操作绝不能变更 Library 状态或插入自动 Feed 条目。
+40. 在 Android 与 iOS 上比较至少两对版本，打开确切保留的新旧来源，识别已变更的章节/对象，使未变更的区块不出现在差异中，并呈现标注锚点状态。不确定或孤立的标注绝不能被静默移动，且差异导航绝不能对 Library 状态执行变更操作。
+41. 在每个平台上测试至少四个明确限定范围的 Assistant v2 问题。拒绝捏造的证据 ID 与陈旧的生成代次，将提示词注入视为来源数据处理，针对实质性论断要求提供证据，在不受支持时弃权，打开确切的证据来源，不产生任何离线的无依据回答，且不保留任何私有的提示词/回答遥测字段。
+42. 在 Android、iPhone 与键盘 iPad 上，证明自动的下一篇论文导航只使用活跃队列，在最后一项时会等待服务端确认为空，且在离线时会失败并拒绝。往返测试显式的 Connections 与 Memory 分支且不插入 Feed 内容，在有界加载窗口内遍历至少 20 页大型文档，并验证 200% 文本、目标尺寸与手势仲裁。
 
-1. 安装经过审核的签名 APK 和 IPA，确保之前的应用数据不存在，保持访客身份，达到缓存的读取而无需登录，读取已发布的评论，并通过操作系统浏览器打开精确的规范 arXiv URL，而不是嵌入式网页视图。
-2. 从填充的本地缓存冷启动，并收集缓存的首次可读帧 p95、健康的本地初始化打开过渡持续时间以及原生启动连续性测量。
-3. 在受控延迟和数据包丢失下垂直滑动至少 20 篇论文；记录空白卡片和顺序缓存命中。
-4. 确认介绍准备仅在显式水平意图后开始。
-5. 切换 Read -> You -> Read 并恢复精确的论文、阶段和偏移量。
-6. 使用 PKCE 完成系统浏览器的 OIDC 与发布租户。
-7. 保存、终止/重新启动安装的应用程序，重新连接并验证同步。
-8. 在设备 A 上保存，将 A 离线，将保存收敛到独立安装的设备 B，从 B 中移除它，重新连接 A，要求 A 接收移除墓碑，并要求两个投影在无连接时收敛。
-9. 从访客帖子意图开始，完成发布租户登录，选择一个不完整档案上的用户名，接受当前的条款和社区指南，使用一个稳定的客户端请求 ID 创建，重放到相同的评论，编辑，拒绝一个过时的编辑，删除，并验证公共列表的缺失。
-10. 使用同一个 idempotency 身份提交相同的评论报告两次，要求一个规范的持久报告，然后阻止作者并确认立即且服务器持久隐藏。
-11. 过期一个真实的访问令牌，验证一次成功的刷新，并继续原始操作。
-12. 在一个单独的临时会话中，在发布 IdP 处使真实刷新凭证失效，强制刷新，要求访客过渡，使刷新记录不可读且账户拥有的行不可访问，同时保留公共缓存和精确的论文/阶段/偏移量状态。
-13. 为账户删除重新认证并验证立即停用、会话撤销、提供者清理和删除状态路径。
-14. 读取和保存离线内容，终止进程，当网络仍禁用时重新启动，读取任何重新连接前的缓存摘要，然后验证相同 UUID 的出站恢复和连接恢复后的服务器突变。
-15. 重复冷/暖启动，减少运动并验证静止的有界过渡。
-16. 使用严格签名风味并验证元数据/保存/评论/原始 arXiv 链接保持不变，而每个缓存的派生回退保持隐藏。
-17. 在 Android 和 iOS 上，使用精确的源绑定预发布应用链接源的部署 `/p/*` 和 `/arxiv/*` 应用/通用链接，从冷、暖和已运行状态启动，要求 Abstract 打开，并证明敌对源在无论文请求时失败关闭。
-18. 在签名安装的设备上，证明 Android 备份已禁用且提取不会恢复任何应用数据；证明 iOS 备份排除和 `completeUntilFirstUserAuthentication` 保护；并验证设备绑定、不可同步的安全凭证属性，无持久访问凭证。
-19. 测量一个填充的签名设备数据库加上 WAL/SHM 文件，并要求最多 500 个缓存论文记录和最多 64 MiB 的物理缓存存储，同时至少一个保存的论文 PIN 保持完整。
-20. 在 Android 和 iOS 上测试轻量和深色外观，保持阅读状态并找不到不可读、裁剪或不可见的关键操作。
-21. 测试根导航安全区域和系统返回，跨 Android 手势、Android 三按钮和 iPhone 主页指示器模式。
-22. 在 Android 和 iPad 上测试物理键盘 Tab、Shift-Tab、Enter 和 Escape 路径，包括 200% 文本和最小目标覆盖率。
+根拥有的验证器要求确切的来源、应用版本/构建、候选版本、验证器与驱动程序摘要；已签名发布溯源信息、规范来源绑定与临时运行器会话绑定；预发布的 API/应用链接/OIDC/客户端坐标；四个有序的物理设备角色；不同的安装与物理身份哈希；经脱敏的硬件型号与 OS 版本；以及以上全部 42 个有序的 schema-v6 场景。一个场景只有在具备其确切的设备角色分配、确切的有序断言 ID 列表（总计 317 个标记）以及闭合的整数阈值/相等性指标（总计 254 条规则）时才会通过；一个泛泛的正数计数是不被接受的。该驱动请求携带 schema `6`、那些确切的计数，以及规范的有序角色/断言/指标规则技术契约 SHA-256 `7483820afc6b2111f4886177dd120e72ab8ca47164757ca1eda9e10f64d70ad5`。固定版本的驱动程序必须拒绝一份不同的技术契约，而不是转换或接受一个更旧的 schema。该请求还携带候选版本的封闭移动端功能证据绑定。保留的证据会重复该绑定，且验证器要求其与根导入的候选版本及溯源信息清单都确切匹配。受保护的 schema-v6 验收还要求嵌套的 schema-v6 移动端功能证据的 24 个绑定数值确切为 `true`；一个已禁用的开关无法为此受保护运行产出有效证据，因此会在根拥有的驱动程序启动之前就失败。这 42 个物理场景是一份封闭的基线，涵盖阅读器、身份、安全、设备、To Read First、Add Paper、Plan 02 的 Search/Profile/Why/Brief/Alerts，以及一份十场景的 Plan 03 技术契约。这五个 Plan 02 场景与十个 Plan 03 场景，并不能替代自动化的后端/移动端套件，也不能宣称测试了每一种功能排列；单独的受保护预发布、隐私、分阶段发布、可观测性与外部负责人门禁仍然适用。更改已纳入版本控制的技术契约只是仓库证据。在已更新的根拥有驱动程序为确切的已签名候选版本产出一份完整通过的 schema-v6 产物之前，没有任何场景算作生产环境通过。
 
-根所有者拥有的验证器要求精确的源、应用版本/构建、候选、验证器和驱动器摘要；签名发布来源、规范源绑定和临时运行器会话绑定；预发布 API/应用链接/OIDC/客户端坐标；四个有序的物理设备角色；不同的安装和物理身份哈希；清理的硬件型号和操作系统版本；以及上述所有 22 个有序的 schema-v3 场景。只有在精确的设备角色分配、精确的有序声明 ID 列表（总计 141 个标记）和封闭的整数阈值/相等度度量（总计 78 条规则）下，场景才通过；通用的正数计数不被接受。驱动请求携带 schema `3`、精确的场景计数、声明计数、度量计数和规范有序角色/声明/度量规则合同的 SHA-256。固定的驱动器必须拒绝不同的合同，而不是翻译或接受旧的 schema。特别是，`cold_cache_launch.metrics` 必须
-包含精确的整数键 `populated_cache_records`、`cached_first_readable_frame_p95_ms` 和 `opening_transition_ms`。后两者必须为正且分别不超过 1,500 毫秒和 700 毫秒；旧的单样本 `first_readable_frame_ms` 键被拒绝。受保护的驱动请求携带相同的两个精确范围规则，以便摘要固定的生产者和验证器共享一个关闭失败的合同。每个 Android 角色必须识别一个绑定来源的 APK 安装；每个 iOS 角色必须识别绑定来源的 IPA。每个设备还必须回声其平台的精确预发布应用、签名者和 Apple 团队绑定。
+仓库现在带有 Plan 03 的候选版本/溯源信息/功能证据/驱动程序/验证器技术契约，但尚未有确切的签名设备运行通过它。标注导入往返以及确切的、按生成代次绑定的差异分页导航，都已作为仓库技术契约实现。经授权的响应式派生生成、剥离辅助元数据的重新编码、原子化的清单/哈希绑定变体发布、已认证的变体投递、感知变体的移动端缓存，以及确切来源、不修复的、经维护的公式渲染，也都已具备。生成的无障碍描述仍然是按能力门控的，且尚未有确切的签名设备运行通过。因此，每一个 Plan 03 签名设备与移动端发布门禁，都仍为 `not_ready`，且每一个已纳入版本控制的 Plan 03 移动端开关都仍为 false。尤其是，`cold_cache_launch.metrics` 必须包含确切的整数键 `populated_cache_records`、`cached_first_readable_frame_p95_ms` 与 `opening_transition_ms`。后两者必须为正数，且分别不超过 1,500 毫秒与 700 毫秒；旧版的单样本 `first_readable_frame_ms` 键会被拒绝。受保护的驱动请求携带那两条相同的确切范围规则，因此按摘要固定的生成方与验证器共享同一份失败即关闭的技术契约。每一个 Android 角色都必须标识一台安装了溯源信息绑定的 APK 的设备；每一个 iOS 角色都必须标识溯源信息绑定的 IPA。每台设备还必须为其平台回显确切的预发布应用、签名者与 Apple 团队绑定。
 
-对于每个角色，驱动程序会推导出一个运行特定的 `device_identity_hash`，而不会保留序列号或其他原始标识符。它首先计算一个稳定的秘密值，形式为 `HMAC-SHA256(root_owned_device_identity_key, platform || NUL || raw_id)`，然后将该稳定的秘密值作为角色的根认证承诺，并计算 `HMAC-SHA256(run_challenge, stable_secret)` 作为证据。验证器会自行执行第二次计算，并且从不将稳定的承诺值复制到请求绑定或保留的证据中。由于角色未参与推导过程，因此使用同一物理设备为两个角色服务会导致相同的承诺值，从而被拒绝。公共挑战值使保留的哈希值在不同运行之间发生变化，而根拥有的密钥则防止其成为直接的序列号预言机。证据仍然有意地标识运行会话，因此当一个认证被重复使用时，可以进行关联。所有四个哈希值和所有四个安装哈希值必须各不相同。原始设备标识符仅保留在受保护的进程环境中，且不得出现在请求、证据、日志或工件中。通过这些标记并不能替代单独的可问责视觉、可访问性、移动平台、身份、隐私和发布审批。
+对于每一个角色，该驱动程序都会推导出一个特定于本次运行的 `device_identity_hash`，且不保留序列号或其他原始标识符。它首先将一个稳定密钥计算为 `HMAC-SHA256(root_owned_device_identity_key, platform || NUL || raw_id)`，然后将该稳定密钥作为该角色的根证明承诺，并计算 `HMAC-SHA256(run_challenge, stable_secret)` 用作证据。验证器会自行执行第二次计算，并绝不会将稳定承诺复制到请求绑定或保留证据中。由于角色本身并不参与该推导过程，将同一台物理设备复用于两个角色会产生相同的承诺，并因此被拒绝。公开的挑战值会使保留的哈希在各次运行之间发生变化，而根拥有的密钥则能防止其变成一个直接的序列号预言机。证据仍会有意标识运行会话，因此在某个证明被复用时，仍可被关联起来。全部四个哈希与全部四个安装哈希必须各不相同。原始设备标识符只保留在受保护的进程环境中，且绝不能出现在请求、证据、日志或产物中。通过这些标记，并不能替代独立的、可问责的视觉、无障碍、移动端平台、身份、隐私与发布批准。
 
-证据模式 v3 也绑定到一个新鲜的加密挑战、GitHub 运行 ID 和尝试次数，以及整个秒数的 UTC not-before 时间。验证限制运行时间为六小时，拒绝过期/重放的完成、重复或非规范的 JSON、非有限数字、额外字段、凭证形状的字符串、符号链接、过大证据、部分场景和失败路径。验证器将已经读取的规范证据以及规范的 `mobile-acceptance-tooling.json` 和 `SHA256SUMS`，按此顺序直接创建最终归档文件，并使用独占打开语义。工具清单具有确切的模式 `1`，分类为 `protected mobile acceptance tooling`，并包含封闭的验证器/驱动程序对象，其中包含固定的文件名和受保护的 SHA-256 值。`SHA2,56SUMS` 覆盖证据和工具成员。验证器检查最终的 inode、所有者、模式 `0400`、链接计数、大小和 SHA-256；在上传之前，它重新打开归档文件，要求封闭成员顺序和元数据，验证两个校验和，并将两个归档工具摘要与受保护的预期变量进行比较。本地 tar 校验和绑定到工件名称中；最终步骤还要求上传操作的单独工件容器校验和。仅所有者驱动的日志被捕获并丢弃，而设备序列号、凭证、句柄和注释/查询文本被排除。
+证据 schema v6 还绑定到一个全新的密码学挑战值、GitHub 运行 ID 与尝试次数，以及整秒的 UTC 生效时间下限。验证会将运行限制在六小时以内，拒绝陈旧/重放的完成状态、重复或非规范的 JSON、非有限数值、多余字段、形似凭据的字符串、符号链接、超大证据、部分场景，以及失败路径。该验证器会按顺序打包确切的、已读取的规范证据，加上规范的 `mobile-acceptance-tooling.json` 与 `SHA256SUMS`，通过直接以独占打开语义创建最终归档来完成。该工具清单具有确切的 schema `1`、分类 `protected mobile acceptance tooling`，以及包含固定文件名与受保护 SHA-256 数值的封闭验证器/驱动程序对象。`SHA256SUMS` 涵盖证据与工具这两类成员。该验证器会检查最终的 inode、所有者、模式 `0400`、链接计数、大小与 SHA-256；在上传之前，它会立即重新打开该归档，要求封闭的成员顺序与元数据，验证两个校验和，并将两个已归档的工具摘要与受保护的预期变量进行比对。本地 tar 摘要会被绑定到产物名称中；最后一步还要求上传操作独立的产物容器摘要。仅限所有者访问的驱动程序日志会被捕获并丢弃，而设备序列号、凭据、用户名以及评论/查询文本则会被排除。
 
-发布所有者必须为确切安装的签名候选者分发此工作流，并附加其不可变工件和受保护环境的批准。已检查的编排和验证器不会证明根安装的工具、隔离的运行会话、测试租户、账户或设备可用，且未分发的工作流、仓库测试、模拟器或操作员声明不会完成此通道。
+一位发布负责人必须为确切的、已安装的已签名候选版本派发此工作流，并附加其不可变产物以及受保护环境批准。已纳入版本控制的编排与验证器并不能证明根安装的工具、隔离的运行器会话、预发布租户、账户或设备确实可用；一次未派发的工作流、仓库测试、模拟器或操作人员陈述都无法完成这一通道。
 
-## 仪表和发布候选门
+## 遥测与发布候选版本门禁
 
-生产仪表使用仅有的精确 HTTPS `/v1/logs` OTLP 端点。移动导出器不发送授权头、cookie、用户/设备/会话 ID、纸张 ID、句柄、内容、令牌、原始异常消息或堆栈。事件和属性传递一个封闭的词汇表；负载最大为 16 KiB，请求有两秒的截止时间，响应在不缓冲的情况下被取消，最多两个导出在进行中，饱和/失败时丢弃数据而不排队或重试。
+生产遥测只使用确切的 HTTPS `/v1/logs` OTLP 端点。移动端导出器不会发送任何 Authorization 请求头、cookie、用户/设备/会话 ID、论文 ID、用户名、内容、令牌、原始异常消息或堆栈。事件与属性遵循一个封闭的词表；负载至多 16 KiB，请求具有两秒截止时间，响应会在不缓冲的情况下被取消，至多两个导出处于进行中状态，且饱和/失败会直接丢弃数据，不进行排队或重试。
 
-全局错误捕获仅向该导出器发送有限的错误类别。它委托框架展示，使用删除细节，并且从不将原始异常或堆栈传递给先前的平台处理程序。接受有限类别的先前处理程序保留失败的所有权。否则，原始引擎回调仅标记为已处理，以防止其原始参数被打印；应用程序在相同的错误区域中使用 `StackTrace.empty` 报告有限类别，且该替换保持真正未捕获。区域和预捕获启动失败使用相同的替换。不要吞食替换：这样做可能导致进程处于损坏状态，并使无崩溃证据误导。Apple/Google 诊断可能在平台策略下保留本地崩溃记录，但不得接收应用程序异常消息、令牌、内容值或 Dart 堆栈。在发布前，请审查确切签名工件的平台诊断和存储披露。
+全局错误捕获只会向该导出器发送一个有界的错误类别。它会以经脱敏的细节委托框架层展示，绝不会将原始异常或堆栈传递给此前的平台处理程序。一个接受该有界类别的此前处理程序，会保留对该失败的所有权。否则，原始引擎回调只会被标记为已处理足够短的时间，以防止其原始参数被打印出来；应用会在同一个错误区域中，以 `StackTrace.empty` 抛出该有界类别，且该替代异常仍然真正未被捕获。区域与预捕获引导阶段的失败，使用相同的替代方式。请勿吞掉该替代异常：这样做可能使进程处于损坏状态，并使无崩溃证据产生误导。Apple/Google 诊断可以按平台政策保留一条原生崩溃记录，但绝不能从这一边界接收应用异常消息、令牌、内容值或 Dart 堆栈。请在发布之前，检查确切已签名产物的平台诊断与应用商店披露信息。
 
-在证据包包含以下内容之前，不要声明发布候选已通过：
+在证据捆绑包包含以下内容之前，请勿宣布某个发布候选版本已通过：
 
-- 至少 20 个缓存的首次可读帧样本，p95 在命名参考设备和测试环境中不超过 1.5 秒；
-- 至少 20 个打开过渡样本，当本地初始化健康时，测量的过渡时间不超过 700 毫秒；
-- 在至少 20 个温暖的连续下一张纸请求中，没有空白卡，且至少 95% 缓存命中；
-- 至少 20 个帧样本和一个记录的样本窗口；
-- 对于确切签名候选，至少 99.5% 的无崩溃会话；
-- 测量的样本/窗口、收集器查询或存储报告、构建号、设备/操作系统矩阵和批准者。
+- 至少 20 个已缓存首个可读帧样本，在指定的参考设备与预发布环境上，p95 不超过 1.5 秒；
+- 至少 20 个开场过渡样本，在本地初始化健康时，所测得的过渡时长不超过 700 毫秒；
+- 在至少 20 次暖启动的顺序下一篇论文请求中，没有空白卡片，且至少 95% 的缓存命中率；
+- 至少 20 个帧样本，以及一个已记录的样本窗口；
+- 针对确切的已签名候选版本，至少 99.5% 的无崩溃会话率；
+- 已测得的样本/窗口、采集器查询或商店报告、构建号、设备/OS 矩阵，以及批准者。
 
-使用由阶段分布/诊断系统提供的隐私审查的崩溃分母汇总。不要向移动仪表添加持久设备、账户或会话标识符以制造此指标。在签署的 TestFlight/封闭 Play 候选至少有 24 小时的观察窗口和两个绑定存储诊断源的 200 汇总确切候选会话之前，且该窗口被发布所有者批准为代表性，崩溃门 **未通过**。这些是生产 v0.0 的最低要求；所有者可以要求更长的窗口或更大的分母，但不能在清单中放弃这些要求。
+请使用由分阶段发布分发/诊断系统提供的、经隐私评审的聚合崩溃分母。请勿为了人为制造这一指标，而向移动端遥测中添加持久化的设备、账户或会话标识符。除非一个已签名的 TestFlight/封闭 Play 候选版本已具备至少 24 小时的观测窗口，以及来自两个绑定商店诊断来源、合计 200 个聚合确切候选版本会话，且该窗口已被发布负责人批准为具有代表性，否则崩溃门禁就**未通过**。这些是 Production v0.0 的最低要求；负责人可以要求更长的窗口或更大的分母，但不得在清单中豁免这些要求。
 
 ## 外部发布阻塞项
 
-仓库检查无法完成这些操作。发布所有者必须在启用生产标志之前为每个操作附加证据：
+仓库检查无法完成以下这些操作。发布负责人必须在启用生产开关之前，为每一项附加证据：
 
-- 受保护的 Android 和 Apple 签名凭证和成功签名的 dev/测试/生产工件；
-- 注册的 OIDC 客户端/重定向和生产关联域名；
-- 部署的关联和法律/支持 URL 与监控的联系细节；
-- 活动的 OTLP 收集器保留和删除验证；
-- 物理设备账户、评论/报告/阻止、删除、严格内容、离线、回调和深度链接 QA；
-- 审查者账户和存储审查注释，不含真实用户数据；
-- TestFlight 和封闭 Play 轨道上传、当前 App 隐私/数据安全和年龄评级表单、单调存储版本、审查状态，以及上述定义的受保护更新过渡证据或单独批准的首次发布证据。更新证据包括可信工具与候选源的分离、合格的 Play 备用、确切的每平台预/后状态和无条件结果、部分成功协调、Apple 手动下载暴露和任何 Android 专用的完整发布暂停；首次发布证据包括确切的 Play 100% 状态和 Apple 手动发布状态/操作。Apple 的 [更新年龄评级问卷](https://developer.apple.com/news/upcoming-requirements/?id=07242025a) 自 2026 年 1 月 31 日起要求回答；
-- 验证的 Android 开发者身份和包/签名密钥注册。
-  [区域执行从 2026 年 9 月 30 日开始](https://developer.android.com/developer-verification/guides) 对巴西、印度尼西亚、新加坡和泰国的参与商店，随后进行更广泛的推广；
-- 测试性能/崩溃证据，以及由运营拥有的备份-恢复/删除重放证据。
+- 受保护的 Android 与 Apple 签名凭据，以及成功签名的开发/预发布/生产产物；
+- 已注册的 OIDC 客户端/重定向以及生产环境的已关联域名；
+- 已部署的关联与法务/支持 URL，附带受监控的联系方式详情；
+- 实时的 OTLP 采集器保留与脱敏验证；
+- 一个兼容的、根拥有的 schema-v6 验收验证器与驱动程序，安装在 `/opt/pakperk/bin` 之下，附带其确切的受保护环境摘要变量、当前的根拥有运行器会话证明，以及全部所需的物理设备/账户密钥；
+- 物理设备账户、评论/举报/屏蔽、删除、严格内容、离线、回调、深层链接、To Read First 与 Add Paper 的 QA。受保护的预发布演练还需要一种经批准的方式，来驱动并观测 shadow-to-strict-to-shadow 服务端策略周期，且不向候选版本检出暴露控制平面凭据；
+- 审核者账户与商店评审备注，且不含真实用户数据；
+- TestFlight 与封闭的 Play 轨道上传、当前的 App Privacy/Data Safety 与年龄分级表单、单调递增的商店版本、评审状态，以及上文所定义的、受保护的更新状态迁移证据或单独批准的首次发布证据两者之一。更新证据包括：受信任工具与候选版本来源的分离、符合条件的 Play 回退版本、确切的、按平台划分的前后状态与无条件结果、部分成功对账、Apple 手动下载曝光，以及任何仅限 Android 的全面发布暂停；首次发布证据包括确切的 Play 100% 状态与 Apple 手动发布状态/操作。Apple 的[更新版年龄分级问卷](https://developer.apple.com/news/upcoming-requirements/?id=07242025a)，自 31 年 2026 月起已要求作答；
+- 已验证的 Android 开发者身份与包/签名密钥注册。[区域执行将于 30 年 2026 月开始](https://developer.android.com/developer-verification/guides)，适用于巴西、印度尼西亚、新加坡与泰国的参与商店，随后会有更广泛的分阶段发布；
+- 由运营团队负责的预发布性能/崩溃证据，加上备份恢复/删除重放证据。
 
-不要从源构建或模拟器测试中标记外部项目为完成。
+请勿仅凭源代码构建或模拟器测试，就将某个外部项目标记为已完成。
