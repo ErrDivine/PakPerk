@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -125,21 +126,21 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
         toolbarHeight:
             80 * MediaQuery.textScalerOf(context).scale(1).clamp(1, 2),
         leading: IconButton(
-          tooltip: 'Close paper discussions',
+          tooltip: uiString(context, 'Close paper discussions'),
           onPressed: widget.onClose,
           icon: const Icon(Icons.close),
         ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            UiText(
               widget.paperTitle,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.titleMedium,
             ),
             if (commentCountLabel != null)
-              Text(
+              UiText(
                 commentCountLabel,
                 style: Theme.of(context).textTheme.labelSmall,
               ),
@@ -210,7 +211,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       return Center(
         child: Semantics(
           liveRegion: true,
-          label: 'Loading paper comments',
+          label: uiString(context, 'Loading paper comments'),
           child: const CircularProgressIndicator(),
         ),
       );
@@ -225,7 +226,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
             const Icon(Icons.forum_outlined, size: 48),
             const SizedBox(height: 12),
             Center(
-              child: Text(
+              child: UiText(
                 cacheOnly
                     ? 'No saved comments are available.'
                     : 'No published comments yet.',
@@ -233,7 +234,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
             ),
             const SizedBox(height: 6),
             Center(
-              child: Text(
+              child: UiText(
                 accountReadOnly
                     ? 'This account is read-only.'
                     : cacheOnly
@@ -267,7 +268,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
                               commentThreadProvider(widget.paperId).notifier,
                             )
                             .loadMore,
-                        child: const Text('Load more comments'),
+                        child: const UiText('Load more comments'),
                       ),
               ),
             );
@@ -309,13 +310,13 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (state.creationDisabled)
-              const Text(
+              const UiText(
                 'New comments are paused. Existing discussions remain available.',
               )
             else if (draftOnlyMessage != null)
-              Text(draftOnlyMessage)
+              UiText(draftOnlyMessage)
             else if (offline)
-              const Text('Offline · your draft stays on this device.'),
+              const UiText('Offline · your draft stays on this device.'),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -334,9 +335,9 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
                         keyboardType: TextInputType.multiline,
                         textCapitalization: TextCapitalization.sentences,
                         textInputAction: TextInputAction.newline,
-                        decoration: const InputDecoration(
-                          labelText: 'Add a public comment',
-                          hintText: 'Discuss the paper…',
+                        decoration: InputDecoration(
+                          labelText: uiString(context, 'Add a public comment'),
+                          hintText: uiString(context, 'Discuss the paper…'),
                         ),
                         onChanged: (value) => unawaited(
                           ref
@@ -399,7 +400,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
         onPressed: () =>
             _authenticateFor(AppPendingActionKind.openComposer, widget.paperId),
         icon: Icon(viewer.authenticated ? Icons.rule : Icons.login),
-        label: Text(
+        label: UiText(
           viewer.authenticated
               ? 'Complete profile and community acceptance'
               : 'Sign in to join the discussion',
@@ -428,7 +429,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
           children: [
             const Icon(Icons.lock_outline),
             const SizedBox(width: 12),
-            Expanded(child: Text(message)),
+            Expanded(child: UiText(message)),
           ],
         ),
       ),
@@ -458,7 +459,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
+        content: UiText(
           comment.underReview
               ? 'Comment accepted and privately held for review.'
               : 'Comment published.',
@@ -486,16 +487,16 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete comment?'),
-        content: const Text('This removes the public comment.'),
+        title: const UiText('Delete comment?'),
+        content: const UiText('This removes the public comment.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+            child: const UiText('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Delete'),
+            child: const UiText('Delete'),
           ),
         ],
       ),
@@ -533,7 +534,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
         const {'outcome': 'accepted'},
       );
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Report received. Thank you.')),
+        const SnackBar(content: UiText('Report received. Thank you.')),
       );
     }
   }
@@ -567,7 +568,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
       messenger.clearSnackBars();
       messenger.showSnackBar(
         const SnackBar(
-          content: Text('User report received. No block was added.'),
+          content: UiText('User report received. No block was added.'),
         ),
       );
     }
@@ -578,18 +579,18 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('Block ${author.visibleName}?'),
-        content: const Text(
+        title: UiText('Block ${author.visibleName}?'),
+        content: const UiText(
           'Their comments will disappear immediately. The block syncs across your devices.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+            child: const UiText('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Block user'),
+            child: const UiText('Block user'),
           ),
         ],
       ),
@@ -681,18 +682,21 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(title, style: Theme.of(sheetContext).textTheme.titleLarge),
+                UiText(
+                  title,
+                  style: Theme.of(sheetContext).textTheme.titleLarge,
+                ),
                 const SizedBox(height: 8),
-                Text(explanation),
+                UiText(explanation),
                 const SizedBox(height: 20),
                 FilledButton(
                   key: const ValueKey('comments-sign-in-continue'),
                   onPressed: () => Navigator.pop(sheetContext, true),
-                  child: const Text('Continue to sign in'),
+                  child: const UiText('Continue to sign in'),
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(sheetContext, false),
-                  child: const Text('Not now'),
+                  child: const UiText('Not now'),
                 ),
               ],
             ),
@@ -845,7 +849,7 @@ class _CommentsScreenState extends ConsumerState<CommentsScreen> {
     };
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+      ..showSnackBar(SnackBar(content: UiText(message)));
   }
 
   void _maybeLoadMore() {
@@ -914,7 +918,7 @@ final class _CommentCard extends StatelessWidget {
                     if (actionsEnabled)
                       PopupMenuButton<String>(
                         key: ValueKey('comment-actions-${comment.id}'),
-                        tooltip: 'Comment actions',
+                        tooltip: uiString(context, 'Comment actions'),
                         onSelected: (value) {
                           switch (value) {
                             case 'edit':
@@ -938,25 +942,25 @@ final class _CommentCard extends StatelessWidget {
                             ? const [
                                 PopupMenuItem(
                                   value: 'edit',
-                                  child: Text('Edit'),
+                                  child: UiText('Edit'),
                                 ),
                                 PopupMenuItem(
                                   value: 'delete',
-                                  child: Text('Delete'),
+                                  child: UiText('Delete'),
                                 ),
                               ]
                             : const [
                                 PopupMenuItem(
                                   value: 'report-comment',
-                                  child: Text('Report comment'),
+                                  child: UiText('Report comment'),
                                 ),
                                 PopupMenuItem(
                                   value: 'report-user',
-                                  child: Text('Report user'),
+                                  child: UiText('Report user'),
                                 ),
                                 PopupMenuItem(
                                   value: 'block',
-                                  child: Text('Block user'),
+                                  child: UiText('Block user'),
                                 ),
                               ],
                       ),
@@ -967,13 +971,13 @@ final class _CommentCard extends StatelessWidget {
                     padding: EdgeInsets.only(top: 6),
                     child: Chip(
                       avatar: Icon(Icons.visibility_off_outlined, size: 16),
-                      label: Text('Under review · only you can see this'),
+                      label: UiText('Under review · only you can see this'),
                     ),
                   ),
                 const SizedBox(height: 8),
                 SelectableText(comment.body),
                 const SizedBox(height: 10),
-                Text(
+                UiText(
                   _commentTimestamp(comment),
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
@@ -1040,7 +1044,7 @@ class _EditCommentDialogState extends State<_EditCommentDialog> {
   @override
   Widget build(BuildContext context) => AlertDialog(
     scrollable: true,
-    title: const Text('Edit comment'),
+    title: const UiText('Edit comment'),
     content: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1051,8 +1055,8 @@ class _EditCommentDialogState extends State<_EditCommentDialog> {
           minLines: 3,
           maxLines: 8,
           decoration: InputDecoration(
-            labelText: 'Public comment',
-            errorText: _validationError,
+            labelText: uiString(context, 'Public comment'),
+            errorText: uiStringOrNull(context, _validationError),
           ),
           onChanged: _changed,
         ),
@@ -1065,13 +1069,13 @@ class _EditCommentDialogState extends State<_EditCommentDialog> {
     actions: [
       TextButton(
         onPressed: () => Navigator.pop(context),
-        child: const Text('Cancel'),
+        child: const UiText('Cancel'),
       ),
       FilledButton(
         onPressed: _validationPending || _validationError != null
             ? null
             : _save,
-        child: const Text('Save'),
+        child: const UiText('Save'),
       ),
     ],
   );
@@ -1279,17 +1283,19 @@ class _ReportDialogState extends State<_ReportDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.title),
+      title: UiText(widget.title),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<CommentReportReason>(
               initialValue: _reason,
-              decoration: const InputDecoration(labelText: 'Reason'),
+              decoration: InputDecoration(
+                labelText: uiString(context, 'Reason'),
+              ),
               items: [
                 for (final reason in CommentReportReason.values)
-                  DropdownMenuItem(value: reason, child: Text(reason.label)),
+                  DropdownMenuItem(value: reason, child: UiText(reason.label)),
               ],
               onChanged: (value) =>
                   setState(() => _reason = value ?? CommentReportReason.spam),
@@ -1300,8 +1306,8 @@ class _ReportDialogState extends State<_ReportDialog> {
               maxLength: 500,
               minLines: 2,
               maxLines: 5,
-              decoration: const InputDecoration(
-                labelText: 'Additional detail (optional)',
+              decoration: InputDecoration(
+                labelText: uiString(context, 'Additional detail (optional)'),
               ),
             ),
           ],
@@ -1310,14 +1316,14 @@ class _ReportDialogState extends State<_ReportDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: const UiText('Cancel'),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, (
             reason: _reason,
             detail: _detail.text.trim().isEmpty ? null : _detail.text.trim(),
           )),
-          child: const Text('Send report'),
+          child: const UiText('Send report'),
         ),
       ],
     );
@@ -1345,8 +1351,10 @@ final class _ThreadNotice extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     liveRegion: true,
     child: MaterialBanner(
-      content: Text(message),
-      actions: [TextButton(onPressed: onDismiss, child: const Text('Dismiss'))],
+      content: UiText(message),
+      actions: [
+        TextButton(onPressed: onDismiss, child: const UiText('Dismiss')),
+      ],
     ),
   );
 }

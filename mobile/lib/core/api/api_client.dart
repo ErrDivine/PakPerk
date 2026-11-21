@@ -60,6 +60,14 @@ class ApiClient {
     }
   }
 
+  Future<void> submitProductSurvey(Map<String, dynamic> payload) async {
+    try {
+      await _dio.post<void>('/v1/product-surveys', data: payload);
+    } on DioException catch (error) {
+      throw mapDioException(error);
+    }
+  }
+
   Future<FeedPage> getFeed({
     String? category,
     String? cursor,

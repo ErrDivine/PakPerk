@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -121,11 +122,11 @@ final class _MemoryReviewScreenState extends State<MemoryReviewScreen> {
     final message = widget.openErrorMessage ?? widget.state.errorMessage;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Research memory'),
+        title: const UiText('Research memory'),
         actions: [
           IconButton(
             key: const ValueKey('memory-review-refresh'),
-            tooltip: 'Refresh research memory',
+            tooltip: uiString(context, 'Refresh research memory'),
             onPressed: widget.state.loading ? null : widget.onRefresh,
             icon: const Icon(Icons.refresh),
           ),
@@ -139,10 +140,9 @@ final class _MemoryReviewScreenState extends State<MemoryReviewScreen> {
                 key: ValueKey('memory-review-progress'),
               ),
             if (widget.state.offline)
-              const _MessageBanner(
+              _MessageBanner(
                 icon: Icons.cloud_off_outlined,
-                message:
-                    'Offline: cached reviews stay private on this device and changes keep their sync operation.',
+                message: 'Offline: cached reviews stay private on this device and changes keep their sync operation.',
               ),
             if (message != null)
               _MessageBanner(
@@ -211,8 +211,8 @@ final class _MemoryReviewScreenState extends State<MemoryReviewScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Retire this memory item?'),
-        content: const Text(
+        title: const UiText('Retire this memory item?'),
+        content: const UiText(
           'It will leave future review. Its source paper and Library state will not change.',
         ),
         actions: [
@@ -224,7 +224,7 @@ final class _MemoryReviewScreenState extends State<MemoryReviewScreen> {
               ),
             ),
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Keep reviewing'),
+            child: const UiText('Keep reviewing'),
           ),
           FilledButton(
             key: const ValueKey('confirm-retire-memory'),
@@ -235,7 +235,7 @@ final class _MemoryReviewScreenState extends State<MemoryReviewScreen> {
               ),
             ),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Retire'),
+            child: const UiText('Retire'),
           ),
         ],
       ),
@@ -255,13 +255,13 @@ final class _ReviewIntroduction extends StatelessWidget {
       children: [
         Semantics(
           header: true,
-          child: Text(
+          child: UiText(
             'Due for review',
             style: Theme.of(context).textTheme.headlineSmall,
           ),
         ),
         const SizedBox(height: PakPerkSpacing.xs),
-        const Text(
+        const UiText(
           'Only notes and evidence you chose to remember appear here. Reviewing never moves a paper in your Library or reading feed.',
         ),
       ],
@@ -312,7 +312,7 @@ final class _MemoryReviewCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
+                      UiText(
                         _sourceLabel(item.sourceType),
                         style: theme.textTheme.labelLarge,
                       ),
@@ -327,7 +327,7 @@ final class _MemoryReviewCard extends StatelessWidget {
                 if (busy)
                   Semantics(
                     liveRegion: true,
-                    label: 'Updating memory item',
+                    label: uiString(context, 'Updating memory item'),
                     child: const Padding(
                       padding: EdgeInsetsDirectional.only(start: 8),
                       child: SizedBox.square(
@@ -340,9 +340,9 @@ final class _MemoryReviewCard extends StatelessWidget {
             ),
             const SizedBox(height: PakPerkSpacing.sm),
             Semantics(
-              label: 'Source paper',
+              label: uiString(context, 'Source paper'),
               excludeSemantics: true,
-              child: Text('Source paper', style: theme.textTheme.bodySmall),
+              child: UiText('Source paper', style: theme.textTheme.bodySmall),
             ),
             if (answer != null) ...[
               const SizedBox(height: PakPerkSpacing.sm),
@@ -356,7 +356,7 @@ final class _MemoryReviewCard extends StatelessWidget {
               else
                 Semantics(
                   liveRegion: true,
-                  label: 'Saved note revealed',
+                  label: uiString(context, 'Saved note revealed'),
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: theme.colorScheme.secondaryContainer,
@@ -471,13 +471,13 @@ final class _MemoryScheduleSheetState extends State<_MemoryScheduleSheet> {
           children: [
             Semantics(
               header: true,
-              child: Text(
+              child: UiText(
                 widget.title,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
             const SizedBox(height: PakPerkSpacing.xs),
-            const Text(
+            const UiText(
               'Choose when this item should return. This does not change its source paper or reading queue.',
             ),
             const SizedBox(height: PakPerkSpacing.md),
@@ -524,10 +524,13 @@ final class _MemoryScheduleSheetState extends State<_MemoryScheduleSheet> {
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[0-9-]')),
                 ],
-                decoration: const InputDecoration(
-                  labelText: 'Review date',
-                  hintText: 'YYYY-MM-DD',
-                  helperText: 'Scheduled for 9:00 AM on this device.',
+                decoration: InputDecoration(
+                  labelText: uiString(context, 'Review date'),
+                  hintText: uiString(context, 'YYYY-MM-DD'),
+                  helperText: uiString(
+                    context,
+                    'Scheduled for 9:00 AM on this device.',
+                  ),
                 ),
                 onChanged: (_) {
                   if (_customDateError == null) return;
@@ -540,7 +543,7 @@ final class _MemoryScheduleSheetState extends State<_MemoryScheduleSheet> {
                 Semantics(
                   key: const ValueKey('memory-custom-date-error'),
                   liveRegion: true,
-                  child: Text(
+                  child: UiText(
                     error,
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.error,
@@ -557,7 +560,7 @@ final class _MemoryScheduleSheetState extends State<_MemoryScheduleSheet> {
                   ),
                 ),
                 onPressed: _submitCustomDate,
-                child: const Text('Set review date'),
+                child: const UiText('Set review date'),
               ),
             ],
           ],
@@ -618,9 +621,9 @@ final class _ScheduleChoice extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(label),
+        UiText(label),
         const SizedBox(height: PakPerkSpacing.xxs),
-        Text(detail, style: Theme.of(context).textTheme.bodySmall),
+        UiText(detail, style: Theme.of(context).textTheme.bodySmall),
       ],
     ),
   );
@@ -673,12 +676,12 @@ final class _ReviewAction extends StatelessWidget {
         ? FilledButton.icon(
             onPressed: onPressed,
             icon: Icon(icon),
-            label: Text(label),
+            label: UiText(label),
           )
         : OutlinedButton.icon(
             onPressed: onPressed,
             icon: Icon(icon),
-            label: Text(label),
+            label: UiText(label),
           ),
   );
 }
@@ -708,7 +711,7 @@ final class _MessageBanner extends StatelessWidget {
           children: [
             Icon(icon),
             const SizedBox(width: PakPerkSpacing.sm),
-            Expanded(child: Text(message)),
+            Expanded(child: UiText(message)),
           ],
         ),
       ),
@@ -735,14 +738,14 @@ final class _EmptyMemoryReview extends StatelessWidget {
           const SizedBox(height: PakPerkSpacing.md),
           Semantics(
             header: true,
-            child: Text(
+            child: UiText(
               loading ? 'Checking research memory' : 'Nothing due right now',
               style: Theme.of(context).textTheme.headlineSmall,
               textAlign: TextAlign.center,
             ),
           ),
           const SizedBox(height: PakPerkSpacing.xs),
-          Text(
+          UiText(
             loading
                 ? 'Cached items remain visible while the account snapshot is verified.'
                 : 'You can return whenever another memory item is due.',

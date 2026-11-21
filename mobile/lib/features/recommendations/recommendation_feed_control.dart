@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -106,7 +107,7 @@ class _RecommendationFeedControlState extends State<RecommendationFeedControl> {
           container: true,
           excludeSemantics: true,
           button: true,
-          label: 'Recommendation details. $reasonLabel',
+          label: uiString(context, 'Recommendation details. $reasonLabel'),
           child: Tooltip(
             message: 'Why this paper? $reasonLabel',
             excludeFromSemantics: true,
@@ -129,7 +130,7 @@ class _RecommendationFeedControlState extends State<RecommendationFeedControl> {
                     children: [
                       Icon(Icons.auto_awesome_outlined, size: 22),
                       SizedBox(height: 4),
-                      Text(
+                      UiText(
                         'Why',
                         textAlign: TextAlign.center,
                         maxLines: 1,

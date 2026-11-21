@@ -14,6 +14,7 @@ import '../models/introduction.dart';
 import '../models/arxiv_identifier.dart';
 import '../models/paper.dart';
 import '../models/processing.dart';
+import '../document/arxiv_introduction_source.dart';
 
 enum DataOrigin { network, deviceCache, bundledDemo }
 
@@ -90,15 +91,18 @@ class PaperRepository implements PaperDataSource {
     required DemoContentStore demoContent,
     this.fulltextPolicy = ClientFulltextPolicy.prototype,
     TransportNetworkStatus? networkStatus,
+    ArxivIntroductionSource? introductionSource,
   }) : _api = api,
        _localStore = localStore,
        _demoContent = demoContent,
+       _introductionSource = introductionSource,
        _networkStatus = networkStatus ?? TransportNetworkStatus(),
        _ownsNetworkStatus = networkStatus == null;
 
   final ApiClient _api;
   final LocalStore _localStore;
   final DemoContentStore _demoContent;
+  final ArxivIntroductionSource? _introductionSource;
   final ClientFulltextPolicy fulltextPolicy;
   final TransportNetworkStatus _networkStatus;
   final bool _ownsNetworkStatus;
@@ -526,7 +530,7 @@ class PaperRepository implements PaperDataSource {
   }) async {
     final expectedVersion = await _currentVersionKey(paperId);
     try {
-      final value = await _api.getIntroduction(
+      var value = await _api.getIntroduction(
         paperId,
         cancellation: cancellation,
       );
@@ -535,6 +539,25 @@ class PaperRepository implements PaperDataSource {
         responsePaperId: value.paperId,
         generation: value.generation,
       );
+      final source = _introductionSource;
+      if (source != null && expectedVersion != null) {
+        final cached = await _localStore.loadIntroduction(paperId);
+        final identifier = ArxivIdentifier.tryParse(expectedVersion.arxivId);
+        final sourceUrl = identifier == null
+            ? null
+            : 'https://arxiv.org/html/${identifier.queryId}';
+        if (cached != null &&
+            cached.generation == value.generation &&
+            cached.sourceUrl == sourceUrl &&
+            cached.sourceRevision == ArxivIntroductionSource.sourceRevision &&
+            cached.sourceBlocks.isNotEmpty) {
+          value = cached;
+        } else {
+          value =
+              await source.load(value, expectedVersion.arxivId, cancellation) ??
+              value;
+        }
+      }
       final generationRelation = await _generationRelation(
         paperId,
         value.generation,

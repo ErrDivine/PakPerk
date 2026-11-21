@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -107,7 +108,7 @@ class RecommendationInteractionButton extends StatelessWidget {
             onOpenPrivacy: onOpenPrivacy,
           ),
           icon: const Icon(Icons.auto_awesome_outlined),
-          label: const Text('Why this paper?'),
+          label: const UiText('Why this paper?'),
         );
       },
     );
@@ -233,7 +234,7 @@ class _RecommendationExplanationSheetState
             container: true,
             scopesRoute: true,
             namesRoute: true,
-            label: 'Recommendation details modal sheet',
+            label: uiString(context, 'Recommendation details modal sheet'),
             explicitChildNodes: true,
             child: Material(
               color: Theme.of(context).colorScheme.surface,
@@ -258,7 +259,7 @@ class _RecommendationExplanationSheetState
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text(
+                          UiText(
                             widget.paperTitle,
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
@@ -282,7 +283,9 @@ class _RecommendationExplanationSheetState
                                       widget.onAdjustPersonalization!,
                                     ),
                                     icon: const Icon(Icons.tune_rounded),
-                                    label: const Text('Adjust recommendations'),
+                                    label: const UiText(
+                                      'Adjust recommendations',
+                                    ),
                                   ),
                                 if (widget.onOpenPrivacy != null)
                                   TextButton.icon(
@@ -294,7 +297,7 @@ class _RecommendationExplanationSheetState
                                     icon: const Icon(
                                       Icons.privacy_tip_outlined,
                                     ),
-                                    label: const Text(
+                                    label: const UiText(
                                       'Personalization privacy',
                                     ),
                                   ),
@@ -331,7 +334,7 @@ class _RecommendationExplanationSheetState
       return Semantics(
         key: const ValueKey('recommendation-feedback-success'),
         liveRegion: true,
-        label: 'Feedback sent',
+        label: uiString(context, 'Feedback sent'),
         child: _FeedbackMessage(
           icon: Icons.check_circle_outline_rounded,
           title: 'Feedback sent',
@@ -339,7 +342,7 @@ class _RecommendationExplanationSheetState
           action: FilledButton(
             key: const ValueKey('recommendation-feedback-done'),
             onPressed: _dismiss,
-            child: const Text('Done'),
+            child: const UiText('Done'),
           ),
         ),
       );
@@ -350,13 +353,13 @@ class _RecommendationExplanationSheetState
       children: [
         Semantics(
           header: true,
-          child: Text(
+          child: UiText(
             'Tune your recommendations',
             style: Theme.of(context).textTheme.titleLarge,
           ),
         ),
         const SizedBox(height: PakPerkSpacing.xs),
-        Text(
+        UiText(
           'Feedback changes future discovery signals. It never marks a paper '
           'read, saved, or removed.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -376,7 +379,7 @@ class _RecommendationExplanationSheetState
                       const RecommendationFeedbackSelection.relevant(),
                     ),
               icon: const Icon(Icons.thumb_up_outlined),
-              label: const Text('Helpful'),
+              label: const UiText('Helpful'),
             ),
             OutlinedButton.icon(
               key: const ValueKey('recommendation-feedback-not-relevant'),
@@ -384,7 +387,7 @@ class _RecommendationExplanationSheetState
                   ? null
                   : () => setState(() => _choosingReason = !_choosingReason),
               icon: const Icon(Icons.tune_rounded),
-              label: const Text('Not for me'),
+              label: const UiText('Not for me'),
             ),
             TextButton.icon(
               key: const ValueKey('recommendation-feedback-dismissed'),
@@ -396,7 +399,7 @@ class _RecommendationExplanationSheetState
                       ),
                     ),
               icon: const Icon(Icons.visibility_off_outlined),
-              label: const Text('Dismiss suggestion'),
+              label: const UiText('Dismiss suggestion'),
             ),
           ],
         ),
@@ -414,7 +417,7 @@ class _RecommendationExplanationSheetState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
+                      UiText(
                         'What missed the mark?',
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
@@ -430,7 +433,7 @@ class _RecommendationExplanationSheetState
                                 'recommendation-feedback-reason-'
                                 '${reason.wireValue}',
                               ),
-                              label: Text(reason.label),
+                              label: UiText(reason.label),
                               selected: _selectedReason == reason,
                               onSelected: busy
                                   ? null
@@ -455,7 +458,7 @@ class _RecommendationExplanationSheetState
                                   reason: _selectedReason,
                                 ),
                               ),
-                        child: const Text('Send feedback'),
+                        child: const UiText('Send feedback'),
                       ),
                     ],
                   ),
@@ -466,7 +469,7 @@ class _RecommendationExplanationSheetState
           Semantics(
             key: const ValueKey('recommendation-feedback-progress'),
             liveRegion: true,
-            label: 'Sending feedback',
+            label: uiString(context, 'Sending feedback'),
             child: const LinearProgressIndicator(),
           ),
         ],
@@ -496,14 +499,14 @@ class _ExplanationSection extends StatelessWidget {
       children: [
         Semantics(
           header: true,
-          child: Text(
+          child: UiText(
             'Why this paper?',
             style: Theme.of(context).textTheme.titleLarge,
           ),
         ),
         const SizedBox(height: PakPerkSpacing.sm),
         switch (state.explanationPhase) {
-          RecommendationExplanationPhase.unavailable => const _FeedbackMessage(
+          RecommendationExplanationPhase.unavailable => _FeedbackMessage(
             icon: Icons.info_outline_rounded,
             title: 'Explanations are not enabled',
             message: 'No reason is inferred or substituted on this device.',
@@ -512,7 +515,7 @@ class _ExplanationSection extends StatelessWidget {
           RecommendationExplanationPhase.loading => Semantics(
             key: const ValueKey('recommendation-explanation-progress'),
             liveRegion: true,
-            label: 'Loading recommendation explanation',
+            label: uiString(context, 'Loading recommendation explanation'),
             child: const LinearProgressIndicator(),
           ),
           RecommendationExplanationPhase.ready => Column(
@@ -534,7 +537,7 @@ class _ExplanationSection extends StatelessWidget {
           ),
         },
         const SizedBox(height: PakPerkSpacing.sm),
-        Text(
+        UiText(
           'These are immutable reasons recorded for this recommendation. They '
           'are not proof that your reading queue is empty.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -569,12 +572,12 @@ class _ExplanationCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  UiText(
                     explanation.title,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: PakPerkSpacing.xxs),
-                  Text(explanation.detail),
+                  UiText(explanation.detail),
                   const SizedBox(height: PakPerkSpacing.sm),
                   _ExplanationFact(
                     label: 'Candidate source',
@@ -592,8 +595,8 @@ class _ExplanationCard extends StatelessWidget {
                   ),
                   if (explanation.seedPaperId != null) ...[
                     const SizedBox(height: PakPerkSpacing.xxs),
-                    const _ExplanationFact(
-                      label: 'Historical seed',
+                    _ExplanationFact(
+                      label: uiString(context, 'Historical seed'),
                       value: 'A recorded paper in your library',
                     ),
                   ],
@@ -616,18 +619,18 @@ class _ExplanationFact extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: '$label: $value',
+      label: uiString(context, '$label: $value'),
       excludeSemantics: true,
       child: Wrap(
         crossAxisAlignment: WrapCrossAlignment.start,
         children: [
-          Text(
+          UiText(
             '$label: ',
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
-          Text(value, style: Theme.of(context).textTheme.bodySmall),
+          UiText(value, style: Theme.of(context).textTheme.bodySmall),
         ],
       ),
     );
@@ -672,7 +675,7 @@ class _FeedbackFailure extends StatelessWidget {
       key: const ValueKey('recommendation-interaction-failure'),
       liveRegion: true,
       container: true,
-      label: '${failure.title}. ${failure.message}',
+      label: uiString(context, '${failure.title}. ${failure.message}'),
       child: _FeedbackMessage(
         icon: Icons.error_outline_rounded,
         title: failure.title,
@@ -683,7 +686,7 @@ class _FeedbackFailure extends StatelessWidget {
                 key: const ValueKey('recommendation-interaction-retry'),
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Retry'),
+                label: const UiText('Retry'),
               )
             : null,
       ),
@@ -725,9 +728,9 @@ class _FeedbackMessage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: Theme.of(context).textTheme.titleMedium),
+                  UiText(title, style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: PakPerkSpacing.xxs),
-                  Text(message),
+                  UiText(message),
                   if (action != null) ...[
                     const SizedBox(height: PakPerkSpacing.sm),
                     action!,
@@ -761,7 +764,7 @@ class _SheetHeader extends StatelessWidget {
           Expanded(
             child: Semantics(
               header: true,
-              child: Text(
+              child: UiText(
                 'Recommendation details',
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
@@ -769,7 +772,7 @@ class _SheetHeader extends StatelessWidget {
           ),
           IconButton(
             key: const ValueKey('recommendation-sheet-close'),
-            tooltip: 'Close recommendation details',
+            tooltip: uiString(context, 'Close recommendation details'),
             onPressed: onClose,
             icon: const Icon(Icons.close_rounded),
           ),
@@ -785,7 +788,7 @@ class _AccessibleDragHandle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'Drag handle',
+      label: uiString(context, 'Drag handle'),
       child: SizedBox(
         height: PakPerkSizes.compactInteractive,
         child: Center(

@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/document_block.dart';
@@ -47,7 +48,7 @@ class _InlineReferenceContext extends StatelessWidget {
     return Semantics(
       scopesRoute: true,
       namesRoute: true,
-      label: '$title context',
+      label: uiString(context, '$title context'),
       explicitChildNodes: true,
       child: SafeArea(
         top: true,
@@ -74,7 +75,7 @@ class _InlineReferenceContext extends StatelessWidget {
                       Expanded(
                         child: Semantics(
                           header: true,
-                          child: Text(
+                          child: UiText(
                             title,
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
@@ -83,7 +84,7 @@ class _InlineReferenceContext extends StatelessWidget {
                       IconButton(
                         key: const ValueKey('inline-reference-close'),
                         onPressed: () => Navigator.of(context).pop(false),
-                        tooltip: 'Close reference context',
+                        tooltip: uiString(context, 'Close reference context'),
                         constraints: const BoxConstraints.tightFor(
                           width: PakPerkSizes.minimumInteractive,
                           height: PakPerkSizes.minimumInteractive,
@@ -94,19 +95,19 @@ class _InlineReferenceContext extends StatelessWidget {
                   ),
                   if (marker?.isNotEmpty == true) ...[
                     const SizedBox(height: 8),
-                    Text('Marker: $marker'),
+                    UiText('Marker: $marker'),
                   ],
                   if (target?.isNotEmpty == true &&
                       reference.kind != 'external_resource') ...[
                     const SizedBox(height: 8),
-                    Text(
+                    UiText(
                       'Resolved locator: $target',
                       key: const ValueKey('inline-reference-target'),
                     ),
                   ],
                   if (reference.kind == 'external_resource') ...[
                     const SizedBox(height: 8),
-                    const Text(
+                    const UiText(
                       'This extracted external target is not opened directly. Verify it in the original paper.',
                     ),
                   ],
@@ -126,7 +127,7 @@ class _InlineReferenceContext extends StatelessWidget {
                       key: const ValueKey('inline-reference-original'),
                       onPressed: () => Navigator.of(context).pop(true),
                       icon: const Icon(Icons.open_in_new),
-                      label: const Text('Verify in original'),
+                      label: const UiText('Verify in original'),
                     ),
                   ),
                 ],

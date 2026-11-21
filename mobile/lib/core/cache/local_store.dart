@@ -104,6 +104,7 @@ class SharedPreferencesLocalStore implements LocalStore {
       compactRestorationPreferencesKey,
       _feedKey,
       _appearanceKey,
+      'pakperk.language.v1',
     };
     const rebuildablePrefixes = [
       'pakperk.paper.',

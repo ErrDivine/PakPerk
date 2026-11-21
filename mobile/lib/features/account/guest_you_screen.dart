@@ -1,4 +1,6 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/build_info.dart';
 
@@ -43,7 +45,7 @@ class GuestYouScreen extends StatelessWidget {
           children: [
             Semantics(
               header: true,
-              child: Text(
+              child: UiText(
                 'You',
                 style: Theme.of(context).textTheme.displaySmall,
               ),
@@ -76,12 +78,12 @@ class GuestYouScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Text(
+                    UiText(
                       accountCard.title,
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 7),
-                    Text(
+                    UiText(
                       accountCard.message,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
@@ -90,11 +92,11 @@ class GuestYouScreen extends StatelessWidget {
                       FilledButton.icon(
                         onPressed: onSignIn,
                         icon: const Icon(Icons.login),
-                        label: const Text('Sign in / Create account'),
+                        label: const UiText('Sign in / Create account'),
                       ),
                       if (onSignIn == null) ...[
                         const SizedBox(height: 10),
-                        Text(
+                        UiText(
                           'Sign in is temporarily unavailable.',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
@@ -105,13 +107,20 @@ class GuestYouScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 22),
-            Text(
+            UiText(
               'ON THIS DEVICE',
               style: Theme.of(context).textTheme.labelSmall,
             ),
             const SizedBox(height: 7),
             _YouInsetGroup(
               children: [
+                _YouDestination(
+                  icon: Icons.chat_bubble_outline,
+                  label: 'Share your thoughts',
+                  supportingText: 'A few minutes to tell us how it feels',
+                  onTap: () => context.push('/you/questionnaire'),
+                ),
+                const _YouDivider(),
                 _YouDestination(
                   icon: Icons.settings_outlined,
                   label: 'Settings',
@@ -222,8 +231,8 @@ class _YouDestination extends StatelessWidget {
     return ListTile(
       minVerticalPadding: 12,
       leading: _YouLeadingIcon(icon: icon),
-      title: Text(label),
-      subtitle: supportingText == null ? null : Text(supportingText!),
+      title: UiText(label),
+      subtitle: supportingText == null ? null : UiText(supportingText!),
       trailing: Icon(
         Icons.chevron_right,
         size: 20,

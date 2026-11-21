@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -19,9 +20,8 @@ class AccountAuthRouteScreen extends ConsumerWidget {
     if (!ref.watch(featureFlagsProvider).accounts) {
       return PhaseOnePlaceholderScreen(
         title: 'Accounts are not enabled',
-        message:
-            'Sign in and account creation are disabled in this build. No '
-            'credentials are collected by this screen.',
+        message: 'Sign in and account creation are disabled in this build. No '
+          'credentials are collected by this screen.',
         icon: Icons.lock_outline,
         closeTooltip: 'Close account sign in',
         onClose: () => closePakPerkRootRoute(context),
@@ -96,11 +96,11 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
       child: Scaffold(
         appBar: AppBar(
           leading: IconButton(
-            tooltip: 'Close account sign in',
+            tooltip: uiString(context, 'Close account sign in'),
             onPressed: _running ? null : _cancelAndClose,
             icon: const Icon(Icons.close),
           ),
-          title: Text(needsSetup ? 'Finish account setup' : 'Sign in'),
+          title: UiText(needsSetup ? 'Finish account setup' : 'Sign in'),
         ),
         body: SafeArea(
           top: false,
@@ -118,7 +118,7 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
       return Center(
         child: Semantics(
           liveRegion: true,
-          label: 'Opening secure system sign in',
+          label: uiString(context, 'Opening secure system sign in'),
           child: const CircularProgressIndicator(),
         ),
       );
@@ -143,7 +143,7 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
               size: 48,
             ),
             const SizedBox(height: 16),
-            Text(
+            UiText(
               _deletionBlocked
                   ? 'Account deletion is pending'
                   : saveFailed
@@ -152,7 +152,7 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: 8),
-            Text(error, textAlign: TextAlign.center),
+            UiText(error, textAlign: TextAlign.center),
             const SizedBox(height: 18),
             FilledButton.icon(
               onPressed: _running
@@ -165,11 +165,14 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
                     ? Icons.arrow_back
                     : Icons.refresh,
               ),
-              label: Text(
+              label: UiText(
                 _deletionBlocked || actionFailed ? 'Return' : 'Try again',
               ),
             ),
-            TextButton(onPressed: _cancelAndClose, child: const Text('Cancel')),
+            TextButton(
+              onPressed: _cancelAndClose,
+              child: const UiText('Cancel'),
+            ),
           ],
         ),
       ),
@@ -190,12 +193,12 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Text(
+          UiText(
             'Choose how you appear in paper discussions.',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
-          const Text(
+          const UiText(
             'Your handle is public and must be unique. Your display name is '
             'optional and can be changed later.',
           ),
@@ -207,10 +210,13 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
             maxLength: 30,
             autocorrect: false,
             textInputAction: TextInputAction.next,
-            decoration: const InputDecoration(
-              labelText: 'Handle',
+            decoration: InputDecoration(
+              labelText: uiString(context, 'Handle'),
               prefixText: '@',
-              helperText: '3–30 characters. This is your public identifier.',
+              helperText: uiString(
+                context,
+                '3–30 characters. This is your public identifier.',
+              ),
             ),
             validator: (value) {
               final normalized = value?.trim() ?? '';
@@ -227,8 +233,8 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
             enabled: !busy,
             maxLength: 80,
             textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              labelText: 'Display name (optional)',
+            decoration: InputDecoration(
+              labelText: uiString(context, 'Display name (optional)'),
             ),
           ),
           const SizedBox(height: 8),
@@ -240,10 +246,10 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
                 : (value) => setState(() => _termsAccepted = value ?? false),
             controlAffinity: ListTileControlAffinity.leading,
             contentPadding: EdgeInsets.zero,
-            title: Text(
+            title: UiText(
               'I accept terms version ${profile.currentTermsVersion}.',
             ),
-            subtitle: Text(
+            subtitle: UiText(
               !profile.termsCurrent && !termsDocumentMatches
                   ? 'Update Pakperk before accepting the current terms.'
                   : 'Required to complete your public profile.',
@@ -255,7 +261,7 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
               onPressed: busy
                   ? null
                   : () => context.push<void>(PakPerkRoutes.terms),
-              child: const Text('Read the terms'),
+              child: const UiText('Read the terms'),
             ),
           ),
           if (_requiresCommunityPolicy(
@@ -274,11 +280,11 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
                         setState(() => _guidelinesAccepted = value ?? false),
               controlAffinity: ListTileControlAffinity.leading,
               contentPadding: EdgeInsets.zero,
-              title: Text(
+              title: UiText(
                 'I accept Community Guidelines version '
                 '${profile.currentCommunityGuidelinesVersion}.',
               ),
-              subtitle: const Text(
+              subtitle: const UiText(
                 'Comments are public. Harassment, threats, illegal content, '
                 'doxxing, sexual exploitation, spam, impersonation, and '
                 'copyright abuse are prohibited.',
@@ -288,14 +294,14 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
                 !guidelinesDocumentMatches)
               const Padding(
                 padding: EdgeInsets.only(left: 12),
-                child: Text(
+                child: UiText(
                   'Update Pakperk before accepting the current Community '
                   'Guidelines.',
                 ),
               ),
             Padding(
               padding: const EdgeInsets.only(left: 12),
-              child: Text(
+              child: UiText(
                 'Support/moderation contact: '
                 '${ref.watch(appBuildConfigProvider).supportUri}',
                 key: const ValueKey('account-community-support-contact'),
@@ -310,21 +316,21 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
                       : () => context.push<void>(
                           PakPerkRoutes.communityGuidelines,
                         ),
-                  child: const Text('Read the Community Guidelines'),
+                  child: const UiText('Read the Community Guidelines'),
                 ),
                 TextButton(
                   key: const ValueKey('account-community-support'),
                   onPressed: busy
                       ? null
                       : () => context.push<void>(PakPerkRoutes.support),
-                  child: const Text('Contact support or moderation'),
+                  child: const UiText('Contact support or moderation'),
                 ),
               ],
             ),
           ],
           if (_safeError ?? account.error?.message case final message?) ...[
             const SizedBox(height: 8),
-            Text(
+            UiText(
               message,
               key: const ValueKey('account-onboarding-error'),
               style: TextStyle(color: Theme.of(context).colorScheme.error),
@@ -339,7 +345,7 @@ class _AuthFlowScreenState extends ConsumerState<AuthFlowScreen> {
                     dimension: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Complete account setup'),
+                : const UiText('Complete account setup'),
           ),
         ],
       ),

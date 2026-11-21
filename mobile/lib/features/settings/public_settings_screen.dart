@@ -1,3 +1,5 @@
+import '../../l10n/ui.dart';
+import '../../l10n/language_controller.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -108,7 +110,7 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
         researchExportScope != null;
     final colors = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: const UiText('Settings')),
       body: SafeArea(
         child: ListView(
           key: const PageStorageKey<String>('public-settings-list'),
@@ -124,18 +126,36 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
                     icon: Icons.contrast_outlined,
                     color: colors.primary,
                   ),
-                  title: const Text('Appearance'),
-                  subtitle: Text(ref.watch(appearanceControllerProvider).label),
+                  title: const UiText('Appearance'),
+                  subtitle: UiText(
+                    ref.watch(appearanceControllerProvider).label,
+                  ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: _busy ? null : _chooseAppearance,
+                ),
+                _SettingsDivider(color: colors.outlineVariant),
+                ListTile(
+                  key: const ValueKey('language-setting'),
+                  leading: _SettingsIcon(
+                    icon: Icons.language,
+                    color: colors.primary,
+                  ),
+                  title: const UiText('Language'),
+                  subtitle: UiText(
+                    ref.watch(languageControllerProvider).languageCode == 'zh'
+                        ? '简体中文'
+                        : 'English',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _chooseLanguage,
                 ),
                 _SettingsDivider(color: colors.outlineVariant),
                 const ListTile(
                   leading: _SettingsIcon(
                     icon: Icons.motion_photos_off_outlined,
                   ),
-                  title: Text('Reduced motion'),
-                  subtitle: Text('Follows the device accessibility setting'),
+                  title: UiText('Reduced motion'),
+                  subtitle: UiText('Follows the device accessibility setting'),
                 ),
               ],
             ),
@@ -149,15 +169,15 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
                     icon: Icons.storage_outlined,
                     color: colors.primary,
                   ),
-                  title: const Text('Reading cache'),
-                  subtitle: Text(_cacheUsageLabel),
+                  title: const UiText('Reading cache'),
+                  subtitle: UiText(_cacheUsageLabel),
                   trailing: _measuring
                       ? const SizedBox.square(
                           dimension: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : IconButton(
-                          tooltip: 'Refresh cache usage',
+                          tooltip: uiString(context, 'Refresh cache usage'),
                           onPressed: _busy ? null : _refreshUsage,
                           icon: const Icon(Icons.refresh),
                         ),
@@ -172,8 +192,8 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
                           icon: Icons.delete_sweep_outlined,
                           color: colors.primary,
                         ),
-                  title: const Text('Clear reading cache'),
-                  subtitle: const Text(
+                  title: const UiText('Clear reading cache'),
+                  subtitle: const UiText(
                     'Remove rebuildable feeds and reading data. Saves, drafts, '
                     'pending sync, account data, and reading position stay.',
                   ),
@@ -189,11 +209,11 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
                           icon: Icons.delete_forever_outlined,
                           color: colors.error,
                         ),
-                  title: Text(
+                  title: UiText(
                     'Clear all data',
                     style: TextStyle(color: colors.error),
                   ),
-                  subtitle: const Text(
+                  subtitle: const UiText(
                     'Sign out and remove every local paper, save, draft, pending '
                     'change, setting, and reading position from this device.',
                   ),
@@ -217,8 +237,8 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
                         icon: Icons.menu_book_outlined,
                         color: colors.primary,
                       ),
-                      title: const Text('Reading updates'),
-                      subtitle: const Text(
+                      title: const UiText('Reading updates'),
+                      subtitle: const UiText(
                         'Briefs, subscriptions, and in-app notifications',
                       ),
                       trailing: const Icon(Icons.chevron_right),
@@ -239,8 +259,8 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
                         icon: Icons.psychology_alt_outlined,
                         color: colors.primary,
                       ),
-                      title: const Text('Research profile'),
-                      subtitle: const Text(
+                      title: const UiText('Research profile'),
+                      subtitle: const UiText(
                         'Discovery settings and separated interest signals',
                       ),
                       trailing: const Icon(Icons.chevron_right),
@@ -266,8 +286,8 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
                               icon: Icons.ios_share_outlined,
                               color: colors.primary,
                             ),
-                      title: const Text('Export research data'),
-                      subtitle: const Text(
+                      title: const UiText('Export research data'),
+                      subtitle: const UiText(
                         'Copy bounded JSON parts containing your private Assistant '
                         'history, provenance, and research artifacts. Complete '
                         'paper text is excluded; save each part before continuing.',
@@ -287,11 +307,11 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
                         icon: Icons.person_off_outlined,
                         color: colors.error,
                       ),
-                      title: Text(
+                      title: UiText(
                         'Delete account',
                         style: TextStyle(color: colors.error),
                       ),
-                      subtitle: const Text(
+                      subtitle: const UiText(
                         'Permanently erase your Pakperk account and associated data.',
                       ),
                       trailing: const Icon(Icons.chevron_right),
@@ -311,14 +331,14 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
               children: [
                 const ListTile(
                   leading: _SettingsIcon(icon: Icons.info_outline),
-                  title: Text('Version'),
-                  subtitle: Text(PakPerkBuildInfo.displayVersion),
+                  title: UiText('Version'),
+                  subtitle: UiText(PakPerkBuildInfo.displayVersion),
                 ),
                 _SettingsDivider(color: colors.outlineVariant),
                 ListTile(
                   leading: const _SettingsIcon(icon: Icons.balance_outlined),
-                  title: const Text('Open-source licenses'),
-                  subtitle: const Text('Packages and license notices'),
+                  title: const UiText('Open-source licenses'),
+                  subtitle: const UiText('Packages and license notices'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.push(PakPerkRoutes.openSourceLicenses),
                 ),
@@ -382,7 +402,7 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
       final nextCursor = artifact.nextCursor;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: UiText(
             artifact.pageNumber == 1 && artifact.isComplete
                 ? '${artifact.fileName} copied.'
                 : artifact.isComplete
@@ -392,7 +412,7 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
           action: nextCursor == null
               ? null
               : SnackBarAction(
-                  label: 'Next part',
+                  label: uiString(context, 'Next part'),
                   onPressed: () =>
                       unawaited(_copyResearchExport(cursor: nextCursor)),
                 ),
@@ -402,12 +422,12 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
       if (!mounted || request.isCancelled) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      ).showSnackBar(SnackBar(content: UiText(error.message)));
     } on Object {
       if (!mounted || request.isCancelled) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('The bounded research export could not be copied.'),
+          content: UiText('The bounded research export could not be copied.'),
         ),
       );
     } finally {
@@ -472,6 +492,43 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
     }
   }
 
+  Future<void> _chooseLanguage() async {
+    final current = ref.read(languageControllerProvider).languageCode;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: UiText('Language / 语言'),
+          ),
+          for (final entry in const {'en': 'English', 'zh': '简体中文'}.entries)
+            ListTile(
+              title: UiText(entry.value),
+              trailing: entry.key == current ? const Icon(Icons.check) : null,
+              onTap: () => Navigator.of(context).pop(entry.key),
+            ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+    if (selected == null || !mounted) return;
+    try {
+      await ref.read(languageControllerProvider.notifier).select(selected);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: UiText('Could not save language. Try again.'),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _chooseAppearance() async {
     final current = ref.read(appearanceControllerProvider);
     final selected = await showModalBottomSheet<AppAppearance>(
@@ -486,7 +543,7 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
-              child: Text(
+              child: UiText(
                 'Appearance',
                 style: Theme.of(sheetContext).textTheme.titleLarge,
               ),
@@ -510,7 +567,7 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
                         ).colorScheme.outlineVariant,
                       ),
                     ListTile(
-                      title: Text(AppAppearance.values[index].label),
+                      title: UiText(AppAppearance.values[index].label),
                       trailing: AppAppearance.values[index] == current
                           ? Icon(
                               Icons.check,
@@ -540,7 +597,7 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
         ..hideCurrentSnackBar()
         ..showSnackBar(
           const SnackBar(
-            content: Text(
+            content: UiText(
               'The appearance setting could not be saved on this device.',
             ),
           ),
@@ -554,8 +611,8 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Clear reading cache?'),
-        content: const Text(
+        title: const UiText('Clear reading cache?'),
+        content: const UiText(
           'Downloaded feeds, generated reading views, cached discussions, '
           'and anonymous chat cache will be removed. Your account, saved '
           'papers, drafts, pending sync, and current reading position stay.',
@@ -563,11 +620,11 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: const UiText('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Clear cache'),
+            child: const UiText('Clear cache'),
           ),
         ],
       ),
@@ -588,7 +645,7 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
-            content: Text(
+            content: UiText(
               removed == 1
                   ? 'Reading cache cleared. 1 rebuildable paper was removed.'
                   : 'Reading cache cleared. $removed rebuildable papers were '
@@ -603,7 +660,7 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
         ..hideCurrentSnackBar()
         ..showSnackBar(
           const SnackBar(
-            content: Text(
+            content: UiText(
               'The reading cache could not be cleared on this device.',
             ),
           ),
@@ -616,8 +673,8 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Clear all data?'),
-        content: const Text(
+        title: const UiText('Clear all data?'),
+        content: const UiText(
           'This permanently removes cached papers, local saves, drafts, '
           'pending changes, reading position, appearance, and the anonymous '
           'device identity. You will be signed out. Data already synchronized '
@@ -626,11 +683,11 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: const UiText('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Clear all data'),
+            child: const UiText('Clear all data'),
           ),
         ],
       ),
@@ -667,6 +724,7 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
       await ref
           .read(appearanceControllerProvider.notifier)
           .resetAfterLocalDataClear();
+      ref.read(languageControllerProvider.notifier).resetAfterLocalDataClear();
       await ref.read(anonymousSessionIdProvider.notifier).reset();
       ref.invalidate(paperRepositoryProvider);
       ref.invalidate(feedControllerProvider);
@@ -683,7 +741,7 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
-            content: Text(
+            content: UiText(
               !sessionSignOutIncomplete && !secureCleanupIncomplete
                   ? 'All local data was cleared.'
                   : 'Local data was cleared, but secure sign-out needs '
@@ -699,7 +757,7 @@ class _PublicSettingsScreenState extends ConsumerState<PublicSettingsScreen> {
         ..hideCurrentSnackBar()
         ..showSnackBar(
           const SnackBar(
-            content: Text(
+            content: UiText(
               'All local data could not be cleared. No server data changed; '
               'retry on this device.',
             ),
@@ -717,7 +775,7 @@ class _SettingsSectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(12, 0, 12, 7),
-    child: Text(label, style: Theme.of(context).textTheme.labelSmall),
+    child: UiText(label, style: Theme.of(context).textTheme.labelSmall),
   );
 }
 

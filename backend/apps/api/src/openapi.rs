@@ -56,6 +56,7 @@ use crate::{
     paths(
         routes::health::health_live,
         routes::health::health_ready,
+        routes::product_surveys::submit,
         routes::feed::feed,
         routes::papers::paper_metadata,
         routes::papers::paper_by_arxiv,

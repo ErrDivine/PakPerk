@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/document_block.dart';
@@ -28,7 +29,7 @@ Future<String?> showSectionOutlineSheet({
             const SliverAppBar(
               pinned: true,
               automaticallyImplyLeading: false,
-              title: Text('Outline'),
+              title: UiText('Outline'),
             ),
             SliverList.builder(
               itemCount: outline.sections.length,

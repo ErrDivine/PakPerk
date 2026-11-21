@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/paper_resolution/paper_resolution_models.dart';
@@ -29,7 +30,7 @@ class PaperSearchResults extends StatelessWidget {
       return Semantics(
         key: const ValueKey('paper-search-empty'),
         container: true,
-        label: 'No matching papers found',
+        label: uiString(context, 'No matching papers found'),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: PakPerkSpacing.lg),
           child: Column(
@@ -40,12 +41,12 @@ class PaperSearchResults extends StatelessWidget {
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               const SizedBox(height: PakPerkSpacing.sm),
-              Text(
+              UiText(
                 'No matching papers',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: PakPerkSpacing.xs),
-              Text(
+              UiText(
                 'Try a more specific title, an arXiv link, or an arXiv ID.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium,
@@ -58,16 +59,16 @@ class PaperSearchResults extends StatelessWidget {
 
     return Semantics(
       container: true,
-      label: '${candidates.length} paper search results',
+      label: uiString(context, '${candidates.length} paper search results'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          UiText(
             'Choose the paper',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: PakPerkSpacing.xs),
-          Text(
+          UiText(
             'Nothing is added until you select a result and confirm.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
@@ -170,7 +171,7 @@ class _PaperSearchCandidateTile extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        UiText(
                           candidate.title,
                           maxLines: 3,
                           overflow: TextOverflow.ellipsis,
@@ -184,14 +185,14 @@ class _PaperSearchCandidateTile extends StatelessWidget {
                           style: theme.textTheme.bodySmall,
                         ),
                         const SizedBox(height: PakPerkSpacing.xxs),
-                        Text(
+                        UiText(
                           metadataLabel,
                           style: theme.textTheme.labelMedium?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
                         ),
                         const SizedBox(height: PakPerkSpacing.xxs),
-                        Text(
+                        UiText(
                           'arXiv ${candidate.arxivId}',
                           style: theme.textTheme.labelMedium?.copyWith(
                             color: scheme.primary,

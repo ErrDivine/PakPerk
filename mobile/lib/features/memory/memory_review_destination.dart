@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -44,14 +45,14 @@ final class _MemoryReviewDestinationState
       featureFlagsProvider.select((flags) => flags.researchMemory),
     );
     if (!enabled) {
-      return const _UnavailableMemoryReview(
+      return _UnavailableMemoryReview(
         message: 'Research memory is not enabled in this build.',
       );
     }
     final scope = ref.watch(verifiedLibraryScopeProvider);
     if (scope == null) {
       _paperRequest?.cancel('The verified account changed.');
-      return const _UnavailableMemoryReview(
+      return _UnavailableMemoryReview(
         message: 'Finish signing in to review private research memory.',
       );
     }
@@ -160,7 +161,7 @@ final class _UnavailableMemoryReview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Research memory')),
+    appBar: AppBar(title: const UiText('Research memory')),
     body: SafeArea(
       child: Center(
         child: SingleChildScrollView(
@@ -170,7 +171,7 @@ final class _UnavailableMemoryReview extends StatelessWidget {
             children: [
               const Icon(Icons.lock_outline, size: 48),
               const SizedBox(height: PakPerkSpacing.md),
-              Text(message, textAlign: TextAlign.center),
+              UiText(message, textAlign: TextAlign.center),
             ],
           ),
         ),

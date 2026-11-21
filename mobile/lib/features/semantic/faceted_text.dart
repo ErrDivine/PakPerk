@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -167,7 +168,7 @@ class SemanticFacetCue extends StatelessWidget {
             border: Border.all(color: colors.outlineVariant),
             borderRadius: BorderRadius.circular(6),
           ),
-          child: Text(
+          child: UiText(
             span.facet.label,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
               color: colors.onSurface,
@@ -195,14 +196,14 @@ class SemanticDensitySelector extends StatelessWidget {
     final reducedMotion = platformPrefersReducedMotion(context);
     return Semantics(
       container: true,
-      label: 'Semantic cue density',
+      label: uiString(context, 'Semantic cue density'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Semantics(
             liveRegion: true,
-            label: 'Semantic cues: ${selected.label}',
-            child: Text(
+            label: uiString(context, 'Semantic cues: ${selected.label}'),
+            child: UiText(
               'Semantic cues · ${selected.label}',
               style: Theme.of(context).textTheme.labelLarge,
             ),
@@ -259,7 +260,7 @@ class _DensityButton extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: '${density.label} semantic cues',
+      label: uiString(context, '${density.label} semantic cues'),
       child: AnimatedContainer(
         key: ValueKey('semantic-density-${density.wireValue}'),
         duration: reducedMotion ? PakPerkMotion.instant : PakPerkMotion.quick,
@@ -283,7 +284,7 @@ class _DensityButton extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
             child: Center(
-              child: Text(
+              child: UiText(
                 density.label,
                 maxLines: 1,
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(

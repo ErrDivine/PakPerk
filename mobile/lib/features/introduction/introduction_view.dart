@@ -1,7 +1,11 @@
+import '../../core/widgets/reader_selection_area.dart';
+import '../../l10n/ui.dart';
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/router.dart';
@@ -15,6 +19,8 @@ import '../paper_reader/abstract_view.dart';
 import '../paper_reader/paper_processing_controller.dart';
 import '../paper_reader/reader_navigation_controller.dart';
 import 'introduction_controller.dart';
+import 'original_pdf_screen.dart';
+import 'structured_introduction_body.dart';
 
 class IntroductionView extends ConsumerStatefulWidget {
   const IntroductionView({
@@ -25,12 +31,14 @@ class IntroductionView extends ConsumerStatefulWidget {
     required this.capabilities,
     required this.onRetryPreparation,
     this.onOpenPaper,
+    this.onSelectionChanged,
     this.onPreviousPaper,
     this.onNextPaper,
     super.key,
   });
 
   final PaperSummary paper;
+  final ValueChanged<SelectedContent?>? onSelectionChanged;
   final String readerKey;
   final ScrollController scrollController;
   final ProcessingUiState processing;
@@ -103,28 +111,32 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
     return Column(
       children: [
         Expanded(
-          child: _IntroductionContent(
-            paper: widget.paper,
-            scrollController: widget.scrollController,
-            state: introduction,
-            processing: widget.processing,
-            capabilities: widget.capabilities,
-            offline: offline,
-            onRetryPreparation: widget.onRetryPreparation,
-            onRetryIntroduction: () => ref
-                .read(
-                  introductionControllerProvider(
-                    widget.paper.versionKey,
-                  ).notifier,
-                )
-                .load(force: true),
-            onOpenPdf: _openPdf,
-            onOpenCitation: _openCitation,
-            onStarterQuestion: chatEnabled
-                ? (question) => _ask(question, chatEnabled)
-                : null,
-            onPreviousPaper: widget.onPreviousPaper,
-            onNextPaper: widget.onNextPaper,
+          child: ReaderSelectionArea(
+            onSelectionChanged: widget.onSelectionChanged,
+            child: _IntroductionContent(
+              readerKey: widget.readerKey,
+              paper: widget.paper,
+              scrollController: widget.scrollController,
+              state: introduction,
+              processing: widget.processing,
+              capabilities: widget.capabilities,
+              offline: offline,
+              onRetryPreparation: widget.onRetryPreparation,
+              onRetryIntroduction: () => ref
+                  .read(
+                    introductionControllerProvider(
+                      widget.paper.versionKey,
+                    ).notifier,
+                  )
+                  .load(force: true),
+              onOpenPdf: _openPdf,
+              onOpenCitation: _openCitation,
+              onStarterQuestion: chatEnabled
+                  ? (question) => _ask(question, chatEnabled)
+                  : null,
+              onPreviousPaper: widget.onPreviousPaper,
+              onNextPaper: widget.onNextPaper,
+            ),
           ),
         ),
         _PersistentChatComposer(
@@ -146,11 +158,28 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
 
   Future<void> _openPdf() async {
     final uri = widget.paper.canonicalPdfUri;
+    if (uri != null && Platform.isAndroid) {
+      final introduction = ref
+          .read(introductionControllerProvider(widget.paper.versionKey))
+          .value;
+      final page =
+          introduction?.paragraphs
+              .map((p) => p.pageStart)
+              .whereType<int>()
+              .firstOrNull ??
+          1;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => OriginalPdfScreen(uri: uri, initialPage: page),
+        ),
+      );
+      return;
+    }
     final opened =
         uri != null && await ref.read(externalLinkOpenerProvider).open(uri);
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the original PDF.')),
+        const SnackBar(content: UiText('Could not open the original PDF.')),
       );
     }
   }
@@ -170,7 +199,7 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
         child: ListView(
           shrinkWrap: true,
           children: [
-            const ListTile(title: Text('Open cited paper')),
+            const ListTile(title: UiText('Open cited paper')),
             for (final reference in references)
               ListTile(
                 title: Text(reference.title),
@@ -251,6 +280,7 @@ class _IntroductionViewState extends ConsumerState<IntroductionView> {
 
 class _IntroductionContent extends StatelessWidget {
   const _IntroductionContent({
+    required this.readerKey,
     required this.paper,
     required this.scrollController,
     required this.state,
@@ -267,6 +297,7 @@ class _IntroductionContent extends StatelessWidget {
   });
 
   final PaperSummary paper;
+  final String readerKey;
   final ScrollController scrollController;
   final IntroductionState state;
   final ProcessingUiState processing;
@@ -307,15 +338,30 @@ class _IntroductionContent extends StatelessWidget {
                 ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 18),
-              Text(
+              UiText(
                 'INTRODUCTION',
                 style: Theme.of(context).textTheme.labelSmall,
               ),
               const SizedBox(height: 10),
               if (introduction != null) ...[
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: onOpenPdf,
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    label: const UiText('Original PDF'),
+                  ),
+                ),
+                if (introduction.sourceBlocks.isEmpty) ...[
+                  const UiText(
+                    'For figures and exact layout, open original PDF.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 if (state.bundledDemo) ...[
                   const BundledDemoNotice(),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 6),
                 ],
                 Semantics(
                   header: true,
@@ -325,26 +371,35 @@ class _IntroductionContent extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 14),
-                for (final paragraph in introduction.paragraphs) ...[
-                  if (paragraph.heading?.trim().isNotEmpty == true) ...[
-                    Semantics(
-                      key: ValueKey(
-                        'introduction-subheading-${paragraph.ordinal}',
-                      ),
-                      header: true,
-                      child: Text(
-                        paragraph.heading!,
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                    ),
-                    const SizedBox(height: 7),
-                  ],
-                  IntroductionParagraphText(
-                    paragraph: paragraph,
+                if (introduction.sourceBlocks.isNotEmpty)
+                  StructuredIntroductionBody(
+                    introduction: introduction,
+                    readerKey: readerKey,
+                    onOpenPdf: onOpenPdf,
                     onOpenCitation: onOpenCitation,
-                  ),
-                  const SizedBox(height: 16),
-                ],
+                  )
+                else
+                  for (final paragraph in introduction.paragraphs) ...[
+                    if (paragraph.heading?.trim().isNotEmpty == true) ...[
+                      Semantics(
+                        key: ValueKey(
+                          'introduction-subheading-${paragraph.ordinal}',
+                        ),
+                        header: true,
+                        child: Text(
+                          paragraph.heading!,
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                    ],
+                    IntroductionParagraphText(
+                      paragraph: paragraph,
+                      onOpenCitation: onOpenCitation,
+                      ownSelectionArea: false,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                 if (!capabilities.allReady) ...[
                   const SizedBox(height: 4),
                   ProcessingStatusCard(
@@ -370,12 +425,12 @@ class _IntroductionContent extends StatelessWidget {
                       TextButton.icon(
                         onPressed: onRetryIntroduction,
                         icon: const Icon(Icons.refresh),
-                        label: const Text('Retry'),
+                        label: const UiText('Retry'),
                       ),
                       TextButton.icon(
                         onPressed: onOpenPdf,
                         icon: const Icon(Icons.open_in_new),
-                        label: const Text('Open original PDF'),
+                        label: const UiText('Open original PDF'),
                       ),
                     ],
                   ),
@@ -403,11 +458,11 @@ class _IntroductionContent extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: onOpenPdf,
                 icon: const Icon(Icons.open_in_new),
-                label: const Text('Open original PDF on arXiv'),
+                label: const UiText('Open original PDF on arXiv'),
               ),
               if (capabilities.chat && onStarterQuestion != null) ...[
                 const SizedBox(height: 26),
-                Text(
+                UiText(
                   'ASK THE PAPER',
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
@@ -418,7 +473,7 @@ class _IntroductionContent extends StatelessWidget {
                   children: [
                     for (final question in starterQuestions)
                       ActionChip(
-                        label: Text(question),
+                        label: UiText(question),
                         onPressed: () => onStarterQuestion!(question),
                       ),
                   ],
@@ -441,10 +496,12 @@ class IntroductionParagraphText extends StatefulWidget {
   const IntroductionParagraphText({
     required this.paragraph,
     required this.onOpenCitation,
+    this.ownSelectionArea = true,
     super.key,
   });
 
   final IntroductionParagraph paragraph;
+  final bool ownSelectionArea;
   final ValueChanged<IntroductionCitation> onOpenCitation;
 
   @override
@@ -522,12 +579,11 @@ class _IntroductionParagraphTextState extends State<IntroductionParagraphText> {
         TextSpan(text: String.fromCharCodes(characters.sublist(cursor))),
       );
     }
-    return SelectionArea(
-      child: Text.rich(
-        TextSpan(style: bodyStyle, children: spans),
-        key: ValueKey('introduction-paragraph-${paragraph.ordinal}'),
-      ),
+    final text = Text.rich(
+      TextSpan(style: bodyStyle, children: spans),
+      key: ValueKey('introduction-paragraph-${paragraph.ordinal}'),
     );
+    return widget.ownSelectionArea ? ReaderSelectionArea(child: text) : text;
   }
 }
 
@@ -569,7 +625,7 @@ class _PersistentChatComposer extends StatelessWidget {
                 textInputAction: TextInputAction.send,
                 onSubmitted: enabled ? (_) => onSend() : null,
                 decoration: InputDecoration(
-                  hintText: hintText,
+                  hintText: uiStringOrNull(context, hintText),
                   counterText: '',
                 ),
               ),

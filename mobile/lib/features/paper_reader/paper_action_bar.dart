@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -77,7 +78,7 @@ class _PaperArxivControl extends ConsumerWidget {
       container: true,
       excludeSemantics: true,
       button: true,
-      label: 'Open on arXiv',
+      label: uiString(context, 'Open on arXiv'),
       child: Tooltip(
         message: 'Open on arXiv',
         excludeFromSemantics: true,
@@ -90,7 +91,7 @@ class _PaperArxivControl extends ConsumerWidget {
               widthFactor: 1,
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Text('arXiv', key: ValueKey('paper-arxiv-label')),
+                child: UiText('arXiv', key: ValueKey('paper-arxiv-label')),
               ),
             ),
           ),
@@ -116,7 +117,7 @@ class _PaperArxivControl extends ConsumerWidget {
     }
     if (!opened && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the arXiv record.')),
+        const SnackBar(content: UiText('Could not open the arXiv record.')),
       );
     }
   }

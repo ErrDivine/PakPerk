@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 
@@ -65,7 +66,7 @@ class _PaperStageIndicatorState extends State<PaperStageIndicator> {
     final reducedMotion = platformPrefersReducedMotion(context);
     return Semantics(
       container: true,
-      label: 'Paper views',
+      label: uiString(context, 'Paper views'),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
         child: LayoutBuilder(
@@ -181,7 +182,7 @@ class _StageLayout {
     var widestLabel = 0.0;
     for (final stage in PaperStage.values) {
       final painter = TextPainter(
-        text: TextSpan(text: stage.label, style: style),
+        text: TextSpan(text: uiString(context, stage.label), style: style),
         maxLines: 1,
         textDirection: Directionality.of(context),
         textScaler: MediaQuery.textScalerOf(context),
@@ -356,9 +357,11 @@ class _StageControlState extends State<_StageControl> {
       button: true,
       enabled: widget.enabled,
       sortKey: OrdinalSortKey(widget.stage.index.toDouble()),
-      label:
-          '${widget.stage.label} view, '
-          '${widget.selected ? 'selected' : 'not selected'}',
+      label: uiString(
+        context,
+        '${widget.stage.label} view, '
+        '${widget.selected ? 'selected' : 'not selected'}',
+      ),
       child: ExcludeSemantics(
         child: AnimatedScale(
           scale: _pressed ? .98 : 1,
@@ -407,7 +410,7 @@ class _StageControlState extends State<_StageControl> {
                           : PakPerkMotion.crossFade,
                       curve: PakPerkMotion.emphasized,
                       style: labelStyle,
-                      child: Text(
+                      child: UiText(
                         widget.stage.label,
                         maxLines: 1,
                         softWrap: false,

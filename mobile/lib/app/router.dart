@@ -1,3 +1,4 @@
+import '../l10n/ui.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
 
@@ -5,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
+import '../features/product_survey/product_survey_prompt.dart';
+import '../features/product_survey/product_survey_screen.dart';
 
 import '../core/api/api_exception.dart';
 import '../core/api/request_cancellation.dart';
@@ -411,6 +414,7 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
   final restoredBranch = ref.read(activeAppBranchProvider);
   final router = GoRouter(
     navigatorKey: keys.root,
+    observers: [ref.read(surveyRoutesProvider).observer()],
     restorationScopeId: 'pakperk-router',
     initialLocation: switch (restoredBranch) {
       AppBranch.read => PakPerkRoutes.read,
@@ -495,6 +499,7 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
         branches: [
           StatefulShellBranch(
             navigatorKey: keys.read,
+            observers: [ref.read(surveyRoutesProvider).observer()],
             restorationScopeId: 'pakperk-read-branch',
             initialLocation: PakPerkRoutes.read,
             routes: [
@@ -601,6 +606,7 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             navigatorKey: keys.library,
+            observers: [ref.read(surveyRoutesProvider).observer()],
             restorationScopeId: 'pakperk-library-branch',
             initialLocation: PakPerkRoutes.library,
             routes: [
@@ -619,6 +625,7 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             navigatorKey: keys.you,
+            observers: [ref.read(surveyRoutesProvider).observer()],
             restorationScopeId: 'pakperk-you-branch',
             initialLocation: PakPerkRoutes.you,
             routes: [
@@ -678,6 +685,11 @@ final pakPerkRouterProvider = Provider<GoRouter>((ref) {
                       onOpenReadingUpdates: () =>
                           context.push(PakPerkRoutes.youReadingUpdates),
                     ),
+                  ),
+                  GoRoute(
+                    path: 'questionnaire',
+                    parentNavigatorKey: keys.root,
+                    builder: (_, __) => const ProductSurveyScreen(),
                   ),
                   GoRoute(
                     path: 'research-profile',
@@ -875,17 +887,17 @@ class PakPerkAppShell extends ConsumerWidget {
                       NavigationRailDestination(
                         icon: Icon(Icons.auto_stories_outlined),
                         selectedIcon: Icon(Icons.auto_stories),
-                        label: Text('Read'),
+                        label: UiText('Read'),
                       ),
                       NavigationRailDestination(
                         icon: Icon(Icons.local_library_outlined),
                         selectedIcon: Icon(Icons.local_library),
-                        label: Text('Library'),
+                        label: UiText('Library'),
                       ),
                       NavigationRailDestination(
                         icon: Icon(Icons.person_outline),
                         selectedIcon: Icon(Icons.person),
-                        label: Text('You'),
+                        label: UiText('You'),
                       ),
                     ],
                   ),
@@ -985,21 +997,21 @@ class _PrimaryNavigationBar extends StatelessWidget {
         elevation: 0,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         onDestinationSelected: onDestinationSelected,
-        destinations: const [
+        destinations: [
           NavigationDestination(
             icon: Icon(Icons.auto_stories_outlined),
             selectedIcon: Icon(Icons.auto_stories),
-            label: 'Read',
+            label: uiString(context, 'Read'),
           ),
           NavigationDestination(
             icon: Icon(Icons.local_library_outlined),
             selectedIcon: Icon(Icons.local_library),
-            label: 'Library',
+            label: uiString(context, 'Library'),
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),
             selectedIcon: Icon(Icons.person),
-            label: 'You',
+            label: uiString(context, 'You'),
           ),
         ],
       ),
@@ -1183,9 +1195,11 @@ class _ArxivDeepLinkScreenState extends ConsumerState<ArxivDeepLinkScreen> {
     if (identifier == null) {
       return PhaseOnePlaceholderScreen(
         title: 'Invalid arXiv link',
-        message:
-            'The arXiv identifier is malformed. No network request was '
-            'made.',
+        message: uiString(
+          context,
+          'The arXiv identifier is malformed. No network request was '
+          'made.',
+        ),
         icon: Icons.link_off,
         onClose: _close,
       );
@@ -1206,13 +1220,13 @@ class _ArxivDeepLinkScreenState extends ConsumerState<ArxivDeepLinkScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(onPressed: _close),
-        title: const Text('Opening arXiv paper'),
+        title: const UiText('Opening arXiv paper'),
       ),
       body: Center(
         child: _errorMessage == null
             ? Semantics(
                 liveRegion: true,
-                label: 'Resolving exact arXiv identifier',
+                label: uiString(context, 'Resolving exact arXiv identifier'),
                 child: const CircularProgressIndicator(),
               )
             : Padding(
@@ -1220,12 +1234,12 @@ class _ArxivDeepLinkScreenState extends ConsumerState<ArxivDeepLinkScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(_errorMessage!, textAlign: TextAlign.center),
+                    UiText(_errorMessage!, textAlign: TextAlign.center),
                     const SizedBox(height: 16),
                     FilledButton.icon(
                       onPressed: _load,
                       icon: const Icon(Icons.refresh),
-                      label: const Text('Retry'),
+                      label: const UiText('Retry'),
                     ),
                   ],
                 ),
@@ -1327,9 +1341,11 @@ class _PaperDeepLinkScreenState extends ConsumerState<PaperDeepLinkScreen> {
     if (!PakPerkRouteIdentifiers.isValidPaperId(widget.paperId)) {
       return PhaseOnePlaceholderScreen(
         title: 'Invalid paper link',
-        message:
-            'The paper identifier is malformed. No network request was '
-            'made.',
+        message: uiString(
+          context,
+          'The paper identifier is malformed. No network request was '
+          'made.',
+        ),
         icon: Icons.link_off,
         onClose: _close,
       );
@@ -1350,13 +1366,13 @@ class _PaperDeepLinkScreenState extends ConsumerState<PaperDeepLinkScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(onPressed: _close),
-        title: const Text('Opening paper'),
+        title: const UiText('Opening paper'),
       ),
       body: Center(
         child: _errorMessage == null
             ? Semantics(
                 liveRegion: true,
-                label: 'Loading linked paper',
+                label: uiString(context, 'Loading linked paper'),
                 child: const CircularProgressIndicator(),
               )
             : Padding(
@@ -1364,12 +1380,12 @@ class _PaperDeepLinkScreenState extends ConsumerState<PaperDeepLinkScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(_errorMessage!, textAlign: TextAlign.center),
+                    UiText(_errorMessage!, textAlign: TextAlign.center),
                     const SizedBox(height: 16),
                     FilledButton.icon(
                       onPressed: _load,
                       icon: const Icon(Icons.refresh),
-                      label: const Text('Retry'),
+                      label: const UiText('Retry'),
                     ),
                   ],
                 ),
@@ -1443,9 +1459,11 @@ class PaperChatRouteScreen extends ConsumerWidget {
     if (routeData == null) {
       return PhaseOnePlaceholderScreen(
         title: 'Paper chat link unavailable',
-        message:
-            'Paper chat needs an active, validated reader session. Open '
-            'the paper first and use its Ask control.',
+        message: uiString(
+          context,
+          'Paper chat needs an active, validated reader session. Open '
+          'the paper first and use its Ask control.',
+        ),
         icon: Icons.chat_bubble_outline,
         closeTooltip: 'Close paper chat',
         onClose: onClose,
@@ -1462,8 +1480,10 @@ class PaperChatRouteScreen extends ConsumerWidget {
       if (generation == null || generation <= 0 || paperVersionKey == null) {
         return PhaseOnePlaceholderScreen(
           title: 'Assistant unavailable',
-          message:
-              'This reader session does not have a current document generation.',
+          message: uiString(
+            context,
+            'This reader session does not have a current document generation.',
+          ),
           icon: Icons.chat_bubble_outline,
           closeTooltip: 'Close assistant',
           onClose: onClose,
@@ -1583,9 +1603,11 @@ class _PaperCommentsRouteScreenState
     if (!_hasValidPaperId) {
       return PhaseOnePlaceholderScreen(
         title: 'Invalid comments link',
-        message:
-            'The paper identifier is malformed. No paper or comment '
-            'request was made.',
+        message: uiString(
+          context,
+          'The paper identifier is malformed. No paper or comment '
+          'request was made.',
+        ),
         icon: Icons.link_off,
         closeTooltip: 'Close paper discussions',
         onClose: widget.onClose,
@@ -1594,7 +1616,7 @@ class _PaperCommentsRouteScreenState
     if (!ref.watch(featureFlagsProvider).comments) {
       return PhaseOnePlaceholderScreen(
         title: 'Paper discussions',
-        message: 'Comments are not enabled in this build.',
+        message: uiString(context, 'Comments are not enabled in this build.'),
         icon: Icons.forum_outlined,
         closeTooltip: 'Close paper discussions',
         onClose: widget.onClose,
@@ -1616,17 +1638,20 @@ class _PaperCommentsRouteScreenState
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          tooltip: 'Close paper discussions',
+          tooltip: uiString(context, 'Close paper discussions'),
           onPressed: widget.onClose,
           icon: const Icon(Icons.close),
         ),
-        title: const Text('Paper discussions'),
+        title: const UiText('Paper discussions'),
       ),
       body: Center(
         child: _errorMessage == null
             ? Semantics(
                 liveRegion: true,
-                label: 'Loading paper details for discussions',
+                label: uiString(
+                  context,
+                  'Loading paper details for discussions',
+                ),
                 child: const CircularProgressIndicator(),
               )
             : Padding(
@@ -1634,12 +1659,12 @@ class _PaperCommentsRouteScreenState
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(_errorMessage!, textAlign: TextAlign.center),
+                    UiText(_errorMessage!, textAlign: TextAlign.center),
                     const SizedBox(height: 16),
                     FilledButton.icon(
                       onPressed: _load,
                       icon: const Icon(Icons.refresh),
-                      label: const Text('Retry'),
+                      label: const UiText('Retry'),
                     ),
                   ],
                 ),
@@ -1659,9 +1684,12 @@ class _PaperCommentsRouteScreenState
           .getPaper(widget.paperId, cancellation: request);
       if (!mounted || request.isCancelled) return;
       if (result.value.paperId.toLowerCase() != widget.paperId.toLowerCase()) {
-        throw const ApiException(
+        throw ApiException(
           code: 'INVALID_PAPER_RESPONSE',
-          message: 'The service returned a different paper for this link.',
+          message: uiString(
+            context,
+            'The service returned a different paper for this link.',
+          ),
           retryable: true,
           statusCode: 502,
         );
@@ -1699,7 +1727,7 @@ final class _CommentsFeatureRoute extends ConsumerWidget {
     if (ref.watch(featureFlagsProvider).comments) return child;
     return PhaseOnePlaceholderScreen(
       title: title,
-      message: 'Comments are not enabled in this build.',
+      message: uiString(context, 'Comments are not enabled in this build.'),
       icon: Icons.forum_outlined,
     );
   }
@@ -1806,7 +1834,7 @@ class _PaperRouteScreenState extends ConsumerState<PaperRouteScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          tooltip: 'Back to previous paper',
+          tooltip: uiString(context, 'Back to previous paper'),
           onPressed:
               widget.onBack ??
               () => ref

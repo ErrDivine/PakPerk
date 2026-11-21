@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -337,7 +338,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                       children: [
                         const Icon(Icons.article_outlined, size: 48),
                         const SizedBox(height: 14),
-                        Text(
+                        UiText(
                           feed.errorMessage ?? 'No papers are cached yet.',
                           textAlign: TextAlign.center,
                         ),
@@ -345,7 +346,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                         FilledButton.icon(
                           onPressed: () => _retry(feed),
                           icon: const Icon(Icons.refresh),
-                          label: const Text('Retry'),
+                          label: const UiText('Retry'),
                         ),
                       ],
                     ),
@@ -393,15 +394,24 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
           if (feed.origin == DataOrigin.bundledDemo)
             const SafeArea(
               bottom: false,
-              minimum: EdgeInsets.fromLTRB(12, 8, 12, 0),
+              minimum: EdgeInsets.fromLTRB(12, 4, 12, 0),
               child: BundledDemoNotice(),
             ),
           if (!feed.personalized)
-            SafeArea(bottom: false, child: guestDiscoveryControls())
+            SafeArea(
+              top: feed.origin != DataOrigin.bundledDemo,
+              bottom: false,
+              child: guestDiscoveryControls(),
+            )
           else if (recommendationsAreSafe)
-            SafeArea(bottom: false, child: recommendationModeControls())
+            SafeArea(
+              top: feed.origin != DataOrigin.bundledDemo,
+              bottom: false,
+              child: recommendationModeControls(),
+            )
           else if (feed.mode == ReadingFeedMode.toRead)
             SafeArea(
+              top: feed.origin != DataOrigin.bundledDemo,
               bottom: false,
               child: _QueueContextHeader(
                 item: queueItem,
@@ -809,7 +819,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     if (message == null || !mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ).showSnackBar(SnackBar(content: UiText(message)));
   }
 
   void _retry(EffectiveFeedState feed) {
@@ -852,19 +862,19 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear unresolved drafts?'),
-        content: const Text(
+        title: const UiText('Clear unresolved drafts?'),
+        content: const UiText(
           'This removes only the private Add Paper drafts stored on this '
           'device. No paper in your Library is removed.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Keep drafts'),
+            child: const UiText('Keep drafts'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Clear drafts'),
+            child: const UiText('Clear drafts'),
           ),
         ],
       ),
@@ -898,7 +908,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     if (saved == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
+          content: UiText(
             'Category choices could not be saved. Public Recent remains available.',
           ),
         ),
@@ -1089,8 +1099,10 @@ class _RecommendationModeControls extends StatelessWidget {
     return Semantics(
       key: const ValueKey('recommendation-mode-controls'),
       container: true,
-      label:
-          'Discovery mode. To Read is confirmed empty. Selected $selectedLabel.',
+      label: uiString(
+        context,
+        'Discovery mode. To Read is confirmed empty. Selected $selectedLabel.',
+      ),
       explicitChildNodes: true,
       child: Material(
         color: Theme.of(context).colorScheme.surfaceContainerLow,
@@ -1104,7 +1116,10 @@ class _RecommendationModeControls extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Discovery', style: Theme.of(context).textTheme.labelLarge),
+              UiText(
+                'Discovery',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
               const SizedBox(height: PakPerkSpacing.xxs),
               _ScrollableModeSegments<ReadingFeedRecommendationMode>(
                 segments: [
@@ -1113,7 +1128,7 @@ class _RecommendationModeControls extends StatelessWidget {
                         forYouAvailable)
                       ButtonSegment<ReadingFeedRecommendationMode>(
                         value: mode,
-                        label: Text(_modeLabel(mode)),
+                        label: UiText(_modeLabel(mode)),
                       ),
                 ],
                 selected: eligibleSelection == null
@@ -1126,7 +1141,7 @@ class _RecommendationModeControls extends StatelessWidget {
               ),
               if (!forYouAvailable) ...[
                 const SizedBox(height: PakPerkSpacing.xxs),
-                Text(
+                UiText(
                   'For You is available when personalization is on.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -1162,8 +1177,8 @@ class _ReadingBriefEntry extends StatelessWidget {
         child: ListTile(
           key: const ValueKey('feed-reading-brief-entry'),
           leading: const Icon(Icons.menu_book_outlined),
-          title: const Text('Today’s reading brief'),
-          subtitle: Text(detail),
+          title: const UiText('Today’s reading brief'),
+          subtitle: UiText(detail),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: onOpen,
         ),
@@ -1185,9 +1200,11 @@ class _GuestDiscoveryControls extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     key: const ValueKey('guest-discovery-controls'),
     container: true,
-    label:
-        'Public discovery. Recent selected. Explore search '
-        '${exploreEnabled ? 'available' : 'unavailable in this build'}.',
+    label: uiString(
+      context,
+      'Public discovery. Recent selected. Explore search '
+      '${exploreEnabled ? 'available' : 'unavailable in this build'}.',
+    ),
     explicitChildNodes: true,
     child: Material(
       color: Theme.of(context).colorScheme.surfaceContainerLow,
@@ -1202,12 +1219,12 @@ class _GuestDiscoveryControls extends StatelessWidget {
           segments: [
             const ButtonSegment<_GuestDiscoveryMode>(
               value: _GuestDiscoveryMode.recent,
-              label: Text('Recent'),
+              label: UiText('Recent'),
             ),
             ButtonSegment<_GuestDiscoveryMode>(
               value: _GuestDiscoveryMode.explore,
               enabled: exploreEnabled,
-              label: const Text('Explore'),
+              label: const UiText('Explore'),
             ),
           ],
           selected: const {_GuestDiscoveryMode.recent},
@@ -1310,11 +1327,11 @@ class _QueueContextHeader extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          UiText(
                             'To Read',
                             style: Theme.of(context).textTheme.labelLarge,
                           ),
-                          Text(
+                          UiText(
                             atNaturalEnd
                                 ? 'Reading to the end does not clear To Read.'
                                 : 'Discovery resumes when To Read is empty.',
@@ -1325,10 +1342,10 @@ class _QueueContextHeader extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: PakPerkSpacing.xs),
-                Text(details, style: Theme.of(context).textTheme.bodySmall),
+                UiText(details, style: Theme.of(context).textTheme.bodySmall),
                 if (note != null) ...[
                   const SizedBox(height: PakPerkSpacing.xxs),
-                  Text(
+                  UiText(
                     'Why save this? $note',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -1361,9 +1378,11 @@ class _NaturalQueueEnd extends StatelessWidget {
             key: const ValueKey('to-read-natural-end'),
             container: true,
             liveRegion: true,
-            label:
-                'End of this queue view. Papers remain in To Read until you '
-                'mark them Reviewed or Archive them. Discovery remains paused.',
+            label: uiString(
+              context,
+              'End of this queue view. Papers remain in To Read until you '
+              'mark them Reviewed or Archive them. Discovery remains paused.',
+            ),
             child: ExcludeSemantics(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1374,13 +1393,13 @@ class _NaturalQueueEnd extends StatelessWidget {
                     color: theme.colorScheme.primary,
                   ),
                   const SizedBox(height: PakPerkSpacing.md),
-                  Text(
+                  UiText(
                     'You’ve reached the end of this queue view',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.headlineSmall,
                   ),
                   const SizedBox(height: PakPerkSpacing.sm),
-                  Text(
+                  UiText(
                     'Nothing was removed. Papers stay in To Read until you '
                     'mark them Reviewed or Archive them. Discovery remains '
                     'paused.',
@@ -1397,7 +1416,7 @@ class _NaturalQueueEnd extends StatelessWidget {
                     child: FilledButton.tonalIcon(
                       onPressed: onBackToFirst,
                       icon: const Icon(Icons.vertical_align_top_rounded),
-                      label: const Text('Back to first paper'),
+                      label: const UiText('Back to first paper'),
                     ),
                   ),
                 ],
@@ -1503,8 +1522,10 @@ class _ReadingFeedStatusScaffold extends StatelessWidget {
                             Semantics(
                               liveRegion: true,
                               container: true,
-                              label:
-                                  '${status.$1}. ${effectiveError ?? status.$2}',
+                              label: uiString(
+                                context,
+                                '${status.$1}. ${effectiveError ?? status.$2}',
+                              ),
                               child: ExcludeSemantics(
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
@@ -1524,13 +1545,13 @@ class _ReadingFeedStatusScaffold extends StatelessWidget {
                                             theme.colorScheme.onSurfaceVariant,
                                       ),
                                     const SizedBox(height: 18),
-                                    Text(
+                                    UiText(
                                       status.$1,
                                       textAlign: TextAlign.center,
                                       style: theme.textTheme.headlineSmall,
                                     ),
                                     const SizedBox(height: 8),
-                                    Text(
+                                    UiText(
                                       effectiveError ?? status.$2,
                                       textAlign: TextAlign.center,
                                       style: theme.textTheme.bodyLarge
@@ -1569,13 +1590,13 @@ class _ReadingFeedStatusScaffold extends StatelessWidget {
                                       ),
                                       onPressed: onAddPaper,
                                       icon: const Icon(Icons.add_rounded),
-                                      label: const Text('Add a paper'),
+                                      label: const UiText('Add a paper'),
                                     ),
                                   if (retryable)
                                     FilledButton.tonalIcon(
                                       onPressed: onRetry,
                                       icon: const Icon(Icons.refresh_rounded),
-                                      label: const Text('Try again'),
+                                      label: const UiText('Try again'),
                                     ),
                                 ],
                               ),
@@ -1661,9 +1682,11 @@ class _UnresolvedImportDrafts extends StatelessWidget {
     return Semantics(
       key: const ValueKey('unresolved-import-drafts'),
       container: true,
-      label:
-          'Unresolved Add Paper drafts. These device-only drafts keep '
-          'Discovery hidden until they are retried or cancelled.',
+      label: uiString(
+        context,
+        'Unresolved Add Paper drafts. These device-only drafts keep '
+        'Discovery hidden until they are retried or cancelled.',
+      ),
       child: ExcludeSemantics(
         child: Material(
           color: theme.colorScheme.surfaceContainerLow,
@@ -1681,7 +1704,7 @@ class _UnresolvedImportDrafts extends StatelessWidget {
                     const Icon(Icons.edit_note_rounded),
                     const SizedBox(width: PakPerkSpacing.xs),
                     Expanded(
-                      child: Text(
+                      child: UiText(
                         'Unresolved Add Paper',
                         style: theme.textTheme.titleMedium,
                       ),
@@ -1690,12 +1713,12 @@ class _UnresolvedImportDrafts extends StatelessWidget {
                       TextButton(
                         key: const ValueKey('clear-import-drafts'),
                         onPressed: onClear,
-                        child: const Text('Clear all'),
+                        child: const UiText('Clear all'),
                       ),
                   ],
                 ),
                 const SizedBox(height: PakPerkSpacing.xs),
-                Text(
+                UiText(
                   errorMessage ??
                       'These private drafts stay only on this device. '
                           'Discovery remains hidden until you retry or cancel '
@@ -1718,7 +1741,7 @@ class _UnresolvedImportDrafts extends StatelessWidget {
                           key: const ValueKey('reload-import-drafts'),
                           onPressed: onReload,
                           icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('Retry drafts'),
+                          label: const UiText('Retry drafts'),
                         ),
                       ),
                       ConstrainedBox(
@@ -1728,7 +1751,7 @@ class _UnresolvedImportDrafts extends StatelessWidget {
                         child: OutlinedButton(
                           key: const ValueKey('clear-unreadable-import-drafts'),
                           onPressed: onClear,
-                          child: const Text('Clear local drafts'),
+                          child: const UiText('Clear local drafts'),
                         ),
                       ),
                     ],
@@ -1774,7 +1797,7 @@ class _UnresolvedImportDrafts extends StatelessWidget {
                                 child: FilledButton.tonalIcon(
                                   onPressed: () => onRetry(draft),
                                   icon: const Icon(Icons.refresh_rounded),
-                                  label: const Text('Retry'),
+                                  label: const UiText('Retry'),
                                 ),
                               ),
                               ConstrainedBox(
@@ -1783,7 +1806,7 @@ class _UnresolvedImportDrafts extends StatelessWidget {
                                 ),
                                 child: OutlinedButton(
                                   onPressed: () => onCancel(draft),
-                                  child: const Text('Cancel draft'),
+                                  child: const UiText('Cancel draft'),
                                 ),
                               ),
                             ],
@@ -1823,7 +1846,7 @@ class _FeedFloatingActions extends StatelessWidget {
             FloatingActionButton(
               key: const ValueKey('feed-search'),
               heroTag: 'feed-search',
-              tooltip: 'Search papers',
+              tooltip: uiString(context, 'Search papers'),
               onPressed: onOpenSearch,
               child: const Icon(Icons.search_rounded),
             ),
@@ -1836,7 +1859,7 @@ class _FeedFloatingActions extends StatelessWidget {
               tooltip: 'Add a paper',
               onPressed: onAddPaper,
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Add paper'),
+              label: const UiText('Add paper'),
             ),
         ],
       ),

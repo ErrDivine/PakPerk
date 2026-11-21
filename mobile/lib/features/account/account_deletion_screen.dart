@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -43,7 +44,7 @@ final class _AccountDeletionScreenState
     final deletion = ref.watch(accountDeletionControllerProvider);
     final session = ref.watch(authSessionProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Delete account')),
+      appBar: AppBar(title: const UiText('Delete account')),
       body: SafeArea(
         child:
             deletion.deletionPending ||
@@ -70,7 +71,7 @@ final class _AccountDeletionScreenState
           color: Theme.of(context).colorScheme.error,
         ),
         const SizedBox(height: 18),
-        Text(
+        UiText(
           'Permanently delete your Pakperk account?',
           style: Theme.of(context).textTheme.headlineSmall,
           textAlign: TextAlign.center,
@@ -110,7 +111,7 @@ final class _AccountDeletionScreenState
           onChanged: deletion.busy
               ? null
               : (value) => setState(() => _understands = value ?? false),
-          title: const Text(
+          title: const UiText(
             'I understand that deletion is permanent and may complete '
             'asynchronously.',
           ),
@@ -119,7 +120,7 @@ final class _AccountDeletionScreenState
           const SizedBox(height: 8),
           Semantics(
             liveRegion: true,
-            child: Text(
+            child: UiText(
               message,
               key: const ValueKey('account-deletion-error'),
               style: TextStyle(color: Theme.of(context).colorScheme.error),
@@ -142,7 +143,7 @@ final class _AccountDeletionScreenState
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.lock_reset),
-          label: Text(
+          label: UiText(
             deletion.busy
                 ? 'Opening recent sign in…'
                 : 'Reauthenticate and request deletion',
@@ -150,7 +151,7 @@ final class _AccountDeletionScreenState
         ),
         if (!canRequest && !deletion.busy) ...[
           const SizedBox(height: 10),
-          const Text(
+          const UiText(
             'A saved account session is required for in-app deletion. '
             'Suspended accounts and sessions interrupted before profile '
             'binding can still use this action; otherwise use the web '
@@ -164,11 +165,11 @@ final class _AccountDeletionScreenState
           onPressed: () =>
               _open(ref.read(appBuildConfigProvider).accountDeletionUri),
           icon: const Icon(Icons.open_in_new),
-          label: const Text('Use the web deletion request'),
+          label: const UiText('Use the web deletion request'),
         ),
         TextButton(
           onPressed: () => _open(ref.read(appBuildConfigProvider).supportUri),
-          child: const Text('Contact support'),
+          child: const UiText('Contact support'),
         ),
       ],
     );
@@ -201,7 +202,7 @@ final class _AccountDeletionScreenState
                 size: 54,
               ),
               const SizedBox(height: 18),
-              Text(
+              UiText(
                 terminalFailure
                     ? 'Deletion needs operator review'
                     : outcomeUnknown
@@ -211,7 +212,7 @@ final class _AccountDeletionScreenState
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 10),
-              Text(
+              UiText(
                 terminalFailure
                     ? 'Your account remains disabled. Server cleanup stopped '
                           'after a terminal failure and will not continue '
@@ -234,7 +235,7 @@ final class _AccountDeletionScreenState
               ),
               if (deletion.errorMessage case final message?) ...[
                 const SizedBox(height: 12),
-                Text(
+                UiText(
                   message,
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
@@ -248,14 +249,14 @@ final class _AccountDeletionScreenState
                     ref.read(appBuildConfigProvider).accountDeletionUri,
                   ),
                   icon: const Icon(Icons.open_in_new),
-                  label: const Text('Confirm deletion on the web'),
+                  label: const UiText('Confirm deletion on the web'),
                 )
               else
                 FilledButton.icon(
                   key: const ValueKey('account-deletion-support'),
                   onPressed: () => _open(_supportUri(requestId)),
                   icon: const Icon(Icons.support_agent_outlined),
-                  label: const Text('Contact support about deletion'),
+                  label: const UiText('Contact support about deletion'),
                 ),
               const SizedBox(height: 8),
               OutlinedButton.icon(
@@ -272,7 +273,7 @@ final class _AccountDeletionScreenState
                       ? Icons.support_agent_outlined
                       : Icons.policy_outlined,
                 ),
-                label: Text(
+                label: UiText(
                   outcomeUnknown
                       ? 'Contact support'
                       : 'Read deletion and retention details',
@@ -283,7 +284,7 @@ final class _AccountDeletionScreenState
                 TextButton(
                   key: const ValueKey('account-deletion-continue-guest'),
                   onPressed: _continueAsGuest,
-                  child: const Text('Continue with public reading'),
+                  child: const UiText('Continue with public reading'),
                 ),
               ],
             ],
@@ -330,7 +331,7 @@ final class AccountDeletionDisabledScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       key: const ValueKey('account-deletion-disabled'),
-      appBar: AppBar(title: const Text('Delete account')),
+      appBar: AppBar(title: const UiText('Delete account')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -342,13 +343,13 @@ final class AccountDeletionDisabledScreen extends ConsumerWidget {
                 children: [
                   const Icon(Icons.person_off_outlined, size: 54),
                   const SizedBox(height: 18),
-                  Text(
+                  UiText(
                     'Account services are not enabled',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 10),
-                  const Text(
+                  const UiText(
                     'This build cannot hold a Pakperk account or submit an '
                     'authenticated in-app deletion request. The public '
                     'deletion policy and web request remain available.',
@@ -360,7 +361,7 @@ final class AccountDeletionDisabledScreen extends ConsumerWidget {
                     onPressed: () =>
                         context.push<void>('/legal/account-deletion'),
                     icon: const Icon(Icons.policy_outlined),
-                    label: const Text('Read the deletion policy'),
+                    label: const UiText('Read the deletion policy'),
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
@@ -371,7 +372,7 @@ final class AccountDeletionDisabledScreen extends ConsumerWidget {
                           ref.read(appBuildConfigProvider).accountDeletionUri,
                         ),
                     icon: const Icon(Icons.open_in_new),
-                    label: const Text('Use the web deletion request'),
+                    label: const UiText('Use the web deletion request'),
                   ),
                 ],
               ),
@@ -393,6 +394,6 @@ final class _Consequence extends StatelessWidget {
   Widget build(BuildContext context) => ListTile(
     contentPadding: EdgeInsets.zero,
     leading: Icon(icon),
-    title: Text(text),
+    title: UiText(text),
   );
 }

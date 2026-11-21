@@ -1,3 +1,4 @@
+import '../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../design_system/colors.dart';
@@ -370,7 +371,7 @@ class _StartupLaunchSurface extends StatelessWidget {
               const SizedBox(height: PakPerkSpacing.sm),
               Opacity(
                 opacity: wordmarkOpacity,
-                child: Text(
+                child: UiText(
                   'Pakperk',
                   key: const ValueKey('startup-wordmark'),
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -426,13 +427,13 @@ class _StartupFailureSurface extends StatelessWidget {
                       color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(height: PakPerkSpacing.md),
-                    Text(
+                    UiText(
                       'Your library needs attention',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
                     const SizedBox(height: PakPerkSpacing.sm),
-                    Text(
+                    UiText(
                       localStateUsable
                           ? '$message Your cached reading data is safe. Retry '
                                 'the local session check.'
@@ -446,7 +447,7 @@ class _StartupFailureSurface extends StatelessWidget {
                       width: double.infinity,
                       child: FilledButton(
                         onPressed: onRetry,
-                        child: const Text('Retry'),
+                        child: const UiText('Retry'),
                       ),
                     ),
                     if (onRepairAndRetry != null) ...[
@@ -455,7 +456,7 @@ class _StartupFailureSurface extends StatelessWidget {
                         width: double.infinity,
                         child: OutlinedButton(
                           onPressed: onRepairAndRetry,
-                          child: const Text('Rebuild local data'),
+                          child: const UiText('Rebuild local data'),
                         ),
                       ),
                     ],

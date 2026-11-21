@@ -361,6 +361,7 @@ void main() {
       expect(find.textContaining('private Assistant history'), findsOneWidget);
       expect(tester.getSize(action).height, greaterThanOrEqualTo(48));
 
+      await tester.pumpAndSettle();
       await tester.tap(action);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));

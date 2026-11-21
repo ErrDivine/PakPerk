@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -33,24 +34,27 @@ class PaperPassportCard extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Semantics(
         container: true,
-        label: 'Generated Paper Passport for ${passport.versionLabel}',
+        label: uiString(
+          context,
+          'Generated Paper Passport for ${passport.versionLabel}',
+        ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
+              UiText(
                 'Paper Passport',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 4),
-              Text(
+              UiText(
                 'Generated from the prepared full paper · '
                 '${passport.versionLabel} · ${_passportStatus(passport.status)}',
               ),
               const SizedBox(height: 12),
               if (visible.isEmpty)
-                const Text('No supported Passport fields are available.')
+                const UiText('No supported Passport fields are available.')
               else
                 for (final (index, field) in visible.indexed) ...[
                   if (index > 0) const Divider(height: 24),
@@ -88,7 +92,7 @@ class PaperPassportCard extends StatelessWidget {
                     ),
                   ),
                   icon: const Icon(Icons.badge_outlined),
-                  label: const Text('View full Passport'),
+                  label: const UiText('View full Passport'),
                 ),
               ],
             ],
@@ -115,8 +119,10 @@ class _CompactPassportField extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
     container: true,
-    label:
-        '${field.displayLabel}. ${_fieldStatus(field.status)}. ${_authorship(field.status)}.',
+    label: uiString(
+      context,
+      '${field.displayLabel}. ${_fieldStatus(field.status)}. ${_authorship(field.status)}.',
+    ),
     child: ConstrainedBox(
       constraints: const BoxConstraints(
         minHeight: PakPerkSizes.minimumInteractive,
@@ -124,18 +130,18 @@ class _CompactPassportField extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          UiText(
             field.displayLabel,
             style: Theme.of(context).textTheme.titleSmall,
           ),
           const SizedBox(height: 3),
-          Text(
+          UiText(
             '${_fieldStatus(field.status)} · ${_authorship(field.status)} · '
             '${_coverage(field.sourceBlockIds.length)}',
             style: Theme.of(context).textTheme.labelMedium,
           ),
           const SizedBox(height: 6),
-          Text(
+          UiText(
             field.displayValue ?? _fieldStatus(field.status),
             maxLines: compact ? 3 : 4,
             overflow: TextOverflow.ellipsis,

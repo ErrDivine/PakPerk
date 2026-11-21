@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -343,8 +344,8 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Answer provenance'),
-          content: Text(
+          title: const UiText('Answer provenance'),
+          content: UiText(
             'Generation ${provenance.generation}\n'
             '${provenance.activityType}\n'
             '${provenance.modelId ?? 'Model not reported'}',
@@ -352,7 +353,7 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Done'),
+              child: const UiText('Done'),
             ),
           ],
         ),
@@ -420,7 +421,7 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                     Expanded(
                       child: Semantics(
                         header: true,
-                        child: Text(
+                        child: UiText(
                           'Ask about ${widget.paperTitle}',
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
@@ -428,7 +429,7 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                     ),
                     IconButton(
                       onPressed: widget.onClose,
-                      tooltip: 'Close assistant',
+                      tooltip: uiString(context, 'Close assistant'),
                       constraints: const BoxConstraints(
                         minWidth: PakPerkSizes.minimumInteractive,
                         minHeight: PakPerkSizes.minimumInteractive,
@@ -439,7 +440,7 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                 ),
                 const SizedBox(height: 8),
                 Semantics(
-                  label: 'Active assistant evidence scope',
+                  label: uiString(context, 'Active assistant evidence scope'),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(
                       minHeight: PakPerkSizes.minimumInteractive,
@@ -451,10 +452,12 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                       initialValue: _activeScope,
                       isExpanded: true,
                       itemHeight: null,
-                      decoration: const InputDecoration(
-                        labelText: 'Evidence scope',
-                        helperText:
-                            'The answer can use evidence only from this scope.',
+                      decoration: InputDecoration(
+                        labelText: uiString(context, 'Evidence scope'),
+                        helperText: uiString(
+                          context,
+                          'The answer can use evidence only from this scope.',
+                        ),
                       ),
                       items: [
                         for (final scope in _scopeChoices)
@@ -466,7 +469,7 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                               ),
                               child: Align(
                                 alignment: AlignmentDirectional.centerStart,
-                                child: Text(scope.displayLabel),
+                                child: UiText(scope.displayLabel),
                               ),
                             ),
                           ),
@@ -489,7 +492,7 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                 ),
                 const SizedBox(height: 12),
                 Semantics(
-                  label: 'Assistant answer style',
+                  label: uiString(context, 'Assistant answer style'),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(
                       minHeight: PakPerkSizes.minimumInteractive,
@@ -501,10 +504,12 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                       initialValue: _answerStyle,
                       isExpanded: true,
                       itemHeight: null,
-                      decoration: const InputDecoration(
-                        labelText: 'Answer style',
-                        helperText:
-                            'Changes explanation depth, not the evidence scope.',
+                      decoration: InputDecoration(
+                        labelText: uiString(context, 'Answer style'),
+                        helperText: uiString(
+                          context,
+                          'Changes explanation depth, not the evidence scope.',
+                        ),
                       ),
                       items: [
                         for (final style in AssistantAnswerStyle.values)
@@ -516,7 +521,7 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                               ),
                               child: Align(
                                 alignment: AlignmentDirectional.centerStart,
-                                child: Text(style.displayLabel),
+                                child: UiText(style.displayLabel),
                               ),
                             ),
                           ),
@@ -533,14 +538,16 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                 ),
                 if (_error case final error?) ...[
                   const SizedBox(height: 12),
-                  Semantics(liveRegion: true, child: Text(error)),
+                  Semantics(liveRegion: true, child: UiText(error)),
                 ],
                 if (answer != null) ...[
                   const SizedBox(height: 20),
                   Semantics(
                     container: true,
-                    label:
-                        'Assistant answer status: ${_statusLabel(answer.status)}',
+                    label: uiString(
+                      context,
+                      'Assistant answer status: ${_statusLabel(answer.status)}',
+                    ),
                     child: Text(
                       _statusLabel(answer.status),
                       key: const ValueKey('assistant-answer-status'),
@@ -562,7 +569,10 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                     const SizedBox(height: 8),
                     Semantics(
                       container: true,
-                      label: 'Claim support: ${_supportLabel(claim.support)}',
+                      label: uiString(
+                        context,
+                        'Claim support: ${_supportLabel(claim.support)}',
+                      ),
                       child: Align(
                         alignment: AlignmentDirectional.centerStart,
                         child: Chip(
@@ -575,7 +585,7 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                                 : Icons.psychology_alt_outlined,
                             size: 18,
                           ),
-                          label: Text(_supportLabel(claim.support)),
+                          label: UiText(_supportLabel(claim.support)),
                         ),
                       ),
                     ),
@@ -601,7 +611,7 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                             widget.onClose();
                           },
                           icon: const Icon(Icons.find_in_page),
-                          label: Text(
+                          label: UiText(
                             'Open exact source${evidence.pageStart == null ? '' : ' · page ${evidence.pageStart}'}',
                           ),
                         ),
@@ -611,7 +621,7 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                     const SizedBox(height: 20),
                     Semantics(
                       header: true,
-                      child: Text(
+                      child: UiText(
                         'Answer coverage',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
@@ -619,7 +629,7 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                     const SizedBox(height: 4),
                     Semantics(
                       container: true,
-                      label: 'Answer coverage notice',
+                      label: uiString(context, 'Answer coverage notice'),
                       child: Column(
                         key: const ValueKey('assistant-limitations'),
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -630,8 +640,8 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const ExcludeSemantics(child: Text('•  ')),
-                                  Expanded(child: Text(limitation)),
+                                  const ExcludeSemantics(child: UiText('•  ')),
+                                  Expanded(child: UiText(limitation)),
                                 ],
                               ),
                             ),
@@ -642,20 +652,20 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                   const SizedBox(height: 20),
                   Semantics(
                     header: true,
-                    child: Text(
+                    child: UiText(
                       'Evidence correctness',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
+                  const UiText(
                     'If a citation is missing, misplaced, or does not support a claim, report that exact issue.',
                   ),
                   if (_feedbackStatus case final status?) ...[
                     const SizedBox(height: 8),
                     Semantics(
                       liveRegion: true,
-                      child: Text(
+                      child: UiText(
                         status,
                         key: const ValueKey('assistant-feedback-status'),
                       ),
@@ -694,7 +704,7 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                             ? _beginFeedback
                             : null,
                         icon: const Icon(Icons.report_outlined),
-                        label: const Text('Report evidence issue'),
+                        label: const UiText('Report evidence issue'),
                       ),
                     ),
                     if (_feedbackFailed && _pendingFeedback != null) ...[
@@ -713,7 +723,7 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                               ? () => _sendFeedback(answer, _pendingFeedback!)
                               : null,
                           icon: const Icon(Icons.refresh),
-                          label: const Text('Retry evidence report'),
+                          label: const UiText('Retry evidence report'),
                         ),
                       ),
                     ],
@@ -727,7 +737,7 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                       onPressed: isAnonymous
                           ? null
                           : () => _inspectProvenance(answer),
-                      child: const Text('Inspect provenance'),
+                      child: const UiText('Inspect provenance'),
                     ),
                   ),
                 ],
@@ -771,10 +781,15 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                       },
                       onChanged: (_) => setState(() => _error = null),
                       decoration: InputDecoration(
-                        labelText: 'Question',
-                        hintText: 'Ask about this evidence scope',
-                        helperText:
-                            '${_question.text.trim().runes.length}/500 characters',
+                        labelText: uiString(context, 'Question'),
+                        hintText: uiString(
+                          context,
+                          'Ask about this evidence scope',
+                        ),
+                        helperText: uiString(
+                          context,
+                          '${_question.text.trim().runes.length}/500 characters',
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -791,7 +806,7 @@ class _AssistantV2SheetState extends ConsumerState<AssistantV2Sheet> {
                                 _questionIsValid
                             ? _send
                             : null,
-                        child: Text(_sending ? 'Asking…' : 'Ask'),
+                        child: UiText(_sending ? 'Asking…' : 'Ask'),
                       ),
                     ),
                   ],

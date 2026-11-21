@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -125,7 +126,7 @@ class _ReaderLibraryStatusControl extends StatelessWidget {
                   const Icon(Icons.sync_problem_outlined, size: 22),
                 if (!iconOnly) const SizedBox(height: 4),
                 if (!iconOnly)
-                  const Text(
+                  const UiText(
                     'Library',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -161,7 +162,7 @@ class _ReaderLibraryControlButton extends StatelessWidget {
       container: true,
       excludeSemantics: true,
       button: true,
-      label: 'Library state: $label. Open Library controls.',
+      label: uiString(context, 'Library state: $label. Open Library controls.'),
       child: Tooltip(
         message: 'Library state: ${item.state.label}',
         excludeFromSemantics: true,
@@ -185,7 +186,7 @@ class _ReaderLibraryControlButton extends StatelessWidget {
                   ),
                   if (!iconOnly) const SizedBox(height: 4),
                   if (!iconOnly)
-                    Text(
+                    UiText(
                       item.state.label,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -293,7 +294,10 @@ class _ReaderLibrarySheetState extends ConsumerState<_ReaderLibrarySheet> {
     return Semantics(
       scopesRoute: true,
       namesRoute: true,
-      label: 'Library controls for ${widget.initialItem.paper.title}',
+      label: uiString(
+        context,
+        'Library controls for ${widget.initialItem.paper.title}',
+      ),
       explicitChildNodes: true,
       child: SafeArea(
         top: true,
@@ -320,7 +324,7 @@ class _ReaderLibrarySheetState extends ConsumerState<_ReaderLibrarySheet> {
                       Expanded(
                         child: Semantics(
                           header: true,
-                          child: Text(
+                          child: UiText(
                             'Library state',
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
@@ -329,7 +333,7 @@ class _ReaderLibrarySheetState extends ConsumerState<_ReaderLibrarySheet> {
                       IconButton(
                         key: const ValueKey('reader-library-close'),
                         onPressed: () => Navigator.of(context).pop(),
-                        tooltip: 'Close Library controls',
+                        tooltip: uiString(context, 'Close Library controls'),
                         constraints: const BoxConstraints.tightFor(
                           width: PakPerkSizes.minimumInteractive,
                           height: PakPerkSizes.minimumInteractive,
@@ -345,7 +349,7 @@ class _ReaderLibrarySheetState extends ConsumerState<_ReaderLibrarySheet> {
                   ),
                   const SizedBox(height: 16),
                   if (item != null) ...[
-                    Text(
+                    UiText(
                       'Current: ${item.state.label}',
                       key: const ValueKey('reader-library-current-state'),
                       style: Theme.of(context).textTheme.labelLarge,
@@ -387,10 +391,12 @@ class _ReaderLibrarySheetState extends ConsumerState<_ReaderLibrarySheet> {
                         FilteringTextInputFormatter.deny(RegExp(r'\x00')),
                       ],
                       onChanged: (_) => setState(() {}),
-                      decoration: const InputDecoration(
-                        labelText: 'Private save note',
-                        helperText:
-                            'Private. Never used as recommendation input.',
+                      decoration: InputDecoration(
+                        labelText: uiString(context, 'Private save note'),
+                        helperText: uiString(
+                          context,
+                          'Private. Never used as recommendation input.',
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -419,7 +425,7 @@ class _ReaderLibrarySheetState extends ConsumerState<_ReaderLibrarySheet> {
                           : null,
                     ),
                   ] else ...[
-                    const Text(
+                    const UiText(
                       'Removed from Library. This paper remains open until you leave the reader.',
                     ),
                   ],
@@ -440,7 +446,7 @@ class _ReaderLibrarySheetState extends ConsumerState<_ReaderLibrarySheet> {
                     const SizedBox(height: 12),
                     Semantics(
                       liveRegion: true,
-                      child: Text(
+                      child: UiText(
                         !scopeCurrent
                             ? 'Library changes are unavailable for this account.'
                             : 'Library sync must finish before changing this item.',
@@ -514,18 +520,18 @@ class _ReaderLibrarySheetState extends ConsumerState<_ReaderLibrarySheet> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Remove from Library?'),
-        content: const Text(
+        title: const UiText('Remove from Library?'),
+        content: const UiText(
           'This removes the paper from To Read and Library history. Your reader stays open.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: const UiText('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Remove'),
+            child: const UiText('Remove'),
           ),
         ],
       ),
@@ -625,12 +631,12 @@ class _StateAction extends StatelessWidget {
         ? FilledButton.tonalIcon(
             onPressed: null,
             icon: const Icon(Icons.check),
-            label: Text(state.label),
+            label: UiText(state.label),
           )
         : OutlinedButton.icon(
             onPressed: enabled ? onPressed : null,
             icon: Icon(_stateIcon(state)),
-            label: Text(state.label),
+            label: UiText(state.label),
           );
     return ConstrainedBox(
       constraints: const BoxConstraints(
@@ -668,7 +674,7 @@ class _FullWidthAction extends StatelessWidget {
           : null,
       onPressed: onPressed,
       icon: Icon(icon),
-      label: Text(label),
+      label: UiText(label),
     ),
   );
 }
@@ -725,7 +731,7 @@ class _LibraryMutationStatus extends StatelessWidget {
                   padding: const EdgeInsetsDirectional.only(end: 12),
                   child: Icon(error ? Icons.error_outline : Icons.check_circle),
                 ),
-              Expanded(child: Text(text)),
+              Expanded(child: UiText(text)),
             ],
           ),
         ),

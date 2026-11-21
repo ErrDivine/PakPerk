@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/document_block.dart';
@@ -79,7 +80,7 @@ class _SourceEvidenceSheetState extends State<_SourceEvidenceSheet> {
   @override
   Widget build(BuildContext context) => Semantics(
     container: true,
-    label: '${widget.title} source evidence',
+    label: uiString(context, '${widget.title} source evidence'),
     child: FutureBuilder<List<DocumentBlock>>(
       future: _sources,
       builder: (context, snapshot) {
@@ -90,7 +91,7 @@ class _SourceEvidenceSheetState extends State<_SourceEvidenceSheet> {
             SliverAppBar(
               pinned: true,
               automaticallyImplyLeading: false,
-              title: Text(widget.title),
+              title: UiText(widget.title),
             ),
             SliverToBoxAdapter(
               child: Padding(
@@ -99,14 +100,14 @@ class _SourceEvidenceSheetState extends State<_SourceEvidenceSheet> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (widget.statusLabel != null)
-                      Text('Status: ${widget.statusLabel}'),
+                      UiText('Status: ${widget.statusLabel}'),
                     if (widget.limitation != null) ...[
                       const SizedBox(height: 8),
-                      Text(widget.limitation!),
+                      UiText(widget.limitation!),
                     ],
                     if (!waiting && sources.isEmpty) ...[
                       const SizedBox(height: 12),
-                      Text(
+                      UiText(
                         snapshot.hasError
                             ? 'Exact source blocks could not be loaded. Open the original source to verify.'
                             : 'No exact source block is available. Open the original source to verify.',
@@ -122,7 +123,7 @@ class _SourceEvidenceSheetState extends State<_SourceEvidenceSheet> {
                 child: Center(
                   child: Semantics(
                     liveRegion: true,
-                    label: 'Loading exact source evidence',
+                    label: uiString(context, 'Loading exact source evidence'),
                     child: const CircularProgressIndicator.adaptive(),
                   ),
                 ),

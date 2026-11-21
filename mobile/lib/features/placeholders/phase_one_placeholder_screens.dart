@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 class PhaseOnePlaceholderScreen extends StatelessWidget {
@@ -27,7 +28,7 @@ class PhaseOnePlaceholderScreen extends StatelessWidget {
                 onPressed: onClose,
                 icon: const Icon(Icons.close),
               ),
-        title: Text(title),
+        title: UiText(title),
       ),
       body: SafeArea(
         child: Center(
@@ -42,14 +43,14 @@ class PhaseOnePlaceholderScreen extends StatelessWidget {
                   const SizedBox(height: 18),
                   Semantics(
                     header: true,
-                    child: Text(
+                    child: UiText(
                       title,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Text(message, textAlign: TextAlign.center),
+                  UiText(message, textAlign: TextAlign.center),
                 ],
               ),
             ),

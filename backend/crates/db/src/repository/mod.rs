@@ -42,6 +42,7 @@ mod moderation;
 mod paper_imports;
 mod papers;
 mod passport;
+mod product_surveys;
 mod rate_limits;
 mod reading_feed;
 mod recommendation_jobs;

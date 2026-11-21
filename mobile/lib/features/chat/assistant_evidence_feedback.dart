@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/assistant_v2.dart';
@@ -125,7 +126,7 @@ class _AssistantEvidenceFeedbackFormState
   @override
   Widget build(BuildContext context) => Semantics(
     container: true,
-    label: 'Evidence correctness report',
+    label: uiString(context, 'Evidence correctness report'),
     child: Card(
       key: const ValueKey('assistant-evidence-feedback-form'),
       margin: EdgeInsets.zero,
@@ -134,12 +135,12 @@ class _AssistantEvidenceFeedbackFormState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
+            UiText(
               'Report an evidence issue',
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 4),
-            const Text(
+            const UiText(
               'Choose what is wrong with the citations or support for this answer.',
             ),
             const SizedBox(height: 16),
@@ -152,12 +153,14 @@ class _AssistantEvidenceFeedbackFormState
                 initialValue: _type,
                 isExpanded: true,
                 itemHeight: null,
-                decoration: const InputDecoration(labelText: 'Evidence issue'),
+                decoration: InputDecoration(
+                  labelText: uiString(context, 'Evidence issue'),
+                ),
                 items: [
                   for (final type in _availableTypes)
                     DropdownMenuItem(
                       value: type,
-                      child: Text(type.displayLabel),
+                      child: UiText(type.displayLabel),
                     ),
                 ],
                 onChanged: !widget.enabled || widget.sending
@@ -182,7 +185,9 @@ class _AssistantEvidenceFeedbackFormState
                   initialValue: _claimIndex,
                   isExpanded: true,
                   itemHeight: null,
-                  decoration: const InputDecoration(labelText: 'Claim'),
+                  decoration: InputDecoration(
+                    labelText: uiString(context, 'Claim'),
+                  ),
                   items: [
                     for (
                       var index = 0;
@@ -191,7 +196,7 @@ class _AssistantEvidenceFeedbackFormState
                     )
                       DropdownMenuItem(
                         value: index,
-                        child: Text(
+                        child: UiText(
                           'Claim ${index + 1}: ${widget.answer.claims[index].text}',
                           maxLines: 3,
                           overflow: TextOverflow.ellipsis,
@@ -224,7 +229,9 @@ class _AssistantEvidenceFeedbackFormState
                   initialValue: _evidenceBlockId,
                   isExpanded: true,
                   itemHeight: null,
-                  decoration: const InputDecoration(labelText: 'Citation'),
+                  decoration: InputDecoration(
+                    labelText: uiString(context, 'Citation'),
+                  ),
                   items: [
                     for (
                       var index = 0;
@@ -233,7 +240,7 @@ class _AssistantEvidenceFeedbackFormState
                     )
                       DropdownMenuItem(
                         value: _distinctSelectedEvidence[index].blockId,
-                        child: Text(
+                        child: UiText(
                           _evidenceLabel(
                             _distinctSelectedEvidence[index],
                             index,
@@ -256,16 +263,18 @@ class _AssistantEvidenceFeedbackFormState
               maxLines: 5,
               maxLength: 1000,
               onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'Private detail (optional)',
-                helperText:
-                    'Stored with this account report to help review the evidence.',
+              decoration: InputDecoration(
+                labelText: uiString(context, 'Private detail (optional)'),
+                helperText: uiString(
+                  context,
+                  'Stored with this account report to help review the evidence.',
+                ),
               ),
             ),
             if (!_detailIsValid)
               Semantics(
                 liveRegion: true,
-                child: const Text(
+                child: const UiText(
                   'Detail must be at most 1,000 characters and cannot contain null characters.',
                 ),
               ),
@@ -283,7 +292,7 @@ class _AssistantEvidenceFeedbackFormState
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.report_outlined),
-                label: Text(
+                label: UiText(
                   widget.sending ? 'Sending report…' : 'Send evidence report',
                 ),
               ),
@@ -295,7 +304,7 @@ class _AssistantEvidenceFeedbackFormState
               ),
               child: TextButton(
                 onPressed: widget.sending ? null : widget.onCancel,
-                child: const Text('Cancel report'),
+                child: const UiText('Cancel report'),
               ),
             ),
           ],

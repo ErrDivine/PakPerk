@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -73,12 +74,12 @@ final class _ResearchProfileDestinationState
     );
     if (!enabled) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Research profile')),
+        appBar: AppBar(title: const UiText('Research profile')),
         body: const SafeArea(
           child: Center(
             child: Padding(
               padding: EdgeInsets.all(PakPerkSpacing.lg),
-              child: Text(
+              child: UiText(
                 'Research profiles are not enabled for this build.',
                 textAlign: TextAlign.center,
               ),
@@ -206,7 +207,7 @@ final class _ResearchProfileDestinationState
         cancellation: request,
       );
       if (profile.revision != interests.revision) {
-        throw const ApiException(
+        throw ApiException(
           code: 'PROFILE_REVISION_MISMATCH',
           message: 'Profile revisions disagree.',
           retryable: true,
@@ -318,7 +319,7 @@ final class _ResearchProfileDestinationState
     if (!_isCurrent(scope, generation)) return;
     final profile = _profile;
     if (profile == null || profile.profileRevision != interests.revision) {
-      throw const ApiException(
+      throw ApiException(
         code: 'PROFILE_REVISION_MISMATCH',
         message: 'Profile revisions disagree.',
         retryable: true,
@@ -336,7 +337,7 @@ final class _ResearchProfileDestinationState
     );
     final value = await _showScopeDialog<String>(
       builder: (context) => AlertDialog.adaptive(
-        title: const Text('Explicit categories'),
+        title: const UiText('Explicit categories'),
         content: SingleChildScrollView(
           child: TextField(
             key: const ValueKey('research-profile-category-input'),
@@ -344,21 +345,23 @@ final class _ResearchProfileDestinationState
             autofocus: true,
             minLines: 2,
             maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: 'arXiv categories',
-              helperText:
-                  'Separate categories with commas, for example cs.AI, cs.CL.',
+            decoration: InputDecoration(
+              labelText: uiString(context, 'arXiv categories'),
+              helperText: uiString(
+                context,
+                'Separate categories with commas, for example cs.AI, cs.CL.',
+              ),
             ),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: const UiText('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('Save choices'),
+            child: const UiText('Save choices'),
           ),
         ],
       ),
@@ -405,7 +408,7 @@ final class _ResearchProfileDestinationState
     final controller = TextEditingController();
     final query = await _showScopeDialog<String>(
       builder: (context) => AlertDialog.adaptive(
-        title: Text(
+        title: UiText(
           polarity == ResearchTopicPolarity.negative
               ? 'Choose a topic to avoid'
               : 'Find an explicit topic',
@@ -417,7 +420,7 @@ final class _ResearchProfileDestinationState
           maxLength: 300,
           textInputAction: TextInputAction.search,
           decoration: InputDecoration(
-            labelText: 'Topic name',
+            labelText: uiString(context, 'Topic name'),
             helperText: polarity == ResearchTopicPolarity.negative
                 ? 'This explicitly reduces matching future discovery.'
                 : 'Choose a topic from Pakperk’s local vocabulary.',
@@ -427,11 +430,11 @@ final class _ResearchProfileDestinationState
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: const UiText('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(controller.text),
-            child: Text(
+            child: UiText(
               polarity == ResearchTopicPolarity.negative
                   ? 'Find topic to avoid'
                   : 'Find topics',
@@ -521,14 +524,14 @@ final class _ResearchProfileDestinationState
               PakPerkSpacing.lg,
               PakPerkSpacing.sm,
             ),
-            child: Text(
+            child: UiText(
               'Choose a topic',
               style: Theme.of(context).textTheme.headlineSmall,
             ),
           ),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: PakPerkSpacing.lg),
-            child: Text(
+            child: UiText(
               'Only the topic you select becomes an explicit profile choice.',
             ),
           ),
@@ -550,8 +553,8 @@ final class _ResearchProfileDestinationState
                     'research-profile-topic-option-${topic.topicId}',
                   ),
                   minTileHeight: PakPerkSizes.minimumInteractive,
-                  title: Text(topic.label),
-                  subtitle: Text(topic.sourceVocabulary),
+                  title: UiText(topic.label),
+                  subtitle: UiText(topic.sourceVocabulary),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => Navigator.of(context).pop(topic),
                 );
@@ -582,7 +585,7 @@ final class _ResearchProfileDestinationState
     final value =
         await _showScopeDialog<({String authorKey, String displayName})>(
           builder: (context) => AlertDialog.adaptive(
-            title: const Text('Follow an explicit author'),
+            title: const UiText('Follow an explicit author'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -593,10 +596,12 @@ final class _ResearchProfileDestinationState
                     autofocus: true,
                     maxLength: 200,
                     textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(
-                      labelText: 'Author key',
-                      helperText:
-                          'Use the stable key shown by the paper source.',
+                    decoration: InputDecoration(
+                      labelText: uiString(context, 'Author key'),
+                      helperText: uiString(
+                        context,
+                        'Use the stable key shown by the paper source.',
+                      ),
                     ),
                   ),
                   TextField(
@@ -604,8 +609,8 @@ final class _ResearchProfileDestinationState
                     controller: nameController,
                     maxLength: 200,
                     textInputAction: TextInputAction.done,
-                    decoration: const InputDecoration(
-                      labelText: 'Display name',
+                    decoration: InputDecoration(
+                      labelText: uiString(context, 'Display name'),
                     ),
                     onSubmitted: (_) => Navigator.of(context).pop((
                       authorKey: keyController.text,
@@ -618,14 +623,14 @@ final class _ResearchProfileDestinationState
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
+                child: const UiText('Cancel'),
               ),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop((
                   authorKey: keyController.text,
                   displayName: nameController.text,
                 )),
-                child: const Text('Follow author'),
+                child: const UiText('Follow author'),
               ),
             ],
           ),
@@ -674,10 +679,10 @@ final class _ResearchProfileDestinationState
     final all = resetScope == ResearchProfileResetScope.all;
     final confirmed = await _showScopeDialog<bool>(
       builder: (context) => AlertDialog.adaptive(
-        title: Text(
+        title: UiText(
           all ? 'Reset research profile?' : 'Clear inferred signals?',
         ),
-        content: Text(
+        content: UiText(
           all
               ? 'This restores discovery defaults and clears explicit, feedback-derived, and inferred profile signals. Your library and To Read queue are unchanged.'
               : 'This clears only system-inferred profile signals. Explicit choices, feedback, your library, and To Read are unchanged.',
@@ -685,11 +690,11 @@ final class _ResearchProfileDestinationState
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: const UiText('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: Text(all ? 'Reset profile' : 'Clear inferred'),
+            child: UiText(all ? 'Reset profile' : 'Clear inferred'),
           ),
         ],
       ),
@@ -743,14 +748,14 @@ final class _ResearchProfileDestinationState
                   PakPerkSpacing.lg,
                   PakPerkSpacing.sm,
                 ),
-                child: Text(
+                child: UiText(
                   'Research profile export',
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
               ),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: PakPerkSpacing.lg),
-                child: Text(
+                child: UiText(
                   'This bounded snapshot excludes the operation ledger and raw interaction history.',
                 ),
               ),
@@ -776,7 +781,7 @@ final class _ResearchProfileDestinationState
                       if (context.mounted) Navigator.of(context).pop();
                     },
                     icon: const Icon(Icons.copy_rounded),
-                    label: const Text('Copy export'),
+                    label: const UiText('Copy export'),
                   ),
                 ),
               ),

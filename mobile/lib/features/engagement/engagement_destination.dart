@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -555,7 +556,7 @@ final class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          UiText(
             'Add subscription',
             style: Theme.of(context).textTheme.headlineSmall,
           ),
@@ -563,19 +564,19 @@ final class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
           DropdownButtonFormField<SubscriptionKind>(
             initialValue: _kind,
             isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Kind'),
+            decoration: InputDecoration(labelText: uiString(context, 'Kind')),
             items: const [
               DropdownMenuItem(
                 value: SubscriptionKind.topic,
-                child: Text('Topic'),
+                child: UiText('Topic'),
               ),
               DropdownMenuItem(
                 value: SubscriptionKind.category,
-                child: Text('Category'),
+                child: UiText('Category'),
               ),
               DropdownMenuItem(
                 value: SubscriptionKind.author,
-                child: Text('Author'),
+                child: UiText('Author'),
               ),
             ],
             onChanged: (value) {
@@ -589,9 +590,12 @@ final class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
             autofocus: true,
             maxLength: 160,
             textInputAction: TextInputAction.next,
-            decoration: const InputDecoration(
-              labelText: 'Stable key',
-              helperText: 'Use the canonical key shown by the paper source.',
+            decoration: InputDecoration(
+              labelText: uiString(context, 'Stable key'),
+              helperText: uiString(
+                context,
+                'Use the canonical key shown by the paper source.',
+              ),
             ),
           ),
           TextField(
@@ -599,16 +603,20 @@ final class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
             controller: _labelController,
             maxLength: 160,
             textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(labelText: 'Display label'),
+            decoration: InputDecoration(
+              labelText: uiString(context, 'Display label'),
+            ),
             onSubmitted: (_) => _submit(),
           ),
           DropdownButtonFormField<SubscriptionFrequency>(
             initialValue: _frequency,
             isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Frequency'),
+            decoration: InputDecoration(
+              labelText: uiString(context, 'Frequency'),
+            ),
             items: [
               for (final value in SubscriptionFrequency.values)
-                DropdownMenuItem(value: value, child: Text(value.name)),
+                DropdownMenuItem(value: value, child: UiText(value.name)),
             ],
             onChanged: (value) {
               if (value != null) setState(() => _frequency = value);
@@ -618,7 +626,7 @@ final class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
             const SizedBox(height: PakPerkSpacing.sm),
             Semantics(
               liveRegion: true,
-              child: Text(
+              child: UiText(
                 _error!,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
@@ -631,7 +639,7 @@ final class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
             ),
             child: FilledButton(
               onPressed: _submit,
-              child: const Text('Add subscription'),
+              child: const UiText('Add subscription'),
             ),
           ),
         ],

@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -115,12 +116,12 @@ final class _ResearchSearchDestinationState
     final flags = ref.watch(featureFlagsProvider);
     if (!flags.searchLookupEnabled) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Search')),
+        appBar: AppBar(title: const UiText('Search')),
         body: const SafeArea(
           child: Center(
             child: Padding(
               padding: EdgeInsets.all(24),
-              child: Text(
+              child: UiText(
                 'Research search is not enabled for this build.',
                 textAlign: TextAlign.center,
               ),
@@ -329,7 +330,7 @@ final class _ResearchSearchDestinationState
   ) async {
     final scope = _scope;
     if (scope == null) {
-      throw const ApiException(
+      throw ApiException(
         code: 'UNAUTHENTICATED',
         message: 'Sign in before saving a query.',
         retryable: false,
@@ -440,7 +441,7 @@ final class _ResearchSearchDestinationState
         ..hideCurrentSnackBar()
         ..showSnackBar(
           const SnackBar(
-            content: Text(
+            content: UiText(
               'Saved query deleted. Linked alerts were turned off.',
             ),
           ),
@@ -469,7 +470,7 @@ final class _ResearchSearchDestinationState
       ..hideCurrentSnackBar()
       ..showSnackBar(
         const SnackBar(
-          content: Text('Couldn’t delete the saved query. Please try again.'),
+          content: UiText('Couldn’t delete the saved query. Please try again.'),
         ),
       );
   }

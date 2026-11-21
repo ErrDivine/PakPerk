@@ -12,13 +12,17 @@ void main() {
       final client = FlutterAppAuthOidcClient(
         configuration: testOidcConfiguration,
         appAuth: appAuth,
+        uiLocale: () => 'zh-CN',
       );
 
       final tokens = await client.reauthenticateForSensitiveAction();
 
       final request = appAuth.request!;
       expect(request.promptValues, ['login']);
-      expect(request.additionalParameters, {'max_age': '0'});
+      expect(request.additionalParameters, {
+        'max_age': '0',
+        'ui_locales': 'zh-CN',
+      });
       expect(
         request.externalUserAgent,
         ExternalUserAgent.asWebAuthenticationSession,

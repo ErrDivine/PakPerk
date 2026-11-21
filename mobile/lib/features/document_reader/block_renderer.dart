@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/document_block.dart';
@@ -88,13 +89,15 @@ class DocumentBlockRenderer extends StatelessWidget {
       explicitChildNodes: true,
       header: block.kind == DocumentBlockKind.heading,
       selected: effectivelyHighlighted,
-      label:
-          '${block.kind.wireValue}, ${block.sectionLabel}'
-          '${effectivelyHighlighted && hasExactRange
-              ? ', exact source range highlighted, characters ${highlightStart! + 1} through $highlightEnd'
-              : effectivelyHighlighted
-              ? ', exact source block highlighted'
-              : ''}',
+      label: uiString(
+        context,
+        '${block.kind.wireValue}, ${block.sectionLabel}'
+        '${effectivelyHighlighted && hasExactRange
+            ? ', exact source range highlighted, characters ${highlightStart! + 1} through $highlightEnd'
+            : effectivelyHighlighted
+            ? ', exact source block highlighted'
+            : ''}',
+      ),
       child: AnimatedContainer(
         key: ValueKey('document-block-${block.stableKey}'),
         duration: reducedMotion ? PakPerkMotion.instant : PakPerkMotion.quick,

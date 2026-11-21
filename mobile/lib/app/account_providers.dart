@@ -1,3 +1,4 @@
+import '../l10n/language_controller.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -157,6 +158,9 @@ final secureTokenStoreProvider = Provider<SecureTokenStore>(
 final oidcClientProvider = Provider<OidcClient>(
   (ref) => FlutterAppAuthOidcClient(
     configuration: ref.watch(oidcClientConfigurationProvider),
+    uiLocale: () => ref.read(languageControllerProvider).languageCode == 'zh'
+        ? 'zh-CN'
+        : 'en',
   ),
 );
 

@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/document_block.dart';
@@ -122,8 +123,10 @@ abstract final class InlineSpanRenderer {
               alignment: PlaceholderAlignment.middle,
               child: Semantics(
                 button: true,
-                label:
-                    '$visible, ${_referenceKindLabel(reference.kind)}. Inspect reference context.',
+                label: uiString(
+                  context,
+                  '$visible, ${_referenceKindLabel(reference.kind)}. Inspect reference context.',
+                ),
                 child: Tooltip(
                   message: 'Inspect ${_referenceKindLabel(reference.kind)}',
                   excludeFromSemantics: true,
@@ -151,7 +154,7 @@ abstract final class InlineSpanRenderer {
             alignment: PlaceholderAlignment.middle,
             child: Semantics(
               button: true,
-              label: '$visible, definition',
+              label: uiString(context, '$visible, definition'),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(
                   minWidth: PakPerkSizes.minimumInteractive,

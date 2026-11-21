@@ -1,7 +1,9 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/account_providers.dart';
 import '../../app/library_providers.dart';
@@ -284,7 +286,7 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
           children: [
             Semantics(
               header: true,
-              child: Text(
+              child: UiText(
                 'You',
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
@@ -296,7 +298,7 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    CircleAvatar(radius: 28, child: Text(_initials(profile))),
+                    CircleAvatar(radius: 28, child: UiText(_initials(profile))),
                     const SizedBox(height: 12),
                     Text(
                       profile.displayName ?? profile.handle ?? 'Pakperk reader',
@@ -304,9 +306,9 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     if (profile.handle case final handle?)
-                      Text('@$handle', textAlign: TextAlign.center),
+                      UiText('@$handle', textAlign: TextAlign.center),
                     const SizedBox(height: 8),
-                    Text(
+                    UiText(
                       _statusLabel(profile.status),
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodySmall,
@@ -316,7 +318,7 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
                       OutlinedButton.icon(
                         onPressed: updating ? null : onEditDisplayName,
                         icon: const Icon(Icons.edit_outlined),
-                        label: const Text('Edit display name'),
+                        label: const UiText('Edit display name'),
                       ),
                     ],
                   ],
@@ -332,19 +334,19 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
+                      UiText(
                         'Finish account setup',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 6),
-                      const Text(
+                      const UiText(
                         'Choose a handle and accept the current terms before '
                         'joining paper discussions.',
                       ),
                       const SizedBox(height: 12),
                       FilledButton(
                         onPressed: onCompleteProfile,
-                        child: const Text('Complete profile'),
+                        child: const UiText('Complete profile'),
                       ),
                     ],
                   ),
@@ -353,14 +355,14 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
             ],
             if (updateError case final message?) ...[
               const SizedBox(height: 12),
-              Text(
+              UiText(
                 message,
                 key: const ValueKey('account-update-error'),
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ],
             const SizedBox(height: 24),
-            Text(
+            UiText(
               'Your reading',
               style: Theme.of(context).textTheme.titleMedium,
             ),
@@ -398,7 +400,13 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 16),
-            Text('Account', style: Theme.of(context).textTheme.titleMedium),
+            UiText('Account', style: Theme.of(context).textTheme.titleMedium),
+            _AccountDestination(
+              icon: Icons.chat_bubble_outline,
+              label: 'Share your thoughts',
+              supportingText: 'A few minutes to tell us how it feels',
+              onTap: () => context.push('/you/questionnaire'),
+            ),
             _AccountDestination(
               icon: Icons.settings_outlined,
               label: 'Settings',
@@ -435,10 +443,10 @@ class AuthenticatedAccountHomeScreen extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: updating ? null : onSignOut,
               icon: const Icon(Icons.logout),
-              label: const Text('Sign out'),
+              label: const UiText('Sign out'),
             ),
             const SizedBox(height: 28),
-            Text(
+            UiText(
               'Destructive actions',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: Theme.of(context).colorScheme.error,
@@ -480,8 +488,8 @@ class _AccountDestination extends StatelessWidget {
     return ListTile(
       minVerticalPadding: 12,
       leading: Icon(icon, color: color),
-      title: Text(label, style: TextStyle(color: color)),
-      subtitle: supportingText == null ? null : Text(supportingText!),
+      title: UiText(label, style: TextStyle(color: color)),
+      subtitle: supportingText == null ? null : UiText(supportingText!),
       trailing: const Icon(Icons.chevron_right),
       onTap: onTap,
     );
@@ -495,7 +503,7 @@ class _AccountProgressScreen extends StatelessWidget {
   Widget build(BuildContext context) => Center(
     child: Semantics(
       liveRegion: true,
-      label: 'Checking account session',
+      label: uiString(context, 'Checking account session'),
       child: const CircularProgressIndicator(),
     ),
   );
@@ -529,10 +537,10 @@ class _OfflineAccountScreen extends StatelessWidget {
           key: const ValueKey('offline-account-to-read'),
           onPressed: onOpenLibrary,
           icon: const Icon(Icons.bookmarks_outlined),
-          label: const Text('Open cached To Read'),
+          label: const UiText('Open cached To Read'),
         ),
-      TextButton(onPressed: onOpenSettings, child: const Text('Settings')),
-      TextButton(onPressed: onSignOut, child: const Text('Sign out')),
+      TextButton(onPressed: onOpenSettings, child: const UiText('Settings')),
+      TextButton(onPressed: onSignOut, child: const UiText('Sign out')),
     ],
   );
 }
@@ -560,9 +568,9 @@ class _AccountLoadFailureScreen extends StatelessWidget {
     secondary: [
       TextButton(
         onPressed: onDeleteAccount,
-        child: const Text('Delete account'),
+        child: const UiText('Delete account'),
       ),
-      TextButton(onPressed: onSignOut, child: const Text('Sign out')),
+      TextButton(onPressed: onSignOut, child: const UiText('Sign out')),
     ],
   );
 }
@@ -609,10 +617,10 @@ class _ReadOnlyAccountScreen extends StatelessWidget {
           key: const ValueKey('read-only-account-to-read'),
           onPressed: onOpenLibrary,
           icon: const Icon(Icons.bookmarks_outlined),
-          label: const Text('Open cached To Read'),
+          label: const UiText('Open cached To Read'),
         ),
-      TextButton(onPressed: onOpenSettings, child: const Text('Settings')),
-      TextButton(onPressed: onOpenSupport, child: const Text('Support')),
+      TextButton(onPressed: onOpenSettings, child: const UiText('Settings')),
+      TextButton(onPressed: onOpenSupport, child: const UiText('Support')),
       if (onDeleteAccount != null)
         TextButton.icon(
           key: const ValueKey('read-only-account-delete'),
@@ -621,9 +629,9 @@ class _ReadOnlyAccountScreen extends StatelessWidget {
           ),
           onPressed: onDeleteAccount,
           icon: const Icon(Icons.person_off_outlined),
-          label: const Text('Delete account'),
+          label: const UiText('Delete account'),
         ),
-      TextButton(onPressed: onSignOut, child: const Text('Sign out')),
+      TextButton(onPressed: onSignOut, child: const UiText('Sign out')),
     ],
   );
 }
@@ -647,7 +655,7 @@ class _DeletionPendingAccountScreen extends StatelessWidget {
     primaryLabel: 'View deletion status',
     onPrimary: onOpenStatus,
     secondary: [
-      TextButton(onPressed: onOpenSupport, child: const Text('Support')),
+      TextButton(onPressed: onOpenSupport, child: const UiText('Support')),
     ],
   );
 }
@@ -679,11 +687,11 @@ class _AccountMessageScreen extends StatelessWidget {
           children: [
             Icon(icon, size: 48),
             const SizedBox(height: 16),
-            Text(title, style: Theme.of(context).textTheme.headlineSmall),
+            UiText(title, style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 8),
-            Text(message, textAlign: TextAlign.center),
+            UiText(message, textAlign: TextAlign.center),
             const SizedBox(height: 18),
-            FilledButton(onPressed: onPrimary, child: Text(primaryLabel)),
+            FilledButton(onPressed: onPrimary, child: UiText(primaryLabel)),
             Wrap(alignment: WrapAlignment.center, children: secondary),
           ],
         ),
@@ -707,7 +715,7 @@ Future<void> _editDisplayName(
   final submitted = await showDialog<String?>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: const Text('Edit display name'),
+      title: const UiText('Edit display name'),
       content: TextField(
         controller: controller,
         autofocus: true,
@@ -721,11 +729,11 @@ Future<void> _editDisplayName(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('Cancel'),
+          child: const UiText('Cancel'),
         ),
         FilledButton(
           onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-          child: const Text('Save'),
+          child: const UiText('Save'),
         ),
       ],
     ),

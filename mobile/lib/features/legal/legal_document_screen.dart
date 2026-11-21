@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -62,11 +63,13 @@ final class _LegalDocumentScreenState
   LegalDocumentKind? _loadedKind;
   LegalDocumentLoader? _loadedWith;
   String? _loadedVersion;
+  String? _loadedLanguage;
   Future<String>? _document;
 
   @override
   Widget build(BuildContext context) {
     final config = ref.watch(appBuildConfigProvider);
+    final language = Localizations.localeOf(context).languageCode;
     final loader = ref.watch(legalDocumentLoaderProvider);
     final expectedVersion = switch (widget.kind) {
       LegalDocumentKind.terms => config.termsDocumentVersion,
@@ -76,11 +79,18 @@ final class _LegalDocumentScreenState
     };
     if (_loadedKind != widget.kind ||
         !identical(_loadedWith, loader) ||
-        _loadedVersion != expectedVersion) {
+        _loadedVersion != expectedVersion ||
+        _loadedLanguage != language) {
       _loadedKind = widget.kind;
       _loadedWith = loader;
       _loadedVersion = expectedVersion;
-      _document = _loadVersionBoundDocument(loader, widget.kind, config);
+      _loadedLanguage = language;
+      _document = _loadVersionBoundDocument(
+        loader,
+        widget.kind,
+        config,
+        language,
+      );
     }
     final publishedUri = switch (widget.kind) {
       LegalDocumentKind.support => config.supportUri,
@@ -90,11 +100,11 @@ final class _LegalDocumentScreenState
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          tooltip: 'Close ${widget.kind.title}',
+          tooltip: uiString(context, 'Close ${widget.kind.title}'),
           onPressed: widget.onClose,
           icon: const Icon(Icons.close),
         ),
-        title: Text(widget.kind.title),
+        title: UiText(widget.kind.title),
       ),
       body: SafeArea(
         top: false,
@@ -107,7 +117,12 @@ final class _LegalDocumentScreenState
               if (snapshot.hasData)
                 MarkdownBody(
                   key: ValueKey('legal-${widget.kind.name}-markdown'),
-                  data: snapshot.data!,
+                  data: language == 'zh'
+                      ? snapshot.data!.replaceAll(
+                          'Publication version: ',
+                          '发布日期：',
+                        )
+                      : snapshot.data!,
                   selectable: true,
                   styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context))
                       .copyWith(
@@ -122,7 +137,7 @@ final class _LegalDocumentScreenState
                   },
                 )
               else if (snapshot.hasError)
-                const Text(
+                const UiText(
                   'The bundled policy could not be opened. Use the published '
                   'HTTPS page below.',
                 )
@@ -134,12 +149,12 @@ final class _LegalDocumentScreenState
                 onPressed: () =>
                     ref.read(externalLinkOpenerProvider).open(publishedUri),
                 icon: const Icon(Icons.open_in_new),
-                label: Text(
+                label: UiText(
                   'Open published ${widget.kind.title.toLowerCase()}',
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
+              UiText(
                 publishedUri.toString(),
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
@@ -164,8 +179,12 @@ Future<String> _loadVersionBoundDocument(
   LegalDocumentLoader loader,
   LegalDocumentKind kind,
   AppBuildConfig config,
+  String language,
 ) async {
-  final text = await loader(kind.assetPath);
+  final path = language == 'zh'
+      ? kind.assetPath.replaceFirst('assets/legal/', 'assets/legal/zh/')
+      : kind.assetPath;
+  final text = await loader(path);
   final expectedVersion = switch (kind) {
     LegalDocumentKind.terms => config.termsDocumentVersion,
     LegalDocumentKind.communityGuidelines =>

@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/library/library_history_store.dart';
@@ -33,7 +34,7 @@ final class LibraryHistoryView extends StatelessWidget {
     return Semantics(
       key: const ValueKey('library-history-view'),
       container: true,
-      label: 'Private paper history',
+      label: uiString(context, 'Private paper history'),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
           PakPerkSpacing.md,
@@ -49,8 +50,8 @@ final class LibraryHistoryView extends StatelessWidget {
                 key: const ValueKey('library-history-enabled'),
                 value: enabled,
                 onChanged: loading || saving ? null : onEnabledChanged,
-                title: const Text('Keep private paper history'),
-                subtitle: const Text(
+                title: const UiText('Keep private paper history'),
+                subtitle: const UiText(
                   'Record papers you explicitly open on this device. Turning this off clears the history. It never changes To Read.',
                 ),
               ),
@@ -85,7 +86,7 @@ final class LibraryHistoryView extends StatelessWidget {
                   Expanded(
                     child: Semantics(
                       header: true,
-                      child: Text(
+                      child: UiText(
                         'Recently opened',
                         style: theme.textTheme.titleLarge,
                       ),
@@ -98,7 +99,7 @@ final class LibraryHistoryView extends StatelessWidget {
                     child: TextButton(
                       key: const ValueKey('library-history-clear'),
                       onPressed: saving ? null : onClear,
-                      child: const Text('Clear'),
+                      child: const UiText('Clear'),
                     ),
                   ),
                 ],
@@ -113,7 +114,7 @@ final class LibraryHistoryView extends StatelessWidget {
                     ),
                     minTileHeight: PakPerkSizes.minimumInteractive,
                     title: Text(entry.paper.title),
-                    subtitle: Text(
+                    subtitle: UiText(
                       _historyDetail(context, entry),
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
@@ -129,7 +130,7 @@ final class LibraryHistoryView extends StatelessWidget {
               const SizedBox(height: PakPerkSpacing.sm),
               Semantics(
                 liveRegion: true,
-                child: Text(
+                child: UiText(
                   errorMessage!,
                   key: const ValueKey('library-history-error'),
                   style: theme.textTheme.bodyMedium?.copyWith(
@@ -163,13 +164,13 @@ final class _HistoryEmpty extends StatelessWidget {
       children: [
         Icon(icon, size: 44),
         const SizedBox(height: PakPerkSpacing.sm),
-        Text(
+        UiText(
           title,
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: PakPerkSpacing.xs),
-        Text(detail, textAlign: TextAlign.center),
+        UiText(detail, textAlign: TextAlign.center),
       ],
     ),
   );

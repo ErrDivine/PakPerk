@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api/api_exception.dart';
@@ -46,7 +47,7 @@ class _VersionHistoryPanelState extends State<VersionHistoryPanel> {
         return Center(
           child: Semantics(
             liveRegion: true,
-            label: 'Loading document versions',
+            label: uiString(context, 'Loading document versions'),
             child: const CircularProgressIndicator(),
           ),
         );
@@ -64,7 +65,7 @@ class _VersionHistoryPanelState extends State<VersionHistoryPanel> {
       }
       final versions = snapshot.data ?? const [];
       if (versions.isEmpty) {
-        return const Center(child: Text('No version history is available.'));
+        return const Center(child: UiText('No version history is available.'));
       }
       // The API intentionally returns newest-first history. Keep that useful
       // display order, but always request a diff from the older generation to
@@ -76,12 +77,12 @@ class _VersionHistoryPanelState extends State<VersionHistoryPanel> {
       return ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
-          Text(
+          UiText(
             'Document versions',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 4),
-          const Text(
+          const UiText(
             'Changes describe parser-supported document differences, not author intent.',
           ),
           const SizedBox(height: 12),
@@ -102,7 +103,7 @@ class _VersionHistoryPanelState extends State<VersionHistoryPanel> {
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: Text(
+                          child: UiText(
                             '${version.arxivId}${version.isCurrent ? ' · current' : ''}',
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
@@ -110,7 +111,7 @@ class _VersionHistoryPanelState extends State<VersionHistoryPanel> {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Text(
+                    UiText(
                       'Parser ${version.parserId} ${version.parserVersion} · generation ${version.generation}',
                     ),
                     const SizedBox(height: 8),
@@ -152,7 +153,7 @@ class _VersionHistoryPanelState extends State<VersionHistoryPanel> {
             const SizedBox(height: 12),
             Semantics(
               liveRegion: true,
-              child: Text(
+              child: UiText(
                 _error!,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
@@ -210,12 +211,14 @@ class _VersionDiffView extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
     container: true,
-    label:
-        'Version comparison from v${diff.fromArxivVersion} to v${diff.toArxivVersion}',
+    label: uiString(
+      context,
+      'Version comparison from v${diff.fromArxivVersion} to v${diff.toArxivVersion}',
+    ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
+        UiText(
           'v${diff.fromArxivVersion} → v${diff.toArxivVersion}',
           style: Theme.of(context).textTheme.titleLarge,
         ),
@@ -224,13 +227,13 @@ class _VersionDiffView extends StatelessWidget {
             color: Theme.of(context).colorScheme.tertiaryContainer,
             child: const ListTile(
               leading: Icon(Icons.warning_amber_outlined),
-              title: Text('Parser changed'),
-              subtitle: Text(
+              title: UiText('Parser changed'),
+              subtitle: UiText(
                 'Some differences may come from extraction changes. Treat uncertain items as review prompts.',
               ),
             ),
           ),
-        Text(
+        UiText(
           '${diff.summary.added} added · ${diff.summary.removed} removed · '
           '${diff.summary.modified} modified · ${diff.summary.moved} moved',
         ),
@@ -270,8 +273,8 @@ class _VersionDiffView extends StatelessWidget {
                   ? Icons.warning_amber_outlined
                   : Icons.help_outline,
             ),
-            title: Text('${item.changeType.name} ${item.kind.label}'),
-            subtitle: Text(
+            title: UiText('${item.changeType.name} ${item.kind.label}'),
+            subtitle: UiText(
               'Confidence: ${item.confidenceStatus.name}'
               '${item.similarity == null ? '' : ' · ${(item.similarity! * 100).round()}% match'}',
             ),
@@ -279,7 +282,7 @@ class _VersionDiffView extends StatelessWidget {
             onTap: () => _showItemSources(context, item),
           ),
         if (diff.items.length > 100)
-          Text(
+          UiText(
             '${diff.items.length - 100} additional changes are omitted here.',
           ),
       ],
@@ -302,12 +305,12 @@ class _VersionDiffView extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          UiText(
             '${item.changeType.name} ${item.kind.label}',
             style: Theme.of(sheetContext).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
-          const Text(
+          const UiText(
             'Open the exact retained arXiv version. When the parser published a trustworthy page, the PDF opens at that page; opaque item identifiers are never treated as public links.',
           ),
           const SizedBox(height: 16),
@@ -383,8 +386,10 @@ class _AnnotationAnchorSummary extends StatelessWidget {
         .length;
     return Semantics(
       container: true,
-      label:
-          'Your annotation anchors: $current current, $uncertain need review, $orphaned orphaned',
+      label: uiString(
+        context,
+        'Your annotation anchors: $current current, $uncertain need review, $orphaned orphaned',
+      ),
       child: Card(
         child: ListTile(
           leading: Icon(
@@ -392,8 +397,8 @@ class _AnnotationAnchorSummary extends StatelessWidget {
                 ? Icons.bookmark_added_outlined
                 : Icons.bookmark_border,
           ),
-          title: const Text('Your annotation anchors'),
-          subtitle: Text(
+          title: const UiText('Your annotation anchors'),
+          subtitle: UiText(
             '$current current · $uncertain need review · $orphaned orphaned',
           ),
         ),
@@ -421,7 +426,7 @@ class _VersionAction extends StatelessWidget {
     child: OutlinedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon),
-      label: Text(label),
+      label: UiText(label),
     ),
   );
 }
@@ -444,7 +449,7 @@ class _UnavailableVersionState extends StatelessWidget {
         children: [
           const Icon(Icons.cloud_off_outlined, size: 40),
           const SizedBox(height: 12),
-          Text(message, textAlign: TextAlign.center),
+          UiText(message, textAlign: TextAlign.center),
           const SizedBox(height: 12),
           _VersionAction(
             icon: Icons.refresh,

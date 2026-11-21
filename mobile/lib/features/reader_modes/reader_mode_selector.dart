@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,7 +19,7 @@ class ReaderModeSelector extends ConsumerWidget {
     final reducedMotion = platformPrefersReducedMotion(context);
     return Semantics(
       container: true,
-      label: 'Reading depth',
+      label: uiString(context, 'Reading depth'),
       child: SingleChildScrollView(
         key: const ValueKey('reader-mode-selector-scroll'),
         scrollDirection: Axis.horizontal,
@@ -70,7 +71,7 @@ class _ModeButton extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: '${mode.label} reading mode',
+      label: uiString(context, '${mode.label} reading mode'),
       child: AnimatedContainer(
         key: ValueKey('reader-mode-${mode.wireValue}'),
         duration: reducedMotion ? PakPerkMotion.instant : PakPerkMotion.quick,
@@ -94,7 +95,7 @@ class _ModeButton extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
             child: Center(
-              child: Text(
+              child: UiText(
                 mode.label,
                 maxLines: 1,
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(

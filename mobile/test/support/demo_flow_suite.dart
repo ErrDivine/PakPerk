@@ -356,7 +356,7 @@ void registerDemoFlowTests() {
 
     await tester.tap(find.byKey(const ValueKey('stage-introduction')));
     await tester.pumpAndSettle();
-    expect(find.text('BUNDLED DEMO · Offline sample content'), findsOneWidget);
+    expect(find.text('SAMPLE · Packaged with the app'), findsOneWidget);
     expect(repository.networkFeedCompleter!.isCompleted, isFalse);
   });
 }

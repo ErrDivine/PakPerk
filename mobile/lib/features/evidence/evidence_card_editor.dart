@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/evidence_card.dart';
@@ -110,9 +111,12 @@ class _EvidenceCardEditorState extends State<_EvidenceCardEditor> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('Save evidence', style: Theme.of(context).textTheme.titleLarge),
+          UiText(
+            'Save evidence',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: 8),
-          Text(
+          UiText(
             'The exact selected source stays attached to this card.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
@@ -123,8 +127,8 @@ class _EvidenceCardEditorState extends State<_EvidenceCardEditor> {
             maxLength: evidenceCardTitleMaximumScalars,
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
-              labelText: 'Evidence title',
-              errorText: _titleError,
+              labelText: uiString(context, 'Evidence title'),
+              errorText: uiStringOrNull(context, _titleError),
               border: const OutlineInputBorder(),
             ),
           ),
@@ -136,8 +140,8 @@ class _EvidenceCardEditorState extends State<_EvidenceCardEditor> {
             maxLength: 32000,
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
-              labelText: 'Your note (optional)',
-              errorText: _noteError,
+              labelText: uiString(context, 'Your note (optional)'),
+              errorText: uiStringOrNull(context, _noteError),
               border: const OutlineInputBorder(),
             ),
           ),
@@ -160,7 +164,7 @@ class _EvidenceCardEditorState extends State<_EvidenceCardEditor> {
                     }
                   : null,
               icon: const Icon(Icons.fact_check_outlined),
-              label: const Text('Save evidence card'),
+              label: const UiText('Save evidence card'),
             ),
           ),
         ],

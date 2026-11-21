@@ -45,10 +45,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(
-        find.text('BUNDLED DEMO · Offline sample content'),
-        findsOneWidget,
-      );
+      expect(find.text('SAMPLE · Packaged with the app'), findsOneWidget);
 
       pendingNetwork.complete(
         RepositoryValue(
@@ -58,7 +55,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('BUNDLED DEMO · Offline sample content'), findsNothing);
+      expect(find.text('SAMPLE · Packaged with the app'), findsNothing);
 
       final deviceNetwork = Completer<RepositoryValue<FeedPage>>();
       await tester.pumpWidget(
@@ -84,7 +81,7 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
-      expect(find.text('BUNDLED DEMO · Offline sample content'), findsNothing);
+      expect(find.text('SAMPLE · Packaged with the app'), findsNothing);
       deviceNetwork.complete(
         RepositoryValue(
           value: FeedPage(items: [samplePaper]),
@@ -430,26 +427,12 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('stage-introduction')));
       await tester.pumpAndSettle();
 
-      expect(
-        find.text('BUNDLED DEMO · Offline sample content'),
-        findsOneWidget,
-      );
-      expect(
-        find.textContaining('this is not a live parsed result'),
-        findsOneWidget,
-      );
+      expect(find.text('SAMPLE · Packaged with the app'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('stage-connections')));
       await tester.pumpAndSettle();
 
-      expect(
-        find.text('BUNDLED DEMO · Offline sample content'),
-        findsOneWidget,
-      );
-      expect(
-        find.textContaining('this is not a live parsed result'),
-        findsOneWidget,
-      );
+      expect(find.text('SAMPLE · Packaged with the app'), findsOneWidget);
     },
   );
 }

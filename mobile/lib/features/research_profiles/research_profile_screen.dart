@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/research_profiles/research_profile_models.dart';
@@ -59,7 +60,7 @@ final class ResearchProfileScreen extends StatelessWidget {
     final value = profile;
     final signals = interests;
     return Scaffold(
-      appBar: AppBar(title: const Text('Research profile')),
+      appBar: AppBar(title: const UiText('Research profile')),
       body: SafeArea(
         top: false,
         left: true,
@@ -106,8 +107,8 @@ final class ResearchProfileScreen extends StatelessWidget {
                           key: const ValueKey(
                             'research-profile-personalization',
                           ),
-                          title: const Text('Personalized discovery'),
-                          subtitle: const Text(
+                          title: const UiText('Personalized discovery'),
+                          subtitle: const UiText(
                             'Use the separated signals shown below for future recommendations.',
                           ),
                           value: value.personalizationEnabled,
@@ -117,8 +118,8 @@ final class ResearchProfileScreen extends StatelessWidget {
                         const ListTile(
                           key: ValueKey('research-profile-early-for-you'),
                           leading: Icon(Icons.auto_awesome_outlined),
-                          title: Text('How early For You works'),
-                          subtitle: Text(
+                          title: UiText('How early For You works'),
+                          subtitle: UiText(
                             'Early For You relies on categories, topics, and authors you explicitly choose. It still waits until To Read is proven empty.',
                           ),
                         ),
@@ -132,15 +133,18 @@ final class ResearchProfileScreen extends StatelessWidget {
                                 ),
                                 initialValue: value.preferredDiscoveryMode,
                                 isExpanded: true,
-                                decoration: const InputDecoration(
-                                  labelText: 'Preferred recommendation mode',
+                                decoration: InputDecoration(
+                                  labelText: uiString(
+                                    context,
+                                    'Preferred recommendation mode',
+                                  ),
                                 ),
                                 items: [
                                   for (final mode
                                       in PreferredDiscoveryMode.values)
                                     DropdownMenuItem(
                                       value: mode,
-                                      child: Text(_preferredLabel(mode)),
+                                      child: UiText(_preferredLabel(mode)),
                                     ),
                                 ],
                                 onChanged: busy
@@ -165,14 +169,14 @@ final class ResearchProfileScreen extends StatelessWidget {
                             ),
                             initialValue: value.discoveryMode,
                             isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Discovery breadth',
+                            decoration: InputDecoration(
+                              labelText: uiString(context, 'Discovery breadth'),
                             ),
                             items: [
                               for (final mode in ResearchDiscoveryMode.values)
                                 DropdownMenuItem(
                                   value: mode,
-                                  child: Text(_discoveryLabel(mode)),
+                                  child: UiText(_discoveryLabel(mode)),
                                 ),
                             ],
                             onChanged: busy
@@ -185,7 +189,9 @@ final class ResearchProfileScreen extends StatelessWidget {
                           ),
                         ),
                         ListTile(
-                          title: Text('Brief size · ${value.briefSize} papers'),
+                          title: UiText(
+                            'Brief size · ${value.briefSize} papers',
+                          ),
                           subtitle: Slider.adaptive(
                             key: const ValueKey('research-profile-brief-size'),
                             value: value.briefSize.toDouble(),
@@ -240,7 +246,7 @@ final class ResearchProfileScreen extends StatelessWidget {
                     const SizedBox(height: PakPerkSpacing.sm),
                     Semantics(
                       liveRegion: true,
-                      child: Text(
+                      child: UiText(
                         errorMessage!,
                         key: const ValueKey('research-profile-error'),
                         style: TextStyle(
@@ -268,13 +274,13 @@ final class ResearchProfileScreen extends StatelessWidget {
                           ),
                           onPressed: busy ? null : onEditExplicitCategories,
                           icon: const Icon(Icons.category_outlined),
-                          label: const Text('Categories'),
+                          label: const UiText('Categories'),
                         ),
                         OutlinedButton.icon(
                           key: const ValueKey('research-profile-add-topic'),
                           onPressed: busy ? null : onAddExplicitTopic,
                           icon: const Icon(Icons.tag_outlined),
-                          label: const Text('Add topic'),
+                          label: const UiText('Add topic'),
                         ),
                         OutlinedButton.icon(
                           key: const ValueKey(
@@ -282,13 +288,13 @@ final class ResearchProfileScreen extends StatelessWidget {
                           ),
                           onPressed: busy ? null : onAddExplicitNegativeTopic,
                           icon: const Icon(Icons.do_not_disturb_alt_outlined),
-                          label: const Text('Avoid topic'),
+                          label: const UiText('Avoid topic'),
                         ),
                         OutlinedButton.icon(
                           key: const ValueKey('research-profile-add-author'),
                           onPressed: busy ? null : onAddExplicitAuthor,
                           icon: const Icon(Icons.person_add_alt_outlined),
-                          label: const Text('Add author'),
+                          label: const UiText('Add author'),
                         ),
                       ],
                     ),
@@ -313,7 +319,7 @@ final class ResearchProfileScreen extends StatelessWidget {
                     action: OutlinedButton.icon(
                       onPressed: busy ? null : onResetInferred,
                       icon: const Icon(Icons.restart_alt_rounded),
-                      label: const Text('Clear inferred signals'),
+                      label: const UiText('Clear inferred signals'),
                     ),
                   ),
                   const SizedBox(height: PakPerkSpacing.xl),
@@ -329,8 +335,8 @@ final class ResearchProfileScreen extends StatelessWidget {
                         const ListTile(
                           key: ValueKey('research-profile-retention'),
                           leading: Icon(Icons.schedule_outlined),
-                          title: Text('Retention windows'),
-                          subtitle: Text(
+                          title: UiText('Retention windows'),
+                          subtitle: UiText(
                             'Content-free recommendation events are kept for up to 90 days and raw recommendation feedback for up to 180 days. Explicit profile choices remain until you reset or delete your account.',
                           ),
                         ),
@@ -339,8 +345,8 @@ final class ResearchProfileScreen extends StatelessWidget {
                           key: const ValueKey('research-profile-export'),
                           enabled: !busy,
                           leading: const Icon(Icons.download_outlined),
-                          title: const Text('View profile export'),
-                          subtitle: const Text(
+                          title: const UiText('View profile export'),
+                          subtitle: const UiText(
                             'Excludes the operation ledger and raw interaction history.',
                           ),
                           trailing: const Icon(Icons.chevron_right_rounded),
@@ -354,13 +360,13 @@ final class ResearchProfileScreen extends StatelessWidget {
                             Icons.delete_outline_rounded,
                             color: Theme.of(context).colorScheme.error,
                           ),
-                          title: Text(
+                          title: UiText(
                             'Reset research profile',
                             style: TextStyle(
                               color: Theme.of(context).colorScheme.error,
                             ),
                           ),
-                          subtitle: const Text(
+                          subtitle: const UiText(
                             'Clears profile signals and restores discovery defaults.',
                           ),
                           onTap: busy ? null : onResetAll,
@@ -383,8 +389,8 @@ final class _BoundaryCard extends StatelessWidget {
     color: Theme.of(context).colorScheme.secondaryContainer,
     child: const ListTile(
       leading: Icon(Icons.shield_outlined),
-      title: Text('To Read stays in charge'),
-      subtitle: Text(
+      title: UiText('To Read stays in charge'),
+      subtitle: UiText(
         'This profile can shape recommendations only after the server proves your active queue is empty. It cannot override, reorder, or clear To Read.',
       ),
     ),
@@ -404,12 +410,12 @@ final class _OnboardingCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          UiText(
             'Shape your discovery',
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: PakPerkSpacing.xs),
-          const Text(
+          const UiText(
             'Start with categories you choose. Feedback and inferred signals remain separately labeled.',
           ),
           const SizedBox(height: PakPerkSpacing.md),
@@ -417,7 +423,7 @@ final class _OnboardingCard extends StatelessWidget {
             key: const ValueKey('research-profile-onboarding-start'),
             onPressed: enabled ? onStart : null,
             icon: const Icon(Icons.tune_rounded),
-            label: const Text('Choose interests'),
+            label: const UiText('Choose interests'),
           ),
         ],
       ),
@@ -450,7 +456,7 @@ final class _InterestSection extends StatelessWidget {
     final isEmpty = group.isEmpty;
     return Semantics(
       container: true,
-      label: '$title interest signals',
+      label: uiString(context, '$title interest signals'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -460,14 +466,14 @@ final class _InterestSection extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(PakPerkSpacing.md),
               child: isEmpty
-                  ? Text(emptyLabel)
+                  ? UiText(emptyLabel)
                   : Wrap(
                       spacing: PakPerkSpacing.xs,
                       runSpacing: PakPerkSpacing.xs,
                       children: [
                         for (final category in group.categories)
                           Chip(
-                            label: Text(category.category),
+                            label: UiText(category.category),
                             avatar: const Icon(Icons.tag),
                           ),
                         for (final topic in group.topics)
@@ -475,7 +481,7 @@ final class _InterestSection extends StatelessWidget {
                             key: ValueKey(
                               'research-profile-topic-${topic.topicId}',
                             ),
-                            label: Text(
+                            label: UiText(
                               topic.polarity == ResearchTopicPolarity.negative
                                   ? 'Avoid ${topic.userAlias ?? topic.label}'
                                   : topic.userAlias ?? topic.label,
@@ -559,7 +565,10 @@ final class _PreferenceWeightSliderState
     final percent = (_value * 100).round();
     return Semantics(
       container: true,
-      label: '${widget.title}, $percent percent. ${widget.description}',
+      label: uiString(
+        context,
+        '${widget.title}, $percent percent. ${widget.description}',
+      ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
           PakPerkSpacing.md,
@@ -570,12 +579,12 @@ final class _PreferenceWeightSliderState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
+            UiText(
               '${widget.title} · $percent%',
               style: Theme.of(context).textTheme.titleSmall,
             ),
             const SizedBox(height: PakPerkSpacing.xxs),
-            Text(
+            UiText(
               widget.description,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -611,10 +620,10 @@ final class _SectionTitle extends StatelessWidget {
     children: [
       Semantics(
         header: true,
-        child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+        child: UiText(title, style: Theme.of(context).textTheme.titleLarge),
       ),
       const SizedBox(height: PakPerkSpacing.xxs),
-      Text(
+      UiText(
         subtitle,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
           color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -639,7 +648,7 @@ final class _LoadFailure extends StatelessWidget {
         children: [
           const Icon(Icons.person_search_outlined, size: 44),
           const SizedBox(height: PakPerkSpacing.sm),
-          Text(
+          UiText(
             message ?? 'Your research profile is temporarily unavailable.',
             textAlign: TextAlign.center,
           ),
@@ -651,7 +660,7 @@ final class _LoadFailure extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Retry'),
+              label: const UiText('Retry'),
             ),
           ),
         ],

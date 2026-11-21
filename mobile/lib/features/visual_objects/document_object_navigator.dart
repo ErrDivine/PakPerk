@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -38,7 +39,7 @@ class DocumentObjectNavigator extends StatelessWidget {
     if (objects.isEmpty) {
       return const Padding(
         padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: Text(
+        child: UiText(
           'No reliable figures, tables, or equations are available for this generation.',
         ),
       );
@@ -48,7 +49,7 @@ class DocumentObjectNavigator extends StatelessWidget {
         .toDouble();
     return Semantics(
       container: true,
-      label: 'Figures, tables, and equations',
+      label: uiString(context, 'Figures, tables, and equations'),
       child: SizedBox(
         height: 126 + 72 * dynamicTypeExpansion,
         child: ListView.separated(
@@ -70,20 +71,20 @@ class DocumentObjectNavigator extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        UiText(
                           object.label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleSmall,
                         ),
                         const SizedBox(height: 4),
-                        Text(
+                        UiText(
                           object.caption ?? 'Caption unavailable',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                         const Spacer(),
-                        Text(
+                        UiText(
                           '${object.status.name}${object.page == null ? '' : ' · page ${object.page}'}',
                         ),
                       ],
@@ -138,7 +139,7 @@ Future<void> showDocumentObjectSheet({
                   Expanded(
                     child: Semantics(
                       header: true,
-                      child: Text(
+                      child: UiText(
                         object.label,
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
@@ -165,10 +166,10 @@ Future<void> showDocumentObjectSheet({
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text(_statusLabel(object)),
+                            UiText(_statusLabel(object)),
                             if (object.limitation != null) ...[
                               const SizedBox(height: 6),
-                              Text(object.limitation!),
+                              UiText(object.limitation!),
                             ],
                             if (object.caption != null) ...[
                               const SizedBox(height: 12),
@@ -291,13 +292,16 @@ class _ReferencedBySection extends StatelessWidget {
         .toDouble();
     return Semantics(
       container: true,
-      label: 'Referenced by ${references.length} source contexts',
+      label: uiString(
+        context,
+        'Referenced by ${references.length} source contexts',
+      ),
       child: SizedBox(
         height: 132 + 56 * textExpansion,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
+            UiText(
               'Referenced by',
               style: Theme.of(context).textTheme.labelLarge,
             ),
@@ -318,8 +322,10 @@ class _ReferencedBySection extends StatelessWidget {
                     width: 280,
                     child: Semantics(
                       button: true,
-                      label:
-                          'Open reference in $location. ${reference.context}',
+                      label: uiString(
+                        context,
+                        'Open reference in $location. ${reference.context}',
+                      ),
                       child: Card(
                         margin: EdgeInsets.zero,
                         child: InkWell(
@@ -331,7 +337,7 @@ class _ReferencedBySection extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
+                                  UiText(
                                     location,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -341,7 +347,7 @@ class _ReferencedBySection extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 4),
                                   Expanded(
-                                    child: Text(
+                                    child: UiText(
                                       reference.context,
                                       maxLines: 3,
                                       overflow: TextOverflow.ellipsis,
@@ -396,7 +402,7 @@ class _ObjectAction extends StatelessWidget {
     child: OutlinedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon),
-      label: Text(label),
+      label: UiText(label),
     ),
   );
 }
@@ -498,7 +504,7 @@ class _FigurePresentationState extends State<_FigurePresentation> {
       return Semantics(
         container: true,
         liveRegion: true,
-        label: 'Loading trusted figure image.',
+        label: uiString(context, 'Loading trusted figure image.'),
         child: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -543,8 +549,10 @@ class _FigureFallback extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     container: true,
     image: true,
-    label:
-        '${figure.label}. Image unavailable. ${figure.caption ?? 'Caption unavailable.'}',
+    label: uiString(
+      context,
+      '${figure.label}. Image unavailable. ${figure.caption ?? 'Caption unavailable.'}',
+    ),
     child: Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -557,7 +565,7 @@ class _FigureFallback extends StatelessWidget {
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
             const SizedBox(height: 12),
-            const Text(
+            const UiText(
               'No trustworthy image derivative is available. Use the caption and original page to verify the figure.',
               textAlign: TextAlign.center,
             ),
@@ -570,7 +578,7 @@ class _FigureFallback extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: onRetry,
                   icon: const Icon(Icons.refresh),
-                  label: const Text('Retry image'),
+                  label: const UiText('Retry image'),
                 ),
               ),
             ],
@@ -615,7 +623,7 @@ class _EquationSourceState extends State<_EquationSource> {
     final source = equation.latex ?? equation.mathMl ?? equation.plainText;
     if (source == null) {
       return const Center(
-        child: Text('Reliable equation source is unavailable.'),
+        child: UiText('Reliable equation source is unavailable.'),
       );
     }
     final renderSource = equation.latex ?? _convertedMathMl?.latex;
@@ -641,19 +649,19 @@ class _EquationSourceState extends State<_EquationSource> {
                   onPressed: _scale <= 1
                       ? null
                       : () => setState(() => _scale -= .25),
-                  tooltip: 'Decrease equation size',
+                  tooltip: uiString(context, 'Decrease equation size'),
                   constraints: const BoxConstraints(
                     minWidth: PakPerkSizes.minimumInteractive,
                     minHeight: PakPerkSizes.minimumInteractive,
                   ),
                   icon: const Icon(Icons.remove),
                 ),
-                Text('${(_scale * 100).round()}%'),
+                UiText('${(_scale * 100).round()}%'),
                 IconButton(
                   onPressed: _scale >= 2
                       ? null
                       : () => setState(() => _scale += .25),
-                  tooltip: 'Increase equation size',
+                  tooltip: uiString(context, 'Increase equation size'),
                   constraints: const BoxConstraints(
                     minWidth: PakPerkSizes.minimumInteractive,
                     minHeight: PakPerkSizes.minimumInteractive,
@@ -683,7 +691,10 @@ class _EquationSourceState extends State<_EquationSource> {
                 ),
                 errorBuilder: (context, expression) => Semantics(
                   liveRegion: true,
-                  label: 'Equation rendering unavailable. Source shown.',
+                  label: uiString(
+                    context,
+                    'Equation rendering unavailable. Source shown.',
+                  ),
                   child: SelectableText(source),
                 ),
               )
@@ -705,10 +716,10 @@ class _EquationSourceState extends State<_EquationSource> {
               ),
             if (renderSource != null) ...[
               const SizedBox(height: 12),
-              Text('Source', style: Theme.of(context).textTheme.labelLarge),
+              UiText('Source', style: Theme.of(context).textTheme.labelLarge),
               const SizedBox(height: 4),
               Semantics(
-                label: '$sourceKind source',
+                label: uiString(context, '$sourceKind source'),
                 child: SelectableText(
                   source,
                   style: Theme.of(context).textTheme.bodyMedium,
@@ -731,11 +742,11 @@ class _EquationSourceState extends State<_EquationSource> {
                   }
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Equation source copied.')),
+                    const SnackBar(content: UiText('Equation source copied.')),
                   );
                 },
                 icon: const Icon(Icons.copy_outlined),
-                label: Text(copyLabel),
+                label: UiText(copyLabel),
               ),
             ),
           ],
@@ -777,12 +788,12 @@ class _ArbitratedTableState extends State<_ArbitratedTable> {
             ButtonSegment(
               value: false,
               icon: Icon(Icons.table_chart_outlined),
-              label: Text('Structured'),
+              label: UiText('Structured'),
             ),
             ButtonSegment(
               value: true,
               icon: Icon(Icons.text_snippet_outlined),
-              label: Text('Plain text'),
+              label: UiText('Plain text'),
             ),
           ],
           selected: {_plainText},
@@ -816,8 +827,10 @@ class _ArbitratedTableState extends State<_ArbitratedTable> {
                   onPointerCancel: (_) => widget.interaction.endTablePan(),
                   child: Semantics(
                     container: true,
-                    label:
-                        '${widget.table.label}, swipe horizontally to inspect columns',
+                    label: uiString(
+                      context,
+                      '${widget.table.label}, swipe horizontally to inspect columns',
+                    ),
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: SingleChildScrollView(
@@ -919,8 +932,11 @@ class _StructuredTableState extends State<_StructuredTable> {
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Semantics(
                     liveRegion: true,
-                    label: 'Rows ${start + 1} through $end of $rowCount',
-                    child: Text('${start + 1}–$end of $rowCount'),
+                    label: uiString(
+                      context,
+                      'Rows ${start + 1} through $end of $rowCount',
+                    ),
+                    child: UiText('${start + 1}–$end of $rowCount'),
                   ),
                 ),
                 _TablePageButton(
@@ -974,8 +990,10 @@ class _StructuredCell extends StatelessWidget {
       if (cell.columnSpan > 1) 'spans ${cell.columnSpan} columns',
     ].join(', ');
     return Semantics(
-      label:
-          '${cell.header ? 'Header' : 'Cell'}, row $row, column $column${spanLabel.isEmpty ? '' : ', $spanLabel'}: ${cell.text}',
+      label: uiString(
+        context,
+        '${cell.header ? 'Header' : 'Cell'}, row $row, column $column${spanLabel.isEmpty ? '' : ', $spanLabel'}: ${cell.text}',
+      ),
       child: Container(
         constraints: const BoxConstraints(minWidth: 96, minHeight: 48),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

@@ -1,3 +1,5 @@
+import '../../core/widgets/reader_selection_area.dart';
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../design_system/motion.dart';
@@ -53,6 +55,7 @@ class _SelectionToolbarShellState extends State<SelectionToolbarShell> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SelectionArea(
+          contextMenuBuilder: readerSelectionContextMenu,
           onSelectionChanged: (content) {
             final text = content?.plainText.trim();
             final next = text?.isNotEmpty == true ? text : null;
@@ -71,7 +74,7 @@ class _SelectionToolbarShellState extends State<SelectionToolbarShell> {
               : Semantics(
                   key: const ValueKey('selection-actions-on'),
                   container: true,
-                  label: 'Selection actions',
+                  label: uiString(context, 'Selection actions'),
                   child: Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: SingleChildScrollView(
@@ -172,7 +175,7 @@ class _SelectionAction extends StatelessWidget {
         child: OutlinedButton.icon(
           onPressed: onPressed,
           icon: Icon(icon),
-          label: Text(label),
+          label: UiText(label),
         ),
       ),
     ),

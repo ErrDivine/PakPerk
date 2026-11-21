@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
@@ -10,12 +11,12 @@ class OfflineBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       liveRegion: true,
-      label: 'Offline. Showing cached paper data.',
+      label: uiString(context, 'Offline. Showing cached paper data.'),
       child: Container(
         width: double.infinity,
         color: PakPerkColors.ochre,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        child: const Text(
+        child: const UiText(
           'OFFLINE · Showing cached paper data',
           textAlign: TextAlign.center,
           style: TextStyle(
@@ -36,43 +37,33 @@ class BundledDemoNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label:
-          'Bundled demo content. Offline sample content, not a live parsed result.',
+      label: uiString(
+        context,
+        'Sample content packaged with the app, not a live parsed result.',
+      ),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.secondaryContainer,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(
-              Icons.inventory_2_outlined,
+              Icons.info_outline,
+              size: 16,
               color: Theme.of(context).colorScheme.onSecondaryContainer,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 6),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'BUNDLED DEMO · Offline sample content',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSecondaryContainer,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    'Packaged with the app for demonstration; '
-                    'this is not a live parsed result.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSecondaryContainer,
-                    ),
-                  ),
-                ],
+              child: UiText(
+                'SAMPLE · Packaged with the app',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSecondaryContainer,
+                ),
               ),
             ),
           ],
@@ -147,13 +138,13 @@ class ProcessingStatusCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(message),
+                    UiText(message),
                     if (onRetry != null && (failed || offline)) ...[
                       const SizedBox(height: 8),
                       TextButton.icon(
                         onPressed: busy ? null : onRetry,
                         icon: const Icon(Icons.refresh),
-                        label: const Text('Retry'),
+                        label: const UiText('Retry'),
                       ),
                     ],
                   ],
@@ -187,9 +178,9 @@ class EmptyStateCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            UiText(title, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            Text(message),
+            UiText(message),
             if (action != null) ...[const SizedBox(height: 10), action!],
           ],
         ),

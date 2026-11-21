@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -456,7 +457,7 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
               child: Center(
                 child: Padding(
                   padding: EdgeInsets.all(24),
-                  child: Text(
+                  child: UiText(
                     'No reliable document blocks are available. Open the original source to inspect this paper.',
                     textAlign: TextAlign.center,
                   ),
@@ -625,7 +626,7 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
                     child: Center(
                       child: state.loadingMore
                           ? const CircularProgressIndicator.adaptive()
-                          : const Text(
+                          : const UiText(
                               'Scroll to load more',
                               textAlign: TextAlign.center,
                             ),
@@ -710,13 +711,12 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
   ) {
     return ReaderStoppingPoint(
       key: const ValueKey('skim-stopping-point'),
-      semanticLabel: 'Skim stopping point',
+      semanticLabel: uiString(context, 'Skim stopping point'),
       title: 'Skim ends here',
-      message:
-          'This compact preview stops deliberately. Continue when you want more depth; your Library state stays unchanged.',
+      message: 'This compact preview stops deliberately. Continue when you want more depth; your Library state stays unchanged.',
       actions: [
         ReaderStoppingAction(
-          label: 'Continue in Read',
+          label: uiString(context, 'Continue in Read'),
           icon: Icons.menu_book_outlined,
           emphasized: true,
           onPressed: () => ref
@@ -724,7 +724,7 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
               .select(ReaderDepthMode.read),
         ),
         ReaderStoppingAction(
-          label: 'Inspect evidence',
+          label: uiString(context, 'Inspect evidence'),
           icon: Icons.fact_check_outlined,
           onPressed: () => ref
               .read(readerModeControllerProvider(widget.readerKey))
@@ -732,7 +732,7 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
         ),
         if (widget.onOpenAssistant != null)
           ReaderStoppingAction(
-            label: 'Ask Assistant',
+            label: uiString(context, 'Ask Assistant'),
             icon: Icons.question_answer_outlined,
             onPressed: () => unawaited(
               _openAssistant(interaction, const AssistantRequestScope.paper()),
@@ -740,19 +740,19 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
           ),
         if (widget.checkpointsEnabled)
           ReaderStoppingAction(
-            label: 'Save checkpoint',
+            label: uiString(context, 'Save checkpoint'),
             icon: Icons.bookmark_add_outlined,
             onPressed: () =>
                 _saveCheckpoint(args, snapshot, ReaderDepthMode.skim),
           ),
         if (widget.onOpenLibrary case final openLibrary?)
           ReaderStoppingAction(
-            label: 'Open Library',
+            label: uiString(context, 'Open Library'),
             icon: Icons.local_library_outlined,
             onPressed: openLibrary,
           ),
         ReaderStoppingAction(
-          label: 'Original',
+          label: uiString(context, 'Original'),
           icon: Icons.open_in_new,
           onPressed: widget.onOpenOriginal,
         ),
@@ -772,26 +772,28 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
     final nextSection = next.sectionPath.first.trim();
     return ReaderStoppingPoint(
       key: ValueKey('section-stopping-point-${current.stableKey}'),
-      semanticLabel: 'End of $currentSection. Next section: $nextSection',
+      semanticLabel: uiString(
+        context,
+        'End of $currentSection. Next section: $nextSection',
+      ),
       title: 'End of $currentSection',
-      message:
-          'Next: $nextSection. Pause here, save your place, or continue deliberately.',
+      message: 'Next: $nextSection. Pause here, save your place, or continue deliberately.',
       actions: [
         ReaderStoppingAction(
-          label: 'Continue',
+          label: uiString(context, 'Continue'),
           icon: Icons.arrow_downward_rounded,
           emphasized: true,
           onPressed: () => _scrollToLoadedBlock(args, next.id, animated: true),
         ),
         if (widget.checkpointsEnabled)
           ReaderStoppingAction(
-            label: 'Save checkpoint',
+            label: uiString(context, 'Save checkpoint'),
             icon: Icons.bookmark_add_outlined,
             onPressed: () => _saveCheckpoint(args, snapshot, mode),
           ),
         if (widget.onOpenAssistant != null)
           ReaderStoppingAction(
-            label: 'Ask about section',
+            label: uiString(context, 'Ask about section'),
             icon: Icons.question_answer_outlined,
             onPressed: () => unawaited(
               _openAssistant(
@@ -804,12 +806,12 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
           ),
         if (widget.onOpenLibrary case final openLibrary?)
           ReaderStoppingAction(
-            label: 'Open Library',
+            label: uiString(context, 'Open Library'),
             icon: Icons.local_library_outlined,
             onPressed: openLibrary,
           ),
         ReaderStoppingAction(
-          label: 'Original',
+          label: uiString(context, 'Original'),
           icon: Icons.open_in_new,
           onPressed: widget.onOpenOriginal,
         ),
@@ -825,21 +827,20 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
   ) {
     return ReaderStoppingPoint(
       key: const ValueKey('document-end-stopping-point'),
-      semanticLabel: 'End of prepared document',
+      semanticLabel: uiString(context, 'End of prepared document'),
       title: 'A good place to stop',
-      message:
-          'You reached the end of this prepared document. Nothing was marked Reviewed or changed in your Library.',
+      message: 'You reached the end of this prepared document. Nothing was marked Reviewed or changed in your Library.',
       actions: [
         if (widget.checkpointsEnabled)
           ReaderStoppingAction(
-            label: 'Save checkpoint',
+            label: uiString(context, 'Save checkpoint'),
             icon: Icons.bookmark_add_outlined,
             emphasized: true,
             onPressed: () => _saveCheckpoint(args, snapshot, mode),
           ),
         if (widget.onOpenAssistant != null)
           ReaderStoppingAction(
-            label: 'Ask Assistant',
+            label: uiString(context, 'Ask Assistant'),
             icon: Icons.question_answer_outlined,
             onPressed: () => unawaited(
               _openAssistant(interaction, const AssistantRequestScope.paper()),
@@ -847,12 +848,12 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
           ),
         if (widget.onOpenLibrary case final openLibrary?)
           ReaderStoppingAction(
-            label: 'Open Library',
+            label: uiString(context, 'Open Library'),
             icon: Icons.local_library_outlined,
             onPressed: openLibrary,
           ),
         ReaderStoppingAction(
-          label: 'Original',
+          label: uiString(context, 'Original'),
           icon: Icons.open_in_new,
           onPressed: widget.onOpenOriginal,
         ),
@@ -878,7 +879,9 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Assistant could not be opened. Your draft remains.'),
+            content: UiText(
+              'Assistant could not be opened. Your draft remains.',
+            ),
           ),
         );
       }
@@ -1008,7 +1011,7 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
           setState(() => _pendingManualReattach = annotation);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
+              content: UiText(
                 'Select the replacement source text, then choose Attach here.',
               ),
             ),
@@ -1128,12 +1131,12 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(confirmation)));
+      ).showSnackBar(SnackBar(content: UiText(confirmation)));
     } on Object {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('That research change could not be saved.'),
+          content: UiText('That research change could not be saved.'),
         ),
       );
     }
@@ -1506,7 +1509,7 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ).showSnackBar(SnackBar(content: UiText(message)));
   }
 
   AssistantRequestScope _assistantScope(DocumentEvidenceObject object) =>
@@ -1571,9 +1574,9 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
       // Haptics are optional and occur only after the durable local commit.
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Reading checkpoint saved.')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: UiText('Reading checkpoint saved.')),
+    );
   }
 
   Future<void> _revealBlock(String blockId, {int? start, int? end}) async {
@@ -1588,7 +1591,7 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
     if (!available) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
+          content: UiText(
             'That exact source passage is not available in the loaded document.',
           ),
         ),
@@ -1617,7 +1620,7 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
+          content: UiText(
             'That exact source range is invalid for the current document generation.',
           ),
         ),
@@ -1843,7 +1846,7 @@ class _DocumentControls extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          UiText(
             '${mode.label} · ${fromCache ? 'available offline' : 'current generation'}',
             style: Theme.of(context).textTheme.labelLarge,
           ),
@@ -1915,7 +1918,7 @@ class _ReaderAction extends StatelessWidget {
       child: OutlinedButton.icon(
         onPressed: onPressed,
         icon: Icon(icon),
-        label: Text(label),
+        label: UiText(label),
       ),
     );
   }
@@ -1960,7 +1963,7 @@ class _VisualObjectsLoadState extends StatelessWidget {
                     failed ? Icons.warning_amber_rounded : Icons.image_outlined,
                   ),
                 const SizedBox(width: 12),
-                Expanded(child: Text(label)),
+                Expanded(child: UiText(label)),
                 if (failed) ...[
                   const SizedBox(width: 8),
                   _ReaderAction(
@@ -1985,7 +1988,7 @@ class _DocumentLoading extends StatelessWidget {
   Widget build(BuildContext context) => Center(
     child: Semantics(
       liveRegion: true,
-      label: 'Loading prepared document',
+      label: uiString(context, 'Loading prepared document'),
       child: const CircularProgressIndicator(),
     ),
   );
@@ -2058,13 +2061,13 @@ class _UnavailableDocument extends StatelessWidget {
             children: [
               Icon(icon, size: 44),
               const SizedBox(height: 12),
-              Text(
+              UiText(
                 title,
                 style: Theme.of(context).textTheme.titleLarge,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              Text(message, textAlign: TextAlign.center),
+              UiText(message, textAlign: TextAlign.center),
               const SizedBox(height: 16),
               Wrap(
                 alignment: WrapAlignment.center,

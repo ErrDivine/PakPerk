@@ -1,6 +1,8 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -28,6 +30,8 @@ import '../document_reader/reader_entry_context.dart';
 import '../document_reader/reader_interaction_state.dart';
 import '../introduction/introduction_controller.dart';
 import '../introduction/introduction_view.dart';
+import '../paper_notes/paper_notes_destination.dart';
+import '../../app/library_providers.dart';
 import '../reader_modes/reader_mode_selector.dart';
 import 'abstract_view.dart';
 import 'paper_action_bar.dart';
@@ -343,139 +347,167 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
                     ProcessingEnrichmentStatus.unavailable,
               ),
             Expanded(
-              child: PageView(
-                key: ValueKey('paper-reader-${widget.readerKey}'),
-                controller: _horizontalController,
-                physics: readerInteraction.canDragPager
-                    ? const PageScrollPhysics()
-                    : const NeverScrollableScrollPhysics(),
-                onPageChanged: _activateStage,
+              child: Stack(
                 children: [
-                  AbstractView(
-                    paper: widget.paper,
-                    headerActions:
-                        (features.library ||
-                            features.comments ||
-                            widget.contextualAction != null)
-                        ? PaperActionBar(
-                            paper: widget.paper,
-                            contextualAction: widget.contextualAction,
-                            saveSourceKind: widget.saveSourceKind,
-                            interactionContext: widget.interactionContext,
-                          )
-                        : null,
-                    scrollController: _abstractController,
-                    onStageRequested: _goToStage,
-                    passportGeneration: processing.processing?.generation,
-                    paperPassportReady: capabilities.paperPassport,
-                    active:
-                        widget.isActive &&
-                        navigation.stageIndex == PaperStage.abstractView.index,
-                    onPreviousPaper: readerInteraction.canNavigateVertically
-                        ? widget.onPreviousPaper
-                        : null,
-                    onNextPaper: readerInteraction.canNavigateVertically
-                        ? widget.onNextPaper
-                        : null,
-                  ),
-                  if (features.deepReader)
-                    DocumentScreen(
-                      paper: widget.paper,
-                      readerKey: widget.readerKey,
-                      scrollController: _introductionController,
-                      processing: processing,
-                      active:
-                          widget.isActive &&
-                          navigation.stageIndex ==
-                              PaperStage.introduction.index,
-                      preparedAvailable: capabilities.introduction,
-                      includePassport:
-                          features.paperPassport && capabilities.paperPassport,
-                      includeSemanticFacets:
-                          features.semanticFacets &&
-                          capabilities.semanticFacets &&
-                          capabilities.terms,
-                      includeVisualObjects:
-                          features.documentVisualObjects &&
-                          capabilities.visualObjects,
-                      checkpointsEnabled: features.readingCheckpoints,
-                      annotationsEnabled: features.annotations,
-                      evidenceCardsEnabled: features.evidenceCards,
-                      researchMemoryEnabled: features.researchMemory,
-                      versionDiffEnabled: features.versionDiff,
-                      onPrepare: _prepareWithTrigger,
-                      onOpenAssistant: capabilities.chat
-                          ? (scope, initialQuestion) => _openAssistant(
-                              capabilities.chat && !offline,
-                              scope,
-                              initialQuestion: initialQuestion,
-                            )
-                          : null,
-                      onOpenLibrary: features.library
-                          ? () => context.go(PakPerkRoutes.library)
-                          : null,
-                      onOpenMemoryReview: features.researchMemory
-                          ? _openMemoryReview
-                          : null,
-                      onOpenOriginal: _openOriginal,
-                      onOpenOriginalPage: _openOriginalPage,
-                    )
-                  else
-                    IntroductionView(
-                      paper: widget.paper,
-                      readerKey: widget.readerKey,
-                      scrollController: _introductionController,
-                      processing: processing,
-                      capabilities: capabilities,
-                      onOpenPaper: _openPaper,
-                      onRetryPreparation: () => ref
-                          .read(
-                            paperProcessingControllerProvider(
-                              widget.paper.versionKey,
-                            ).notifier,
-                          )
-                          .prepare(
-                            retry: true,
-                            trigger: PreparationTrigger.explicitPrepare,
-                          ),
-                      onPreviousPaper: readerInteraction.canNavigateVertically
-                          ? widget.onPreviousPaper
-                          : null,
-                      onNextPaper: readerInteraction.canNavigateVertically
-                          ? widget.onNextPaper
-                          : null,
-                    ),
-                  ConnectionsView(
-                    paper: widget.paper,
-                    scrollController: _connectionsController,
-                    state: connections,
-                    processing: processing,
-                    capabilities: capabilities,
-                    onOpenPaper: _openPaper,
-                    onRetryPreparation: () => ref
-                        .read(
-                          paperProcessingControllerProvider(
-                            widget.paper.versionKey,
-                          ).notifier,
+                  PageView(
+                    key: ValueKey('paper-reader-${widget.readerKey}'),
+                    controller: _horizontalController,
+                    physics: readerInteraction.canDragPager
+                        ? const PageScrollPhysics()
+                        : const NeverScrollableScrollPhysics(),
+                    onPageChanged: _activateStage,
+                    children: [
+                      AbstractView(
+                        onSelectionChanged: _selectionChanged,
+                        paper: widget.paper,
+                        headerActions:
+                            (features.library ||
+                                features.comments ||
+                                widget.contextualAction != null)
+                            ? PaperActionBar(
+                                paper: widget.paper,
+                                contextualAction: widget.contextualAction,
+                                saveSourceKind: widget.saveSourceKind,
+                                interactionContext: widget.interactionContext,
+                              )
+                            : null,
+                        scrollController: _abstractController,
+                        onStageRequested: _goToStage,
+                        passportGeneration: processing.processing?.generation,
+                        paperPassportReady: capabilities.paperPassport,
+                        active:
+                            widget.isActive &&
+                            navigation.stageIndex ==
+                                PaperStage.abstractView.index,
+                        onPreviousPaper: readerInteraction.canNavigateVertically
+                            ? widget.onPreviousPaper
+                            : null,
+                        onNextPaper: readerInteraction.canNavigateVertically
+                            ? widget.onNextPaper
+                            : null,
+                      ),
+                      if (features.deepReader)
+                        DocumentScreen(
+                          paper: widget.paper,
+                          readerKey: widget.readerKey,
+                          scrollController: _introductionController,
+                          processing: processing,
+                          active:
+                              widget.isActive &&
+                              navigation.stageIndex ==
+                                  PaperStage.introduction.index,
+                          preparedAvailable: capabilities.introduction,
+                          includePassport:
+                              features.paperPassport &&
+                              capabilities.paperPassport,
+                          includeSemanticFacets:
+                              features.semanticFacets &&
+                              capabilities.semanticFacets &&
+                              capabilities.terms,
+                          includeVisualObjects:
+                              features.documentVisualObjects &&
+                              capabilities.visualObjects,
+                          checkpointsEnabled: features.readingCheckpoints,
+                          annotationsEnabled: features.annotations,
+                          evidenceCardsEnabled: features.evidenceCards,
+                          researchMemoryEnabled: features.researchMemory,
+                          versionDiffEnabled: features.versionDiff,
+                          onPrepare: _prepareWithTrigger,
+                          onOpenAssistant: capabilities.chat
+                              ? (scope, initialQuestion) => _openAssistant(
+                                  capabilities.chat && !offline,
+                                  scope,
+                                  initialQuestion: initialQuestion,
+                                )
+                              : null,
+                          onOpenLibrary: features.library
+                              ? () => context.go(PakPerkRoutes.library)
+                              : null,
+                          onOpenMemoryReview: features.researchMemory
+                              ? _openMemoryReview
+                              : null,
+                          onOpenOriginal: _openOriginal,
+                          onOpenOriginalPage: _openOriginalPage,
                         )
-                        .prepare(
-                          retry: true,
-                          trigger: PreparationTrigger.explicitPrepare,
+                      else
+                        IntroductionView(
+                          onSelectionChanged: _selectionChanged,
+                          paper: widget.paper,
+                          readerKey: widget.readerKey,
+                          scrollController: _introductionController,
+                          processing: processing,
+                          capabilities: capabilities,
+                          onOpenPaper: _openPaper,
+                          onRetryPreparation: () => ref
+                              .read(
+                                paperProcessingControllerProvider(
+                                  widget.paper.versionKey,
+                                ).notifier,
+                              )
+                              .prepare(
+                                retry: true,
+                                trigger: PreparationTrigger.explicitPrepare,
+                              ),
+                          onPreviousPaper:
+                              readerInteraction.canNavigateVertically
+                              ? widget.onPreviousPaper
+                              : null,
+                          onNextPaper: readerInteraction.canNavigateVertically
+                              ? widget.onNextPaper
+                              : null,
                         ),
-                    onRetryConnections: () => ref
-                        .read(
-                          connectionsControllerProvider(
-                            widget.paper.versionKey,
-                          ).notifier,
-                        )
-                        .load(force: true),
-                    onPreviousPaper: readerInteraction.canNavigateVertically
-                        ? widget.onPreviousPaper
-                        : null,
-                    onNextPaper: readerInteraction.canNavigateVertically
-                        ? widget.onNextPaper
-                        : null,
+                      ConnectionsView(
+                        onSelectionChanged: _selectionChanged,
+                        paper: widget.paper,
+                        scrollController: _connectionsController,
+                        state: connections,
+                        processing: processing,
+                        capabilities: capabilities,
+                        onOpenPaper: _openPaper,
+                        onRetryPreparation: () => ref
+                            .read(
+                              paperProcessingControllerProvider(
+                                widget.paper.versionKey,
+                              ).notifier,
+                            )
+                            .prepare(
+                              retry: true,
+                              trigger: PreparationTrigger.explicitPrepare,
+                            ),
+                        onRetryConnections: () => ref
+                            .read(
+                              connectionsControllerProvider(
+                                widget.paper.versionKey,
+                              ).notifier,
+                            )
+                            .load(force: true),
+                        onPreviousPaper: readerInteraction.canNavigateVertically
+                            ? widget.onPreviousPaper
+                            : null,
+                        onNextPaper: readerInteraction.canNavigateVertically
+                            ? widget.onNextPaper
+                            : null,
+                      ),
+                    ],
                   ),
+                  if (widget.isActive)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Material(
+                        color: Theme.of(context).colorScheme.secondaryContainer,
+                        elevation: 2,
+                        borderRadius: const BorderRadius.horizontal(
+                          left: Radius.circular(16),
+                        ),
+                        child: IconButton(
+                          key: const ValueKey('paper-notes-tab'),
+                          tooltip: uiString(context, 'My notes for this paper'),
+                          onPressed: () => unawaited(_openPaperNotes()),
+                          icon: const Icon(Icons.edit_note_outlined),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -483,6 +515,26 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
         ),
       ),
     );
+  }
+
+  Future<void> _openPaperNotes() {
+    final accountId = ref.read(libraryDisplayScopeProvider)?.accountId;
+    return Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            PaperNotesDestination(paper: widget.paper, accountId: accountId),
+      ),
+    );
+  }
+
+  void _selectionChanged(SelectedContent? content) {
+    if (!mounted) return;
+    ref
+        .read(readerInteractionControllerProvider(widget.readerKey).notifier)
+        .setActive(
+          ReaderInteractionKind.selection,
+          content?.plainText.isNotEmpty == true,
+        );
   }
 
   void _bindScroll(ScrollController controller, PaperStage stage) {
@@ -692,7 +744,7 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: UiText(
             error.isOffline
                 ? 'This paper is not cached. Reconnect to open its abstract.'
                 : error.message,
@@ -799,7 +851,7 @@ class _PaperReaderState extends ConsumerState<PaperReader> {
         await ref.read(externalLinkOpenerProvider).open(targetedUri);
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the original PDF.')),
+        const SnackBar(content: UiText('Could not open the original PDF.')),
       );
     }
   }
@@ -849,7 +901,7 @@ class _ReaderEnrichmentNotice extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
+                child: UiText(
                   message,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: unavailable
@@ -900,7 +952,7 @@ class _ReaderEntryBadge extends StatelessWidget {
                   : Icons.call_split_outlined,
               size: 18,
             ),
-            label: Text(label),
+            label: UiText(label),
           ),
         ),
       ),

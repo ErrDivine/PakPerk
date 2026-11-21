@@ -14,6 +14,24 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test(
+    'Chinese legal assets decode and retain consent version markers',
+    () async {
+      for (final kind in LegalDocumentKind.values) {
+        final text = await loadBundledLegalDocument(
+          rootBundle,
+          kind.assetPath.replaceFirst('assets/legal/', 'assets/legal/zh/'),
+        );
+        expect(text, isNot(contains('\uFFFD')));
+        expect(text, contains(RegExp('[\u4E00-\u9FFF]')));
+        if (kind == LegalDocumentKind.terms ||
+            kind == LegalDocumentKind.communityGuidelines) {
+          expect(text, contains('Publication version: 2026-07-31.'));
+        }
+      }
+    },
+  );
+
+  test(
     'bundled community rules contain the complete first-post disclosure',
     () async {
       final policy = await loadBundledLegalDocument(

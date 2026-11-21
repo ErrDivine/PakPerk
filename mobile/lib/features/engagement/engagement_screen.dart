@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -91,7 +92,7 @@ final class EngagementScreen extends StatelessWidget {
         readingBriefsEnabled || subscriptionsEnabled || notificationsEnabled;
     return Scaffold(
       appBar: AppBar(
-        title: Text(briefOnly ? 'Reading brief' : 'Reading updates'),
+        title: UiText(briefOnly ? 'Reading brief' : 'Reading updates'),
       ),
       body: SafeArea(
         top: false,
@@ -99,7 +100,7 @@ final class EngagementScreen extends StatelessWidget {
             ? Center(
                 child: Padding(
                   padding: const EdgeInsets.all(PakPerkSpacing.lg),
-                  child: Text(
+                  child: UiText(
                     briefOnly
                         ? 'Reading briefs are not enabled for this build.'
                         : 'Reading updates are not enabled for this build.',
@@ -136,10 +137,10 @@ final class EngagementScreen extends StatelessWidget {
                       child: Card(
                         color: Theme.of(context).colorScheme.errorContainer,
                         child: ListTile(
-                          title: Text(errorMessage!),
+                          title: UiText(errorMessage!),
                           trailing: TextButton(
                             onPressed: busy ? null : onRetry,
-                            child: const Text('Retry'),
+                            child: const UiText('Retry'),
                           ),
                         ),
                       ),
@@ -193,7 +194,7 @@ final class EngagementScreen extends StatelessWidget {
                         key: const ValueKey('engagement-add-subscription'),
                         onPressed: busy ? null : onAddSubscription,
                         icon: const Icon(Icons.add_rounded),
-                        label: const Text('Add subscription'),
+                        label: const UiText('Add subscription'),
                       ),
                     ),
                   ],
@@ -207,14 +208,14 @@ final class EngagementScreen extends StatelessWidget {
                     const SizedBox(height: PakPerkSpacing.sm),
                     if (notifications.isEmpty)
                       const Card(
-                        child: ListTile(title: Text('No in-app updates')),
+                        child: ListTile(title: UiText('No in-app updates')),
                       )
                     else ...[
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
                           onPressed: busy ? null : onMarkAllNotificationsRead,
-                          child: const Text('Mark all read'),
+                          child: const UiText('Mark all read'),
                         ),
                       ),
                       for (final notification in notifications) ...[
@@ -266,8 +267,8 @@ final class _AuthorityBoundary extends StatelessWidget {
     color: Theme.of(context).colorScheme.secondaryContainer,
     child: const ListTile(
       leading: Icon(Icons.shield_outlined),
-      title: Text('To Read remains authoritative'),
-      subtitle: Text(
+      title: UiText('To Read remains authoritative'),
+      subtitle: UiText(
         'Briefs and discovery notifications cannot clear, reorder, or bypass your active queue.',
       ),
     ),
@@ -299,7 +300,7 @@ final class _BriefCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
+              const UiText(
                 'The server will use To Read first and only choose discovery after confirmed emptiness.',
               ),
               const SizedBox(height: PakPerkSpacing.sm),
@@ -311,7 +312,7 @@ final class _BriefCard extends StatelessWidget {
                   key: const ValueKey('engagement-create-brief'),
                   onPressed: enabled ? onCreate : null,
                   icon: const Icon(Icons.menu_book_outlined),
-                  label: const Text('Create today’s brief'),
+                  label: const UiText('Create today’s brief'),
                 ),
               ),
             ],
@@ -334,7 +335,7 @@ final class _BriefCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
+            UiText(
               value.mode == ReadingBriefMode.queue
                   ? 'To Read brief'
                   : 'Discovery brief',
@@ -342,14 +343,17 @@ final class _BriefCard extends StatelessWidget {
             ),
             const SizedBox(height: PakPerkSpacing.xs),
             Semantics(
-              label: 'Brief position $visiblePosition of ${value.items.length}',
+              label: uiString(
+                context,
+                'Brief position $visiblePosition of ${value.items.length}',
+              ),
               child: LinearProgressIndicator(value: progress.clamp(0, 1)),
             ),
             const SizedBox(height: PakPerkSpacing.sm),
-            Text('Paper $visiblePosition of ${value.items.length}'),
+            UiText('Paper $visiblePosition of ${value.items.length}'),
             if (current != null) ...[
               const SizedBox(height: PakPerkSpacing.xxs),
-              Text(
+              UiText(
                 'Stop whenever you like. Your place is saved.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -368,7 +372,7 @@ final class _BriefCard extends StatelessWidget {
                         ? () => onOpenPaper(current.paper)
                         : null,
                     icon: const Icon(Icons.open_in_new_rounded),
-                    label: const Text('Resume paper'),
+                    label: const UiText('Resume paper'),
                   ),
                   FilledButton.icon(
                     key: const ValueKey('engagement-advance-brief'),
@@ -378,7 +382,7 @@ final class _BriefCard extends StatelessWidget {
                           ? Icons.check_circle_outline_rounded
                           : Icons.arrow_forward_rounded,
                     ),
-                    label: Text(
+                    label: UiText(
                       value.position + 1 == value.items.length
                           ? 'Finish for today'
                           : 'Continue',
@@ -391,8 +395,10 @@ final class _BriefCard extends StatelessWidget {
                 key: const ValueKey('engagement-brief-natural-stop'),
                 container: true,
                 liveRegion: true,
-                label:
-                    'A good place to stop. The brief is finished. Your To Read list is unchanged.',
+                label: uiString(
+                  context,
+                  'A good place to stop. The brief is finished. Your To Read list is unchanged.',
+                ),
                 child: const ExcludeSemantics(
                   child: Padding(
                     padding: EdgeInsets.only(top: PakPerkSpacing.md),
@@ -400,12 +406,12 @@ final class _BriefCard extends StatelessWidget {
                       children: [
                         Icon(Icons.check_circle_outline_rounded, size: 36),
                         SizedBox(height: PakPerkSpacing.xs),
-                        Text(
+                        UiText(
                           'A good place to stop',
                           textAlign: TextAlign.center,
                         ),
                         SizedBox(height: PakPerkSpacing.xxs),
-                        Text(
+                        UiText(
                           'This brief is finished. Your To Read list is unchanged, and there is nothing else you need to do.',
                           textAlign: TextAlign.center,
                         ),
@@ -443,22 +449,24 @@ final class _SubscriptionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          UiText(
             subscription.label,
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          Text(subscription.kind.wireValue.replaceAll('_', ' ')),
+          UiText(subscription.kind.wireValue.replaceAll('_', ' ')),
           const SizedBox(height: PakPerkSpacing.sm),
           DropdownButtonFormField<SubscriptionFrequency>(
             key: ValueKey('engagement-frequency-${subscription.id}'),
             initialValue: subscription.frequency,
             isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Frequency'),
+            decoration: InputDecoration(
+              labelText: uiString(context, 'Frequency'),
+            ),
             items: [
               for (final frequency in SubscriptionFrequency.values)
                 DropdownMenuItem(
                   value: frequency,
-                  child: Text(_frequencyLabel(frequency)),
+                  child: UiText(_frequencyLabel(frequency)),
                 ),
             ],
             onChanged: enabled
@@ -477,17 +485,17 @@ final class _SubscriptionCard extends StatelessWidget {
                   key: ValueKey('engagement-mute-${subscription.id}'),
                   onPressed: enabled ? onMute : null,
                   icon: const Icon(Icons.notifications_off_outlined),
-                  label: const Text('Mute'),
+                  label: const UiText('Mute'),
                 )
               else
                 const Chip(
                   avatar: Icon(Icons.notifications_off_outlined),
-                  label: Text('Muted'),
+                  label: UiText('Muted'),
                 ),
               TextButton.icon(
                 onPressed: enabled ? onDelete : null,
                 icon: const Icon(Icons.remove_circle_outline),
-                label: const Text('Remove subscription'),
+                label: const UiText('Remove subscription'),
               ),
             ],
           ),
@@ -523,7 +531,7 @@ final class _NotificationCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          UiText(
             notification.type.displayTitle,
             style: Theme.of(context).textTheme.titleMedium,
           ),
@@ -541,16 +549,16 @@ final class _NotificationCard extends StatelessWidget {
                   onPressed: enabled
                       ? () => onOpenPaper(notification.papers.first)
                       : null,
-                  child: const Text('Open paper'),
+                  child: const UiText('Open paper'),
                 ),
               if (!notification.isRead)
                 TextButton(
                   onPressed: enabled ? onRead : null,
-                  child: const Text('Mark read'),
+                  child: const UiText('Mark read'),
                 ),
               TextButton(
                 onPressed: enabled ? onDismiss : null,
-                child: const Text('Dismiss'),
+                child: const UiText('Dismiss'),
               ),
               if (canMuteDiscoveryNotifications)
                 TextButton.icon(
@@ -561,7 +569,7 @@ final class _NotificationCard extends StatelessWidget {
                       ? () => onMuteDiscoveryNotifications(notification.type)
                       : null,
                   icon: const Icon(Icons.notifications_off_outlined),
-                  label: const Text('Mute this update type'),
+                  label: const UiText('Mute this update type'),
                 ),
             ],
           ),
@@ -597,13 +605,13 @@ final class _PreferenceCard extends StatelessWidget {
       children: [
         SwitchListTile.adaptive(
           key: const ValueKey('engagement-in-app-enabled'),
-          title: const Text('In-app notifications'),
+          title: const UiText('In-app notifications'),
           value: preferences.inAppEnabled,
           onChanged: enabled ? onInAppEnabledChanged : null,
         ),
         const Divider(height: 1),
         SwitchListTile.adaptive(
-          title: const Text('Pause all in-app updates'),
+          title: const UiText('Pause all in-app updates'),
           value: preferences.globalPause,
           onChanged: enabled ? onGlobalPauseChanged : null,
         ),
@@ -616,8 +624,8 @@ final class _PreferenceCard extends StatelessWidget {
             enabled: enabled,
             minVerticalPadding: PakPerkSpacing.sm,
             leading: const Icon(Icons.bedtime_outlined),
-            title: const Text('Quiet hours and timezone'),
-            subtitle: Text(_scheduleSummary(preferences)),
+            title: const UiText('Quiet hours and timezone'),
+            subtitle: UiText(_scheduleSummary(preferences)),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: enabled
                 ? () => _showNotificationScheduleEditor(
@@ -637,7 +645,7 @@ final class _PreferenceCard extends StatelessWidget {
           ),
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Text(
+            child: UiText(
               'Update frequency',
               style: Theme.of(context).textTheme.titleMedium,
             ),
@@ -650,7 +658,7 @@ final class _PreferenceCard extends StatelessWidget {
             PakPerkSpacing.md,
             PakPerkSpacing.sm,
           ),
-          child: Text(
+          child: UiText(
             'Choose each type separately. Individual matches and discovery '
             'digests are alternatives.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -667,7 +675,7 @@ final class _PreferenceCard extends StatelessWidget {
                 onNotificationTypeFrequencyChanged(type, value),
           ),
         ListTile(
-          title: Text('Daily in-app budget · ${preferences.dailyBudget}'),
+          title: UiText('Daily in-app budget · ${preferences.dailyBudget}'),
           subtitle: Slider.adaptive(
             key: const ValueKey('engagement-daily-budget'),
             value: preferences.dailyBudget.toDouble(),
@@ -688,7 +696,7 @@ final class _PreferenceCard extends StatelessWidget {
             PakPerkSpacing.md,
             PakPerkSpacing.md,
           ),
-          child: Text('Push and email remain unavailable in this release.'),
+          child: UiText('Push and email remain unavailable in this release.'),
         ),
       ],
     ),
@@ -719,12 +727,12 @@ final class _NotificationFrequencyField extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
+        UiText(
           _notificationFrequencyTitle(type),
           style: Theme.of(context).textTheme.titleSmall,
         ),
         const SizedBox(height: PakPerkSpacing.xxs),
-        Text(
+        UiText(
           _notificationFrequencyHelp(type),
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -733,9 +741,11 @@ final class _NotificationFrequencyField extends StatelessWidget {
         const SizedBox(height: PakPerkSpacing.xs),
         Semantics(
           container: true,
-          label:
-              '${_notificationFrequencyTitle(type)} frequency, '
-              '${_frequencyLabel(value)}',
+          label: uiString(
+            context,
+            '${_notificationFrequencyTitle(type)} frequency, '
+            '${_frequencyLabel(value)}',
+          ),
           child: ConstrainedBox(
             key: ValueKey('engagement-frequency-${type.wireValue}'),
             constraints: const BoxConstraints(
@@ -744,8 +754,8 @@ final class _NotificationFrequencyField extends StatelessWidget {
             child: DropdownButtonFormField<SubscriptionFrequency>(
               initialValue: value,
               isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Frequency',
+              decoration: InputDecoration(
+                labelText: uiString(context, 'Frequency'),
                 contentPadding: EdgeInsets.symmetric(
                   horizontal: PakPerkSpacing.md,
                   vertical: PakPerkSpacing.sm,
@@ -755,7 +765,7 @@ final class _NotificationFrequencyField extends StatelessWidget {
                 for (final frequency in SubscriptionFrequency.values)
                   DropdownMenuItem(
                     value: frequency,
-                    child: Text(_frequencyLabel(frequency)),
+                    child: UiText(_frequencyLabel(frequency)),
                   ),
               ],
               onChanged: enabled
@@ -844,7 +854,7 @@ final class _NotificationScheduleSheetState
       container: true,
       scopesRoute: true,
       namesRoute: true,
-      label: 'Quiet hours and timezone',
+      label: uiString(context, 'Quiet hours and timezone'),
       explicitChildNodes: true,
       child: Padding(
         padding: EdgeInsets.fromLTRB(
@@ -859,13 +869,13 @@ final class _NotificationScheduleSheetState
             children: [
               Semantics(
                 header: true,
-                child: Text(
+                child: UiText(
                   'Quiet hours',
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
               ),
               const SizedBox(height: PakPerkSpacing.xxs),
-              Text(
+              UiText(
                 'In-app updates wait until quiet hours end. Push and email remain off.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -875,7 +885,7 @@ final class _NotificationScheduleSheetState
               SwitchListTile.adaptive(
                 key: const ValueKey('engagement-quiet-hours-enabled'),
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Use quiet hours'),
+                title: const UiText('Use quiet hours'),
                 value: _enabled,
                 onChanged: (value) => setState(() {
                   _enabled = value;
@@ -891,10 +901,10 @@ final class _NotificationScheduleSheetState
                 textInputAction: TextInputAction.next,
                 maxLength: 5,
                 inputFormatters: _clockInputFormatters,
-                decoration: const InputDecoration(
-                  labelText: 'Starts',
+                decoration: InputDecoration(
+                  labelText: uiString(context, 'Starts'),
                   hintText: '22:00',
-                  helperText: '24-hour time, HH:MM',
+                  helperText: uiString(context, '24-hour time, HH:MM'),
                 ),
               ),
               TextField(
@@ -905,10 +915,10 @@ final class _NotificationScheduleSheetState
                 textInputAction: TextInputAction.next,
                 maxLength: 5,
                 inputFormatters: _clockInputFormatters,
-                decoration: const InputDecoration(
-                  labelText: 'Ends',
+                decoration: InputDecoration(
+                  labelText: uiString(context, 'Ends'),
                   hintText: '07:00',
-                  helperText: '24-hour time, HH:MM',
+                  helperText: uiString(context, '24-hour time, HH:MM'),
                 ),
               ),
               TextField(
@@ -917,10 +927,10 @@ final class _NotificationScheduleSheetState
                 keyboardType: TextInputType.text,
                 textInputAction: TextInputAction.done,
                 maxLength: 64,
-                decoration: const InputDecoration(
-                  labelText: 'Timezone',
-                  hintText: 'Asia/Shanghai',
-                  helperText: 'Use your IANA timezone name.',
+                decoration: InputDecoration(
+                  labelText: uiString(context, 'Timezone'),
+                  hintText: uiString(context, 'Asia/Shanghai'),
+                  helperText: uiString(context, 'Use your IANA timezone name.'),
                 ),
                 onSubmitted: (_) => _submit(),
               ),
@@ -928,7 +938,7 @@ final class _NotificationScheduleSheetState
                 const SizedBox(height: PakPerkSpacing.xs),
                 Semantics(
                   liveRegion: true,
-                  child: Text(
+                  child: UiText(
                     _error!,
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.error,
@@ -948,7 +958,7 @@ final class _NotificationScheduleSheetState
                     ),
                     child: TextButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancel'),
+                      child: const UiText('Cancel'),
                     ),
                   ),
                   ConstrainedBox(
@@ -958,7 +968,7 @@ final class _NotificationScheduleSheetState
                     child: FilledButton(
                       key: const ValueKey('engagement-save-schedule'),
                       onPressed: _submit,
-                      child: const Text('Save schedule'),
+                      child: const UiText('Save schedule'),
                     ),
                   ),
                 ],
@@ -1007,10 +1017,10 @@ final class _SectionTitle extends StatelessWidget {
     children: [
       Semantics(
         header: true,
-        child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+        child: UiText(title, style: Theme.of(context).textTheme.titleLarge),
       ),
       const SizedBox(height: PakPerkSpacing.xxs),
-      Text(
+      UiText(
         subtitle,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
           color: Theme.of(context).colorScheme.onSurfaceVariant,

@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'library_sync_status_button.dart';
 import 'dart:async';
 
@@ -26,11 +27,10 @@ class ToReadScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (!ref.watch(featureFlagsProvider).library) {
-      return const PhaseOnePlaceholderScreen(
+      return PhaseOnePlaceholderScreen(
         title: 'To Read is not enabled',
-        message:
-            'Synchronized saves are disabled in this build. Reading and '
-            'cached papers remain available.',
+        message: 'Synchronized saves are disabled in this build. Reading and '
+          'cached papers remain available.',
         icon: Icons.bookmarks_outlined,
       );
     }
@@ -58,12 +58,12 @@ class ToReadScreen extends ConsumerWidget {
     final cached = items.value;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('To Read'),
+        title: const UiText('To Read'),
         actions: [
           if (canImport)
             IconButton(
               key: const ValueKey('to-read-add-paper'),
-              tooltip: 'Add a paper',
+              tooltip: uiString(context, 'Add a paper'),
               onPressed: () => unawaited(
                 showAccountAddPaperFlow(context: context, ref: ref),
               ),
@@ -137,9 +137,9 @@ class ToReadScreen extends ConsumerWidget {
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
-            content: const Text('Removed from To Read'),
+            content: const UiText('Removed from To Read'),
             action: SnackBarAction(
-              label: 'Undo',
+              label: uiString(context, 'Undo'),
               onPressed: () => unawaited(_undo(ref, scope, item)),
             ),
           ),
@@ -151,7 +151,7 @@ class ToReadScreen extends ConsumerWidget {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('This paper could not be removed on this device.'),
+          content: UiText('This paper could not be removed on this device.'),
         ),
       );
     }
@@ -214,7 +214,7 @@ class _SignedOutLibraryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('To Read')),
+    appBar: AppBar(title: const UiText('To Read')),
     body: SafeArea(
       child: Center(
         child: SingleChildScrollView(
@@ -224,13 +224,13 @@ class _SignedOutLibraryScreen extends StatelessWidget {
             children: [
               const Icon(Icons.cloud_sync_outlined, size: 52),
               const SizedBox(height: 16),
-              Text(
+              UiText(
                 'Sign in to see your To Read list',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
-              const Text(
+              const UiText(
                 'Your synchronized saves belong to your account. Public '
                 'reading stays available without signing in.',
                 textAlign: TextAlign.center,
@@ -238,7 +238,7 @@ class _SignedOutLibraryScreen extends StatelessWidget {
               const SizedBox(height: 20),
               FilledButton(
                 onPressed: () => context.push<void>('/auth'),
-                child: const Text('Sign in'),
+                child: const UiText('Sign in'),
               ),
             ],
           ),
@@ -255,7 +255,7 @@ class _UnavailableReadOnlyLibraryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('To Read')),
+    appBar: AppBar(title: const UiText('To Read')),
     body: SafeArea(
       child: Center(
         child: SingleChildScrollView(
@@ -265,7 +265,7 @@ class _UnavailableReadOnlyLibraryScreen extends StatelessWidget {
             children: [
               const Icon(Icons.lock_outline, size: 52),
               const SizedBox(height: 16),
-              Text(
+              UiText(
                 switch (status) {
                   AccountStatus.suspended => 'Account suspended',
                   AccountStatus.deletionPending =>
@@ -277,7 +277,7 @@ class _UnavailableReadOnlyLibraryScreen extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
-              Text(
+              UiText(
                 status == AccountStatus.deletionPending
                     ? 'Saved papers are unavailable while account-owned '
                           'data is being removed. Public reading remains available.'

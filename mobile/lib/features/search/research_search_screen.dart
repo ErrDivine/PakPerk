@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -167,7 +168,7 @@ class _ResearchSearchScreenState extends State<ResearchSearchScreen> {
     final reducedMotion = platformPrefersReducedMotion(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Search')),
+      appBar: AppBar(title: const UiText('Search')),
       body: SafeArea(
         top: false,
         left: true,
@@ -228,13 +229,13 @@ class _ResearchSearchScreenState extends State<ResearchSearchScreen> {
       children: [
         Semantics(
           header: true,
-          child: Text(
+          child: UiText(
             'Look up a paper',
             style: Theme.of(context).textTheme.headlineSmall,
           ),
         ),
         const SizedBox(height: PakPerkSpacing.xs),
-        Text(
+        UiText(
           'Use a paper title, canonical arXiv link, or arXiv ID. Opening a '
           'result never adds it to your reading queue.',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -252,13 +253,13 @@ class _ResearchSearchScreenState extends State<ResearchSearchScreen> {
           onChanged: widget.controller.updateLookupInput,
           onSubmitted: (_) => widget.controller.lookupNow(),
           decoration: InputDecoration(
-            labelText: 'Paper title, arXiv link, or ID',
-            hintText: 'Attention Is All You Need',
+            labelText: uiString(context, 'Paper title, arXiv link, or ID'),
+            hintText: uiString(context, 'Attention Is All You Need'),
             suffixIcon: _lookupText.text.isEmpty
                 ? null
                 : IconButton(
                     key: const ValueKey('research-search-lookup-clear'),
-                    tooltip: 'Clear lookup',
+                    tooltip: uiString(context, 'Clear lookup'),
                     onPressed: () {
                       _lookupText.clear();
                       widget.controller.updateLookupInput('');
@@ -296,13 +297,13 @@ class _ResearchSearchScreenState extends State<ResearchSearchScreen> {
       children: [
         Semantics(
           header: true,
-          child: Text(
+          child: UiText(
             'Explore a topic',
             style: Theme.of(context).textTheme.headlineSmall,
           ),
         ),
         const SizedBox(height: PakPerkSpacing.xs),
-        Text(
+        UiText(
           'Explore is an intentional topic search. Results stay separate from '
           'your reading feed until you choose Add paper.',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -334,9 +335,9 @@ class _ResearchSearchScreenState extends State<ResearchSearchScreen> {
           onSubmitted: exploreEnabled
               ? (_) => widget.controller.submitExplore()
               : null,
-          decoration: const InputDecoration(
-            labelText: 'Topic or research question',
-            hintText: 'Efficient language model adaptation',
+          decoration: InputDecoration(
+            labelText: uiString(context, 'Topic or research question'),
+            hintText: uiString(context, 'Efficient language model adaptation'),
           ),
         ),
         const SizedBox(height: PakPerkSpacing.md),
@@ -360,7 +361,7 @@ class _ResearchSearchScreenState extends State<ResearchSearchScreen> {
                   ? widget.controller.submitExplore
                   : null,
               icon: const Icon(Icons.search_rounded),
-              label: const Text('Explore'),
+              label: const UiText('Explore'),
             ),
             OutlinedButton.icon(
               key: const ValueKey('research-search-save-query'),
@@ -376,13 +377,13 @@ class _ResearchSearchScreenState extends State<ResearchSearchScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.notifications_none_rounded),
-              label: Text(state.querySaved ? 'Query saved' : 'Save query'),
+              label: UiText(state.querySaved ? 'Query saved' : 'Save query'),
             ),
           ],
         ),
         if (!widget.controller.savedQueriesAvailable) ...[
           const SizedBox(height: PakPerkSpacing.xs),
-          Text(
+          UiText(
             'Saved queries are not enabled.',
             key: const ValueKey('research-search-saved-unavailable'),
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -418,11 +419,11 @@ class _LookupSuggestions extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
     container: true,
-    label: '${suggestions.length} related topic suggestions',
+    label: uiString(context, '${suggestions.length} related topic suggestions'),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Related topics', style: Theme.of(context).textTheme.titleSmall),
+        UiText('Related topics', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: PakPerkSpacing.xs),
         Wrap(
           spacing: PakPerkSpacing.xs,
@@ -438,7 +439,7 @@ class _LookupSuggestions extends StatelessWidget {
                       ? Icons.explore_outlined
                       : Icons.search_rounded,
                 ),
-                label: Text(suggestion.label),
+                label: UiText(suggestion.label),
                 tooltip: exploreAvailable
                     ? 'Explore ${suggestion.label}'
                     : 'Look up ${suggestion.label}',
@@ -495,18 +496,21 @@ class _SavedQueries extends StatelessWidget {
             : FilledButton.tonalIcon(
                 onPressed: onReload,
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Retry'),
+                label: const UiText('Retry'),
               ),
       );
     }
     if (queries.isEmpty) return const SizedBox.shrink();
     return Semantics(
       container: true,
-      label: '${queries.length} saved queries',
+      label: uiString(context, '${queries.length} saved queries'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Saved queries', style: Theme.of(context).textTheme.titleSmall),
+          UiText(
+            'Saved queries',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
           const SizedBox(height: PakPerkSpacing.xs),
           for (final (index, query) in queries.indexed) ...[
             _SavedQueryCard(
@@ -572,8 +576,8 @@ class _SavedQueryCard extends StatelessWidget {
           ListTile(
             key: ValueKey('research-search-saved-query-$index'),
             leading: const Icon(Icons.bookmark_outline_rounded),
-            title: Text(query.query),
-            subtitle: const Text('Open saved query'),
+            title: UiText(query.query),
+            subtitle: const UiText('Open saved query'),
             onTap: () => onSelected(query),
           ),
           if (canOfferSubscription)
@@ -609,7 +613,7 @@ class _SavedQueryCard extends StatelessWidget {
                                 ? Icons.refresh_rounded
                                 : Icons.notifications_none_rounded,
                           ),
-                    label: Text(
+                    label: UiText(
                       subscribing
                           ? 'Subscribing…'
                           : subscribed
@@ -650,7 +654,7 @@ class _SavedQueryCard extends StatelessWidget {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.delete_outline_rounded),
-                    label: Text(deletingNow ? 'Deleting…' : 'Delete query'),
+                    label: UiText(deletingNow ? 'Deleting…' : 'Delete query'),
                   ),
                 ),
               ),
@@ -665,8 +669,8 @@ class _SavedQueryCard extends StatelessWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         scrollable: true,
-        title: const Text('Delete saved query?'),
-        content: Text(
+        title: const UiText('Delete saved query?'),
+        content: UiText(
           '“${query.query}” and any alerts linked to it will be removed. '
           'This won’t clear private on-device search history or change your '
           'reading queue.',
@@ -675,7 +679,7 @@ class _SavedQueryCard extends StatelessWidget {
           TextButton(
             key: const ValueKey('saved-query-delete-cancel'),
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: const UiText('Cancel'),
           ),
           FilledButton(
             key: const ValueKey('saved-query-delete-confirm'),
@@ -684,7 +688,7 @@ class _SavedQueryCard extends StatelessWidget {
               backgroundColor: Theme.of(dialogContext).colorScheme.error,
               foregroundColor: Theme.of(dialogContext).colorScheme.onError,
             ),
-            child: const Text('Delete query'),
+            child: const UiText('Delete query'),
           ),
         ],
       ),
@@ -735,8 +739,8 @@ class _PrivateSearchHistoryControl extends StatelessWidget {
               key: const ValueKey('private-search-history-toggle'),
               value: enabled,
               onChanged: loading ? null : onEnabledChanged,
-              title: const Text('Private search history'),
-              subtitle: const Text(
+              title: const UiText('Private search history'),
+              subtitle: const UiText(
                 'Off by default. When enabled, successful queries stay only '
                 'on this device.',
               ),
@@ -759,7 +763,7 @@ class _PrivateSearchHistoryControl extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
-                      child: Text(
+                      child: UiText(
                         errorMessage!,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.error,
@@ -771,7 +775,7 @@ class _PrivateSearchHistoryControl extends StatelessWidget {
                       key: const ValueKey('private-search-history-reload'),
                       onPressed: loading ? null : onReload,
                       icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Retry'),
+                      label: const UiText('Retry'),
                     ),
                   ],
                 ),
@@ -790,7 +794,7 @@ class _PrivateSearchHistoryControl extends StatelessWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
+                          child: UiText(
                             'Recent on this device',
                             style: theme.textTheme.titleSmall,
                           ),
@@ -798,7 +802,7 @@ class _PrivateSearchHistoryControl extends StatelessWidget {
                         TextButton(
                           key: const ValueKey('private-search-history-clear'),
                           onPressed: loading ? null : onClear,
-                          child: const Text('Clear'),
+                          child: const UiText('Clear'),
                         ),
                       ],
                     ),
@@ -815,13 +819,13 @@ class _PrivateSearchHistoryControl extends StatelessWidget {
                             ),
                             label: ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 220),
-                              child: Text(
+                              child: UiText(
                                 entry.query,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            tooltip: 'Use ${entry.query}',
+                            tooltip: uiString(context, 'Use ${entry.query}'),
                             onPressed: () => onSelected(entry),
                           ),
                       ],
@@ -846,7 +850,7 @@ class _SearchModeControl extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       container: true,
-      label: 'Search intent',
+      label: uiString(context, 'Search intent'),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -909,7 +913,7 @@ class _SearchModeButton extends StatelessWidget {
                   horizontal: PakPerkSpacing.sm,
                   vertical: PakPerkSpacing.xs,
                 ),
-                child: Text(
+                child: UiText(
                   label,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -954,10 +958,10 @@ class _ExploreFilters extends StatelessWidget {
               key: const ValueKey('research-search-explore-sort'),
               initialValue: draft.sortOrder,
               isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Sort'),
+              decoration: InputDecoration(labelText: uiString(context, 'Sort')),
               items: [
                 for (final value in ExploreSortOrder.values)
-                  DropdownMenuItem(value: value, child: Text(value.label)),
+                  DropdownMenuItem(value: value, child: UiText(value.label)),
               ],
               onChanged: enabled
                   ? (value) {
@@ -969,12 +973,14 @@ class _ExploreFilters extends StatelessWidget {
               key: const ValueKey('research-search-explore-date'),
               initialValue: draft.dateRange,
               isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Published'),
+              decoration: InputDecoration(
+                labelText: uiString(context, 'Published'),
+              ),
               items: [
                 for (final value in ExploreDateRange.values)
                   if (value != ExploreDateRange.savedRange ||
                       draft.dateRange == ExploreDateRange.savedRange)
-                    DropdownMenuItem(value: value, child: Text(value.label)),
+                    DropdownMenuItem(value: value, child: UiText(value.label)),
               ],
               onChanged: enabled
                   ? (value) {
@@ -1002,7 +1008,7 @@ class _ExploreFilters extends StatelessWidget {
         ),
         if (availableCategories.isNotEmpty) ...[
           const SizedBox(height: PakPerkSpacing.md),
-          Text('Categories', style: Theme.of(context).textTheme.titleSmall),
+          UiText('Categories', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: PakPerkSpacing.xs),
           Wrap(
             spacing: PakPerkSpacing.xs,
@@ -1011,7 +1017,7 @@ class _ExploreFilters extends StatelessWidget {
               for (final category in availableCategories)
                 FilterChip(
                   key: ValueKey('research-search-category-$category'),
-                  label: Text(category),
+                  label: UiText(category),
                   selected: draft.categories.contains(category),
                   onSelected: enabled
                       ? (selected) => onCategoryChanged(category, selected)
@@ -1041,13 +1047,13 @@ class _LookupStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) => switch (state.phase) {
     ResearchSearchPhase.idle => const SizedBox.shrink(),
-    ResearchSearchPhase.waiting => const _SearchStatusCard(
+    ResearchSearchPhase.waiting => _SearchStatusCard(
       key: ValueKey('research-search-waiting'),
       icon: Icons.more_horiz_rounded,
       title: 'Waiting for you to pause',
       message: 'Title lookup starts after a brief pause.',
     ),
-    ResearchSearchPhase.searching => const _SearchProgress(
+    ResearchSearchPhase.searching => _SearchProgress(
       message: 'Looking up matching papers…',
     ),
     ResearchSearchPhase.exactReady => _ExactLookupCard(
@@ -1060,7 +1066,7 @@ class _LookupStatus extends StatelessWidget {
       onOpenPaper: onOpenPaper,
       onAddPaper: onAddPaper,
     ),
-    ResearchSearchPhase.empty => const _SearchStatusCard(
+    ResearchSearchPhase.empty => _SearchStatusCard(
       key: ValueKey('research-search-empty'),
       icon: Icons.search_off_rounded,
       title: 'No matching papers',
@@ -1091,19 +1097,18 @@ class _ExploreStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!exploreEnabled) {
-      return const _SearchStatusCard(
+      return _SearchStatusCard(
         key: ValueKey('research-search-explore-unavailable'),
         icon: Icons.lock_outline_rounded,
         title: 'Explore search is not enabled',
-        message:
-            'Recent papers are not substituted for a query search. Explore '
-            'will appear here only when its search source is available.',
+        message: 'Recent papers are not substituted for a query search. Explore '
+          'will appear here only when its search source is available.',
       );
     }
     return switch (state.phase) {
       ResearchSearchPhase.idle ||
       ResearchSearchPhase.waiting => const SizedBox.shrink(),
-      ResearchSearchPhase.searching => const _SearchProgress(
+      ResearchSearchPhase.searching => _SearchProgress(
         message: 'Exploring this topic…',
       ),
       ResearchSearchPhase.results ||
@@ -1162,19 +1167,19 @@ class _LookupResults extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       container: true,
-      label: '${candidates.length} paper lookup results',
+      label: uiString(context, '${candidates.length} paper lookup results'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Semantics(
             header: true,
-            child: Text(
+            child: UiText(
               'Results',
               style: Theme.of(context).textTheme.titleLarge,
             ),
           ),
           const SizedBox(height: PakPerkSpacing.xs),
-          Text(
+          UiText(
             'Open or add a paper explicitly. Results are never inserted into '
             'your feed automatically.',
             style: Theme.of(context).textTheme.bodySmall,
@@ -1216,14 +1221,14 @@ class _LookupCandidateCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
+            UiText(
               candidate.title,
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: PakPerkSpacing.xxs),
             Text(authors, style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: PakPerkSpacing.xs),
-            Text(
+            UiText(
               '${candidate.publishedAt.year} · ${candidate.primaryCategory} '
               '· arXiv ${candidate.arxivId}',
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
@@ -1260,7 +1265,10 @@ class _ExploreResults extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       container: true,
-      label: '${presentation.papers.length} Explore search results',
+      label: uiString(
+        context,
+        '${presentation.papers.length} Explore search results',
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1272,7 +1280,7 @@ class _ExploreResults extends StatelessWidget {
           ),
           if (presentation.papers.isEmpty) ...[
             const SizedBox(height: PakPerkSpacing.sm),
-            const _SearchStatusCard(
+            _SearchStatusCard(
               key: ValueKey('research-search-explore-empty'),
               icon: Icons.search_off_rounded,
               title: 'No papers found',
@@ -1330,7 +1338,7 @@ class _ExplorePaperCard extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: PakPerkSpacing.xs),
-            Text(
+            UiText(
               '${paper.publishedAt.year} · ${paper.primaryCategory} '
               '· arXiv ${paper.arxivId}',
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
@@ -1374,21 +1382,21 @@ class _PaperActions extends StatelessWidget {
           key: ValueKey('research-search-open-$arxivId'),
           onPressed: () => onOpenPaper(arxivId),
           icon: const Icon(Icons.open_in_new_rounded),
-          label: const Text('Open paper'),
+          label: const UiText('Open paper'),
         ),
         if (onAddPaper != null)
           OutlinedButton.icon(
             key: ValueKey('research-search-add-$arxivId'),
             onPressed: () => onAddPaper!(arxivId),
             icon: const Icon(Icons.add_rounded),
-            label: const Text('Add paper'),
+            label: const UiText('Add paper'),
           ),
         if (onMapPaper != null)
           OutlinedButton.icon(
             key: ValueKey('research-search-map-$arxivId'),
             onPressed: () => onMapPaper!(arxivId),
             icon: const Icon(Icons.hub_outlined),
-            label: const Text('Map from this paper'),
+            label: const UiText('Map from this paper'),
           ),
       ],
     );
@@ -1416,7 +1424,7 @@ class _SearchProgress extends StatelessWidget {
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
               const SizedBox(width: PakPerkSpacing.sm),
-              Expanded(child: Text(message)),
+              Expanded(child: UiText(message)),
             ],
           ),
         ),
@@ -1446,7 +1454,7 @@ class _SearchFailureCard extends StatelessWidget {
               key: const ValueKey('research-search-retry'),
               onPressed: onRetry,
               icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Retry'),
+              label: const UiText('Retry'),
             )
           : null,
     );
@@ -1475,7 +1483,7 @@ class _SearchStatusCard extends StatelessWidget {
     return Semantics(
       liveRegion: true,
       container: true,
-      label: '$title. $message',
+      label: uiString(context, '$title. $message'),
       child: Card(
         child: Padding(
           padding: const EdgeInsets.all(PakPerkSpacing.md),
@@ -1491,9 +1499,12 @@ class _SearchStatusCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: Theme.of(context).textTheme.titleMedium),
+                    UiText(
+                      title,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                     const SizedBox(height: PakPerkSpacing.xxs),
-                    Text(message),
+                    UiText(message),
                     if (actions != null) ...[
                       const SizedBox(height: PakPerkSpacing.sm),
                       actions!,

@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/document_block.dart';
@@ -121,19 +122,19 @@ class ReaderSectionProgress extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
+                UiText(
                   'Section $ordinal of ${sections.length}',
                   style: Theme.of(context).textTheme.labelLarge,
                 ),
                 const SizedBox(height: 2),
-                Text(
+                UiText(
                   title,
                   key: const ValueKey('reader-current-section'),
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 if (next != null) ...[
                   const SizedBox(height: 2),
-                  Text(
+                  UiText(
                     'Next: $next',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
@@ -213,13 +214,13 @@ class ReaderStoppingPoint extends StatelessWidget {
               children: [
                 Semantics(
                   header: true,
-                  child: Text(
+                  child: UiText(
                     title,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(message),
+                UiText(message),
                 if (actions.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   Wrap(
@@ -235,12 +236,12 @@ class ReaderStoppingPoint extends StatelessWidget {
                               ? FilledButton.icon(
                                   onPressed: action.onPressed,
                                   icon: Icon(action.icon),
-                                  label: Text(action.label),
+                                  label: UiText(action.label),
                                 )
                               : OutlinedButton.icon(
                                   onPressed: action.onPressed,
                                   icon: Icon(action.icon),
-                                  label: Text(action.label),
+                                  label: UiText(action.label),
                                 ),
                         ),
                     ],
@@ -352,7 +353,7 @@ class _ReadAssistantComposerState extends State<ReadAssistantComposer> {
           ),
           child: Semantics(
             container: true,
-            label: 'Persistent Read Assistant composer',
+            label: uiString(context, 'Persistent Read Assistant composer'),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
               child: Row(
@@ -374,9 +375,12 @@ class _ReadAssistantComposerState extends State<ReadAssistantComposer> {
                       onSubmitted: (_) {
                         if (_canSubmit) _submit();
                       },
-                      decoration: const InputDecoration(
-                        labelText: 'Ask this paper',
-                        hintText: 'Question grounded in this paper',
+                      decoration: InputDecoration(
+                        labelText: uiString(context, 'Ask this paper'),
+                        hintText: uiString(
+                          context,
+                          'Question grounded in this paper',
+                        ),
                       ),
                     ),
                   ),

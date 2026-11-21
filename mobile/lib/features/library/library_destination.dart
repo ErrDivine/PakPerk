@@ -1,3 +1,5 @@
+import '../../l10n/ui.dart';
+import '../paper_notes/paper_notes_destination.dart';
 import 'library_sync_status_button.dart';
 import 'dart:async';
 
@@ -93,11 +95,10 @@ class _LibraryDestinationState extends ConsumerState<LibraryDestination> {
       _accountScopeListenable.value = _editorScope(next);
     });
     if (!ref.watch(featureFlagsProvider).library) {
-      return const PhaseOnePlaceholderScreen(
+      return PhaseOnePlaceholderScreen(
         title: 'Library is not enabled',
-        message:
-            'Synchronized saves are disabled in this build. Reading and '
-            'cached papers remain available.',
+        message: 'Synchronized saves are disabled in this build. Reading and '
+          'cached papers remain available.',
         icon: Icons.local_library_outlined,
       );
     }
@@ -184,6 +185,11 @@ class _LibraryDestinationState extends ConsumerState<LibraryDestination> {
             },
       onOpenPaper: (item) => widget.onOpenPaper(item.paper),
       onOpenActionFailurePaper: widget.onOpenPaper,
+      onOpenNotes: () => Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PaperNotesDestination(accountId: scope.accountId),
+        ),
+      ),
       onSignIn: () => context.push<void>('/auth'),
       onDismissActionFailure: (failure) =>
           unawaited(_dismissActionFailure(scope, failure)),
@@ -263,7 +269,7 @@ class _LibraryDestinationState extends ConsumerState<LibraryDestination> {
       if (!mounted || ref.read(libraryDisplayScopeProvider) != scope) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('This notice could not be dismissed. Try again.'),
+          content: UiText('This notice could not be dismissed. Try again.'),
         ),
       );
     }
@@ -389,18 +395,18 @@ class _LibraryDestinationState extends ConsumerState<LibraryDestination> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog.adaptive(
-        title: const Text('Clear private paper history?'),
-        content: const Text(
+        title: const UiText('Clear private paper history?'),
+        content: const UiText(
           'This removes the explicitly opened-paper history on this device. Library and To Read are unchanged.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: const UiText('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Clear history'),
+            child: const UiText('Clear history'),
           ),
         ],
       ),
@@ -438,6 +444,7 @@ class LibraryDestinationView extends StatefulWidget {
     this.onOpenHistoryPaper,
     this.onOpenActionFailurePaper,
     this.onSignIn,
+    this.onOpenNotes,
     this.onDismissActionFailure,
     this.onSaveList,
     this.onDeleteList,
@@ -472,6 +479,7 @@ class LibraryDestinationView extends StatefulWidget {
   final ValueChanged<PaperSummary>? onOpenHistoryPaper;
   final ValueChanged<PaperSummary>? onOpenActionFailurePaper;
   final VoidCallback? onSignIn;
+  final VoidCallback? onOpenNotes;
   final ValueChanged<LibraryActionFailure>? onDismissActionFailure;
   final LibraryListSaveCallback? onSaveList;
   final LibraryListDeleteCallback? onDeleteList;
@@ -607,12 +615,18 @@ class _LibraryDestinationViewState extends State<LibraryDestinationView> {
     }
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Library'),
+        title: const UiText('Library'),
         actions: [
+          if (widget.onOpenNotes != null)
+            TextButton.icon(
+              onPressed: widget.onOpenNotes,
+              icon: const Icon(Icons.edit_note_outlined),
+              label: const UiText('My notes'),
+            ),
           if (widget.canAddPaper)
             IconButton(
               key: const ValueKey('library-add-paper'),
-              tooltip: 'Add a paper',
+              tooltip: uiString(context, 'Add a paper'),
               onPressed: widget.onAddPaper,
               icon: const Icon(Icons.add_rounded),
             ),
@@ -710,7 +724,7 @@ class _StatePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
     container: true,
-    label: 'Library states',
+    label: uiString(context, 'Library states'),
     child: SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -722,7 +736,7 @@ class _StatePicker extends StatelessWidget {
                 key: ValueKey('library-state-${state.storageValue}'),
                 selected: state == selected,
                 onSelected: (_) => onSelected(state),
-                label: Text('${state.label} ${_count(items, state)}'),
+                label: UiText('${state.label} ${_count(items, state)}'),
               ),
             ),
             if (state != LibraryItemState.values.last) const SizedBox(width: 8),
@@ -742,7 +756,7 @@ final class _SupplementalPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
     container: true,
-    label: 'Additional Library views',
+    label: uiString(context, 'Additional Library views'),
     child: Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -754,7 +768,7 @@ final class _SupplementalPicker extends StatelessWidget {
             selected: selected == _LibrarySupplementalView.history,
             onSelected: (_) => onSelected(_LibrarySupplementalView.history),
             avatar: const Icon(Icons.history_rounded),
-            label: const Text('History'),
+            label: const UiText('History'),
           ),
         ),
         ConstrainedBox(
@@ -764,7 +778,7 @@ final class _SupplementalPicker extends StatelessWidget {
             selected: selected == _LibrarySupplementalView.collections,
             onSelected: (_) => onSelected(_LibrarySupplementalView.collections),
             avatar: const Icon(Icons.folder_outlined),
-            label: const Text('Lists & tags'),
+            label: const UiText('Lists & tags'),
           ),
         ),
       ],
@@ -838,12 +852,12 @@ class _QueueAuthorityBanner extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: theme.textTheme.titleSmall),
+                    UiText(title, style: theme.textTheme.titleSmall),
                     const SizedBox(height: 3),
-                    Text(detail),
+                    UiText(detail),
                     if (issue != null) ...[
                       const SizedBox(height: 6),
-                      Text(
+                      UiText(
                         issue.message,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.error,
@@ -920,13 +934,15 @@ class _LibraryPaperCard extends StatelessWidget {
                                 '${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(reminder.toLocal()))}',
                           ),
                         if (item.savedState.syncPending)
-                          const _MetadataPill(label: 'Waiting to sync'),
+                          _MetadataPill(
+                            label: uiString(context, 'Waiting to sync'),
+                          ),
                       ],
                     ),
                     if (item.privateNote case final note? when note.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 10),
-                        child: Text(
+                        child: UiText(
                           '“$note”',
                           style: theme.textTheme.bodyMedium,
                         ),
@@ -934,7 +950,7 @@ class _LibraryPaperCard extends StatelessWidget {
                     if (item.listNames.isNotEmpty || item.tagNames.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
-                        child: Text(
+                        child: UiText(
                           [
                             if (item.listNames.isNotEmpty)
                               'Lists: ${item.listNames.join(', ')}',
@@ -949,7 +965,7 @@ class _LibraryPaperCard extends StatelessWidget {
               ),
               IconButton(
                 key: ValueKey('library-edit-${item.paper.paperId}'),
-                tooltip: 'Edit ${item.paper.title}',
+                tooltip: uiString(context, 'Edit ${item.paper.title}'),
                 onPressed: onEdit,
                 icon: const Icon(Icons.tune_rounded),
               ),
@@ -974,7 +990,7 @@ class _MetadataPill extends StatelessWidget {
     ),
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      child: Text(label, style: Theme.of(context).textTheme.labelSmall),
+      child: UiText(label, style: Theme.of(context).textTheme.labelSmall),
     ),
   );
 }
@@ -999,13 +1015,13 @@ class _LibraryEmptyState extends StatelessWidget {
         children: [
           const Icon(Icons.library_books_outlined, size: 50),
           const SizedBox(height: 14),
-          Text(
+          UiText(
             'No papers in ${state.label}',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 7),
-          Text(switch (state) {
+          UiText(switch (state) {
             LibraryItemState.inbox =>
               'Papers you add arrive here before you organize them.',
             LibraryItemState.readNext =>
@@ -1023,7 +1039,7 @@ class _LibraryEmptyState extends StatelessWidget {
               key: const ValueKey('library-empty-add-paper'),
               onPressed: onAddPaper,
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Add paper'),
+              label: const UiText('Add paper'),
             ),
           ],
         ],
@@ -1037,7 +1053,7 @@ class _SignedOutLibraryDestination extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Library')),
+    appBar: AppBar(title: const UiText('Library')),
     body: SafeArea(
       child: Center(
         child: SingleChildScrollView(
@@ -1047,13 +1063,13 @@ class _SignedOutLibraryDestination extends StatelessWidget {
             children: [
               const Icon(Icons.cloud_sync_outlined, size: 52),
               const SizedBox(height: 16),
-              Text(
+              UiText(
                 'Sign in to see your Library',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
-              const Text(
+              const UiText(
                 'Your saved papers and private organization belong to your '
                 'account. Public reading stays available without signing in.',
                 textAlign: TextAlign.center,
@@ -1061,7 +1077,7 @@ class _SignedOutLibraryDestination extends StatelessWidget {
               const SizedBox(height: 20),
               FilledButton(
                 onPressed: () => context.push<void>('/auth'),
-                child: const Text('Sign in'),
+                child: const UiText('Sign in'),
               ),
             ],
           ),
@@ -1078,12 +1094,12 @@ class _UnavailableLibraryDestination extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Library')),
+    appBar: AppBar(title: const UiText('Library')),
     body: SafeArea(
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text(
+          child: UiText(
             _readOnlyMessage(status),
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.titleMedium,

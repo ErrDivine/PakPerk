@@ -14,11 +14,14 @@ final class FlutterAppAuthOidcClient implements OidcClient {
   FlutterAppAuthOidcClient({
     required OidcClientConfiguration configuration,
     FlutterAppAuth appAuth = const FlutterAppAuth(),
+    String Function()? uiLocale,
   }) : _configuration = configuration,
-       _appAuth = appAuth;
+       _appAuth = appAuth,
+       _uiLocale = uiLocale ?? (() => 'en');
 
   final OidcClientConfiguration _configuration;
   final FlutterAppAuth _appAuth;
+  final String Function() _uiLocale;
 
   @override
   Future<OidcTokenSet> authorizeAndExchangeCode() async {
@@ -29,6 +32,7 @@ final class FlutterAppAuthOidcClient implements OidcClient {
           _configuration.redirectUri.toString(),
           issuer: _configuration.issuer.toString(),
           scopes: _configuration.scopes,
+          additionalParameters: {'ui_locales': _uiLocale()},
           allowInsecureConnections: _configuration.allowInsecureLocalhost,
           externalUserAgent: ExternalUserAgent.asWebAuthenticationSession,
         ),
@@ -58,7 +62,7 @@ final class FlutterAppAuthOidcClient implements OidcClient {
           issuer: _configuration.issuer.toString(),
           scopes: _configuration.scopes,
           promptValues: const ['login'],
-          additionalParameters: const {'max_age': '0'},
+          additionalParameters: {'max_age': '0', 'ui_locales': _uiLocale()},
           allowInsecureConnections: _configuration.allowInsecureLocalhost,
           externalUserAgent: ExternalUserAgent.asWebAuthenticationSession,
         ),

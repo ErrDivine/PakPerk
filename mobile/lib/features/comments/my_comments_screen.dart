@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,7 +18,7 @@ final class MyCommentsScreen extends ConsumerWidget {
       final viewer = ref.watch(commentViewerScopeProvider);
       final readOnlyStatus = ref.watch(commentReadOnlyAccountStatusProvider);
       return Scaffold(
-        appBar: AppBar(title: const Text('My comments')),
+        appBar: AppBar(title: const UiText('My comments')),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -26,7 +27,7 @@ final class MyCommentsScreen extends ConsumerWidget {
                 : FilledButton.icon(
                     onPressed: () => context.push<void>(PakPerkRoutes.auth),
                     icon: const Icon(Icons.login),
-                    label: const Text('Sign in to view your comments'),
+                    label: const UiText('Sign in to view your comments'),
                   ),
           ),
         ),
@@ -34,7 +35,7 @@ final class MyCommentsScreen extends ConsumerWidget {
     }
     final state = ref.watch(myCommentsControllerProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('My comments')),
+      appBar: AppBar(title: const UiText('My comments')),
       body: RefreshIndicator(
         onRefresh: () => ref.read(myCommentsControllerProvider.notifier).load(),
         child: _body(context, ref, state),
@@ -54,7 +55,7 @@ final class MyCommentsScreen extends ConsumerWidget {
           const Icon(Icons.comment_outlined, size: 48),
           const SizedBox(height: 12),
           Center(
-            child: Text(
+            child: UiText(
               state.errorMessage ??
                   'Your published and under-review comments appear here.',
               textAlign: TextAlign.center,
@@ -78,7 +79,7 @@ final class MyCommentsScreen extends ConsumerWidget {
                     : () => ref
                           .read(myCommentsControllerProvider.notifier)
                           .load(more: true),
-                child: Text(state.loadingMore ? 'Loading…' : 'Load more'),
+                child: UiText(state.loadingMore ? 'Loading…' : 'Load more'),
               ),
             ),
           );
@@ -92,7 +93,7 @@ final class MyCommentsScreen extends ConsumerWidget {
               maxLines: 4,
               overflow: TextOverflow.ellipsis,
             ),
-            subtitle: Text(_statusLabel(comment)),
+            subtitle: UiText(_statusLabel(comment)),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push<void>(
               PakPerkRoutes.paperComments(comment.paperId),
@@ -115,13 +116,13 @@ class _UnavailableAccountComments extends StatelessWidget {
     children: [
       const Icon(Icons.lock_outline, size: 48),
       const SizedBox(height: 12),
-      Text(
+      UiText(
         readOnly ? 'Account comments are read-only' : 'Account is offline',
         style: Theme.of(context).textTheme.titleLarge,
         textAlign: TextAlign.center,
       ),
       const SizedBox(height: 8),
-      Text(
+      UiText(
         readOnly
             ? 'Public comments remain readable from each paper, but My '
                   'Comments is unavailable for this account.'

@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -26,7 +27,7 @@ class _BlockedUsersScreenState extends ConsumerState<BlockedUsersScreen> {
       final viewer = ref.watch(commentViewerScopeProvider);
       final readOnlyStatus = ref.watch(commentReadOnlyAccountStatusProvider);
       return Scaffold(
-        appBar: AppBar(title: const Text('Blocked users')),
+        appBar: AppBar(title: const UiText('Blocked users')),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -36,7 +37,7 @@ class _BlockedUsersScreenState extends ConsumerState<BlockedUsersScreen> {
                     children: [
                       const Icon(Icons.lock_outline, size: 48),
                       const SizedBox(height: 12),
-                      Text(
+                      UiText(
                         readOnlyStatus == null
                             ? 'Account is offline'
                             : 'Blocked users are read-only',
@@ -44,7 +45,7 @@ class _BlockedUsersScreenState extends ConsumerState<BlockedUsersScreen> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
-                      Text(
+                      UiText(
                         readOnlyStatus == null
                             ? 'Reconnect and verify this saved session to '
                                   'manage blocked users.'
@@ -57,7 +58,7 @@ class _BlockedUsersScreenState extends ConsumerState<BlockedUsersScreen> {
                 : FilledButton.icon(
                     onPressed: () => context.push<void>(PakPerkRoutes.auth),
                     icon: const Icon(Icons.login),
-                    label: const Text('Sign in to manage blocked users'),
+                    label: const UiText('Sign in to manage blocked users'),
                   ),
           ),
         ),
@@ -71,10 +72,10 @@ class _BlockedUsersScreenState extends ConsumerState<BlockedUsersScreen> {
     final blocked = ref.watch(blockedUsersProvider(scope));
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Blocked users'),
+        title: const UiText('Blocked users'),
         actions: [
           IconButton(
-            tooltip: 'Refresh blocked users',
+            tooltip: uiString(context, 'Refresh blocked users'),
             onPressed: _syncing ? null : () => _sync(scope),
             icon: const Icon(Icons.sync),
           ),
@@ -83,7 +84,7 @@ class _BlockedUsersScreenState extends ConsumerState<BlockedUsersScreen> {
       body: blocked.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, __) => const Center(
-          child: Text('Blocked users could not be read from this device.'),
+          child: UiText('Blocked users could not be read from this device.'),
         ),
         data: (items) => _list(scope, items),
       ),
@@ -95,7 +96,7 @@ class _BlockedUsersScreenState extends ConsumerState<BlockedUsersScreen> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text(
+          child: UiText(
             _error ?? 'You have not blocked anyone.',
             textAlign: TextAlign.center,
           ),
@@ -110,21 +111,21 @@ class _BlockedUsersScreenState extends ConsumerState<BlockedUsersScreen> {
         if (_error != null && index == 0) {
           return ListTile(
             leading: const Icon(Icons.info_outline),
-            title: Text(_error!),
+            title: UiText(_error!),
           );
         }
         final item = items[index - (_error == null ? 0 : 1)];
         return ListTile(
           leading: const CircleAvatar(child: Icon(Icons.person_off_outlined)),
           title: Text(item.displayName ?? '@${item.handle}'),
-          subtitle: Text(
+          subtitle: UiText(
             item.serverConfirmed
                 ? '@${item.handle}'
                 : '@${item.handle} · waiting to sync',
           ),
           trailing: TextButton(
             onPressed: _syncing ? null : () => _unblock(scope, item),
-            child: const Text('Unblock'),
+            child: const UiText('Unblock'),
           ),
         );
       },

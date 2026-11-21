@@ -1,3 +1,5 @@
+import 'package:flutter_localizations/flutter_localizations.dart';
+import '../l10n/language_controller.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -8,6 +10,7 @@ import '../core/auth/auth.dart';
 import '../features/feed/feed_controller.dart';
 import '../features/feed/reading_feed_controller.dart';
 import '../features/paper_reader/reader_navigation_controller.dart';
+import '../features/product_survey/product_survey_prompt.dart';
 import 'account_providers.dart';
 import 'appearance_controller.dart';
 import 'library_providers.dart';
@@ -97,6 +100,9 @@ class _PakPerkAppState extends ConsumerState<PakPerkApp>
     final openingMotion = ref.watch(featureFlagsProvider).openingMotion;
     return MaterialApp.router(
       title: 'Pakperk',
+      locale: ref.watch(languageControllerProvider),
+      supportedLocales: const [Locale('en'), Locale('zh')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       debugShowCheckedModeBanner: false,
       theme: buildPakPerkTheme(),
       darkTheme: buildPakPerkDarkTheme(),
@@ -110,7 +116,10 @@ class _PakPerkAppState extends ConsumerState<PakPerkApp>
         onRepairAndRetry: startupController.repairAndRetry,
         onFirstUsableFrame: _notifyFirstUsableFrame,
         onOpeningComplete: startupController.markOpeningComplete,
-        child: child ?? const SizedBox.shrink(),
+        child: ProductSurveyPromptHost(
+          enabled: startup.hasUsableLocalState && startup.openingCompleted,
+          child: child ?? const SizedBox.shrink(),
+        ),
       ),
     );
   }

@@ -51,6 +51,7 @@ pub(crate) mod recommendations;
 pub(crate) mod research_memory;
 pub(crate) mod research_profiles;
 pub(crate) mod support;
+pub(crate) mod product_surveys;
 pub(crate) mod version_diff;
 
 use support::{

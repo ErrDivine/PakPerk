@@ -100,6 +100,44 @@ class IntroductionParagraph {
   };
 }
 
+/// Ordered content from the same arXiv version, without PDF column inference.
+class IntroductionSourceBlock {
+  const IntroductionSourceBlock({
+    required this.kind,
+    required this.text,
+    this.images = const [],
+    this.rows = const [],
+    this.vectorHtml,
+    this.aspectRatio = 1.6,
+  });
+  final String kind;
+  final String text;
+  final List<String> images;
+  final List<List<String>> rows;
+  final String? vectorHtml;
+  final double aspectRatio;
+
+  factory IntroductionSourceBlock.fromJson(Map<String, dynamic> json) =>
+      IntroductionSourceBlock(
+        kind: json['kind'] as String,
+        text: json['text'] as String,
+        images: (json['images'] as List? ?? []).cast<String>(),
+        vectorHtml: json['vector_html'] as String?,
+        aspectRatio: (json['aspect_ratio'] as num?)?.toDouble() ?? 1.6,
+        rows: (json['rows'] as List? ?? [])
+            .map((row) => (row as List).cast<String>())
+            .toList(),
+      );
+  Map<String, dynamic> toJson() => {
+    'kind': kind,
+    'text': text,
+    if (images.isNotEmpty) 'images': images,
+    if (rows.isNotEmpty) 'rows': rows,
+    if (vectorHtml != null) 'vector_html': vectorHtml,
+    if (vectorHtml != null) 'aspect_ratio': aspectRatio,
+  };
+}
+
 class PaperIntroduction {
   const PaperIntroduction({
     required this.paperId,
@@ -108,6 +146,9 @@ class PaperIntroduction {
     required this.paragraphs,
     required this.detectionConfidence,
     required this.originalPdfUrl,
+    this.sourceBlocks = const [],
+    this.sourceUrl,
+    this.sourceRevision = 0,
   });
 
   final String paperId;
@@ -116,6 +157,9 @@ class PaperIntroduction {
   final List<IntroductionParagraph> paragraphs;
   final double detectionConfidence;
   final String originalPdfUrl;
+  final List<IntroductionSourceBlock> sourceBlocks;
+  final String? sourceUrl;
+  final int sourceRevision;
 
   factory PaperIntroduction.fromJson(Map<String, dynamic> json) {
     final nestedDetection = json['detection'];
@@ -139,6 +183,15 @@ class PaperIntroduction {
           (detection['confidence'] as num?)?.toDouble() ??
           0,
       originalPdfUrl: (json['original_pdf_url'] ?? '').toString(),
+      sourceUrl: json['source_url'] as String?,
+      sourceRevision: (json['source_revision'] as num?)?.toInt() ?? 0,
+      sourceBlocks: (json['source_blocks'] as List? ?? [])
+          .map(
+            (value) => IntroductionSourceBlock.fromJson(
+              Map<String, dynamic>.from(value as Map),
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -149,5 +202,9 @@ class PaperIntroduction {
     'paragraphs': paragraphs.map((paragraph) => paragraph.toJson()).toList(),
     'detection_confidence': detectionConfidence,
     'original_pdf_url': originalPdfUrl,
+    if (sourceUrl != null) 'source_url': sourceUrl,
+    if (sourceUrl != null) 'source_revision': sourceRevision,
+    if (sourceBlocks.isNotEmpty)
+      'source_blocks': sourceBlocks.map((block) => block.toJson()).toList(),
   };
 }

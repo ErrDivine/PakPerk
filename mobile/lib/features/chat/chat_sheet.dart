@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
@@ -50,12 +51,12 @@ class _PaperChatSheetState extends State<PaperChatSheet> {
               Semantics(
                 header: true,
                 child: ListTile(
-                  title: const Text('Ask this paper'),
-                  subtitle: const Text(
+                  title: const UiText('Ask this paper'),
+                  subtitle: const UiText(
                     'Answers use indexed sections from this paper only.',
                   ),
                   trailing: IconButton(
-                    tooltip: 'Close paper chat',
+                    tooltip: uiString(context, 'Close paper chat'),
                     onPressed: widget.onClose,
                     icon: const Icon(Icons.close),
                   ),
@@ -84,7 +85,7 @@ class _PaperChatSheetState extends State<PaperChatSheet> {
               if (widget.state.sending)
                 Semantics(
                   liveRegion: true,
-                  label: 'Thinking and searching the paper.',
+                  label: uiString(context, 'Thinking and searching the paper.'),
                   child: const Padding(
                     padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
                     child: Row(
@@ -94,7 +95,7 @@ class _PaperChatSheetState extends State<PaperChatSheet> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                         SizedBox(width: 10),
-                        Expanded(child: Text('Searching later sections…')),
+                        Expanded(child: UiText('Searching later sections…')),
                       ],
                     ),
                   ),
@@ -104,7 +105,7 @@ class _PaperChatSheetState extends State<PaperChatSheet> {
                   liveRegion: true,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                    child: Text(
+                    child: UiText(
                       widget.state.errorMessage!,
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.error,
@@ -157,7 +158,7 @@ class _EmptyChat extends StatelessWidget {
     return const Center(
       child: Padding(
         padding: EdgeInsets.all(24),
-        child: Text(
+        child: UiText(
           'Ask about methods, results, experiments, or limitations. '
           'If the indexed evidence is insufficient, Pakperk will say so.',
           textAlign: TextAlign.center,
@@ -176,7 +177,10 @@ class _ChatBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = message.role == ChatRole.user;
     return Semantics(
-      label: '${user ? 'You' : 'Pakperk'}: ${message.content}',
+      label: uiString(
+        context,
+        '${user ? 'You' : 'Pakperk'}: ${message.content}',
+      ),
       child: Align(
         alignment: user ? Alignment.centerRight : Alignment.centerLeft,
         child: Container(
@@ -202,21 +206,21 @@ class _ChatBubble extends StatelessWidget {
                       // Model-authored links are intentionally inert. The only
                       // external actions in this demo use trusted arXiv URLs.
                     },
-                    sizedImageBuilder: (_) => const Text(
+                    sizedImageBuilder: (_) => const UiText(
                       '[remote image omitted]',
                       style: TextStyle(fontStyle: FontStyle.italic),
                     ),
                   ),
                 if (message.insufficientEvidence) ...[
                   const SizedBox(height: 8),
-                  const Text(
+                  const UiText(
                     'Evidence in the indexed paper sections was limited.',
                     style: TextStyle(fontStyle: FontStyle.italic),
                   ),
                 ],
                 if (message.evidence.isNotEmpty) ...[
                   const SizedBox(height: 10),
-                  Text(
+                  UiText(
                     'SOURCES',
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
@@ -229,7 +233,7 @@ class _ChatBubble extends StatelessWidget {
                         Chip(
                           visualDensity: VisualDensity.compact,
                           avatar: const Icon(Icons.menu_book, size: 16),
-                          label: Text(source.badgeLabel),
+                          label: UiText(source.badgeLabel),
                         ),
                     ],
                   ),
@@ -270,8 +274,8 @@ class _SheetComposer extends StatelessWidget {
               maxLength: 500,
               textInputAction: TextInputAction.send,
               onSubmitted: enabled ? (_) => onSend() : null,
-              decoration: const InputDecoration(
-                hintText: 'Ask about this paper…',
+              decoration: InputDecoration(
+                hintText: uiString(context, 'Ask about this paper…'),
                 counterText: '',
               ),
             ),

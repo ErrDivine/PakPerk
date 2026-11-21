@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -116,7 +117,7 @@ class _LibraryItemEditorSheetState extends State<_LibraryItemEditorSheet> {
     return Semantics(
       scopesRoute: true,
       namesRoute: true,
-      label: 'Edit ${widget.item.paper.title}',
+      label: uiString(context, 'Edit ${widget.item.paper.title}'),
       explicitChildNodes: true,
       child: SafeArea(
         left: true,
@@ -139,7 +140,7 @@ class _LibraryItemEditorSheetState extends State<_LibraryItemEditorSheet> {
                   children: [
                     const _AccessibleDragHandle(),
                     const SizedBox(height: 10),
-                    Text('Organize paper', style: theme.textTheme.titleLarge),
+                    UiText('Organize paper', style: theme.textTheme.titleLarge),
                     const SizedBox(height: 4),
                     Text(
                       widget.item.paper.title,
@@ -152,16 +153,18 @@ class _LibraryItemEditorSheetState extends State<_LibraryItemEditorSheet> {
                       key: const ValueKey('library-editor-state'),
                       initialValue: _state,
                       isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'State',
-                        helperText:
-                            'Inbox, Read next, and Reading stay in To Read.',
+                      decoration: InputDecoration(
+                        labelText: uiString(context, 'State'),
+                        helperText: uiString(
+                          context,
+                          'Inbox, Read next, and Reading stay in To Read.',
+                        ),
                       ),
                       items: [
                         for (final state in LibraryItemState.values)
                           DropdownMenuItem(
                             value: state,
-                            child: Text(state.label),
+                            child: UiText(state.label),
                           ),
                       ],
                       onChanged: widget.capabilities.state
@@ -183,8 +186,8 @@ class _LibraryItemEditorSheetState extends State<_LibraryItemEditorSheet> {
                       key: const ValueKey('library-editor-reminder'),
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.notifications_none_rounded),
-                      title: const Text('Remind me'),
-                      subtitle: Text(_reminderLabel(context)),
+                      title: const UiText('Remind me'),
+                      subtitle: UiText(_reminderLabel(context)),
                       enabled:
                           _state.isActive &&
                           (widget.capabilities.reminders ||
@@ -204,7 +207,7 @@ class _LibraryItemEditorSheetState extends State<_LibraryItemEditorSheet> {
                               key: const ValueKey(
                                 'library-editor-clear-reminder',
                               ),
-                              tooltip: 'Clear reminder',
+                              tooltip: uiString(context, 'Clear reminder'),
                               onPressed: _state.isActive
                                   ? () => setState(() {
                                       _reminderAt = null;
@@ -215,14 +218,14 @@ class _LibraryItemEditorSheetState extends State<_LibraryItemEditorSheet> {
                             ),
                     ),
                     if (!_state.isActive)
-                      Text(
+                      UiText(
                         'Reminders are available for Inbox, Read next, and Reading.',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
                     if (_state.isActive && !widget.capabilities.reminders)
-                      Text(
+                      UiText(
                         _reminderAt == null && _completedReminderAt == null
                             ? 'Turn on in-app notifications to set a reminder.'
                             : 'Notifications are unavailable in this build. You can still clear this reminder.',
@@ -240,11 +243,13 @@ class _LibraryItemEditorSheetState extends State<_LibraryItemEditorSheet> {
                       maxLength: 500,
                       textCapitalization: TextCapitalization.sentences,
                       inputFormatters: [LengthLimitingTextInputFormatter(500)],
-                      decoration: const InputDecoration(
-                        labelText: 'Why save this?',
-                        hintText: 'Optional private note',
-                        helperText:
-                            'Private. Never used as recommendation input.',
+                      decoration: InputDecoration(
+                        labelText: uiString(context, 'Why save this?'),
+                        hintText: uiString(context, 'Optional private note'),
+                        helperText: uiString(
+                          context,
+                          'Private. Never used as recommendation input.',
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -253,10 +258,13 @@ class _LibraryItemEditorSheetState extends State<_LibraryItemEditorSheet> {
                       controller: _listsController,
                       enabled: widget.capabilities.lists,
                       textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'Lists',
-                        hintText: 'Methods, Journal club',
-                        helperText: 'Separate list names with commas.',
+                      decoration: InputDecoration(
+                        labelText: uiString(context, 'Lists'),
+                        hintText: uiString(context, 'Methods, Journal club'),
+                        helperText: uiString(
+                          context,
+                          'Separate list names with commas.',
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -268,10 +276,13 @@ class _LibraryItemEditorSheetState extends State<_LibraryItemEditorSheet> {
                       onSubmitted: (_) {
                         if (_canSave) unawaited(_save());
                       },
-                      decoration: const InputDecoration(
-                        labelText: 'Tags',
-                        hintText: 'transformers, evaluation',
-                        helperText: 'Separate tags with commas.',
+                      decoration: InputDecoration(
+                        labelText: uiString(context, 'Tags'),
+                        hintText: uiString(context, 'transformers, evaluation'),
+                        helperText: uiString(
+                          context,
+                          'Separate tags with commas.',
+                        ),
                       ),
                     ),
                     if (!widget.capabilities.canEdit) ...[
@@ -301,7 +312,7 @@ class _LibraryItemEditorSheetState extends State<_LibraryItemEditorSheet> {
                             onPressed: _saving
                                 ? null
                                 : () => Navigator.of(context).pop(),
-                            child: const Text('Cancel'),
+                            child: const UiText('Cancel'),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -316,7 +327,7 @@ class _LibraryItemEditorSheetState extends State<_LibraryItemEditorSheet> {
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : Text(_error == null ? 'Save' : 'Retry'),
+                                : UiText(_error == null ? 'Save' : 'Retry'),
                           ),
                         ),
                       ],
@@ -465,7 +476,7 @@ class _AccessibleDragHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Semantics(
-    label: 'Modal sheet',
+    label: uiString(context, 'Modal sheet'),
     child: Center(
       child: Container(
         width: 36,
@@ -500,7 +511,7 @@ class _EditorMessage extends StatelessWidget {
         children: [
           Icon(icon, size: 20),
           const SizedBox(width: 10),
-          Expanded(child: Text(message)),
+          Expanded(child: UiText(message)),
         ],
       ),
     ),

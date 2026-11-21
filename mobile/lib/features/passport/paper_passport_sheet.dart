@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -77,13 +78,16 @@ class _PaperPassportSheetState extends ConsumerState<_PaperPassportSheet> {
     final passport = widget.passport;
     return Semantics(
       container: true,
-      label: 'Full Paper Passport for ${passport.versionLabel}',
+      label: uiString(
+        context,
+        'Full Paper Passport for ${passport.versionLabel}',
+      ),
       child: CustomScrollView(
         slivers: [
           SliverAppBar(
             pinned: true,
             automaticallyImplyLeading: false,
-            title: const Text('Paper Passport'),
+            title: const UiText('Paper Passport'),
             actions: [
               IconButton(
                 constraints: const BoxConstraints(
@@ -91,7 +95,7 @@ class _PaperPassportSheetState extends ConsumerState<_PaperPassportSheet> {
                   minHeight: PakPerkSizes.minimumInteractive,
                 ),
                 onPressed: () => Navigator.of(context).maybePop(),
-                tooltip: 'Close Paper Passport',
+                tooltip: uiString(context, 'Close Paper Passport'),
                 icon: const Icon(Icons.close),
               ),
             ],
@@ -102,19 +106,19 @@ class _PaperPassportSheetState extends ConsumerState<_PaperPassportSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
+                  UiText(
                     '${passport.versionLabel} · ${_passportStatus(passport.status)}',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  const UiText(
                     'A source-linked reading aid generated from the prepared full paper. Inferences are labeled separately from author-stated evidence.',
                   ),
                   if (_announcement != null) ...[
                     const SizedBox(height: 10),
                     Semantics(
                       liveRegion: true,
-                      child: Text(
+                      child: UiText(
                         _announcement!,
                         key: const ValueKey('passport-live-feedback'),
                         style: TextStyle(
@@ -173,7 +177,7 @@ class _PaperPassportSheetState extends ConsumerState<_PaperPassportSheet> {
                     initialType: PassportFeedbackType.parserIssue,
                   ),
                   icon: const Icon(Icons.report_outlined),
-                  label: const Text('Report a Passport issue'),
+                  label: const UiText('Report a Passport issue'),
                 ),
               ),
             ),
@@ -207,7 +211,7 @@ class _PaperPassportSheetState extends ConsumerState<_PaperPassportSheet> {
         _announcement = '${field.displayLabel} saved to Memory.';
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${field.displayLabel} saved to Memory.')),
+        SnackBar(content: UiText('${field.displayLabel} saved to Memory.')),
       );
       unawaited(_committedSuccessHaptic());
     } on Object {
@@ -218,7 +222,9 @@ class _PaperPassportSheetState extends ConsumerState<_PaperPassportSheet> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${field.displayLabel} could not be saved to Memory.'),
+          content: UiText(
+            '${field.displayLabel} could not be saved to Memory.',
+          ),
         ),
       );
     }
@@ -255,8 +261,10 @@ class _PassportFieldPanel extends StatelessWidget {
     final theme = Theme.of(context);
     return Semantics(
       container: true,
-      label:
-          '${field.displayLabel}. ${_fieldStatus(field.status)}. ${_authorshipLabel(field.status)}.',
+      label: uiString(
+        context,
+        '${field.displayLabel}. ${_fieldStatus(field.status)}. ${_authorshipLabel(field.status)}.',
+      ),
       child: Card(
         margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
         child: Padding(
@@ -264,7 +272,7 @@ class _PassportFieldPanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(field.displayLabel, style: theme.textTheme.titleMedium),
+              UiText(field.displayLabel, style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -291,7 +299,7 @@ class _PassportFieldPanel extends StatelessWidget {
                       style: _minimumButtonStyle(),
                       onPressed: onInspectEvidence,
                       icon: const Icon(Icons.fact_check_outlined),
-                      label: const Text('Exact evidence'),
+                      label: const UiText('Exact evidence'),
                     ),
                   if (onAskAssistant != null)
                     OutlinedButton.icon(
@@ -299,7 +307,7 @@ class _PassportFieldPanel extends StatelessWidget {
                       style: _minimumButtonStyle(),
                       onPressed: onAskAssistant,
                       icon: const Icon(Icons.question_answer_outlined),
-                      label: const Text('Ask'),
+                      label: const UiText('Ask'),
                     ),
                   if (onRemember != null)
                     FilledButton.tonalIcon(
@@ -314,7 +322,7 @@ class _PassportFieldPanel extends StatelessWidget {
                               ),
                             )
                           : const Icon(Icons.bookmark_add_outlined),
-                      label: Text(remembering ? 'Saving…' : 'Remember'),
+                      label: UiText(remembering ? 'Saving…' : 'Remember'),
                     ),
                   if (onReport != null)
                     TextButton.icon(
@@ -322,7 +330,7 @@ class _PassportFieldPanel extends StatelessWidget {
                       style: _minimumButtonStyle(),
                       onPressed: onReport,
                       icon: const Icon(Icons.flag_outlined),
-                      label: const Text('Correction'),
+                      label: const UiText('Correction'),
                     ),
                 ],
               ),
@@ -346,8 +354,8 @@ class _PassportInformationPanel extends StatelessWidget {
       key: const ValueKey('passport-information-panel'),
       minTileHeight: PakPerkSizes.minimumInteractive,
       leading: const Icon(Icons.info_outline),
-      title: const Text('Generation details'),
-      subtitle: Text(
+      title: const UiText('Generation details'),
+      subtitle: UiText(
         'Generated ${_formatTimestamp(context, passport.createdAt)}',
       ),
       childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -395,9 +403,9 @@ class _InformationRow extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: Theme.of(context).textTheme.labelLarge),
+        UiText(label, style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 2),
-        if (selectable) SelectableText(value) else Text(value),
+        if (selectable) SelectableText(value) else UiText(value),
       ],
     ),
   );
@@ -416,7 +424,7 @@ class _Badge extends StatelessWidget {
       borderRadius: BorderRadius.circular(999),
       border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
     ),
-    child: Text(label, style: Theme.of(context).textTheme.labelMedium),
+    child: UiText(label, style: Theme.of(context).textTheme.labelMedium),
   );
 }
 
@@ -508,26 +516,28 @@ class _PassportFeedbackComposerState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
+              UiText(
                 widget.field == null
                     ? 'Report a Passport issue'
                     : 'Correct ${widget.field!.displayLabel}',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 6),
-              const Text(
+              const UiText(
                 'Feedback creates a private evaluation record for review. It does not directly rewrite the shared Passport.',
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<PassportFeedbackType>(
                 key: const ValueKey('passport-feedback-type'),
                 initialValue: _type,
-                decoration: const InputDecoration(labelText: 'Issue type'),
+                decoration: InputDecoration(
+                  labelText: uiString(context, 'Issue type'),
+                ),
                 items: PassportFeedbackType.values
                     .map(
                       (value) => DropdownMenuItem(
                         value: value,
-                        child: Text(value.displayLabel),
+                        child: UiText(value.displayLabel),
                       ),
                     )
                     .toList(growable: false),
@@ -548,7 +558,7 @@ class _PassportFeedbackComposerState
                 maxLines: 6,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: InputDecoration(
-                  labelText: 'Details (optional)',
+                  labelText: uiString(context, 'Details (optional)'),
                   alignLabelWithHint: true,
                   helperText: detailInvalid
                       ? 'Use at most $passportFeedbackMaximumScalars characters and remove unsupported null characters.'
@@ -566,7 +576,7 @@ class _PassportFeedbackComposerState
                 const SizedBox(height: 12),
                 Semantics(
                   liveRegion: true,
-                  child: Text(
+                  child: UiText(
                     feedback.message!,
                     key: const ValueKey('passport-feedback-announcement'),
                     style: TextStyle(
@@ -584,7 +594,7 @@ class _PassportFeedbackComposerState
                   key: const ValueKey('passport-feedback-done'),
                   style: _minimumButtonStyle(),
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Done'),
+                  child: const UiText('Done'),
                 )
               else
                 FilledButton.icon(
@@ -607,7 +617,7 @@ class _PassportFeedbackComposerState
                           ),
                         )
                       : const Icon(Icons.send_outlined),
-                  label: Text(
+                  label: UiText(
                     feedback.phase == PassportFeedbackPhase.failed
                         ? 'Try again'
                         : feedback.isSubmitting

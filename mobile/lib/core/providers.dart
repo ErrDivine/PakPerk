@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../app/feature_flags.dart';
+import 'document/arxiv_introduction_source.dart';
 import 'api/api_client.dart';
 import 'api/transport_network_status.dart';
 import 'cache/demo_asset_store.dart';
@@ -124,7 +125,10 @@ final apiClientProvider = Provider<ApiClient>((ref) {
 });
 
 final paperRepositoryProvider = Provider<PaperDataSource>((ref) {
+  final introductionSource = ArxivIntroductionSource();
+  ref.onDispose(introductionSource.dispose);
   final repository = PaperRepository(
+    introductionSource: introductionSource,
     api: ref.watch(apiClientProvider),
     localStore: ref.watch(localStoreProvider),
     demoContent: ref.watch(demoContentStoreProvider),

@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/annotation.dart';
@@ -66,12 +67,12 @@ class _AnnotationEditorState extends State<_AnnotationEditor> {
       child: SingleChildScrollView(
         child: Semantics(
           container: true,
-          label: '$label editor for selected source text',
+          label: uiString(context, '$label editor for selected source text'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(label, style: Theme.of(context).textTheme.titleLarge),
+              UiText(label, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
               DecoratedBox(
                 decoration: BoxDecoration(
@@ -95,7 +96,7 @@ class _AnnotationEditorState extends State<_AnnotationEditor> {
                 maxLines: 8,
                 maxLength: 32000,
                 decoration: InputDecoration(
-                  labelText: label,
+                  labelText: uiStringOrNull(context, label),
                   hintText: widget.kind == AnnotationKind.question
                       ? 'What do you want to resolve?'
                       : 'Add your interpretation or context',
@@ -116,7 +117,7 @@ class _AnnotationEditorState extends State<_AnnotationEditor> {
                     ).pop(AnnotationDraft(kind: widget.kind, body: body));
                   },
                   icon: const Icon(Icons.check),
-                  label: Text('Save $label'),
+                  label: UiText('Save $label'),
                 ),
               ),
             ],

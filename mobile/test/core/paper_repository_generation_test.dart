@@ -9,10 +9,40 @@ import 'package:pakperk/core/models/introduction.dart';
 import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/models/processing.dart';
 import 'package:pakperk/core/repository/paper_repository.dart';
+import 'package:pakperk/core/document/arxiv_introduction_source.dart';
 
 import '../support/fakes.dart';
 
 void main() {
+  test(
+    'structured Introduction cache is reused only for the current paper generation',
+    () async {
+      final store = MemoryLocalStore()
+        ..papers[samplePaper.paperId] = samplePaper
+        ..processing[samplePaper.paperId] = sampleProcessing;
+      final source = _Source();
+      final api = _GenerationApiClient();
+      final repository = PaperRepository(
+        api: api,
+        localStore: store,
+        demoContent: const _EmptyDemoStore(),
+        introductionSource: source,
+      );
+      addTearDown(repository.dispose);
+      addTearDown(source.dispose);
+      final first = await repository.getIntroduction(samplePaper.paperId);
+      expect(first.value.sourceBlocks, isNotEmpty);
+      await repository.getIntroduction(samplePaper.paperId);
+      expect(source.calls, 1);
+      store.processing[samplePaper.paperId] = _processingAtGeneration(2);
+      await expectLater(
+        repository.getIntroduction(samplePaper.paperId),
+        throwsA(isA<ApiException>()),
+      );
+      expect(store.introductions[samplePaper.paperId]?.generation, 1);
+    },
+  );
+
   test(
     'repository rejects every response older than cached processing',
     () async {
@@ -79,6 +109,26 @@ void main() {
       expect(store.introductions, isEmpty);
     },
   );
+}
+
+class _Source extends ArxivIntroductionSource {
+  int calls = 0;
+  @override
+  Future<PaperIntroduction?> load(
+    PaperIntroduction original,
+    String arxivId,
+    RequestCancellation? cancellation,
+  ) async {
+    calls++;
+    return PaperIntroduction.fromJson(
+      original.toJson()
+        ..['source_url'] = 'https://arxiv.org/html/$arxivId'
+        ..['source_revision'] = ArxivIntroductionSource.sourceRevision
+        ..['source_blocks'] = [
+          {'kind': 'paragraph', 'text': 'Correctly ordered source text.'},
+        ],
+    );
+  }
 }
 
 PaperProcessingState _processingAtGeneration(int generation) =>

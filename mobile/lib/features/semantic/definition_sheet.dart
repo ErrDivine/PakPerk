@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/document_block.dart';
@@ -33,12 +34,12 @@ Future<String?> showDefinitionSheet({
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
           children: [
-            Text(
+            UiText(
               term.displayTerm,
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 4),
-            Text('${term.kind.label} · ${term.definitionStatus.label}'),
+            UiText('${term.kind.label} · ${term.definitionStatus.label}'),
             if (term.kind == PaperTermKind.symbol) ...[
               const SizedBox(height: 12),
               const _DefinitionNotice(
@@ -108,7 +109,10 @@ Future<void> showUnavailableDefinitionSheet({
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(safeSelection, style: Theme.of(context).textTheme.titleLarge),
+            UiText(
+              safeSelection,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: 12),
             const _DefinitionNotice(
               icon: Icons.info_outline,
@@ -122,7 +126,7 @@ Future<void> showUnavailableDefinitionSheet({
               ),
               child: FilledButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Done'),
+                child: const UiText('Done'),
               ),
             ),
           ],
@@ -202,9 +206,11 @@ class _DefinitionCard extends StatelessWidget {
         : definition.sourceType.label;
     return Semantics(
       container: true,
-      label:
-          '$sourceLabel, ${definition.confidenceStatus.label.toLowerCase()}'
-          '${generated ? ', generated and not source evidence' : ''}',
+      label: uiString(
+        context,
+        '$sourceLabel, ${definition.confidenceStatus.label.toLowerCase()}'
+        '${generated ? ', generated and not source evidence' : ''}',
+      ),
       child: Card(
         margin: EdgeInsets.zero,
         child: Padding(
@@ -217,19 +223,19 @@ class _DefinitionCard extends StatelessWidget {
                 runSpacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Text(
+                  UiText(
                     sourceLabel,
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                   Chip(
                     visualDensity: VisualDensity.compact,
-                    label: Text(definition.confidenceStatus.label),
+                    label: UiText(definition.confidenceStatus.label),
                   ),
                 ],
               ),
               if (generated) ...[
                 const SizedBox(height: 6),
-                Text(
+                UiText(
                   'Generated explanation · not source evidence',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     fontWeight: FontWeight.w700,
@@ -247,7 +253,7 @@ class _DefinitionCard extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: onOpenSource,
                     icon: const Icon(Icons.find_in_page_outlined),
-                    label: const Text('Open exact source'),
+                    label: const UiText('Open exact source'),
                   ),
                 ),
               ],
@@ -281,7 +287,7 @@ class _DefinitionNotice extends StatelessWidget {
           children: [
             Icon(icon),
             const SizedBox(width: 10),
-            Expanded(child: Text(text)),
+            Expanded(child: UiText(text)),
           ],
         ),
       ),

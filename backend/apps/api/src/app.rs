@@ -449,6 +449,11 @@ pub fn build_router(state: AppState, config: &ApiConfig) -> Router {
     let router = Router::new()
         .route("/health/live", get(health_live))
         .route("/health/ready", get(health_ready))
+        .route(
+            "/v1/product-surveys",
+            post(crate::routes::product_surveys::submit)
+                .layer(axum::extract::DefaultBodyLimit::max(16 * 1024)),
+        )
         .route("/v1/feed", get(feed))
         .route("/v1/papers/{paper_id}", get(paper_metadata))
         .route("/v1/papers/by-arxiv/{*arxiv_id}", get(paper_by_arxiv))

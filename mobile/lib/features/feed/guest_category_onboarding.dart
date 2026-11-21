@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -186,7 +187,7 @@ final class _GuestCategoryOnboardingSheetState
       container: true,
       scopesRoute: true,
       namesRoute: true,
-      label: 'Choose public research categories',
+      label: uiString(context, 'Choose public research categories'),
       explicitChildNodes: true,
       child: SafeArea(
         top: false,
@@ -208,13 +209,13 @@ final class _GuestCategoryOnboardingSheetState
                 children: [
                   Semantics(
                     header: true,
-                    child: Text(
+                    child: UiText(
                       'What would you like to see?',
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
                   ),
                   const SizedBox(height: PakPerkSpacing.xs),
-                  Text(
+                  UiText(
                     'Choose up to four public arXiv categories, or skip. '
                     'This stays on this device and is not personalization.',
                     style: Theme.of(context).textTheme.bodyMedium,
@@ -232,7 +233,7 @@ final class _GuestCategoryOnboardingSheetState
                           child: FilterChip(
                             key: ValueKey('guest-category-${option.code}'),
                             selected: _selected.contains(option.code),
-                            label: Text('${option.label} · ${option.code}'),
+                            label: UiText('${option.label} · ${option.code}'),
                             onSelected:
                                 _selected.length < 4 ||
                                     _selected.contains(option.code)
@@ -260,7 +261,7 @@ final class _GuestCategoryOnboardingSheetState
                           : () => Navigator.of(
                               context,
                             ).pop(_orderedSelection(_selected)),
-                      child: const Text('Show selected categories'),
+                      child: const UiText('Show selected categories'),
                     ),
                   ),
                   const SizedBox(height: PakPerkSpacing.xs),
@@ -272,7 +273,7 @@ final class _GuestCategoryOnboardingSheetState
                       key: const ValueKey('guest-category-skip'),
                       onPressed: () =>
                           Navigator.of(context).pop(const <String>[]),
-                      child: const Text('Skip for now'),
+                      child: const UiText('Skip for now'),
                     ),
                   ),
                 ],
@@ -332,7 +333,7 @@ class _GuestCategorySelectorState extends State<GuestCategorySelector> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(widget.activeCategory ?? 'All recent'),
+                UiText(widget.activeCategory ?? 'All recent'),
                 Icon(_expanded ? Icons.expand_less : Icons.expand_more),
               ],
             ),
@@ -344,14 +345,14 @@ class _GuestCategorySelectorState extends State<GuestCategorySelector> {
                 ChoiceChip(
                   key: const ValueKey('guest-category-all'),
                   selected: widget.activeCategory == null,
-                  label: const Text('All recent'),
+                  label: const UiText('All recent'),
                   onSelected: (_) => _select(null),
                 ),
                 for (final category in widget.categories)
                   ChoiceChip(
                     key: ValueKey('guest-category-filter-$category'),
                     selected: widget.activeCategory == category,
-                    label: Text(category),
+                    label: UiText(category),
                     onSelected: (_) => _select(category),
                   ),
                 TextButton.icon(
@@ -361,7 +362,7 @@ class _GuestCategorySelectorState extends State<GuestCategorySelector> {
                     widget.onManage();
                   },
                   icon: const Icon(Icons.tune_rounded),
-                  label: Text(
+                  label: UiText(
                     widget.categories.isEmpty ? 'Choose categories' : 'Edit',
                   ),
                 ),

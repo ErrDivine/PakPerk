@@ -19,6 +19,7 @@ pub(crate) enum PublicRequestAction {
     Prepare,
     Chat,
     PaperSearch,
+    Survey,
 }
 
 #[derive(Debug)]
@@ -87,6 +88,10 @@ impl PublicRequestRateLimiter {
             PublicRequestAction::Prepare => self.prepare,
             PublicRequestAction::Chat => self.chat,
             PublicRequestAction::PaperSearch => self.paper_search,
+            PublicRequestAction::Survey => Policy {
+                bucket: "product_survey",
+                limit: 5,
+            },
         };
         self.consume(
             policy,

@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -290,7 +291,7 @@ class _AddPaperSheetState extends State<AddPaperSheet> {
             child: Semantics(
               scopesRoute: true,
               explicitChildNodes: true,
-              label: 'Add paper modal sheet',
+              label: uiString(context, 'Add paper modal sheet'),
               child: AnimatedBuilder(
                 animation: widget.controller,
                 builder: (context, child) => _buildContent(
@@ -333,7 +334,7 @@ class _AddPaperSheetState extends State<AddPaperSheet> {
                 child: Semantics(
                   header: true,
                   namesRoute: true,
-                  child: Text(
+                  child: UiText(
                     'Add a paper',
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
@@ -341,7 +342,7 @@ class _AddPaperSheetState extends State<AddPaperSheet> {
               ),
               IconButton(
                 key: const ValueKey('add-paper-close'),
-                tooltip: 'Close Add paper',
+                tooltip: uiString(context, 'Close Add paper'),
                 onPressed: _dismiss,
                 icon: const Icon(Icons.close_rounded),
               ),
@@ -366,8 +367,11 @@ class _AddPaperSheetState extends State<AddPaperSheet> {
             onSubmitted: (_) => _submitFromKeyboard(state),
             scrollPadding: const EdgeInsets.only(bottom: 120),
             decoration: InputDecoration(
-              labelText: 'Paste an arXiv link or search by paper title',
-              hintText: 'https://arxiv.org/abs/…',
+              labelText: uiString(
+                context,
+                'Paste an arXiv link or search by paper title',
+              ),
+              hintText: uiString(context, 'https://arxiv.org/abs/…'),
               helperText: widget.controller.titleSearchEnabled
                   ? 'You can also enter an arXiv ID. Titles search '
                         'automatically after you pause.'
@@ -377,7 +381,7 @@ class _AddPaperSheetState extends State<AddPaperSheet> {
                   ? null
                   : IconButton(
                       key: const ValueKey('add-paper-clear'),
-                      tooltip: 'Clear paper entry',
+                      tooltip: uiString(context, 'Clear paper entry'),
                       onPressed: widget.controller.clear,
                       icon: const Icon(Icons.clear_rounded),
                     ),
@@ -424,7 +428,7 @@ class _AddPaperSheetState extends State<AddPaperSheet> {
 
   Widget _stateBody(BuildContext context, PaperImportState state) {
     return switch (state.phase) {
-      PaperImportPhase.unavailable => const _InfoPanel(
+      PaperImportPhase.unavailable => _InfoPanel(
         key: ValueKey('add-paper-unavailable'),
         icon: Icons.lock_outline_rounded,
         title: 'Account verification required',
@@ -443,13 +447,13 @@ class _AddPaperSheetState extends State<AddPaperSheet> {
         key: const ValueKey('add-paper-ready'),
         identifier: state.classification!.identifier!.queryId,
       ),
-      PaperImportPhase.waitingForSearch => const _InfoPanel(
+      PaperImportPhase.waitingForSearch => _InfoPanel(
         key: ValueKey('add-paper-waiting'),
         icon: Icons.search_rounded,
         title: 'Ready to search',
         message: 'Searching begins after a short pause in typing.',
       ),
-      PaperImportPhase.searching => const _ProgressPanel(
+      PaperImportPhase.searching => _ProgressPanel(
         key: ValueKey('add-paper-searching'),
         semanticsLabel: 'Searching arXiv for matching papers',
         message: 'Searching arXiv…',
@@ -622,7 +626,7 @@ class _AddPaperDragHandle extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     key: const ValueKey('add-paper-drag-handle'),
     container: true,
-    label: 'Drag handle',
+    label: uiString(context, 'Drag handle'),
     hint: 'Swipe down to dismiss Add paper',
     excludeSemantics: true,
     child: SizedBox(
@@ -706,7 +710,7 @@ class _BottomAction extends StatelessWidget {
                           ? Icons.alarm_add_outlined
                           : Icons.tune_rounded,
                     ),
-                    label: Text(
+                    label: UiText(
                       remindersAvailable
                           ? 'Organize or remind'
                           : 'Organize paper',
@@ -716,14 +720,14 @@ class _BottomAction extends StatelessWidget {
                   OutlinedButton(
                     key: const ValueKey('add-paper-done'),
                     onPressed: onDone,
-                    child: const Text('Done'),
+                    child: const UiText('Done'),
                   ),
                 ],
               )
             : FilledButton(
                 key: const ValueKey('add-paper-primary-action'),
                 onPressed: action,
-                child: Text(label),
+                child: UiText(label),
               ),
       ),
     );
@@ -753,13 +757,13 @@ class _InfoPanel extends StatelessWidget {
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
         const SizedBox(height: PakPerkSpacing.sm),
-        Text(
+        UiText(
           title,
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: PakPerkSpacing.xs),
-        Text(
+        UiText(
           message,
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium,
@@ -777,7 +781,7 @@ class _ExactReadyPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
     container: true,
-    label: 'Ready to add arXiv paper $identifier',
+    label: uiString(context, 'Ready to add arXiv paper $identifier'),
     child: Card(
       child: Padding(
         padding: const EdgeInsets.all(PakPerkSpacing.md),
@@ -792,12 +796,12 @@ class _ExactReadyPanel extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  UiText(
                     'Ready to add',
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                   const SizedBox(height: PakPerkSpacing.xxs),
-                  Text(
+                  UiText(
                     'arXiv $identifier',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
@@ -836,7 +840,7 @@ class _ProgressPanel extends StatelessWidget {
             child: CircularProgressIndicator(strokeWidth: 2.5),
           ),
           const SizedBox(height: PakPerkSpacing.md),
-          Text(message, style: Theme.of(context).textTheme.titleSmall),
+          UiText(message, style: Theme.of(context).textTheme.titleSmall),
         ],
       ),
     ),
@@ -853,7 +857,7 @@ class _FailurePanel extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     liveRegion: true,
     container: true,
-    label: '${failure.title}. ${failure.message}',
+    label: uiString(context, '${failure.title}. ${failure.message}'),
     child: DecoratedBox(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.errorContainer,
@@ -864,14 +868,14 @@ class _FailurePanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
+            UiText(
               failure.title,
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
                 color: Theme.of(context).colorScheme.onErrorContainer,
               ),
             ),
             const SizedBox(height: PakPerkSpacing.xs),
-            Text(
+            UiText(
               failure.message,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onErrorContainer,
@@ -883,7 +887,7 @@ class _FailurePanel extends StatelessWidget {
                 key: const ValueKey('add-paper-retry'),
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Try again'),
+                label: const UiText('Try again'),
               ),
             ],
           ],
@@ -902,7 +906,7 @@ class _SuccessPanel extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     liveRegion: true,
     container: true,
-    label: '${result.paper.title} added to To Read',
+    label: uiString(context, '${result.paper.title} added to To Read'),
     excludeSemantics: true,
     child: Padding(
       padding: const EdgeInsets.symmetric(vertical: PakPerkSpacing.lg),
@@ -914,7 +918,7 @@ class _SuccessPanel extends StatelessWidget {
             color: context.pakPerkColors.success,
           ),
           const SizedBox(height: PakPerkSpacing.sm),
-          Text(
+          UiText(
             'Added to To Read',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.titleLarge,

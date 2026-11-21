@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 import '../../core/library/library_models.dart';
 
@@ -13,16 +14,16 @@ class LibrarySyncStatusButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => IconButton(
     key: const ValueKey('library-sync-status'),
-    tooltip: '$pendingCount library changes waiting to sync',
+    tooltip: uiString(context, '$pendingCount library changes waiting to sync'),
     icon: Badge(
-      label: Text('$pendingCount'),
+      label: UiText('$pendingCount'),
       child: const Icon(Icons.cloud_upload_outlined),
     ),
     onPressed: () => showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Sync status'),
-        content: Text(
+        title: const UiText('Sync status'),
+        content: UiText(
           '$pendingCount library changes waiting to sync. '
           'Your changes are saved on this device. '
           'They have not yet synced to your account on the server.'
@@ -31,7 +32,7 @@ class LibrarySyncStatusButton extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            child: const UiText('Close'),
           ),
         ],
       ),

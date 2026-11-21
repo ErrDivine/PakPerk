@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -132,7 +133,7 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('This save could not be stored on this device.'),
+            content: UiText('This save could not be stored on this device.'),
           ),
         );
         return;
@@ -165,10 +166,10 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
-            content: const Text('Removed from To Read'),
+            content: const UiText('Removed from To Read'),
             action: SnackBarAction(
               key: const ValueKey('paper-save-undo'),
-              label: 'Undo',
+              label: uiString(context, 'Undo'),
               onPressed: () => unawaited(_undoRemoval(scope)),
             ),
           ),
@@ -216,7 +217,7 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('This paper could not be restored on this device.'),
+          content: UiText('This paper could not be restored on this device.'),
         ),
       );
       return;
@@ -268,12 +269,12 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
+                UiText(
                   'Save across your devices',
                   style: Theme.of(sheetContext).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                const UiText(
                   'Sign in to add this paper to your synchronized To Read '
                   'list. Reading stays available without an account.',
                 ),
@@ -281,11 +282,11 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
                 FilledButton(
                   key: const ValueKey('save-sign-in-continue'),
                   onPressed: () => Navigator.of(sheetContext).pop(true),
-                  child: const Text('Continue to sign in'),
+                  child: const UiText('Continue to sign in'),
                 ),
                 TextButton(
                   onPressed: () => Navigator.of(sheetContext).pop(false),
-                  child: const Text('Not now'),
+                  child: const UiText('Not now'),
                 ),
               ],
             ),
@@ -389,7 +390,7 @@ class PaperSaveControlView extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 4),
-                        Text(
+                        UiText(
                           saved ? 'Saved' : 'Save',
                           key: const ValueKey('paper-save-label'),
                           textAlign: TextAlign.center,
@@ -408,7 +409,7 @@ class PaperSaveControlView extends StatelessWidget {
                         icon,
                         const SizedBox(width: 8),
                         Flexible(
-                          child: Text(
+                          child: UiText(
                             saved ? 'Saved to To Read' : 'Save to To Read',
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.labelLarge

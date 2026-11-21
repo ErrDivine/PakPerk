@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/router.dart';
@@ -19,7 +20,7 @@ final class PaperCommentsControl extends StatelessWidget {
       container: true,
       excludeSemantics: true,
       button: true,
-      label: 'Open paper discussions',
+      label: uiString(context, 'Open paper discussions'),
       child: Tooltip(
         message: 'Open paper discussions',
         excludeFromSemantics: true,
@@ -46,7 +47,7 @@ final class PaperCommentsControl extends StatelessWidget {
                       children: [
                         Icon(Icons.forum_outlined, size: 22),
                         SizedBox(height: 4),
-                        Text(
+                        UiText(
                           'Comments',
                           key: ValueKey('paper-comments-label'),
                           textAlign: TextAlign.center,
@@ -59,7 +60,7 @@ final class PaperCommentsControl extends StatelessWidget {
                         Icon(Icons.forum_outlined, size: 22),
                         SizedBox(width: 8),
                         Flexible(
-                          child: Text(
+                          child: UiText(
                             'Paper discussions',
                             textAlign: TextAlign.center,
                           ),

@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/library/library_models.dart';
@@ -188,14 +189,20 @@ class _ToReadControls extends StatelessWidget {
                 textInputAction: TextInputAction.search,
                 autocorrect: false,
                 decoration: InputDecoration(
-                  labelText: 'Search saved papers',
-                  hintText: 'Title, author, arXiv ID, or category',
+                  labelText: uiString(context, 'Search saved papers'),
+                  hintText: uiString(
+                    context,
+                    'Title, author, arXiv ID, or category',
+                  ),
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: searchController.text.isEmpty
                       ? null
                       : IconButton(
                           key: const ValueKey('to-read-clear-search'),
-                          tooltip: 'Clear saved-paper search',
+                          tooltip: uiString(
+                            context,
+                            'Clear saved-paper search',
+                          ),
                           onPressed: onClearSearch,
                           icon: const Icon(Icons.clear),
                         ),
@@ -230,9 +237,9 @@ class _ToReadControls extends StatelessWidget {
                         : selectedCategory,
                     selectedValue: selectedCategory,
                     options: [
-                      const _SelectMenuOption(
+                      _SelectMenuOption(
                         value: '',
-                        label: 'All categories',
+                        label: uiString(context, 'All categories'),
                       ),
                       for (final category in categories)
                         _SelectMenuOption(value: category, label: category),
@@ -247,7 +254,7 @@ class _ToReadControls extends StatelessWidget {
                 liveRegion: true,
                 label: resultLabel,
                 excludeSemantics: true,
-                child: Text(
+                child: UiText(
                   resultLabel,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
@@ -315,7 +322,7 @@ class _SelectMenuButtonState<T> extends State<_SelectMenuButton<T>> {
                 ? const Icon(Icons.check, size: 20)
                 : null,
             onPressed: () => _select(option.value),
-            child: Text(option.label),
+            child: UiText(option.label),
           ),
         ),
     ],
@@ -363,7 +370,11 @@ class _ControlLabel extends StatelessWidget {
             Icon(icon, size: 20),
             const SizedBox(width: 8),
             Flexible(
-              child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
+              child: UiText(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             const SizedBox(width: 4),
             const Icon(Icons.arrow_drop_down, size: 20),
@@ -390,13 +401,13 @@ class _NoMatchesStatus extends StatelessWidget {
           children: [
             const Icon(Icons.search_off, size: 48),
             const SizedBox(height: 12),
-            Text(
+            UiText(
               'No saved papers match these filters',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
-            const Text(
+            const UiText(
               'Try another title, author, arXiv ID, or category.',
               textAlign: TextAlign.center,
             ),
@@ -405,7 +416,7 @@ class _NoMatchesStatus extends StatelessWidget {
               key: const ValueKey('to-read-clear-filters'),
               onPressed: onClear,
               icon: const Icon(Icons.filter_alt_off),
-              label: const Text('Clear filters'),
+              label: const UiText('Clear filters'),
             ),
           ],
         ),
@@ -442,7 +453,7 @@ class _ListStatus extends StatelessWidget {
                   children: [
                     const Icon(Icons.bookmarks_outlined, size: 52),
                     const SizedBox(height: 16),
-                    Text(
+                    UiText(
                       readOnlyMessage == null
                           ? 'Your To Read list is empty'
                           : 'No saved papers are available',
@@ -450,7 +461,7 @@ class _ListStatus extends StatelessWidget {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 8),
-                    Text(
+                    UiText(
                       readOnlyMessage == null
                           ? 'Save a paper from any Read stage and it will appear here.'
                           : 'This account is read-only, so the empty list cannot '
@@ -459,7 +470,7 @@ class _ListStatus extends StatelessWidget {
                     ),
                     if (offline) ...[
                       const SizedBox(height: 12),
-                      Text(
+                      UiText(
                         refreshable
                             ? 'Offline. Pull to refresh when you reconnect.'
                             : 'Offline. Showing cached saves.',
@@ -468,7 +479,7 @@ class _ListStatus extends StatelessWidget {
                     ],
                     if (issue != null) ...[
                       const SizedBox(height: 12),
-                      Text(
+                      UiText(
                         issue!.message,
                         textAlign: TextAlign.center,
                         style: TextStyle(
@@ -500,7 +511,7 @@ class _ListStatus extends StatelessWidget {
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
+                      child: UiText(
                         issue?.message ??
                             'Offline. Cached saves and pending changes remain available.',
                       ),
@@ -523,7 +534,7 @@ class _ListStatus extends StatelessWidget {
               children: [
                 const Icon(Icons.lock_outline),
                 const SizedBox(width: 10),
-                Expanded(child: Text(readOnlyMessage!)),
+                Expanded(child: UiText(readOnlyMessage!)),
               ],
             ),
           ),
@@ -574,16 +585,16 @@ class _ToReadCard extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(authors, maxLines: 2, overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 6),
-                    Text(
+                    UiText(
                       '${paper.primaryCategory} · ${_date(paper.publishedAt)}'
                       ' · Saved ${_date(item.savedAt)}',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     if (item.savedState.syncPending) ...[
                       const SizedBox(height: 8),
-                      const _StatusChip(
+                      _StatusChip(
                         icon: Icons.schedule,
-                        label: 'Waiting to sync',
+                        label: uiString(context, 'Waiting to sync'),
                       ),
                     ] else if (item.savedState.issue case final issue?) ...[
                       const SizedBox(height: 8),
@@ -636,7 +647,7 @@ class _StatusChip extends StatelessWidget {
           Icon(icon, size: 16, color: color),
           const SizedBox(width: 5),
           Flexible(
-            child: Text(
+            child: UiText(
               label,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,

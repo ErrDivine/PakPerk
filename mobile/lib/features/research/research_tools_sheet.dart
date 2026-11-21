@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -135,7 +136,7 @@ class _ResearchToolsSheet extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
+                  UiText(
                     'Research tools',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
@@ -172,7 +173,7 @@ class _ResearchToolsSheet extends ConsumerWidget {
                       Icon(Icons.cloud_off_outlined),
                       SizedBox(width: 10),
                       Expanded(
-                        child: Text(
+                        child: UiText(
                           'Offline: edits are saved on this device and keep their operation IDs for later sync.',
                         ),
                       ),
@@ -185,15 +186,15 @@ class _ResearchToolsSheet extends ConsumerWidget {
                 padding: const EdgeInsets.all(12),
                 child: Semantics(
                   liveRegion: true,
-                  child: Text(state.errorMessage!),
+                  child: UiText(state.errorMessage!),
                 ),
               ),
             Card(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: const ListTile(
                 leading: Icon(Icons.privacy_tip_outlined),
-                title: Text('Private, account-scoped research data'),
-                subtitle: Text(
+                title: UiText('Private, account-scoped research data'),
+                subtitle: UiText(
                   'Sign-out and account deletion remove these local rows. This build does not claim the local SQLite database is encrypted; device access controls and OS file protection remain part of the threat boundary.',
                 ),
               ),
@@ -233,12 +234,12 @@ class _ResearchToolsSheet extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
+            UiText(
               'Copy bounded export',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
-            const Text(
+            const UiText(
               'Exports include your research artifacts and citation metadata, not the complete paper text. Large exports are copied one complete part at a time; save each part before choosing Next part.',
             ),
             const SizedBox(height: 12),
@@ -286,7 +287,7 @@ class _ResearchToolsSheet extends ConsumerWidget {
       final nextCursor = artifact.nextCursor;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: UiText(
             artifact.pageNumber == 1 && artifact.isComplete
                 ? '${artifact.fileName} copied.'
                 : artifact.isComplete
@@ -296,7 +297,7 @@ class _ResearchToolsSheet extends ConsumerWidget {
           action: nextCursor == null
               ? null
               : SnackBarAction(
-                  label: 'Next part',
+                  label: uiString(context, 'Next part'),
                   onPressed: () => unawaited(
                     _copyExportPart(
                       context,
@@ -312,12 +313,12 @@ class _ResearchToolsSheet extends ConsumerWidget {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      ).showSnackBar(SnackBar(content: UiText(error.message)));
     } on Object {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('The bounded export could not be copied.'),
+          content: UiText('The bounded export could not be copied.'),
         ),
       );
     }
@@ -331,7 +332,7 @@ class _ResearchToolsSheet extends ConsumerWidget {
       final clipboard = await Clipboard.getData('text/plain');
       final archive = clipboard?.text;
       if (archive == null || archive.trim().isEmpty) {
-        throw const ApiException(
+        throw ApiException(
           code: 'EMPTY_ANNOTATION_IMPORT',
           message: 'Copy a Pakperk JSON research export before importing.',
           statusCode: 400,
@@ -353,12 +354,12 @@ class _ResearchToolsSheet extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
+                UiText(
                   'Import annotation archive?',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                const UiText(
                   'This sends only the annotation-bearing part of the copied Pakperk JSON export to your account, restoring annotations plus their exact conflict and re-anchor history. It does not send or import papers, Library state, evidence cards, memory, or assistant history. Matching IDs are skipped; any mismatch aborts the whole import.',
                 ),
                 const SizedBox(height: 16),
@@ -400,7 +401,7 @@ class _ResearchToolsSheet extends ConsumerWidget {
       final skipped = result.skippedAnnotations;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: UiText(
             '$restored annotations imported; $skipped existing annotations kept.',
           ),
         ),
@@ -409,12 +410,12 @@ class _ResearchToolsSheet extends ConsumerWidget {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      ).showSnackBar(SnackBar(content: UiText(error.message)));
     } on Object {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('The annotation archive could not be imported.'),
+          content: UiText('The annotation archive could not be imported.'),
         ),
       );
     }
@@ -437,26 +438,28 @@ class _AnnotationsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state.annotations.isEmpty && state.conflicts.isEmpty) {
-      return const _EmptyPanel(
+      return _EmptyPanel(
         icon: Icons.border_color_outlined,
         title: 'No annotations yet',
-        message:
-            'Select source text to highlight it, add a note, or save a question.',
+        message: 'Select source text to highlight it, add a note, or save a question.',
       );
     }
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
       children: [
         if (state.conflicts.isNotEmpty) ...[
-          Text('Merge review', style: Theme.of(context).textTheme.titleMedium),
+          UiText(
+            'Merge review',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 6),
           for (final conflict in state.conflicts)
             Card(
               child: ListTile(
                 minVerticalPadding: 12,
                 leading: const Icon(Icons.call_merge_outlined),
-                title: const Text('Note changed on two devices'),
-                subtitle: const Text(
+                title: const UiText('Note changed on two devices'),
+                subtitle: const UiText(
                   'Both bodies are preserved. Choose or edit a merged result.',
                 ),
                 trailing: const Icon(Icons.chevron_right),
@@ -478,7 +481,7 @@ class _AnnotationsPanel extends StatelessWidget {
                       Icon(_annotationIcon(annotation)),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text(
+                        child: UiText(
                           annotation.kind.name,
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
@@ -488,7 +491,7 @@ class _AnnotationsPanel extends StatelessWidget {
                   ),
                   if (annotation.selector?.exact case final quote?) ...[
                     const SizedBox(height: 6),
-                    Text(
+                    UiText(
                       '“$quote”',
                       maxLines: 4,
                       overflow: TextOverflow.ellipsis,
@@ -610,7 +613,7 @@ class _EvidencePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state.evidenceCards.isEmpty) {
-      return const _EmptyPanel(
+      return _EmptyPanel(
         icon: Icons.fact_check_outlined,
         title: 'No evidence cards yet',
         message: 'Select an exact source passage and choose Evidence.',
@@ -642,21 +645,21 @@ class _EvidencePanel extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 6),
-                Text(
+                UiText(
                   'Verification: ${_verificationLabel(card.verificationStatus)}',
                 ),
                 if (card.claimOrQuestion case final claim?) ...[
                   const SizedBox(height: 6),
-                  Text(claim, maxLines: 5, overflow: TextOverflow.ellipsis),
+                  UiText(claim, maxLines: 5, overflow: TextOverflow.ellipsis),
                 ],
                 if (card.userNote case final note?) ...[
                   const SizedBox(height: 6),
-                  Text(note),
+                  UiText(note),
                 ],
                 if (card.verificationStatus !=
                     EvidenceVerificationStatus.userReviewed) ...[
                   const SizedBox(height: 6),
-                  const Text(
+                  const UiText(
                     'Review this card before adding it to research memory.',
                   ),
                 ],
@@ -762,11 +765,10 @@ class _MemoryPanel extends StatelessWidget {
           ),
         Expanded(
           child: items.isEmpty
-              ? const _EmptyPanel(
+              ? _EmptyPanel(
                   icon: Icons.psychology_alt_outlined,
                   title: 'No memory items for this paper',
-                  message:
-                      'Only artifacts you explicitly choose are added here.',
+                  message: 'Only artifacts you explicitly choose are added here.',
                 )
               : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
@@ -802,7 +804,7 @@ class _MemoryPanel extends StatelessWidget {
                               Text(answer),
                             ],
                             const SizedBox(height: 6),
-                            Text(
+                            UiText(
                               'Status: ${item.status.name} · reviewed ${item.reviewCount} times',
                             ),
                             const SizedBox(height: 8),
@@ -925,7 +927,7 @@ class _ConflictMergeEditorState extends State<_ConflictMergeEditor> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Merge note', style: Theme.of(context).textTheme.titleLarge),
+          UiText('Merge note', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 12),
           _BodyVersion(
             label: 'This device',
@@ -941,8 +943,8 @@ class _ConflictMergeEditorState extends State<_ConflictMergeEditor> {
             minLines: 4,
             maxLines: 10,
             maxLength: 32000,
-            decoration: const InputDecoration(
-              labelText: 'Merged note',
+            decoration: InputDecoration(
+              labelText: uiString(context, 'Merged note'),
               border: OutlineInputBorder(),
             ),
           ),
@@ -970,7 +972,7 @@ class _BodyVersion extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(label, style: Theme.of(context).textTheme.labelLarge),
+          UiText(label, style: Theme.of(context).textTheme.labelLarge),
           const SizedBox(height: 4),
           Text(body?.isNotEmpty == true ? body! : 'Empty note'),
         ],
@@ -986,7 +988,7 @@ class _SyncLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Semantics(
-    label: 'Sync status ${state.name}',
+    label: uiString(context, 'Sync status ${state.name}'),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -997,7 +999,7 @@ class _SyncLabel extends StatelessWidget {
           ResearchSyncState.failed => Icons.cloud_off_outlined,
         }, size: 18),
         const SizedBox(width: 4),
-        Text(state.name),
+        UiText(state.name),
       ],
     ),
   );
@@ -1022,7 +1024,7 @@ class _SheetAction extends StatelessWidget {
     child: OutlinedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon),
-      label: Text(label),
+      label: UiText(label),
     ),
   );
 }
@@ -1047,13 +1049,13 @@ class _EmptyPanel extends StatelessWidget {
         children: [
           Icon(icon, size: 42),
           const SizedBox(height: 12),
-          Text(
+          UiText(
             title,
             style: Theme.of(context).textTheme.titleLarge,
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
-          Text(message, textAlign: TextAlign.center),
+          UiText(message, textAlign: TextAlign.center),
         ],
       ),
     ),
@@ -1076,16 +1078,18 @@ Future<void> _commit(
     if (!context.mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text(confirmation)));
+    ).showSnackBar(SnackBar(content: UiText(confirmation)));
   } on ApiException catch (error) {
     if (!context.mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text(error.message)));
+    ).showSnackBar(SnackBar(content: UiText(error.message)));
   } on Object {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('That research change could not be saved.')),
+      const SnackBar(
+        content: UiText('That research change could not be saved.'),
+      ),
     );
   }
 }

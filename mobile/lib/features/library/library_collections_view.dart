@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -129,7 +130,7 @@ final class _LibraryCollectionsViewState extends State<LibraryCollectionsView> {
     return Semantics(
       key: const ValueKey('library-collections-view'),
       container: true,
-      label: 'Private lists and tags',
+      label: uiString(context, 'Private lists and tags'),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
           PakPerkSpacing.md,
@@ -144,8 +145,8 @@ final class _LibraryCollectionsViewState extends State<LibraryCollectionsView> {
               color: theme.colorScheme.surfaceContainerLow,
               child: const ListTile(
                 leading: Icon(Icons.lock_outline_rounded),
-                title: Text('Private organization'),
-                subtitle: Text(
+                title: UiText('Private organization'),
+                subtitle: UiText(
                   'Lists and tags help you find papers. They never determine whether discovery is allowed.',
                 ),
               ),
@@ -166,8 +167,11 @@ final class _LibraryCollectionsViewState extends State<LibraryCollectionsView> {
                 ),
               )
             else if (widget.lists.isEmpty)
-              const _EmptyCollection(
-                label: 'No lists yet. Create one for an ordered collection.',
+              _EmptyCollection(
+                label: uiString(
+                  context,
+                  'No lists yet. Create one for an ordered collection.',
+                ),
               )
             else
               for (var index = 0; index < widget.lists.length; index += 1) ...[
@@ -193,8 +197,11 @@ final class _LibraryCollectionsViewState extends State<LibraryCollectionsView> {
             ),
             const SizedBox(height: PakPerkSpacing.xs),
             if (!widget.loading && widget.tags.isEmpty)
-              const _EmptyCollection(
-                label: 'No tags yet. Add reusable labels to saved papers.',
+              _EmptyCollection(
+                label: uiString(
+                  context,
+                  'No tags yet. Add reusable labels to saved papers.',
+                ),
               )
             else if (!widget.loading)
               Wrap(
@@ -208,7 +215,7 @@ final class _LibraryCollectionsViewState extends State<LibraryCollectionsView> {
                       ),
                       child: InputChip(
                         key: ValueKey('library-tag-${tag.id}'),
-                        label: Text(
+                        label: UiText(
                           tag.syncPending ? '${tag.name} · syncing' : tag.name,
                         ),
                         avatar: const Icon(Icons.sell_outlined),
@@ -223,7 +230,7 @@ final class _LibraryCollectionsViewState extends State<LibraryCollectionsView> {
               const SizedBox(height: PakPerkSpacing.sm),
               Semantics(
                 liveRegion: true,
-                child: Text(
+                child: UiText(
                   _errorMessage!,
                   key: const ValueKey('library-collections-error'),
                   style: theme.textTheme.bodyMedium?.copyWith(
@@ -246,7 +253,7 @@ final class _LibraryCollectionsViewState extends State<LibraryCollectionsView> {
     final draft =
         await _showAccountScopedDialog<({String name, String description})>(
           builder: (context) => AlertDialog.adaptive(
-            title: Text(
+            title: UiText(
               existing == null ? 'New private list' : 'Edit private list',
             ),
             content: SingleChildScrollView(
@@ -258,7 +265,9 @@ final class _LibraryCollectionsViewState extends State<LibraryCollectionsView> {
                     initialValue: name,
                     onChanged: (value) => name = value,
                     autofocus: true,
-                    decoration: const InputDecoration(labelText: 'List name'),
+                    decoration: InputDecoration(
+                      labelText: uiString(context, 'List name'),
+                    ),
                     maxLength: 100,
                     textInputAction: TextInputAction.next,
                   ),
@@ -269,8 +278,8 @@ final class _LibraryCollectionsViewState extends State<LibraryCollectionsView> {
                     maxLength: 500,
                     minLines: 2,
                     maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: 'Description (optional)',
+                    decoration: InputDecoration(
+                      labelText: uiString(context, 'Description (optional)'),
                     ),
                   ),
                 ],
@@ -279,13 +288,13 @@ final class _LibraryCollectionsViewState extends State<LibraryCollectionsView> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
+                child: const UiText('Cancel'),
               ),
               FilledButton(
                 onPressed: () => Navigator.of(
                   context,
                 ).pop((name: name, description: description)),
-                child: const Text('Save list'),
+                child: const UiText('Save list'),
               ),
             ],
           ),
@@ -312,7 +321,7 @@ final class _LibraryCollectionsViewState extends State<LibraryCollectionsView> {
     var name = existing?.name ?? '';
     final value = await _showAccountScopedDialog<String>(
       builder: (context) => AlertDialog.adaptive(
-        title: Text(existing == null ? 'New private tag' : 'Rename tag'),
+        title: UiText(existing == null ? 'New private tag' : 'Rename tag'),
         content: TextFormField(
           key: const ValueKey('library-tag-name-input'),
           initialValue: name,
@@ -320,17 +329,17 @@ final class _LibraryCollectionsViewState extends State<LibraryCollectionsView> {
           autofocus: true,
           maxLength: 60,
           textInputAction: TextInputAction.done,
-          decoration: const InputDecoration(labelText: 'Tag name'),
+          decoration: InputDecoration(labelText: uiString(context, 'Tag name')),
           onFieldSubmitted: (value) => Navigator.of(context).pop(value),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+            child: const UiText('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(name),
-            child: const Text('Save tag'),
+            child: const UiText('Save tag'),
           ),
         ],
       ),
@@ -389,16 +398,16 @@ final class _LibraryCollectionsViewState extends State<LibraryCollectionsView> {
   }) async =>
       await _showAccountScopedDialog<bool>(
         builder: (context) => AlertDialog.adaptive(
-          title: Text(title),
-          content: Text(detail),
+          title: UiText(title),
+          content: UiText(detail),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
+              child: const UiText('Cancel'),
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: Text(action),
+              child: UiText(action),
             ),
           ],
         ),
@@ -467,7 +476,7 @@ final class _SectionHeader extends StatelessWidget {
       Expanded(
         child: Semantics(
           header: true,
-          child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+          child: UiText(title, style: Theme.of(context).textTheme.titleLarge),
         ),
       ),
       ConstrainedBox(
@@ -478,7 +487,7 @@ final class _SectionHeader extends StatelessWidget {
           key: actionKey,
           onPressed: enabled ? onPressed : null,
           icon: const Icon(Icons.add_rounded),
-          label: Text(actionLabel),
+          label: UiText(actionLabel),
         ),
       ),
     ],
@@ -523,11 +532,11 @@ final class _ListCard extends StatelessWidget {
           if (list.description case final description?
               when description.isNotEmpty) ...[
             const SizedBox(height: PakPerkSpacing.xxs),
-            Text(description),
+            UiText(description),
           ],
           if (list.syncPending) ...[
             const SizedBox(height: PakPerkSpacing.xxs),
-            Text(
+            UiText(
               'Waiting to sync',
               style: Theme.of(context).textTheme.labelMedium,
             ),
@@ -537,25 +546,25 @@ final class _ListCard extends StatelessWidget {
             children: [
               IconButton(
                 key: ValueKey('library-list-up-${list.id}'),
-                tooltip: 'Move ${list.name} earlier',
+                tooltip: uiString(context, 'Move ${list.name} earlier'),
                 onPressed: enabled && index > 0 ? onMoveUp : null,
                 icon: const Icon(Icons.arrow_upward_rounded),
               ),
               IconButton(
                 key: ValueKey('library-list-down-${list.id}'),
-                tooltip: 'Move ${list.name} later',
+                tooltip: uiString(context, 'Move ${list.name} later'),
                 onPressed: enabled && index + 1 < count ? onMoveDown : null,
                 icon: const Icon(Icons.arrow_downward_rounded),
               ),
               IconButton(
                 key: ValueKey('library-list-edit-${list.id}'),
-                tooltip: 'Edit ${list.name}',
+                tooltip: uiString(context, 'Edit ${list.name}'),
                 onPressed: enabled ? onEdit : null,
                 icon: const Icon(Icons.edit_outlined),
               ),
               IconButton(
                 key: ValueKey('library-list-delete-${list.id}'),
-                tooltip: 'Delete ${list.name}',
+                tooltip: uiString(context, 'Delete ${list.name}'),
                 onPressed: enabled ? onDelete : null,
                 icon: const Icon(Icons.delete_outline_rounded),
               ),
@@ -575,6 +584,6 @@ final class _EmptyCollection extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: PakPerkSpacing.md),
-    child: Text(label),
+    child: UiText(label),
   );
 }

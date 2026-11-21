@@ -1,4 +1,7 @@
+import '../../core/widgets/reader_selection_area.dart';
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/library_providers.dart';
@@ -16,6 +19,7 @@ class AbstractView extends ConsumerStatefulWidget {
     required this.scrollController,
     required this.onStageRequested,
     this.passportGeneration,
+    this.onSelectionChanged,
     this.headerActions,
     this.paperPassportReady = false,
     this.active = true,
@@ -25,6 +29,7 @@ class AbstractView extends ConsumerStatefulWidget {
   });
 
   final PaperSummary paper;
+  final ValueChanged<SelectedContent?>? onSelectionChanged;
   final Widget? headerActions;
   final ScrollController scrollController;
   final ValueChanged<PaperStage> onStageRequested;
@@ -80,92 +85,98 @@ class _AbstractViewState extends ConsumerState<AbstractView> {
     } else {
       _scheduledPassportLoad = null;
     }
-    return CustomScrollView(
-      key: const PageStorageKey('abstract-scroll'),
-      controller: widget.scrollController,
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      slivers: [
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-          sliver: SliverList.list(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${paper.primaryCategory}  ·  ${_dateLabel(paper.publishedAt)}',
-                      style: Theme.of(context).textTheme.labelSmall,
+    return ReaderSelectionArea(
+      onSelectionChanged: widget.onSelectionChanged,
+      child: CustomScrollView(
+        key: const PageStorageKey('abstract-scroll'),
+        controller: widget.scrollController,
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+            sliver: SliverList.list(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: UiText(
+                        '${paper.primaryCategory}  ·  ${_dateLabel(paper.publishedAt)}',
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
                     ),
-                  ),
-                  if (widget.headerActions != null)
-                    Flexible(child: widget.headerActions!),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Semantics(
-                header: true,
-                child: Text(
-                  paper.title,
-                  style: Theme.of(context).textTheme.headlineSmall,
+                    if (widget.headerActions != null)
+                      Flexible(child: widget.headerActions!),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 12),
-              _AuthorsLine(
-                authors: paper.authors,
-                expanded: _authorsExpanded,
-                onToggle: () =>
-                    setState(() => _authorsExpanded = !_authorsExpanded),
-              ),
-              const SizedBox(height: 16),
-              Text('ABSTRACT', style: Theme.of(context).textTheme.labelSmall),
-              const SizedBox(height: 10),
-              Text(
-                paper.abstractText,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-              if (passportArgs != null && passportState != null) ...[
+                const SizedBox(height: 4),
+                Semantics(
+                  header: true,
+                  child: Text(
+                    paper.title,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _AuthorsLine(
+                  authors: paper.authors,
+                  expanded: _authorsExpanded,
+                  onToggle: () =>
+                      setState(() => _authorsExpanded = !_authorsExpanded),
+                ),
                 const SizedBox(height: 16),
-                _AbstractPassportContent(
-                  args: passportArgs,
-                  state: passportState,
-                  onOpenIntroduction: () =>
-                      widget.onStageRequested(PaperStage.introduction),
+                UiText(
+                  'ABSTRACT',
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  paper.abstractText,
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+                if (passportArgs != null && passportState != null) ...[
+                  const SizedBox(height: 16),
+                  _AbstractPassportContent(
+                    args: passportArgs,
+                    state: passportState,
+                    onOpenIntroduction: () =>
+                        widget.onStageRequested(PaperStage.introduction),
+                  ),
+                ],
+                const SizedBox(height: 28),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    if (!features.library && !features.comments)
+                      OutlinedButton.icon(
+                        key: const ValueKey('paper-arxiv-control'),
+                        onPressed: () => _open(paper.canonicalAbsUri),
+                        icon: const Icon(Icons.open_in_new),
+                        label: const UiText('Open on arXiv'),
+                      ),
+                    FilledButton.icon(
+                      onPressed: () =>
+                          widget.onStageRequested(PaperStage.introduction),
+                      icon: const Icon(Icons.arrow_forward),
+                      label: const UiText('Introduction'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const UiText(
+                  'Pakperk uses arXiv metadata and is not affiliated with or endorsed by arXiv.',
+                  style: TextStyle(fontSize: 12, height: 1.4),
+                ),
+                const SizedBox(height: 20),
+                _PaperBoundaryActions(
+                  onPrevious: widget.onPreviousPaper,
+                  onNext: widget.onNextPaper,
                 ),
               ],
-              const SizedBox(height: 28),
-              Wrap(
-                spacing: 10,
-                runSpacing: 8,
-                children: [
-                  if (!features.library && !features.comments)
-                    OutlinedButton.icon(
-                      key: const ValueKey('paper-arxiv-control'),
-                      onPressed: () => _open(paper.canonicalAbsUri),
-                      icon: const Icon(Icons.open_in_new),
-                      label: const Text('Open on arXiv'),
-                    ),
-                  FilledButton.icon(
-                    onPressed: () =>
-                        widget.onStageRequested(PaperStage.introduction),
-                    icon: const Icon(Icons.arrow_forward),
-                    label: const Text('Introduction'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Pakperk uses arXiv metadata and is not affiliated with or endorsed by arXiv.',
-                style: TextStyle(fontSize: 12, height: 1.4),
-              ),
-              const SizedBox(height: 20),
-              _PaperBoundaryActions(
-                onPrevious: widget.onPreviousPaper,
-                onNext: widget.onNextPaper,
-              ),
-            ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -174,7 +185,7 @@ class _AbstractViewState extends ConsumerState<AbstractView> {
         uri != null && await ref.read(externalLinkOpenerProvider).open(uri);
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the arXiv record.')),
+        const SnackBar(content: UiText('Could not open the arXiv record.')),
       );
     }
   }
@@ -237,7 +248,7 @@ class _AbstractPassportContent extends ConsumerWidget {
         onInspectEvidence: (_) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Opening the prepared document evidence.'),
+              content: UiText('Opening the prepared document evidence.'),
             ),
           );
           onOpenIntroduction();
@@ -253,12 +264,12 @@ class _AbstractPassportContent extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
+              UiText(
                 'Prepared Passport unavailable',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 6),
-              Text(
+              UiText(
                 state.message ?? 'The prepared Passport could not be verified.',
               ),
               const SizedBox(height: 10),
@@ -276,7 +287,7 @@ class _AbstractPassportContent extends ConsumerWidget {
                     .read(abstractPassportControllerProvider(args).notifier)
                     .load(),
                 icon: const Icon(Icons.refresh),
-                label: const Text('Try Passport again'),
+                label: const UiText('Try Passport again'),
               ),
             ],
           ),
@@ -285,7 +296,7 @@ class _AbstractPassportContent extends ConsumerWidget {
     }
     return Semantics(
       liveRegion: state.phase == AbstractPassportPhase.loading,
-      label: 'Loading prepared Paper Passport',
+      label: uiString(context, 'Loading prepared Paper Passport'),
       child: const Card(
         key: ValueKey('abstract-passport-loading'),
         margin: EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -298,7 +309,7 @@ class _AbstractPassportContent extends ConsumerWidget {
                 child: CircularProgressIndicator.adaptive(strokeWidth: 2),
               ),
               SizedBox(width: 12),
-              Expanded(child: Text('Loading prepared Paper Passport…')),
+              Expanded(child: UiText('Loading prepared Paper Passport…')),
             ],
           ),
         ),
@@ -335,7 +346,7 @@ class _AuthorsLine extends StatelessWidget {
         if (hasMore)
           TextButton(
             onPressed: onToggle,
-            child: Text(
+            child: UiText(
               expanded
                   ? 'Show fewer'
                   : '+${authors.length - visibleCount} authors',
@@ -377,14 +388,14 @@ class _PaperBoundaryActions extends StatelessWidget {
             : OutlinedButton.icon(
                 onPressed: onPrevious,
                 icon: const Icon(Icons.keyboard_arrow_up),
-                label: const Text('Previous paper'),
+                label: const UiText('Previous paper'),
               );
         final next = onNext == null
             ? null
             : FilledButton.tonalIcon(
                 onPressed: onNext,
                 icon: const Icon(Icons.keyboard_arrow_down),
-                label: const Text('Next paper'),
+                label: const UiText('Next paper'),
               );
         if (stackActions) {
           return Column(

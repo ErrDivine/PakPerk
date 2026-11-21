@@ -1,3 +1,4 @@
+import '../../l10n/ui.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/library/library_action_failure.dart';
@@ -36,19 +37,19 @@ final class LibraryActionFailureCard extends StatelessWidget {
               Icon(
                 Icons.sync_problem_outlined,
                 color: theme.colorScheme.primary,
-                semanticLabel: 'Library change needs review',
+                semanticLabel: uiString(context, 'Library change needs review'),
               ),
               const SizedBox(width: PakPerkSpacing.sm),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    UiText(
                       'A Library change wasn’t saved',
                       style: theme.textTheme.titleSmall,
                     ),
                     const SizedBox(height: PakPerkSpacing.xxs),
-                    Text(_detail(failure, collectionsAvailable)),
+                    UiText(_detail(failure, collectionsAvailable)),
                     if (failure.paper case final paper?) ...[
                       const SizedBox(height: PakPerkSpacing.xs),
                       Text(
@@ -73,7 +74,7 @@ final class LibraryActionFailureCard extends StatelessWidget {
                               failure,
                             )),
                             onPressed: onReview,
-                            child: Text(
+                            child: UiText(
                               _reviewLabel(
                                 failure.action,
                                 collectionsAvailable,
@@ -82,7 +83,10 @@ final class LibraryActionFailureCard extends StatelessWidget {
                           ),
                         ),
                         Semantics(
-                          label: 'Dismiss Library change notice',
+                          label: uiString(
+                            context,
+                            'Dismiss Library change notice',
+                          ),
                           button: true,
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(
@@ -94,7 +98,7 @@ final class LibraryActionFailureCard extends StatelessWidget {
                                 failure,
                               )),
                               onPressed: onDismiss,
-                              child: const Text('Dismiss'),
+                              child: const UiText('Dismiss'),
                             ),
                           ),
                         ),
