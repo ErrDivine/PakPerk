@@ -272,6 +272,17 @@ async fn graph_is_bounded_by_ranked_roots_and_chronological_page() {
         candidates.push(paper(&database, &page_category, now - TimeDelta::seconds(index)).await);
     }
     let wrong_category = paper(&database, &category(), now + TimeDelta::days(1)).await;
+    for (paper_id, doi) in [
+        (roots[0], "10.1234/example-root"),
+        (candidates[0], "10.1234/example-candidate"),
+    ] {
+        sqlx::query("UPDATE papers SET doi = $2 WHERE id = $1")
+            .bind(paper_id)
+            .bind(doi)
+            .execute(database.pool())
+            .await
+            .unwrap();
+    }
     edges(&database, &roots, &candidates, 1).await;
     edges(&database, &[candidates[0]], &[roots[0]], 1).await;
     edges(&database, &[candidates[1]], &[roots[0]], 2).await;
@@ -295,11 +306,35 @@ async fn graph_is_bounded_by_ranked_roots_and_chronological_page() {
         );
         let context = database
             .recommendation_batches()
-            .citation_learning_context(user_id, &ids, now)
+            .citation_learning_context_with_openalex(user_id, &ids, now)
             .await
             .unwrap();
         assert_eq!(context.library_revision, revision);
         assert_eq!(context.feedback.revision, page.feedback_revision);
+        assert_eq!(context.openalex_roots.len(), 10);
+        assert_eq!(context.openalex_roots[0].0.paper_id, roots[0]);
+        assert_eq!(
+            context.openalex_roots[0].1.as_deref(),
+            Some("10.1234/example-root")
+        );
+        assert_eq!(
+            context
+                .openalex_roots
+                .iter()
+                .map(|(root, _)| root.paper_id)
+                .collect::<BTreeSet<_>>(),
+            selected
+        );
+        assert_eq!(context.openalex_candidates.len(), ids.len());
+        for (candidate, original) in context.openalex_candidates.iter().zip(&page.items) {
+            assert_eq!(candidate.paper_id, original.paper_id);
+            assert_eq!(format!("{}v1", candidate.base_arxiv_id), original.arxiv_id);
+        }
+        assert_eq!(
+            context.openalex_candidates[0].doi.as_deref(),
+            Some("10.1234/example-candidate")
+        );
+        assert!(context.openalex_candidates[1].doi.is_none());
         assert!(
             context
                 .historical_seeds
@@ -340,6 +375,8 @@ async fn graph_is_bounded_by_ranked_roots_and_chronological_page() {
         .citation_learning_context(user_id, &candidates[..2], now)
         .await
         .unwrap();
+    assert!(context.openalex_roots.is_empty());
+    assert!(context.openalex_candidates.is_empty());
     assert_eq!(context.citation.pairs.len(), 6);
     assert_eq!(
         context
@@ -351,6 +388,13 @@ async fn graph_is_bounded_by_ranked_roots_and_chronological_page() {
         BTreeSet::from([(roots[0], 4), (weakest[0], 3), (roots[1], 2)])
     );
     set_consent(&database, user_id, false).await;
+    let context = database
+        .recommendation_batches()
+        .citation_learning_context_with_openalex(user_id, &candidates[..2], now)
+        .await
+        .unwrap();
+    assert!(context.openalex_roots.is_empty());
+    assert!(context.openalex_candidates.is_empty());
     set_consent(&database, user_id, true).await;
     let context = database
         .recommendation_batches()

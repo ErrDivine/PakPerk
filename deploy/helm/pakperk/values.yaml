@@ -29,6 +29,8 @@ secret:
   deletionWorkerDatabaseUrlKey: DELETION_WORKER_DATABASE_URL
   migrationDatabaseUrlKey: MIGRATION_DATABASE_URL
   llmApiKeyKey: LLM_API_KEY
+  # Optional API-only credential for the citation recommender.
+  openalexApiKeyKey: ""
   commentModerationTokenKey: COMMENT_MODERATION_TOKEN
   apiOriginHashKey: API_ORIGIN_HASH_SECRET
   apiCursorEncryptionKeysKey: API_CURSOR_ENCRYPTION_KEYS

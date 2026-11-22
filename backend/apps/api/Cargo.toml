@@ -34,6 +34,7 @@ recommendations.workspace = true
 research_profiles.workspace = true
 pgvector.workspace = true
 rand.workspace = true
+reqwest.workspace = true
 retrieval.workspace = true
 secrecy.workspace = true
 serde.workspace = true

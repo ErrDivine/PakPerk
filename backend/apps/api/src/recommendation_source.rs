@@ -45,7 +45,10 @@ use sha2::{Digest as _, Sha256};
 use tracing::warn;
 use uuid::Uuid;
 
-use crate::config::{RecommendationRolloutConfig, RecommendationScoringPolicy};
+use crate::{
+    config::{RecommendationRolloutConfig, RecommendationScoringPolicy},
+    recommendation_openalex::OpenAlexCitationClient,
+};
 
 /// Application adapter below `ReadingFeedService`'s queue gate. It receives
 /// only candidates selected by the same snapshot that proved emptiness, then
@@ -57,6 +60,7 @@ pub(crate) struct BatchRecommendationSource {
     profiles: Option<ResearchProfileService>,
     policy: BatchSourcePolicy,
     rollout: RecommendationRolloutConfig,
+    openalex: Option<OpenAlexCitationClient>,
 }
 
 #[derive(Clone, Copy)]
@@ -157,7 +161,13 @@ impl BatchRecommendationSource {
             profiles,
             policy: BatchSourcePolicy::Configured,
             rollout,
+            openalex: None,
         }
+    }
+
+    pub(crate) fn with_openalex(mut self, client: OpenAlexCitationClient) -> Self {
+        self.openalex = Some(client);
+        self
     }
 
     /// Deterministic metadata-only fallback used while enhanced recommendation
@@ -171,6 +181,7 @@ impl BatchRecommendationSource {
             profiles: None,
             policy: BatchSourcePolicy::RecentOnly,
             rollout: RecommendationRolloutConfig::default(),
+            openalex: None,
         }
     }
 
@@ -944,17 +955,31 @@ impl BatchRecommendationSource {
         paper_ids: &[domain::PaperId],
         now: chrono::DateTime<chrono::Utc>,
     ) -> Result<RecommendationCitationLearningContext, RecommendationError> {
-        let snapshot = self
-            .batches
-            .citation_learning_context(claimed.user_id, paper_ids, now)
-            .await
-            .map_err(recommendation_unavailable)?;
+        let mut snapshot = if self.openalex.is_some() {
+            self.batches
+                .citation_learning_context_with_openalex(claimed.user_id, paper_ids, now)
+                .await
+        } else {
+            self.batches
+                .citation_learning_context(claimed.user_id, paper_ids, now)
+                .await
+        }
+        .map_err(recommendation_unavailable)?;
         if snapshot.library_revision != claimed.library_revision
             || snapshot.profile_revision != claimed.profile_revision
             || snapshot.feedback.revision != claimed.feedback_revision
             || !snapshot.personalization_enabled
         {
             return Err(RecommendationError::RevisionStale);
+        }
+        if let Some(client) = &self.openalex {
+            match client
+                .citation_pairs(&snapshot.openalex_roots, &snapshot.openalex_candidates)
+                .await
+            {
+                Ok(pairs) => snapshot.citation.merge_pairs(pairs),
+                Err(error) => tracing::debug!(%error, "OpenAlex citation lookup unavailable"),
+            }
         }
         Ok(snapshot)
     }
@@ -2395,13 +2420,13 @@ mod tests {
             )
             .await
             .unwrap();
-        for index in 0..3 {
-            database
-                .papers()
-                .upsert_metadata(&metadata(&unique, &category, index))
-                .await
-                .unwrap();
-        }
+        let OpenAlexRolloutFixture {
+            root,
+            candidates,
+            client,
+            queries,
+            server,
+        } = openalex_rollout_fixture(&database, account.id, &unique, &category).await;
         let profiles = ResearchProfileService::new(
             Arc::new(database.research_profiles()),
             Arc::new(database.rate_limits()),
@@ -2414,7 +2439,8 @@ mod tests {
                 scoring_policy: RecommendationScoringPolicy::CitationOnlineV1,
                 ..RecommendationRolloutConfig::default()
             },
-        );
+        )
+        .with_openalex(client);
         let weighted = BatchRecommendationSource::new(
             database.recommendation_batches(),
             Some(profiles.clone()),
@@ -2467,6 +2493,7 @@ mod tests {
             recent.batch_metadata.unwrap().recommendation_policy_version,
             SCORING_POLICY_VERSION_V1
         );
+        assert!(queries.lock().unwrap().is_empty());
 
         profiles
             .update(
@@ -2517,7 +2544,59 @@ mod tests {
             item.source == FeedItemSource::ForYouV1
                 && request.candidates.items.contains(&item.paper)
         }));
-
+        let requested_dois = queries.lock().unwrap().clone();
+        assert_eq!(requested_dois.len(), 1);
+        let expected_dois = [0, 1, 3]
+            .into_iter()
+            .flat_map(|index| {
+                [
+                    format!("10.48550/arxiv.{}", openalex_fixture_base(&unique, index)),
+                    format!("10.9955/{unique}-{index}"),
+                ]
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            requested_dois[0]
+                .strip_prefix("doi:")
+                .unwrap()
+                .split('|')
+                .collect::<BTreeSet<_>>(),
+            expected_dois
+                .iter()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>()
+        );
+        let stored: Vec<(
+            Uuid,
+            sqlx::types::Json<recommendations::CitationCandidateEvidence>,
+        )> = sqlx::query_as(
+            "SELECT paper_id, citation_evidence FROM recommendation_candidates WHERE batch_id = $1",
+        )
+        .bind(first.batch_id.unwrap())
+        .fetch_all(database.pool())
+        .await
+        .unwrap();
+        assert_eq!(stored.len(), 2);
+        for (candidate, direction, mask) in [
+            (
+                candidates[0],
+                recommendations::CitationDirection::Reciprocal,
+                3,
+            ),
+            (
+                candidates[1],
+                recommendations::CitationDirection::Reference,
+                1,
+            ),
+        ] {
+            let (_, evidence) = stored.iter().find(|(id, _)| *id == candidate).unwrap();
+            assert_eq!(evidence.tier, 3);
+            assert_eq!(evidence.feature_mask, mask);
+            assert!(!evidence.overlap);
+            assert_eq!(evidence.supporting_roots.len(), 1);
+            assert_eq!(evidence.supporting_roots[0].paper_id, root);
+            assert_eq!(evidence.supporting_roots[0].direction, direction);
+        }
         assert!(matches!(
             weighted.page(request.clone()).await,
             Err(RecommendationError::Unavailable)
@@ -2623,7 +2702,31 @@ mod tests {
             let page = service.page(continuation).await.unwrap();
             assert_ne!(page.batch_id, first_batch.batch_id);
             assert_eq!(page.batch_metadata, first_batch.batch_metadata);
+            assert_eq!(page.items[0].paper.paper_id, candidates[2]);
+            if page
+                .batch_metadata
+                .as_ref()
+                .unwrap()
+                .recommendation_policy_version
+                == SCORING_POLICY_VERSION_CITATION_ONLINE_V1
+            {
+                let sqlx::types::Json(evidence): sqlx::types::Json<
+                    recommendations::CitationCandidateEvidence,
+                > = sqlx::query_scalar(
+                    "SELECT citation_evidence FROM recommendation_candidates WHERE batch_id = $1",
+                )
+                .bind(page.batch_id.unwrap())
+                .fetch_one(database.pool())
+                .await
+                .unwrap();
+                assert_eq!(evidence.tier, 3, "provider failure retains the local edge");
+                assert_eq!(evidence.feature_mask, 1);
+            }
         }
+        let continuation_dois = queries.lock().unwrap().last().unwrap().clone();
+        assert_eq!(queries.lock().unwrap().len(), 2);
+        assert!(continuation_dois.contains(&format!("10.9955/{unique}-2")));
+        server.abort();
         let minimal = BatchRecommendationSource::recent_only(database.recommendation_batches())
             .page(request.clone())
             .await
@@ -2661,6 +2764,133 @@ mod tests {
             .execute(database.pool())
             .await
             .unwrap();
+    }
+
+    struct OpenAlexRolloutFixture {
+        root: Uuid,
+        candidates: [Uuid; 3],
+        client: OpenAlexCitationClient,
+        queries: Arc<std::sync::Mutex<Vec<String>>>,
+        server: tokio::task::JoinHandle<()>,
+    }
+
+    const INSERT_ROLLOUT_LOCAL_EDGES: &str = r"
+        WITH reference AS (
+            INSERT INTO paper_references (citing_paper_id, generation, ordinal, raw_text,
+                resolved_paper_id)
+            SELECT paper_id, generation, candidate.ordinal - 1, 'Local citation', candidate.id
+            FROM paper_processing
+            CROSS JOIN unnest($2::uuid[]) WITH ORDINALITY AS candidate(id, ordinal)
+            WHERE paper_id = $1
+            RETURNING id, generation, resolved_paper_id
+        )
+        INSERT INTO paper_connections (citing_paper_id, cited_paper_id, reference_id,
+            generation, relation_type, summary, confidence, source_context_ids)
+        SELECT $1, resolved_paper_id, id, generation, 'related_work', 'Local citation', 1.0, '{}'
+        FROM reference
+    ";
+
+    fn openalex_fixture_base(unique: &str, index: i64) -> String {
+        format!("pakperk-test-{unique}/{}", 1_300_000 + index)
+    }
+
+    async fn openalex_rollout_fixture(
+        database: &Database,
+        reader: AuthenticatedUserId,
+        unique: &str,
+        category: &str,
+    ) -> OpenAlexRolloutFixture {
+        let mut papers = Vec::new();
+        let mut dois = Vec::new();
+        for index in 0..4 {
+            let mut paper = metadata(unique, category, index);
+            let base = openalex_fixture_base(unique, index);
+            paper.abs_url = Url::parse(&format!("https://arxiv.org/abs/{base}v1")).unwrap();
+            paper.pdf_url = Url::parse(&format!("https://arxiv.org/pdf/{base}v1")).unwrap();
+            paper.arxiv_id.base_id = base;
+            let doi = format!("10.9955/{unique}-{index}");
+            paper.doi = Some(doi.clone());
+            papers.push(database.papers().upsert_metadata(&paper).await.unwrap().id);
+            dois.push(doi);
+        }
+        let [first, second, off_page, root] = papers.try_into().unwrap();
+        assert!(matches!(
+            database
+                .library()
+                .mutate(
+                    reader,
+                    root,
+                    Uuid::now_v7(),
+                    LibraryMutationIntent::Save,
+                    LibraryState::Reviewed
+                )
+                .await
+                .unwrap(),
+            LibraryMutationOutcome::Applied { .. }
+        ));
+        let inserted = sqlx::query(INSERT_ROLLOUT_LOCAL_EDGES)
+            .bind(root)
+            .bind([first, off_page].as_slice())
+            .execute(database.pool())
+            .await
+            .unwrap();
+        assert_eq!(inserted.rows_affected(), 2);
+        let work = |index: usize, references: &[&str]| {
+            serde_json::json!({
+                "id": format!("https://openalex.org/W{}", 100 + index),
+                "doi": format!("https://doi.org/{}", dois[index]),
+                "locations": [],
+                "locations_count": 0,
+                "referenced_works": references,
+            })
+        };
+        let response = serde_json::json!({
+            "meta": {"count": 3},
+            "results": [
+                work(0, &["https://openalex.org/W103"]),
+                work(1, &[]),
+                work(3, &["https://openalex.org/W101", "https://openalex.org/W102"]),
+            ],
+        });
+        let queries = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorded = queries.clone();
+        let router = axum::Router::new().route(
+            "/works",
+            axum::routing::get(
+                move |axum::extract::Query(params): axum::extract::Query<
+                    BTreeMap<String, String>,
+                >| {
+                    use axum::{http::StatusCode, response::IntoResponse as _};
+
+                    let call_count = {
+                        let mut calls = recorded.lock().unwrap();
+                        calls.push(params["filter"].clone());
+                        calls.len()
+                    };
+                    let body = response.clone();
+                    async move {
+                        if call_count == 1 {
+                            axum::Json(body).into_response()
+                        } else {
+                            StatusCode::SERVICE_UNAVAILABLE.into_response()
+                        }
+                    }
+                },
+            ),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}/works", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let client = OpenAlexCitationClient::new(secrecy::SecretString::from("test-key"))
+            .unwrap()
+            .with_endpoint(Url::parse(&endpoint).unwrap());
+        OpenAlexRolloutFixture {
+            root,
+            candidates: [first, second, off_page],
+            client,
+            queries,
+            server,
+        }
     }
 
     #[derive(Clone)]

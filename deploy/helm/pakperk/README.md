@@ -95,6 +95,14 @@ secrets. Include every moderation-provider address in
 transport, status, response-size, and response-schema failures as unavailable,
 which leaves content pending review rather than publishing it.
 
+Set `secret.openalexApiKeyKey` to the name of the OpenAlex credential in
+`secret.existingSecret` to add OpenAlex coverage to the citation recommender.
+The API uses the owner-only, memory-backed `OPENALEX_API_KEY_FILE` mount when
+`features.recommendations` is enabled and an opted-in For You page uses
+`citation_online_v1` or runs a citation shadow comparison. Leave the field empty
+for local citation evidence only. When using OpenAlex, include reviewed TCP/443
+destination ranges for `api.openalex.org` in `networkPolicy.apiHttpsCidrs`.
+
 `visualAssets.existingClaim` is optional and empty by default. When set, chart
 validation requires accounts, `features.visualObjects`, and the paper worker.
 The API mounts the claim read-only while the worker mounts it read/write at
@@ -237,10 +245,10 @@ uses the two-phase append-then-promote rollout above, including a distinct
 rotation-version increment for each phase. Keep old identity
 fingerprint, ledger signature, and provider-coordinate decryption keys until
 every bound record and recoverable backup has expired or completed an evidenced
-purge. Model, comment-moderation, OIDC admin, telemetry exporter, and request-origin credentials can
-be removed only after old pods stop and their bounded request/rate windows have
-elapsed. Never put secret bytes in values, annotations, rollout checksums, logs,
-or release evidence.
+purge. Model, comment-moderation, OpenAlex, OIDC admin, telemetry exporter, and
+request-origin credentials can be removed only after old pods stop and their
+bounded request/rate windows have elapsed. Never put secret bytes in values,
+annotations, rollout checksums, logs, or release evidence.
 
 ## Ingress and node-log prerequisites
 
@@ -285,10 +293,10 @@ metadata-only CronJob receives arXiv egress only. Do not place a shared proxy
 address in multiple lists. Every chart CIDR, including trusted proxy, database,
 and telemetry ranges, must be canonical IPv4 with a `/8` through `/32` prefix;
 IPv6 is rejected until the chart has an equally strict canonical parser and
-minimum-prefix contract. API OIDC discovery/JWKS and optional HTTPS comment
-moderation use `networkPolicy.apiHttpsCidrs`; paper-worker model traffic,
-and deletion-worker identity administration each use a NetworkPolicy egress
-rule fixed to TCP/443. Their configured HTTPS origins may spell `:443`
+minimum-prefix contract. API OIDC discovery/JWKS, optional HTTPS comment
+moderation, and OpenAlex use `networkPolicy.apiHttpsCidrs`. Paper-worker model
+traffic and deletion-worker identity administration each use a NetworkPolicy
+egress rule fixed to TCP/443. Their configured HTTPS origins may spell `:443`
 explicitly, but any other explicit port is rejected instead of rendering a
 deployment that cannot reach its dependency.
 

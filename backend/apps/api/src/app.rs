@@ -43,6 +43,7 @@ use crate::{
         stable_error_middleware, telemetry_middleware, timeout_middleware,
     },
     openapi::openapi_json,
+    recommendation_openalex::OpenAlexCitationClient,
     recommendation_source::BatchRecommendationSource,
     request_rate_limit::PublicRequestRateLimiter,
     routes::support::not_found,
@@ -191,13 +192,21 @@ impl AppState {
         } else {
             None
         };
-        let recommendation_generation = config.features.recommendations.then(|| {
-            BatchRecommendationSource::new(
-                database.recommendation_batches(),
-                services.research_profiles.clone(),
-                config.reading_feed.recommendation_rollout,
-            )
-        });
+        let recommendation_generation = config
+            .features
+            .recommendations
+            .then(|| {
+                let mut source = BatchRecommendationSource::new(
+                    database.recommendation_batches(),
+                    services.research_profiles.clone(),
+                    config.reading_feed.recommendation_rollout,
+                );
+                if let Some(key) = &config.openalex_api_key {
+                    source = source.with_openalex(OpenAlexCitationClient::new(key.clone())?);
+                }
+                Ok::<_, anyhow::Error>(source)
+            })
+            .transpose()?;
         let reading_feed = config
             .features
             .reading_feed

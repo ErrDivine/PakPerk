@@ -1,6 +1,6 @@
 mod citation;
 
-pub use citation::RecommendationCitationLearningContext;
+pub use citation::{RecommendationCitationLearningContext, RecommendationCitationPaper};
 
 use std::{
     collections::{BTreeMap, BTreeSet},

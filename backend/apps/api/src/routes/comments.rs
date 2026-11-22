@@ -908,6 +908,7 @@ mod tests {
             visual_assets: None,
             paper_resolution: crate::config::PaperResolutionFeatureConfig::default(),
             reading_feed: crate::config::ReadingFeedFeatureConfig::default(),
+            openalex_api_key: None,
             request_origin: crate::config::RequestOriginConfig::for_local_development(
                 "strong-comment-origin-test-secret-0123456789",
             )

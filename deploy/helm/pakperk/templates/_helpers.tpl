@@ -121,6 +121,11 @@ app.kubernetes.io/component: {{ .component }}
       rm -f /work/LLM_API_KEY /work/COMMENT_MODERATION_TOKEN /work/API_ORIGIN_HASH_SECRET /work/API_CURSOR_ENCRYPTION_KEYS /work/ACCOUNT_IDENTITY_FINGERPRINT_KEYS /work/ACCOUNT_DELETION_LEDGER_SIGNING_KEYS /work/ACCOUNT_DELETION_PROVIDER_IDENTITY_KEYS
       install -m 0400 /source/LLM_API_KEY /work/LLM_API_KEY
       chown 10001:10001 /work/LLM_API_KEY
+      {{- if .Values.secret.openalexApiKeyKey }}
+      rm -f /work/OPENALEX_API_KEY
+      install -m 0400 /source/OPENALEX_API_KEY /work/OPENALEX_API_KEY
+      chown 10001:10001 /work/OPENALEX_API_KEY
+      {{- end }}
       {{- if eq .Values.api.commentModerationProvider "http" }}
       install -m 0400 /source/COMMENT_MODERATION_TOKEN /work/COMMENT_MODERATION_TOKEN
       chown 10001:10001 /work/COMMENT_MODERATION_TOKEN
@@ -161,6 +166,9 @@ app.kubernetes.io/component: {{ .component }}
     defaultMode: 0400
     items:
       - { key: {{ .Values.secret.llmApiKeyKey }}, path: LLM_API_KEY }
+      {{- with .Values.secret.openalexApiKeyKey }}
+      - { key: {{ . | quote }}, path: OPENALEX_API_KEY }
+      {{- end }}
       {{- if eq .Values.api.commentModerationProvider "http" }}
       - { key: {{ .Values.secret.commentModerationTokenKey }}, path: COMMENT_MODERATION_TOKEN }
       {{- end }}

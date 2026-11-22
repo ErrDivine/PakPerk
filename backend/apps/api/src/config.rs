@@ -256,6 +256,8 @@ pub struct ApiConfig {
     pub visual_assets: Option<VisualAssetFeatureConfig>,
     pub paper_resolution: PaperResolutionFeatureConfig,
     pub reading_feed: ReadingFeedFeatureConfig,
+    /// Enables `OpenAlex` citation evidence for eligible For You batches.
+    pub openalex_api_key: Option<SecretString>,
     /// Shared trusted-proxy boundary and keyed request-origin pseudonym used
     /// by public expensive-operation and UGC rate limits.
     pub request_origin: RequestOriginConfig,
@@ -1521,6 +1523,11 @@ impl ApiConfig {
             visual_assets: VisualAssetFeatureConfig::from_env()?,
             paper_resolution: PaperResolutionFeatureConfig::from_env()?,
             reading_feed: ReadingFeedFeatureConfig::from_env()?,
+            openalex_api_key: if features.recommendations {
+                openalex_api_key(environment)?
+            } else {
+                None
+            },
             request_origin,
             cursors,
             bind,
@@ -1867,6 +1874,28 @@ fn tool_thinking_from_env(name: &str, thinking: ThinkingMode) -> anyhow::Result<
         None if thinking == ThinkingMode::ProviderDefault => Ok(ThinkingMode::ProviderDefault),
         None => Ok(ThinkingMode::Disabled),
     }
+}
+
+fn openalex_api_key(environment: ApiEnvironment) -> anyhow::Result<Option<SecretString>> {
+    let inline = std::env::var("OPENALEX_API_KEY")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    let file = std::env::var_os("OPENALEX_API_KEY_FILE").filter(|path| !path.is_empty());
+    anyhow::ensure!(
+        inline.is_none() || file.is_none(),
+        "set only one of OPENALEX_API_KEY or OPENALEX_API_KEY_FILE"
+    );
+    anyhow::ensure!(
+        !environment.is_deployed() || inline.is_none(),
+        "OPENALEX_API_KEY_FILE is required instead of OPENALEX_API_KEY in deployed APIs"
+    );
+    if let Some(path) = file {
+        return Ok(Some(SecretString::from(read_secret_file(
+            "OPENALEX_API_KEY_FILE",
+            Path::new(&path),
+        )?)));
+    }
+    Ok(inline.map(SecretString::from))
 }
 
 fn assistant_model_api_key(environment: ApiEnvironment) -> anyhow::Result<Option<SecretString>> {
@@ -3048,6 +3077,7 @@ mod tests {
             visual_assets: None,
             paper_resolution: PaperResolutionFeatureConfig::default(),
             reading_feed: ReadingFeedFeatureConfig::default(),
+            openalex_api_key: None,
             request_origin: RequestOriginConfig::for_local_development(
                 "production-config-request-origin-secret-0123456789",
             )

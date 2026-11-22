@@ -1471,6 +1471,7 @@ fn api_config(
         visual_assets: None,
         paper_resolution: pakperk_api::PaperResolutionFeatureConfig::default(),
         reading_feed: pakperk_api::ReadingFeedFeatureConfig::default(),
+        openalex_api_key: None,
         request_origin: RequestOriginConfig::for_local_development(&request_origin_secret(unique))
             .unwrap(),
         cursors: pakperk_api::CursorConfig::for_local_development(&format!(

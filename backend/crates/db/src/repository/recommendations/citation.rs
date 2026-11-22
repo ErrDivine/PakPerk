@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use chrono::{DateTime, Days, Utc};
 use domain::{AuthenticatedUserId, PaperId};
 use recommendations::{
@@ -21,6 +23,15 @@ pub struct RecommendationCitationLearningContext {
     pub feedback: RecommendationFeedbackContext,
     pub historical_seeds: Vec<HistoricalSeed>,
     pub citation: CitationOnlineInputs,
+    pub openalex_roots: Vec<(CitationRoot, Option<String>)>,
+    pub openalex_candidates: Vec<RecommendationCitationPaper>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct RecommendationCitationPaper {
+    pub paper_id: PaperId,
+    pub base_arxiv_id: String,
+    pub doi: Option<String>,
 }
 
 impl RecommendationBatchRepository {
@@ -31,6 +42,28 @@ impl RecommendationBatchRepository {
         user_id: AuthenticatedUserId,
         paper_ids: &[PaperId],
         observed_at: DateTime<Utc>,
+    ) -> Result<RecommendationCitationLearningContext, RecommendationBatchRepositoryError> {
+        self.read_citation_learning_context(user_id, paper_ids, observed_at, false)
+            .await
+    }
+
+    /// Includes public identifiers for the ranked roots and supplied page.
+    pub async fn citation_learning_context_with_openalex(
+        &self,
+        user_id: AuthenticatedUserId,
+        paper_ids: &[PaperId],
+        observed_at: DateTime<Utc>,
+    ) -> Result<RecommendationCitationLearningContext, RecommendationBatchRepositoryError> {
+        self.read_citation_learning_context(user_id, paper_ids, observed_at, true)
+            .await
+    }
+
+    async fn read_citation_learning_context(
+        &self,
+        user_id: AuthenticatedUserId,
+        paper_ids: &[PaperId],
+        observed_at: DateTime<Utc>,
+        include_openalex: bool,
     ) -> Result<RecommendationCitationLearningContext, RecommendationBatchRepositoryError> {
         if !valid_page_ids(paper_ids, 50) {
             return Err(RecommendationBatchRepositoryError::InvalidRequest);
@@ -62,24 +95,44 @@ impl RecommendationBatchRepository {
         }
         let feedback =
             load_feedback_context(&mut transaction, user_id, paper_ids, observed_at).await?;
-        let (historical_seeds, pairs, weights) = if fence.personalization_enabled {
-            (
-                load_historical_seeds(&mut *transaction, user_id, 50).await?,
-                load_pairs(&mut transaction, user_id, paper_ids).await?,
-                load_weights(&mut transaction, user_id, observed_at).await?,
-            )
-        } else {
-            (Vec::new(), Vec::new(), LearnerWeights::default())
-        };
-        transaction.commit().await?;
-        Ok(RecommendationCitationLearningContext {
+        let mut context = RecommendationCitationLearningContext {
             library_revision: fence.library_revision,
             profile_revision: fence.profile_revision,
             personalization_enabled: fence.personalization_enabled,
             feedback,
-            historical_seeds,
-            citation: CitationOnlineInputs { pairs, weights },
-        })
+            historical_seeds: Vec::new(),
+            citation: CitationOnlineInputs::default(),
+            openalex_roots: Vec::new(),
+            openalex_candidates: Vec::new(),
+        };
+        if fence.personalization_enabled {
+            context.historical_seeds =
+                load_historical_seeds(&mut *transaction, user_id, 50).await?;
+            if !paper_ids.is_empty() {
+                let roots = sqlx::query_as::<_, RootRow>(SELECT_ROOTS)
+                    .bind(user_id.into_inner())
+                    .fetch_all(&mut *transaction)
+                    .await?
+                    .into_iter()
+                    .map(RootRow::into_root)
+                    .collect::<Result<Vec<_>, _>>()?;
+                if !roots.is_empty() {
+                    context.citation.pairs =
+                        load_pairs(&mut transaction, &roots, paper_ids).await?;
+                    if include_openalex {
+                        context.openalex_candidates =
+                            sqlx::query_as::<_, RecommendationCitationPaper>(SELECT_CANDIDATES)
+                                .bind(paper_ids)
+                                .fetch_all(&mut *transaction)
+                                .await?;
+                        context.openalex_roots = roots;
+                    }
+                }
+            }
+            context.citation.weights = load_weights(&mut transaction, user_id, observed_at).await?;
+        }
+        transaction.commit().await?;
+        Ok(context)
     }
 }
 
@@ -103,7 +156,7 @@ const SELECT_ROOTS: &str = r"
         GROUP BY paper.arxiv_base_id
     ),
     eligible AS (
-        SELECT paper.id AS paper_id, paper.arxiv_base_id,
+        SELECT paper.id AS paper_id, paper.arxiv_base_id, paper.doi,
                left(paper.title, 160) AS title, library.state, library.updated_at,
                CASE
                    WHEN library.state = 'reviewed' AND feedback.promoted THEN 4
@@ -123,10 +176,17 @@ const SELECT_ROOTS: &str = r"
         FROM eligible
         ORDER BY arxiv_base_id, tier DESC, updated_at DESC, paper_id ASC
     )
-    SELECT paper_id, arxiv_base_id, title, state, updated_at, tier
+    SELECT paper_id, arxiv_base_id, doi, title, state, updated_at, tier
     FROM representatives
     ORDER BY tier DESC, updated_at DESC, paper_id ASC
     LIMIT 10
+";
+
+const SELECT_CANDIDATES: &str = r"
+    SELECT paper.id AS paper_id, paper.arxiv_base_id AS base_arxiv_id, paper.doi
+    FROM unnest($1::uuid[]) WITH ORDINALITY AS page(paper_id, position)
+    JOIN papers AS paper ON paper.id = page.paper_id
+    ORDER BY page.position
 ";
 
 const SELECT_PAIRS: &str = r"
@@ -162,22 +222,13 @@ const SELECT_PAIRS: &str = r"
 
 async fn load_pairs(
     transaction: &mut Transaction<'_, Postgres>,
-    user_id: AuthenticatedUserId,
+    roots: &[(CitationRoot, Option<String>)],
     paper_ids: &[PaperId],
 ) -> Result<Vec<CitationPair>, RecommendationBatchRepositoryError> {
-    if paper_ids.is_empty() {
-        return Ok(Vec::new());
-    }
-    let roots = sqlx::query_as::<_, RootRow>(SELECT_ROOTS)
-        .bind(user_id.into_inner())
-        .fetch_all(&mut **transaction)
-        .await?
-        .into_iter()
-        .map(|row| CitationRoot::try_from(row).map(|root| (root.paper_id, root)))
-        .collect::<Result<std::collections::BTreeMap<_, _>, _>>()?;
-    if roots.is_empty() {
-        return Ok(Vec::new());
-    }
+    let roots = roots
+        .iter()
+        .map(|(root, _)| (root.paper_id, root))
+        .collect::<BTreeMap<_, _>>();
 
     // The papers table has a unique base arXiv identity, making grouping on
     // the exact paired IDs equivalent to grouping on the bases. The root
@@ -200,6 +251,7 @@ async fn load_pairs(
             };
             let root = roots
                 .get(&edge.root_paper_id)
+                .copied()
                 .ok_or(RecommendationBatchRepositoryError::InvalidPersistedData)?;
             Ok(CitationPair {
                 candidate_paper_id: edge.candidate_paper_id,
@@ -214,30 +266,35 @@ async fn load_pairs(
 struct RootRow {
     paper_id: Uuid,
     arxiv_base_id: String,
+    doi: Option<String>,
     title: String,
     state: String,
     updated_at: DateTime<Utc>,
     tier: i32,
 }
 
-impl TryFrom<RootRow> for CitationRoot {
-    type Error = RecommendationBatchRepositoryError;
-
-    fn try_from(row: RootRow) -> Result<Self, Self::Error> {
-        let tier = u8::try_from(row.tier).map_err(|_| Self::Error::InvalidPersistedData)?;
-        let state = match row.state.as_str() {
+impl RootRow {
+    fn into_root(
+        self,
+    ) -> Result<(CitationRoot, Option<String>), RecommendationBatchRepositoryError> {
+        let tier = u8::try_from(self.tier)
+            .map_err(|_| RecommendationBatchRepositoryError::InvalidPersistedData)?;
+        let state = match self.state.as_str() {
             "reviewed" => HistoricalSeedState::Reviewed,
             "archived" => HistoricalSeedState::Archived,
-            _ => return Err(Self::Error::InvalidPersistedData),
+            _ => return Err(RecommendationBatchRepositoryError::InvalidPersistedData),
         };
-        Ok(Self {
-            paper_id: row.paper_id,
-            base_arxiv_id: row.arxiv_base_id,
-            title: row.title.trim().to_owned(),
-            updated_at: row.updated_at,
-            tier,
-            state,
-        })
+        Ok((
+            CitationRoot {
+                paper_id: self.paper_id,
+                base_arxiv_id: self.arxiv_base_id,
+                title: self.title.trim().to_owned(),
+                updated_at: self.updated_at,
+                tier,
+                state,
+            },
+            self.doi,
+        ))
     }
 }
 

@@ -41,6 +41,7 @@
         "deletionWorkerDatabaseUrlKey": { "$ref": "#/definitions/secretKey" },
         "migrationDatabaseUrlKey": { "$ref": "#/definitions/secretKey" },
         "llmApiKeyKey": { "$ref": "#/definitions/secretKey" },
+        "openalexApiKeyKey": { "anyOf": [{ "const": "" }, { "$ref": "#/definitions/secretKey" }] },
         "commentModerationTokenKey": { "$ref": "#/definitions/secretKey" },
         "apiOriginHashKey": { "$ref": "#/definitions/secretKey" },
         "apiCursorEncryptionKeysKey": { "$ref": "#/definitions/secretKey" },

@@ -15,6 +15,8 @@ trap 'rm -rf "$temporary_dir"' EXIT
 rendered="$temporary_dir/rendered.yaml"
 citation_rollout_rendered="$temporary_dir/citation-rollout-rendered.yaml"
 http_moderation_rendered="$temporary_dir/http-moderation-rendered.yaml"
+openalex_rendered="$temporary_dir/openalex-rendered.yaml"
+openalex_rotation_rendered="$temporary_dir/openalex-rotation-rendered.yaml"
 production_rendered="$temporary_dir/production-rendered.yaml"
 long_name_production_rendered="$temporary_dir/long-name-production-rendered.yaml"
 long_name_collision_rendered="$temporary_dir/long-name-collision-rendered.yaml"
@@ -84,6 +86,10 @@ grep -Fq 'name: RECOMMENDATION_CITATION_SHADOW, value: "true"' "$citation_rollou
   --set api.commentModerationProvider=http \
   --set-string api.commentModerationUrl=https://moderation.staging.pakperk.app/v1/evaluate \
   >"$http_moderation_rendered"
+"$helm_bin" template pakperk "$chart" --values "$fixture" \
+  --set-string secret.openalexApiKeyKey=PAKPERK_OPENALEX_API_KEY >"$openalex_rendered"
+"$helm_bin" template pakperk "$chart" --values "$fixture" \
+  --set-string secret.openalexApiKeyKey=ROTATED_OPENALEX_API_KEY >"$openalex_rotation_rendered"
 "$helm_bin" lint "$chart" --values "$fixture" --values "$production_fixture"
 "$helm_bin" template pakperk "$chart" \
   --values "$fixture" \
@@ -577,7 +583,9 @@ python3 - \
   "$production_rendered" \
   "$external_accounts_rendered" \
   "$metadata_llm_rotation_rendered" \
-  "$metadata_db_rotation_rendered" <<'PY'
+  "$metadata_db_rotation_rendered" \
+  "$openalex_rendered" \
+  "$openalex_rotation_rendered" <<'PY'
 import pathlib
 import re
 import sys
@@ -587,6 +595,8 @@ production_rendered = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
 external_accounts_rendered = pathlib.Path(sys.argv[3]).read_text(encoding="utf-8")
 metadata_llm_rotation_rendered = pathlib.Path(sys.argv[4]).read_text(encoding="utf-8")
 metadata_db_rotation_rendered = pathlib.Path(sys.argv[5]).read_text(encoding="utf-8")
+openalex_rendered = pathlib.Path(sys.argv[6]).read_text(encoding="utf-8")
+openalex_rotation_rendered = pathlib.Path(sys.argv[7]).read_text(encoding="utf-8")
 documents = re.split(r"(?m)^---\s*$", rendered)
 if re.search(r"chown 10001:10001 /work\n\s+chmod 0700 /work", rendered):
     raise SystemExit("secret init relinquishes its directory before materialization")
@@ -708,6 +718,40 @@ if set(workloads) != expected_workloads:
     raise SystemExit(f"rendered workload components are incomplete: {sorted(workloads)}")
 if set(service_accounts) != expected_workloads:
     raise SystemExit(f"dedicated workload ServiceAccounts are incomplete: {sorted(service_accounts)}")
+
+if "OPENALEX_" in rendered or "OPENALEX_" in production_rendered:
+    raise SystemExit("the default chart rendered OpenAlex runtime configuration")
+
+openalex_api = []
+for manifest in (openalex_rendered, openalex_rotation_rendered):
+    configured = re.split(r"(?m)^---\s*$", manifest)
+    api_document = next(
+        document for document in configured
+        if kind_of(document) == "Deployment" and component_of(document) == "api"
+    )
+    if [document for document in configured if "OPENALEX_" in document] != [api_document]:
+        raise SystemExit("the OpenAlex credential is not isolated to the API Deployment")
+    if re.search(r"\bname:\s+OPENALEX_API_KEY(?:\s|,|$)", api_document):
+        raise SystemExit("the API receives a raw OpenAlex key environment variable")
+    openalex_api.append(api_document)
+
+for required in (
+    'key: "PAKPERK_OPENALEX_API_KEY", path: OPENALEX_API_KEY',
+    "rm -f /work/OPENALEX_API_KEY",
+    "install -m 0400 /source/OPENALEX_API_KEY /work/OPENALEX_API_KEY",
+    "chown 10001:10001 /work/OPENALEX_API_KEY",
+    'name: OPENALEX_API_KEY_FILE, value: "/var/run/pakperk-secrets/OPENALEX_API_KEY"',
+):
+    if required not in openalex_api[0]:
+        raise SystemExit(f"the API is missing OpenAlex key file wiring: {required}")
+checksums = set()
+for document in (workloads["api"], *openalex_api):
+    match = re.search(r"(?m)^\s+checksum/runtime-secrets:\s+([a-f0-9]{64})\s*$", document)
+    if match is None:
+        raise SystemExit("the API runtime Secret checksum is missing")
+    checksums.add(match.group(1))
+if len(checksums) != 3:
+    raise SystemExit("the API runtime Secret checksum does not track OpenAlex key configuration")
 
 used_service_accounts = set()
 for component in sorted(expected_workloads):
@@ -1246,6 +1290,17 @@ expect_template_rejection \
   "database URLs and every purpose-specific credential must use distinct external Secret keys" \
   --values "$fixture" \
   --set-string secret.commentModerationTokenKey=LLM_API_KEY
+expect_template_rejection \
+  "an OpenAlex credential reusing the model credential key" \
+  "database URLs and every purpose-specific credential must use distinct external Secret keys" \
+  --values "$fixture" \
+  --set-string secret.openalexApiKeyKey=LLM_API_KEY
+expect_template_rejection \
+  "an invalid OpenAlex Secret key when schema validation is bypassed" \
+  "secret.openalexApiKeyKey must use Kubernetes Secret key grammar" \
+  --values "$fixture" \
+  --skip-schema-validation \
+  --set-string secret.openalexApiKeyKey=invalid/key
 expect_template_rejection \
   "an HTTP moderation provider without an endpoint" \
   "api.commentModerationUrl must be a bounded HTTPS provider URL on TCP/443" \

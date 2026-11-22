@@ -14,6 +14,7 @@ pub(crate) mod error;
 mod maintenance;
 pub(crate) mod middleware;
 pub mod openapi;
+mod recommendation_openalex;
 mod recommendation_source;
 mod request_rate_limit;
 mod routes;

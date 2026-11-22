@@ -653,6 +653,7 @@ mod tests {
             visual_assets: None,
             paper_resolution: crate::config::PaperResolutionFeatureConfig::default(),
             reading_feed: crate::config::ReadingFeedFeatureConfig::default(),
+            openalex_api_key: None,
             request_origin: crate::config::RequestOriginConfig::for_local_development(
                 "route-test-request-origin-secret-0123456789",
             )

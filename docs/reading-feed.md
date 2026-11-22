@@ -270,6 +270,13 @@ its root's citation paths. Within a tier, the weighted score incorporates
 citation overlap and learned preferences for references, citing papers, and
 followed authors. Diversity caps apply across the whole selected page.
 
+When OpenAlex is configured, the generation worker supplements the local
+citation graph with public references between those same roots and page
+papers. It resolves exact arXiv or publisher DOIs and checks references in
+both directions. Only public DOI identifiers are sent. A cited work can
+affect ranking only if PakPerk already authorized it for that page. The worker
+uses local evidence when OpenAlex is unavailable.
+
 Citation explanations lead with the stored direction and public root title.
 Replay uses the evidence stored with the served card. On mobile, committing a
 card with three or fewer remaining starts one continuation request when a
@@ -496,6 +503,13 @@ that accept both versions before changing the policy. For You requires both
 | `RECOMMENDATION_SCORING_POLICY` | `api.recommendationScoringPolicy` | `weighted_v1` |
 | `RECOMMENDATION_CITATION_ONLINE_PERCENT` | `api.recommendationCitationOnlinePercent` | `100` |
 | `RECOMMENDATION_CITATION_SHADOW` | `api.recommendationCitationShadow` | `false` |
+
+For local development, set `OPENALEX_API_KEY` in the Compose `.env` or export
+it before starting the API. For a deployed API, set `secret.openalexApiKeyKey`
+to the entry in the existing Kubernetes Secret. The chart configures
+`OPENALEX_API_KEY_FILE` and mounts the key in the API only. Allow reviewed
+HTTPS egress to `api.openalex.org`. With no key, the worker uses the local
+citation graph. [OpenAlex authentication](https://help.openalex.org/api/authentication/)
 
 Enable ranking shadow to measure fresh weighted For You builds. It records
 aggregate coverage, latency, and invariant counts and discards the comparison

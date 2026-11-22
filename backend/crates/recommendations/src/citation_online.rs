@@ -226,6 +226,24 @@ pub struct CitationCoverage {
 }
 
 impl CitationOnlineInputs {
+    /// Combines independent observations of the same exact candidate and root.
+    /// The inputs use the same authorized page and selected Library roots.
+    pub fn merge_pairs(&mut self, additional: Vec<CitationPair>) {
+        if additional.is_empty() {
+            return;
+        }
+        let mut combined = BTreeMap::<_, CitationPair>::new();
+        for pair in self.pairs.drain(..).chain(additional) {
+            combined
+                .entry((pair.candidate_paper_id, pair.root.paper_id))
+                .and_modify(|existing| {
+                    existing.direction = existing.direction.union(pair.direction);
+                })
+                .or_insert(pair);
+        }
+        self.pairs = combined.into_values().collect();
+    }
+
     pub(crate) fn classify(
         &self,
         documents: &[CandidateDocument],

@@ -102,6 +102,12 @@
 {{- fail "every component must use a distinct database URL Secret key and least-privilege role" -}}
 {{- end -}}
 {{- $allSecretKeys := list .Values.secret.apiDatabaseUrlKey .Values.secret.paperWorkerDatabaseUrlKey .Values.secret.metadataSyncDatabaseUrlKey .Values.secret.deletionWorkerDatabaseUrlKey .Values.secret.migrationDatabaseUrlKey .Values.secret.llmApiKeyKey .Values.secret.commentModerationTokenKey .Values.secret.apiOriginHashKey .Values.secret.apiCursorEncryptionKeysKey .Values.secret.identityFingerprintKeysKey .Values.secret.deletionLedgerSigningKeysKey .Values.secret.deletionProviderIdentityKeysKey .Values.secret.oidcAdminClientSecretKey .Values.secret.telemetryExporterHeadersKey -}}
+{{- with .Values.secret.openalexApiKeyKey -}}
+{{- if not (regexMatch `^[A-Za-z0-9._-]{1,253}$` .) -}}
+{{- fail "secret.openalexApiKeyKey must use Kubernetes Secret key grammar" -}}
+{{- end -}}
+{{- $allSecretKeys = append $allSecretKeys . -}}
+{{- end -}}
 {{- if ne (len (uniq $allSecretKeys)) (len $allSecretKeys) -}}
 {{- fail "database URLs and every purpose-specific credential must use distinct external Secret keys" -}}
 {{- end -}}
