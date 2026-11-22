@@ -672,7 +672,7 @@ jobs:
           fi
           printf 'source_revision=%s\n' "$source_revision" >>"$GITHUB_OUTPUT"
       - name: Download immutable credential-free prepared config
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         env:
           NODE_EXTRA_CA_CERTS: ""
           NODE_OPTIONS: ""
@@ -1478,7 +1478,7 @@ jobs:
           fi
           printf 'source_revision=%s\n' "$source_revision" >>"$GITHUB_OUTPUT"
       - name: Download immutable credential-free prepared config for iOS
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         env:
           NODE_EXTRA_CA_CERTS: ""
           NODE_OPTIONS: ""
@@ -2227,7 +2227,7 @@ jobs:
              "$PREPARED_VERSION_NAME" == "$ANDROID_VERSION_NAME" && \
              "$PREPARED_VERSION_NAME" == "$IOS_VERSION_NAME" ]] || exit 1
       - name: Download immutable prepared config for aggregation
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         env:
           NODE_EXTRA_CA_CERTS: ""
           NODE_OPTIONS: ""
@@ -2238,7 +2238,7 @@ jobs:
           merge-multiple: true
           digest-mismatch: error
       - name: Download immutable Android signer result for aggregation
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         env:
           NODE_EXTRA_CA_CERTS: ""
           NODE_OPTIONS: ""
@@ -2249,7 +2249,7 @@ jobs:
           merge-multiple: true
           digest-mismatch: error
       - name: Download immutable iOS signer result for aggregation
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         env:
           NODE_EXTRA_CA_CERTS: ""
           NODE_OPTIONS: ""
@@ -2630,7 +2630,7 @@ jobs:
       evidence_artifact_id: ${{ steps.android_evidence_upload.outputs.artifact-id }}
     steps:
       - name: Download immutable Android signed candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         env:
           NODE_EXTRA_CA_CERTS: ""
           NODE_OPTIONS: ""
@@ -2642,7 +2642,7 @@ jobs:
           digest-mismatch: error
 
       - name: Download attested Android store controls and client
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         env:
           NODE_EXTRA_CA_CERTS: ""
           NODE_OPTIONS: ""
@@ -3085,7 +3085,7 @@ jobs:
       evidence_artifact_id: ${{ steps.ios_evidence_upload.outputs.artifact-id }}
     steps:
       - name: Download immutable iOS signed candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         env:
           NODE_EXTRA_CA_CERTS: ""
           NODE_OPTIONS: ""
@@ -3097,7 +3097,7 @@ jobs:
           digest-mismatch: error
 
       - name: Download attested iOS store controls and client
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         env:
           NODE_EXTRA_CA_CERTS: ""
           NODE_OPTIONS: ""
@@ -3523,7 +3523,7 @@ jobs:
         id: final_candidate_download
         if: needs.signed-candidate.result == 'success' && needs.signed-candidate.outputs.artifact_id != ''
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         env:
           NODE_EXTRA_CA_CERTS: ""
           NODE_OPTIONS: ""
@@ -3537,7 +3537,7 @@ jobs:
         id: final_store_client_download
         if: inputs.upload_to_stores && needs.store-client-bootstrap.result == 'success' && needs.store-client-bootstrap.outputs.archive_artifact_id != ''
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         env:
           NODE_EXTRA_CA_CERTS: ""
           NODE_OPTIONS: ""
@@ -3551,7 +3551,7 @@ jobs:
         id: final_android_download
         if: inputs.upload_to_stores && needs.android-store-upload.outputs.evidence_artifact_id != ''
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         env:
           NODE_EXTRA_CA_CERTS: ""
           NODE_OPTIONS: ""
@@ -3565,7 +3565,7 @@ jobs:
         id: final_ios_download
         if: inputs.upload_to_stores && needs.ios-store-upload.outputs.evidence_artifact_id != ''
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         env:
           NODE_EXTRA_CA_CERTS: ""
           NODE_OPTIONS: ""
