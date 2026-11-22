@@ -20,8 +20,10 @@ routes remain available and the account routes fail closed.
 ## Reference development provider
 
 Every shell block in this section starts at the repository root. The account
-topology runs the API on the host, so stop any Compose API before taking port
-8080:
+topology runs the API on the host. For a new setup, copy `.env.example` to
+`.env` and replace `ARXIV_CONTACT_EMAIL` with a monitored address. For an
+existing setup, merge the feature values into your local development
+configuration. Stop any Compose API before using port 8080:
 
 ```bash
 docker compose stop api
@@ -31,7 +33,7 @@ The optional Compose profile starts the pinned development-only Keycloak realm,
 its separate PostgreSQL database, and Mailpit:
 
 ```bash
-docker compose --profile accounts up -d postgres keycloak
+docker compose --profile accounts up -d postgres grobid keycloak
 ```
 
 The checked-in realm uses:
@@ -61,10 +63,8 @@ refresh-token rotation. See the
 The realm export and Compose bootstrap defaults must not be reused as
 production secrets or production identity policy.
 
-Run the account-enabled API on the host so both it and the native client see
-the exact `localhost` issuer. First copy `.env.example` to `.env`, replace
-the arXiv contact placeholder as documented in the root README, and create the
-owner-only account keyrings before starting the API:
+Generate the local keyrings and ledger. The host API and native client both
+use the same `localhost` issuer:
 
 ```bash
 ./scripts/prepare_dev_account_secrets.sh
@@ -76,12 +76,14 @@ Then run:
 set -a
 source .env
 set +a
-ACCOUNTS_ENABLED=true \
 DATABASE_URL=postgres://pakperk:pakperk@127.0.0.1:5432/pakperk \
 OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
 API_ORIGIN_HASH_SECRET_FILE="$PWD/.local/pakperk-secrets/API_ORIGIN_HASH_SECRET" \
 API_CURSOR_ENCRYPTION_KEYS_FILE="$PWD/.local/pakperk-secrets/API_CURSOR_ENCRYPTION_KEYS" \
 ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE="$PWD/.local/pakperk-secrets/ACCOUNT_IDENTITY_FINGERPRINT_KEYS" \
+ACCOUNT_DELETION_LEDGER_SIGNING_KEYS_FILE="$PWD/.local/pakperk-secrets/ACCOUNT_DELETION_LEDGER_SIGNING_KEYS" \
+ACCOUNT_DELETION_PROVIDER_IDENTITY_KEYS_FILE="$PWD/.local/pakperk-secrets/ACCOUNT_DELETION_PROVIDER_IDENTITY_KEYS" \
+ACCOUNT_DELETION_LEDGER_DIRECTORY="$PWD/.local/pakperk-deletion-ledger" \
 API_BIND=127.0.0.1:8080 \
 cargo run --manifest-path backend/Cargo.toml -p pakperk-api
 ```
@@ -91,28 +93,15 @@ container, `localhost` is the API container itself; changing only the backend
 issuer to `keycloak:8080` would then violate exact issuer validation for the
 native client.
 
-The command above enables accounts only. To use the complete checked-in mobile
-`config/dev.json`, stop that API with Ctrl-C and run the same command with these
-four additional switches:
+Once the API is ready, start the paper worker in a second terminal:
 
 ```bash
-LIBRARY_ENABLED=true \
-LIBRARY_WRITES_ENABLED=true \
-COMMENTS_ENABLED=true \
-COMMENT_CREATION_ENABLED=true \
-ACCOUNTS_ENABLED=true \
-DATABASE_URL=postgres://pakperk:pakperk@127.0.0.1:5432/pakperk \
-OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
-API_ORIGIN_HASH_SECRET_FILE="$PWD/.local/pakperk-secrets/API_ORIGIN_HASH_SECRET" \
-API_CURSOR_ENCRYPTION_KEYS_FILE="$PWD/.local/pakperk-secrets/API_CURSOR_ENCRYPTION_KEYS" \
-ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE="$PWD/.local/pakperk-secrets/ACCOUNT_IDENTITY_FINGERPRINT_KEYS" \
-API_BIND=127.0.0.1:8080 \
-cargo run --manifest-path backend/Cargo.toml -p pakperk-api
+docker compose up -d --build worker
 ```
 
-Run this from the repository root after exporting `.env` as shown above. These
-are distinct read/write gates: enabling a Library or comments switch in Flutter
-does not register or enable the corresponding API operation.
+The account deletion API queues requests. Completing provider and data
+deletion also requires the
+[dedicated deletion worker](runbooks/account-deletion.md#normal-operation).
 
 Backend account configuration is read only when `ACCOUNTS_ENABLED=true`:
 
@@ -157,14 +146,7 @@ Enable the native client with matching build values:
 cd mobile
 flutter run \
   --flavor dev \
-  --dart-define=PAKPERK_ENV=development \
-  --dart-define=PAKPERK_API_BASE_URL=http://localhost:8080 \
-  --dart-define=PAKPERK_ACCOUNTS_ENABLED=true \
-  --dart-define=PAKPERK_OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
-  --dart-define=PAKPERK_OIDC_CLIENT_ID=pakperk-mobile-dev \
-  --dart-define=PAKPERK_OIDC_REDIRECT_URI=pakperk-auth-dev://oauth/callback \
-  --dart-define=PAKPERK_OIDC_POST_LOGOUT_REDIRECT_URI=pakperk-auth-dev://oauth/logout \
-  --dart-define='PAKPERK_OIDC_SCOPES=openid profile'
+  --dart-define-from-file=config/dev.json
 ```
 
 Android emulators normally use `http://10.0.2.2:8080` for the Pakperk API. For

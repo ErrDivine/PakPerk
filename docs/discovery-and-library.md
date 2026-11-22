@@ -1,6 +1,6 @@
 # Plan 02 discovery and library backend contract
 
-**Status:** Backend contracts are implemented behind default-off flags. Mobile
+**Status:** Backend contracts are implemented behind feature flags. Mobile
 exposure and production enablement remain separate protected rollout gates.
 
 This document records the current source behavior added by migrations 12
@@ -25,10 +25,10 @@ feedback, briefs, subscriptions, and notifications never override that gate.
 | Subscriptions | `SUBSCRIPTIONS_ENABLED` | accounts + library + reading feed | Stores explicit topic/category/author/saved-query intent; it cannot deliver over queue policy. |
 | In-app notifications | `NOTIFICATIONS_ENABLED` | subscriptions | Discovery delivery is revision-bound and deferred for nonempty/unknown queue state. Push and email remain unavailable. |
 
-All switches default false. Startup rejects an enabled child whose dependency
-is off. `RECOMMENDATION_EVENTS_ENABLED` is intentionally independent because
-event collection is optional and product state must remain correct when it is
-unavailable. With `READING_FEED_ENABLED=true`
+The checked-in profiles enable these product capabilities. Startup rejects an
+enabled child whose dependency is off. `RECOMMENDATION_EVENTS_ENABLED` is
+independent because event collection is optional and product state must remain
+correct when it is unavailable. With `READING_FEED_ENABLED=true`
 and `RECOMMENDATIONS_ENABLED=false`, a proven-empty snapshot may persist and
 serve only a minimal authority-bound Recent batch so the final empty-revision
 recheck and reading briefs remain safe. Advanced modes, profile-derived

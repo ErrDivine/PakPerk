@@ -37,8 +37,8 @@ policy:
   termsVersion: "2026-07-31"
   communityGuidelinesVersion: "2026-07-31"
 
-# Render the complete topology in contract tests. Real protected values files
-# enable these only after the corresponding release smoke/evidence gate.
+# Render the account, discovery, and deletion topology. Keep Deep Reader off
+# in this shared fixture so production renders can test its separate gate.
 features:
   accounts: true
   library: true
@@ -61,6 +61,14 @@ features:
   readingBriefs: true
   subscriptions: true
   notifications: true
+  deepReader: false
+  paperPassport: false
+  semanticFacets: false
+  visualObjects: false
+  assistantV2: false
+  annotations: false
+  researchMemory: false
+  versionDiff: false
 
 alerting:
   # The packaged contract selects production resources. Staging canaries use

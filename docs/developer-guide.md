@@ -8,9 +8,9 @@ Unless a paragraph says otherwise, treat every shell block in this guide as an
 independent block that starts at the repository root. A block that begins with
 `cd mobile` or `cd docs-site` changes directory only for that block.
 
-> **First visit?** Follow [Run Pakperk locally](#run-pakperk-locally) from top to
-> bottom before enabling accounts or optional features. The default guest stack
-> is deliberately small and is the easiest place to learn the system.
+For the full development profile, use the
+[reference backend setup](account-authentication.md#reference-development-provider).
+The guest stack below is a smaller setup for developing the public reader.
 
 ## Choose the path you need
 
@@ -87,19 +87,19 @@ otherwise.
 
 ### 1. Create the local configuration
 
-Copy the fail-closed template:
+For a new guest-only setup, copy the development template with the feature
+switches disabled:
 
 ```bash
-cp .env.example .env
+sed -E 's/^([A-Z0-9_]+_ENABLED)=true$/\1=false/' .env.example > .env
 ```
 
 Open `.env` and replace the rejected `ARXIV_CONTACT_EMAIL` placeholder with a
 real, monitored address. arXiv asks API clients to identify a reachable contact,
 and both the API and worker reject placeholder or example-domain values.
 
-Leave the optional capability flags `false` for the first run. In particular,
-do not enable accounts, Library, comments, deletion, discovery, or Deep Reader
-features until the basic guest path works.
+If you already have a local `.env`, preserve it and use the guest values only
+for a reader-only run.
 
 Generate the local origin-hashing and cursor-encryption key files:
 
@@ -267,11 +267,10 @@ host API environment. The reference issuer is
 `http://localhost:8081/realms/pakperk`, and verification mail appears in Mailpit
 at `http://localhost:8025`.
 
-The checked-in `mobile/config/dev.json` enables accounts, Library, and comments
-together. The backend must enable the compatible account, Library read/write,
-and comment read/creation switches too. A mobile build must never contain a
-client secret, provider API key, administrative token, or deletion-worker
-credential.
+The checked-in `mobile/config/dev.json` and `.env.example` enable the product
+features. Use the matching host API settings when replacing a guest setup.
+Keep client secrets, provider API keys, administrative tokens, and
+deletion-worker credentials outside the mobile build.
 
 When several features are involved, enable dependencies from the bottom up and
 disable them in reverse order. Startup rejects invalid combinations. The full

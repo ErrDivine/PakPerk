@@ -243,7 +243,7 @@ def main() -> int:
     )
     assert "starts at schema 18 and applies migrations 19–26" in current_migration
     assert "apply the reviewed migration image to schema 26 exactly once" in current_migration
-    current_boundaries = section(boundaries, "Current default-off server controls")
+    current_boundaries = section(boundaries, "Current server controls")
     deep_reader_rollout = read("docs/runbooks/deep-reader-rollout.md")
     for feature in evidence.RELEASE_FEATURE_SWITCHES:
         assert (

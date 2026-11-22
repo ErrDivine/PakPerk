@@ -34,8 +34,7 @@ experiment only; its feature switch is not permission to replace the baseline
 without the versioned benchmark, resource, fallback, reprocessing, and rollback
 evidence.
 
-The repository now carries the Plan 03 implementation behind default-off
-controls:
+The repository carries the Plan 03 implementation behind feature controls:
 
 - migration 19 records and enforces approved preparation triggers;
 - migration 20 stores parser-independent generations, section trees, blocks,
@@ -247,9 +246,9 @@ revision. That action records a `manual` re-anchor attempt in the same private,
 idempotent history. These conservative baselines remain dark until their
 protected quality gates pass.
 
-## Default-off controls
+## Feature controls
 
-The server and Helm contract expose these switches, all false by default:
+The server and Helm contract expose these switches:
 
 | Environment switch | Helm key | Dependency |
 | --- | --- | --- |
@@ -263,8 +262,9 @@ The server and Helm contract expose these switches, all false by default:
 | `VERSION_DIFF_ENABLED` | `versionDiff` | Deep Reader |
 | `DOCLING_EXPERIMENT_ENABLED` | `doclingExperiment` | Deep Reader |
 
-Repository, mobile, Helm, and environment defaults keep every Plan 03 switch
-off. Production rejects any enabled Plan 03 switch without an immutable
+The checked-in mobile, Helm, and development environment profiles enable the
+product capabilities. The Docling experiment stays off. Production Helm
+validation requires an immutable
 `releaseEvidence.deepReaderReleaseId`. That ID must name a complete bundle
 validated by `scripts/deep_reader_release_evidence.py`; a digest alone does not
 prove that the protected human, staging, telemetry, or signed-device work ran.

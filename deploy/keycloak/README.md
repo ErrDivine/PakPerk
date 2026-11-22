@@ -33,26 +33,9 @@ adb reverse tcp:8081 tcp:8081
 Using `10.0.2.2` for only the browser/client changes the issuer identity and
 will correctly fail the exact-issuer check.
 
-The matching API runs on the host, not in the Compose `api` container:
-
-```bash
-./scripts/prepare_dev_account_secrets.sh
-set -a
-source .env
-set +a
-ACCOUNTS_ENABLED=true \
-DATABASE_URL=postgres://pakperk:pakperk@127.0.0.1:5432/pakperk \
-OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
-API_ORIGIN_HASH_SECRET_FILE="$PWD/.local/pakperk-secrets/API_ORIGIN_HASH_SECRET" \
-API_CURSOR_ENCRYPTION_KEYS_FILE="$PWD/.local/pakperk-secrets/API_CURSOR_ENCRYPTION_KEYS" \
-ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE="$PWD/.local/pakperk-secrets/ACCOUNT_IDENTITY_FINGERPRINT_KEYS" \
-API_BIND=127.0.0.1:8080 \
-cargo run --manifest-path backend/Cargo.toml -p pakperk-api
-```
-
-This is required because `localhost` inside the Compose API container refers
-to the container itself, while changing the issuer hostname for just one
-participant breaks OIDC exact-issuer validation.
+Use the [host API setup](../../docs/account-authentication.md#reference-development-provider)
+to give the client and server the same issuer URL. In the Compose API container,
+`localhost` would resolve to the container itself.
 
 The initializer creates the API request-origin key, cursor-encryption keyring,
 rotation-capable identity fingerprint/deletion-ledger/provider-coordinate

@@ -92,7 +92,7 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
             "      - name: Retain mutable config\n",
         )
 
-    def test_protected_feature_flags_are_exact_and_default_off(self) -> None:
+    def test_protected_feature_flags_use_exact_overrides_and_profile_defaults(self) -> None:
         self._job_replace_rejected(
             "candidate-preparation",
             "          RELEASE_READING_FEED_ENABLED: ${{ vars.PAKPERK_READING_FEED_ENABLED }}\n",
@@ -100,24 +100,25 @@ class MobileReleaseWorkflowValidationTests(unittest.TestCase):
         )
         self._job_replace_rejected(
             "candidate-preparation",
+            'raw = os.environ.get(f"RELEASE_{short_name}_ENABLED", "") or config[config_name]',
             'raw = os.environ.get(f"RELEASE_{short_name}_ENABLED", "") or "false"',
-            'raw = os.environ.get(f"RELEASE_{short_name}_ENABLED", "") or "true"',
         )
 
-    def test_checked_in_protected_defaults_cannot_be_enabled(self) -> None:
+    def test_checked_in_profiles_enable_all_product_features(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             paths = tuple(root / f"config-{index}.json" for index in range(3))
             values = {
-                config_key: "false"
+                config_key: "true"
                 for _, config_key, _ in validator.MOBILE_RELEASE_FEATURES
             }
             for path in paths:
                 path.write_text(json.dumps(values), encoding="utf-8")
-            values["PAKPERK_READING_FEED_ENABLED"] = "true"
-            paths[1].write_text(json.dumps(values), encoding="utf-8")
             with mock.patch.object(validator, "MOBILE_CONFIGS", paths):
-                with self.assertRaisesRegex(RuntimeError, "defaults must stay off"):
+                validator._validate_default_feature_configs()
+                values["PAKPERK_READING_FEED_ENABLED"] = "false"
+                paths[1].write_text(json.dumps(values), encoding="utf-8")
+                with self.assertRaisesRegex(RuntimeError, "must enable all product features"):
                     validator._validate_default_feature_configs()
 
     def test_feature_evidence_binds_exact_boolean_values_and_schema(self) -> None:

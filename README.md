@@ -36,7 +36,7 @@ remain external release blockers. Phase 3 OIDC account integration is
 [accepted](docs/phase-reports/phase-3.md), and Phase 4 To Read synchronization
 is [accepted](docs/phase-reports/phase-4.md) with its exact server/mobile
 contract in [the To Read synchronization document](docs/library-sync.md).
-Phase 5 adds the complete default-off public-comment safety boundary, with
+Phase 5 adds the public-comment safety boundary, with
 separate comment reporting, user reporting, and blocking actions; its
 contract and acceptance evidence are in
 [Comments and moderation](docs/comments-and-moderation.md) and the
@@ -50,8 +50,7 @@ light/dark design tokens, native launch assets, a bounded cached-first opening
 transition, a relational cache-ahead feed, and the account session/onboarding
 foundation plus an offline-first synchronized To Read list, account-scoped
 comment drafts/pages/blocks, and guest/authenticated discussion surfaces.
-Account, library, comment, and deletion controls remain off by default. The
-recent-auth deletion API/mobile/web flow, dedicated provider-deletion worker,
+The recent-auth deletion API/mobile/web flow, dedicated provider-deletion worker,
 independent signed restore ledger, hosted policy/support site, validating mobile
 telemetry gateway, OTLP deployment, Helm topology, security/SBOM jobs, signed
 candidate workflow, and operational runbooks are implemented. The
@@ -63,8 +62,8 @@ defines the bounded, redacted HTTP latency gate and its mobile-only limitations.
 The accepted Phase 4 API uses authenticated list/change/save/remove routes with durable
 operation IDs, server revisions, removal tombstones, and an independent
 read-only kill switch. Its exact synchronization and preparation boundaries
-are documented in [the To Read contract](docs/library-sync.md). Both library
-flags remain off by default so deployments can dark-launch the capability.
+are documented in [the To Read contract](docs/library-sync.md). Deployments
+can independently disable Library access or writes.
 
 Phase 5 keeps flat paper comments in the same backend and PostgreSQL database.
 It requires an active account, handle, and current Terms/Community Guidelines
@@ -88,18 +87,11 @@ Phase evidence is recorded under [`docs/phase-reports/`](docs/phase-reports/).
 
 ## Run the backend
 
-Requirements: Docker with Compose v2. The pinned local stack uses PostgreSQL 16
-with pgvector 0.8.2 and the CPU-friendly GROBID 0.9.0 CRF image.
-
-```bash
-cp .env.example .env
-# Edit .env and replace ARXIV_CONTACT_EMAIL with a monitored, real address.
-./scripts/prepare_dev_api_origin_secret.sh
-docker compose up -d --build
-```
-
-The preparation step creates separate owner-only request-origin and rotating
-cursor-encryption key files; it never prints or overwrites their values.
+Requirements: Rust and Docker with Compose v2. The checked-in `.env.example`
+enables the product features. Start the local dependencies and host API using
+the [reference development setup](docs/account-authentication.md#reference-development-provider).
+For a reader-only Compose setup, use the
+[guest development guide](docs/developer-guide.md#run-pakperk-locally).
 
 Both Rust processes deliberately reject placeholder or example-domain contact
 addresses so that every arXiv request has an accountable `User-Agent`.
@@ -119,43 +111,11 @@ Readiness does not check GROBID, the model provider, OIDC, background workers,
 telemetry delivery, DNS, or TLS; already-prepared papers can remain readable
 while one of those dependencies is unavailable.
 
-### Optional local OIDC accounts
-
-Start the application PostgreSQL database, the pinned development Keycloak
-realm with its separate PostgreSQL database, and Mailpit without making them
-prerequisites for paper-only development:
-
-```bash
-docker compose --profile accounts up -d postgres keycloak
-```
+### Local accounts
 
 The realm issuer is `http://localhost:8081/realms/pakperk`, the public native
 client is `pakperk-mobile-dev`, and verification mail is visible at
-`http://localhost:8025`. Set `ACCOUNTS_ENABLED=true` plus the OIDC/profile
-values in `.env.example` only for an API process that can reach that exact
-issuer. For the reference topology, run the API on the host (and do not also
-start the Compose `api` service):
-
-```bash
-./scripts/prepare_dev_account_secrets.sh
-set -a
-source .env
-set +a
-ACCOUNTS_ENABLED=true \
-DATABASE_URL=postgres://pakperk:pakperk@127.0.0.1:5432/pakperk \
-OIDC_ISSUER_URL=http://localhost:8081/realms/pakperk \
-API_ORIGIN_HASH_SECRET_FILE="$PWD/.local/pakperk-secrets/API_ORIGIN_HASH_SECRET" \
-API_CURSOR_ENCRYPTION_KEYS_FILE="$PWD/.local/pakperk-secrets/API_CURSOR_ENCRYPTION_KEYS" \
-ACCOUNT_IDENTITY_FINGERPRINT_KEYS_FILE="$PWD/.local/pakperk-secrets/ACCOUNT_IDENTITY_FINGERPRINT_KEYS" \
-API_BIND=127.0.0.1:8080 \
-cargo run --manifest-path backend/Cargo.toml -p pakperk-api
-```
-
-The host process is intentional: `localhost` inside the Compose API container
-would refer to that container, not to host-published Keycloak, and substituting
-a container hostname would change the token issuer. Guest routes continue to
-serve if the provider later becomes unavailable; required-auth routes fail
-closed.
+`http://localhost:8025`.
 
 The exact callback values, mobile build command, token-storage boundary,
 profile wire contract, and Android-emulator issuer caveat are documented in
@@ -189,11 +149,11 @@ cd mobile
 flutter pub get --enforce-lockfile
 flutter run \
   --flavor dev \
-  --dart-define=PAKPERK_ENV=development \
-  --dart-define=PAKPERK_API_BASE_URL=http://localhost:8080
+  --dart-define-from-file=config/dev.json
 ```
 
-Use `http://10.0.2.2:8080` from an Android emulator. The app starts with its
+On Android, reverse ports 8080 and 8081 to use the reference development issuer.
+The app starts with its
 bundled cache when the API cannot be reached, then refreshes in place when
 connectivity returns.
 
@@ -217,15 +177,14 @@ vendored under `mobile/third_party/sqlite` through the pinned `sqlite3` package
 source hook. This keeps Android and iOS builds reproducible without fetching a
 precompiled SQLite binary during the build.
 
-The production shell has exactly two primary destinations: **Read** and
-**You**. Read retains the current vertical paper feed and horizontal reader
-stages. You is an honest guest surface until the account phase is enabled.
+The app shell has three primary destinations: **Read**, **Library**, and
+**You**. Read retains the vertical paper feed and horizontal reader stages.
 Supported local links and the platform-association work required before release
 are documented in [`docs/mobile-app-links.md`](docs/mobile-app-links.md).
 
-Mobile configuration is validated before general storage is opened. The
-development defaults preserve the current guest reader with all production
-features disabled. Staging/production builds set `PAKPERK_ENV`, an HTTPS
+Mobile configuration is validated before general storage is opened. All
+checked-in build profiles enable the product features. Staging/production
+builds set `PAKPERK_ENV`, an HTTPS
 `PAKPERK_API_BASE_URL`, and explicit feature flags. Production additionally
 requires `PAKPERK_FULLTEXT_POLICY=strict`. Account-enabled builds must provide
 the native OIDC issuer/client/redirect values; client secrets and provider API
@@ -375,7 +334,7 @@ These operations require an OIDC bearer token. Both return a private account
 envelope and strong `"profile-N"` ETag; `PATCH` requires the matching
 `If-Match` value. The routes are absent when accounts are disabled.
 
-With the corresponding default-off Phase 4–6 flags enabled, the API also
+With the corresponding Phase 4–6 flags enabled, the API also
 registers:
 
 ```text

@@ -62,38 +62,38 @@ mobileAssociations:
   appleBundleId: ""
 
 features:
-  # Protected environment values opt into each production capability only
-  # after that phase's smoke/evidence gate. Repository defaults stay dark.
-  accounts: false
-  library: false
-  libraryWrites: false
-  paperResolution: false
-  paperTitleSearch: false
-  libraryImportWrites: false
-  readingFeed: false
-  toReadFirstEnforcement: false
-  comments: false
-  commentCreation: false
-  accountDeletion: false
-  libraryV2: false
-  researchProfiles: false
-  recommendations: false
-  recommendationEvents: false
-  searchLookup: false
-  searchExplore: false
-  savedQueries: false
-  readingBriefs: false
-  subscriptions: false
-  notifications: false
-  deepReader: false
-  paperPassport: false
-  semanticFacets: false
-  visualObjects: false
-  assistantV2: false
+  # Enable product capabilities unless overridden by environment values.
+  # The experimental parser and native assistant tools are separate.
+  accounts: true
+  library: true
+  libraryWrites: true
+  paperResolution: true
+  paperTitleSearch: true
+  libraryImportWrites: true
+  readingFeed: true
+  toReadFirstEnforcement: true
+  comments: true
+  commentCreation: true
+  accountDeletion: true
+  libraryV2: true
+  researchProfiles: true
+  recommendations: true
+  recommendationEvents: true
+  searchLookup: true
+  searchExplore: true
+  savedQueries: true
+  readingBriefs: true
+  subscriptions: true
+  notifications: true
+  deepReader: true
+  paperPassport: true
+  semanticFacets: true
+  visualObjects: true
+  assistantV2: true
   assistantTools: false
-  annotations: false
-  researchMemory: false
-  versionDiff: false
+  annotations: true
+  researchMemory: true
+  versionDiff: true
   doclingExperiment: false
 
 # Content-addressed references to protected, immutable release evidence. The

@@ -13,12 +13,11 @@ deletion, and troubleshooting are summarized in the repository
 ```sh
 flutter run \
   --flavor dev \
-  --dart-define=PAKPERK_ENV=development \
-  --dart-define=PAKPERK_API_BASE_URL=http://localhost:8080 \
-  --dart-define=PAKPERK_FULLTEXT_POLICY=prototype
+  --dart-define-from-file=config/dev.json
 ```
 
-Android emulators normally need `http://10.0.2.2:8080`. The app persists an
+Use the [reference backend](../docs/account-authentication.md#reference-development-provider)
+and reverse ports 8080 and 8081 on Android. The app persists an
 anonymous session identifier, the cached feed and prepared content, the full
 paper navigation trail, each stage/scroll position, and chat-sheet state.
 
@@ -62,14 +61,9 @@ before any network client is created. The complete release commands use the
 checked-in files under `config/` and are documented in
 [`../docs/mobile-release.md`](../docs/mobile-release.md).
 
-The checked-in production config keeps accounts, library, and comments off.
-The checked-in development and staging fixtures enable all three so ordinary
-debug builds exercise the complete feature composition. A staging or
-production signed candidate never trusts those fixture booleans: its protected
-workflow materializes a temporary config from environment variables
-`PAKPERK_ACCOUNTS_ENABLED`, `PAKPERK_LIBRARY_ENABLED`, and
-`PAKPERK_COMMENTS_ENABLED`; missing values resolve to false and the workflow
-records the resolved booleans. See the
+The checked-in development, staging, and production profiles enable all 27
+product feature flags. Protected staging and production signing allow
+environment overrides and record the resolved flags. See the
 [protected feature-flag contract](../docs/mobile-release.md#protected-mobile-feature-flags).
 
 The login uses the system browser and PKCE. Access tokens stay in memory;

@@ -189,11 +189,8 @@ when the phone disconnects or restarts.
 ### 6. Add local accounts only for an account task
 
 Follow [Account authentication](account-authentication.md#reference-development-provider)
-first. Use its complete `config/dev.json` backend command—not the account-only
-command—so the host API also enables `LIBRARY_ENABLED`,
-`LIBRARY_WRITES_ENABLED`, `COMMENTS_ENABLED`, and
-`COMMENT_CREATION_ENABLED`. That workflow runs the API on the development
-computer and exposes the reference issuer on port 8081. Reverse both ports:
+to start the host API with the matching feature flags. That setup exposes the
+reference issuer on port 8081. Reverse both ports:
 
 ```bash
 adb -s "$PAKPERK_MOBILE_DEVICE_ID" reverse tcp:8080 tcp:8080

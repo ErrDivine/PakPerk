@@ -1,0 +1,131 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{pakperk-qa}[2026/11/22 PakPerk QA guide layout]
+
+\RequirePackage[a4paper,left=16mm,right=16mm,top=26mm,bottom=17mm,
+  headheight=15pt,headsep=6mm,footskip=9mm]{geometry}
+\RequirePackage{xcolor}
+\RequirePackage{enumitem}
+\RequirePackage{fancyhdr}
+\RequirePackage{amssymb}
+\RequirePackage{tcolorbox}
+\RequirePackage[pdfencoding=auto,unicode,bookmarksopen,colorlinks]{hyperref}
+\RequirePackage{l3pdffield-testphase}
+\RequirePackage{xurl}
+
+\definecolor{PakPerkInk}{HTML}{263039}
+\definecolor{PakPerkBlue}{HTML}{224F71}
+\definecolor{PakPerkMuted}{HTML}{4C5B68}
+\definecolor{PakPerkLine}{HTML}{A8C0D1}
+\definecolor{PakPerkTint}{HTML}{EBF2F6}
+\definecolor{PakPerkPaper}{HTML}{F5F8FA}
+\definecolor{PakPerkCheckboxBorder}{HTML}{638EAA}
+
+\hypersetup{linkcolor=PakPerkBlue,urlcolor=PakPerkBlue,
+  pdfauthor={PakPerk},pdflang={zh-CN},pdfdisplaydoctitle=true}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.4em}
+\setlength{\emergencystretch}{2em}
+\setlist[enumerate]{leftmargin=1.5em,topsep=0pt,itemsep=0.1em,parsep=0pt,partopsep=0pt}
+\raggedbottom
+\urlstyle{same}
+\AtBeginDocument{\color{PakPerkInk}}
+
+\ctexset{
+  section={format=\raggedright\Large\color{PakPerkBlue},
+    number=\arabic{section},aftername={.\enspace},beforeskip=0.45em,afterskip=0.25em,
+    aftertitle={\par\nobreak\vspace{-0.85em}{\color{PakPerkBlue}\rule{13mm}{1pt}}}}
+}
+
+\newcommand{\PakPerkTitle}{}
+\newcommand{\PakPerkVersion}{}
+\newcommand{\PakPerkDocument}[2]{%
+  \renewcommand{\PakPerkTitle}{#1}%
+  \renewcommand{\PakPerkVersion}{#2}%
+  \hypersetup{pdftitle={PakPerk #1}}%
+}
+\newcommand{\PakPerkTopic}[1]{\markboth{}{#1}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{PakPerkBlue}PakPerk}
+\fancyhead[R]{\small\color{PakPerkMuted}\rightmark}
+\fancyfoot[L]{\footnotesize\color{PakPerkMuted}PakPerk \PakPerkTitle\enspace·\enspace v\PakPerkVersion}
+\fancyfoot[R]{\footnotesize\color{PakPerkMuted}\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+\renewcommand{\headrule}{\color{PakPerkLine}\hrule height\headrulewidth width\headwidth}
+\renewcommand{\footrule}{\color{PakPerkLine}\hrule height\footrulewidth width\headwidth}
+
+\newcommand{\PakPerkGuideTitle}[1]{%
+  {\color{PakPerkBlue}\fontsize{25}{32}\selectfont PakPerk \PakPerkTitle\par}%
+  {\color{PakPerkMuted}#1\par}%
+}
+
+\tcbset{pakperk box/.style={
+  colframe=PakPerkLine,colback=white,coltext=PakPerkInk,
+  boxrule=0.45pt,arc=2mm,boxsep=0pt,
+  left=4mm,right=4mm,top=2.6mm,bottom=2.6mm,
+  before skip=2.3mm,after skip=0pt
+}}
+
+\newenvironment{PakPerkPanel}{%
+  \begin{tcolorbox}[pakperk box,colback=PakPerkPaper]\small
+}{\end{tcolorbox}}
+
+\newcommand{\PakPerkRow}[2]{%
+  \par\noindent\makebox[20mm][l]{\textcolor{PakPerkBlue}{#1}}%
+  \begin{minipage}[t]{\dimexpr\linewidth-20mm\relax}#2\end{minipage}\par
+}
+
+\newlength{\PakPerkCheckboxSize}
+\setlength{\PakPerkCheckboxSize}{4.5mm}
+
+\newcommand{\PakPerkCheckboxFace}[1]{%
+  \begingroup
+  \setlength{\fboxsep}{0pt}%
+  \setlength{\fboxrule}{0.65pt}%
+  \raisebox{\fboxrule}{\fcolorbox{PakPerkCheckboxBorder}{white}{%
+    \makebox[\dimexpr\PakPerkCheckboxSize-2\fboxrule\relax][c]{%
+      \rule{0pt}{\dimexpr\PakPerkCheckboxSize-2\fboxrule\relax}%
+      \raisebox{0.8mm}[0pt][0pt]{\small\textcolor{PakPerkBlue}{#1}}}}}%
+  \endgroup
+}
+
+\ExplSyntaxOn
+\AtBeginDocument
+  {
+    \pdffield_appearance:nn { pakperk/pass/Off } { \PakPerkCheckboxFace{} }
+    \pdffield_appearance:nn { pakperk/pass/Yes }
+      { \PakPerkCheckboxFace{ \ensuremath{\checkmark} } }
+  }
+\NewDocumentCommand \PakPerkPassWidget { m }
+  {
+    \pdffield_checkbox:n
+      {
+        name = #1-pass,
+        appearance = pakperk/pass,
+        width = \PakPerkCheckboxSize,
+        height = \PakPerkCheckboxSize,
+        depth = 0pt,
+        setF = Print
+      }
+  }
+\ExplSyntaxOff
+
+\newcommand{\PakPerkPassBox}[1]{%
+  \small 结果记录\enspace
+  % Draw the empty square on the page for viewers that hide form widgets.
+  \raisebox{-0.9mm}{\rlap{\PakPerkCheckboxFace{}}\PakPerkPassWidget{#1}}\enspace 通过%
+}
+
+% ID, title, entry point, test steps, expected behavior.
+\newcommand{\PakPerkCase}[5]{%
+  \begin{tcolorbox}[pakperk box,colbacktitle=PakPerkTint,coltitle=PakPerkBlue,
+    fonttitle=\small,toptitle=2.3mm,bottomtitle=2.3mm,titlerule=0pt,
+    title={\makebox[15mm][l]{#1}\textbf{#2}\hfill\PakPerkPassBox{#1}}]
+    \normalsize\setlength{\parskip}{0.42em}%
+    \PakPerkRow{操作入口}{#3}%
+    \PakPerkRow{测试方法}{\begin{enumerate}#4\end{enumerate}}%
+    \PakPerkRow{预期结果}{#5}%
+  \end{tcolorbox}%
+}

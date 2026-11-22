@@ -26,7 +26,7 @@ DOWNLOAD_ACTION = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a54
 UPLOAD_ACTION = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
 FLUTTER_ACTION = "subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2"
 EXPECTED_WORKFLOW_SHA256 = (
-    "c76f93d690618e11a34399885f6c81ce795f6f55d40f3280f838fc7c6d61ad9e"
+    "accd80a48214fe683dc0ccd7b2eb7b808138dda29f92f20077b475416846490f"
 )
 EXPECTED_IOS_VERIFIER_SHA256 = (
     "e5e0193a51b71f1455eeadae610d82155abaf5257ddf7fad1d927c1fcadeaee5"
@@ -272,7 +272,7 @@ def _validate_mobile_feature_contract(
                 for short, config_key, _ in MOBILE_RELEASE_FEATURES
             )
             + (
-                'raw = os.environ.get(f"RELEASE_{short_name}_ENABLED", "") or "false"',
+                'raw = os.environ.get(f"RELEASE_{short_name}_ENABLED", "") or config[config_name]',
                 'protected["PAKPERK_PAPER_TITLE_SEARCH_ENABLED"] == "true" and protected["PAKPERK_ACCOUNTS_ENABLED"] != "true"',
                 'protected["PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED"] == "true" and (',
                 'protected["PAKPERK_READING_FEED_ENABLED"] == "true" and (',
@@ -323,7 +323,9 @@ def _validate_mobile_feature_contract(
             for _, config_key, evidence_key in MOBILE_RELEASE_FEATURES
         )
         + (
-            'value = os.environ.get("RELEASE_" + short + "_ENABLED", "") or "false"',
+            'config_key = "PAKPERK_" + short + "_ENABLED"',
+            'value = os.environ.get("RELEASE_" + short + "_ENABLED", "") or expected_config[config_key]',
+            'expected_config[config_key] = value',
             'expected_config.get("PAKPERK_PAPER_TITLE_SEARCH_ENABLED") == "true" and expected_config.get("PAKPERK_ACCOUNTS_ENABLED") != "true"',
             'expected_config.get("PAKPERK_LIBRARY_IMPORT_WRITES_ENABLED") == "true" and (',
             'expected_config.get("PAKPERK_READING_FEED_ENABLED") == "true" and (',
@@ -374,16 +376,16 @@ def _validate_mobile_feature_contract(
 
 
 def _validate_default_feature_configs() -> None:
-    expected = {config_key: "false" for _, config_key, _ in MOBILE_RELEASE_FEATURES}
     for path in MOBILE_CONFIGS:
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
             raise RuntimeError("mobile release config is unreadable") from error
         if not isinstance(value, dict) or any(
-            value.get(key) != state for key, state in expected.items()
+            value.get(config_key) != "true"
+            for _, config_key, _ in MOBILE_RELEASE_FEATURES
         ):
-            raise RuntimeError("protected mobile release defaults must stay off")
+            raise RuntimeError("checked-in mobile profiles must enable all product features")
 
 
 def _validate_download(step: str, artifact_id: str, label: str) -> None:

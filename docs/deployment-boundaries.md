@@ -1,6 +1,6 @@
 # Queue-first discovery deployment boundaries
 
-**Status:** Current default-off rollout contract with a preserved Phase 0
+**Status:** Current rollout contract with a preserved Phase 0
 baseline inventory
 **Inspected:** 2026-08-31
 **Git baseline:** `cde04d1b2c49c0c8673559fb8d7816cc604536d9`
@@ -80,7 +80,7 @@ old/new compatibility, private-data deletion and restore reapply, integrity, a
 schema-compatible code rollback, and re-forward. Feature rollback preserves
 schema 26; it never runs a down migration merely to close a capability.
 
-## Current default-off server controls
+## Current server controls
 
 The following controls are implemented and validated at startup:
 
@@ -118,22 +118,21 @@ The following controls are implemented and validated at startup:
 | `VERSION_DIFF_ENABLED` | Deep Reader | Enables generation-aware paper-version and diff surfaces. |
 | `DOCLING_EXPERIMENT_ENABLED` | Deep Reader | Allows an evaluated parser experiment; it never makes Docling the default by itself. |
 
-All current optional controls default to false. Startup rejects contradictory
-security-critical combinations. Optional feature routes follow the existing
-pattern: absent when their parent capability is off, with an explicit 503 only
-for an independently disabled write/action behind an otherwise available
-parent surface.
+The checked-in environment and Helm profiles enable the product capabilities.
+Native assistant tools and the Docling experiment remain opt-in. Startup
+rejects contradictory security-critical combinations. Optional feature routes
+are absent when the parent capability is off. An independently disabled action
+on an otherwise available surface returns an explicit 503.
 
-Mobile build controls default off and validate compatible account/Library
-dependencies. The ten Plan 03 build controls are Deep Reader, Passport,
-semantic facets, document visual objects, reading checkpoints, annotations,
+The checked-in mobile profiles enable the product features and validate
+compatible account/Library dependencies. The ten Plan 03 build controls are
+Deep Reader, Passport, semantic facets, document visual objects, reading checkpoints, annotations,
 evidence cards, research memory, version diff, and assistant v2. Closed
 schema-v6 feature evidence and schema-v4 candidate/provenance manifests bind
 all ten, while protected acceptance schema v6 defines their ten physical-device
 scenarios. This repository mechanism is not a passing run: signed-device,
 privacy, legal, human, live-model, staging, and release-owner evidence remain
-`not_ready`, so checked-in production values stay false. A Helm server switch
-never rewrites an already signed binary.
+`not_ready`. A Helm server switch never rewrites an already signed binary.
 
 ## Runtime ownership
 

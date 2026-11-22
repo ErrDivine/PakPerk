@@ -461,12 +461,10 @@ profile expiration, entitlement result, and packaged privacy-manifest result.
 
 ### Protected mobile feature flags
 
-The checked-in production config keeps all 27 protected mobile capability flags
-off. The checked-in staging fixture enables only the established
-account/library/comment composition while the 24 candidate-bound To Read First,
-Plan 02, and Plan 03 flags stay off, but it is never used unchanged for a signed
-candidate. The protected evidence schema controls and binds these established
-seventeen flags:
+The checked-in development, staging, and production profiles enable all 27
+product capability flags. Protected staging and production signing use the
+profile values unless the environment overrides them. The evidence schema controls
+and binds these established seventeen flags:
 
 - `PAKPERK_ACCOUNTS_ENABLED`
 - `PAKPERK_LIBRARY_ENABLED`
@@ -486,7 +484,7 @@ seventeen flags:
 - `PAKPERK_SUBSCRIPTIONS_ENABLED`
 - `PAKPERK_NOTIFICATIONS_ENABLED`
 
-The source config also contains these ten default-off Plan 03 controls:
+The source config also contains these ten Plan 03 controls:
 
 - `PAKPERK_DEEP_READER_ENABLED`
 - `PAKPERK_PAPER_PASSPORT_ENABLED`
@@ -507,8 +505,8 @@ release approval is checked in; those gates remain `not_ready`, and a candidate
 with a Plan 03 value enabled cannot be released without the complete protected
 evidence bundle.
 
-Each value must be exactly `true` or `false`; an absent value resolves to
-`false`. Library, comments, or title search cannot be enabled unless accounts
+Each override must be exactly `true` or `false`. Library, comments, or title
+search cannot be enabled unless accounts
 is also true. Import writes and the reading feed require both accounts and the
 library, and To Read First enforcement requires the reading feed. Library v2
 requires accounts and library. Recommendations and subscriptions require
@@ -524,8 +522,8 @@ evidence cards require annotations, and research memory requires evidence
 cards.
 Define them on the protected `staging` and `production` environments, require
 release reviewers/branch restrictions there, and change them only through the
-release approval record. They are non-secret variables, never dispatch inputs
-or repository defaults. The workflow retains closed schema-6 feature evidence,
+release approval record. Use non-secret environment variables for overrides.
+The workflow retains closed schema-6 feature evidence,
 including all 27 booleans and the two public-document versions, in
 `mobile-feature-flags.json` and builds both platforms from that same generated
 config. The canonical schema-4 candidate and provenance manifests each bind

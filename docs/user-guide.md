@@ -9,11 +9,9 @@ The release targets Android 7.0 / API 24 or newer and iOS 15 or newer.
 
 ## Availability note
 
-Pakperk Production v0.0 is currently a release candidate. The checked-in
-production configuration keeps accounts, Library, and comments off until the
-service completes its operational, safety, legal, device, signing, and store
-reviews. A released build may therefore show only guest reading. The app should
-never advertise a disabled capability as available.
+Pakperk Production v0.0 is currently a release candidate. Feature availability
+depends on the installed build and its server. Some environments may offer only
+guest reading.
 
 Install or update Pakperk only through an official App Store or Google Play
 listing published by the service operator. If the operator has not linked an

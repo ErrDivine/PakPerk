@@ -1,6 +1,6 @@
 # Deep Reader staged rollout and rollback
 
-This runbook controls the nine default-off Plan 03 switches and the complete
+This runbook controls the nine Plan 03 switches and the complete
 23-gate release evidence bundle. It supplements the general
 [release runbook](release.md); it does not replace migration, restore,
 deployment-binding, alert-adapter, or signed-mobile procedures.
@@ -18,9 +18,8 @@ deployment-binding, alert-adapter, or signed-mobile procedures.
    different adapter.
 4. All 31 release switches and all 40 dependency edges reconcile with the
    rendered release contract.
-5. Repository, environment, and Helm Plan 03 switches, plus all ten mobile
-   Plan 03 controls, are false until `releaseEvidence.deepReaderReleaseId`
-   names the complete validated bundle.
+5. For production rollout, override the enabled Plan 03 profile values until
+   `releaseEvidence.deepReaderReleaseId` names the complete validated bundle.
 6. No feed, import, prefetch, recommendation, notification, or Abstract display
    path can enqueue deep preparation. Approved trigger provenance survives into
    every job and derived artifact.
