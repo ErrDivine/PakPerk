@@ -233,7 +233,7 @@ jobs:
 
       - name: Upload immutable untrusted build handoff
         id: build-upload
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-image-build-${{ inputs.environment }}-${{ steps.release.outputs.source_revision }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: release/image-build-handoff
@@ -831,7 +831,7 @@ jobs:
 
       - name: Upload immutable scanned-image handoff
         id: handoff-upload
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-image-handoff-${{ inputs.environment }}-${{ needs.build.outputs.source_revision }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-image-handoff
@@ -1362,7 +1362,7 @@ jobs:
           (cd "$publication_dir" && /usr/bin/sha256sum -- * >SHA256SUMS)
 
       - name: Upload immutable image publication evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-images-${{ inputs.environment }}-${{ inputs.source_revision }}
           path: ${{ runner.temp }}/release-image-publication
