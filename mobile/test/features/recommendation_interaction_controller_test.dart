@@ -93,13 +93,31 @@ void main() {
     );
   });
 
-  testWidgets('feedback retry reuses the exact operation identity', (
+  testWidgets('page-two For You feedback retry reuses its batch and identity', (
     tester,
   ) async {
     final remote = _FakeRecommendationRemote();
     final controller = RecommendationInteractionController(
       remote: remote,
-      context: _context(),
+      context: RecommendationItemContext.forRecommendation(
+        item: ReadingFeedItem(
+          paper: samplePaper,
+          queue: null,
+          source: ReadingFeedItemSource.forYouV1,
+          recommendation: ReadingFeedRecommendationMetadata(
+            mode: ReadingFeedRecommendationMode.forYou,
+            reasonCodes: const [
+              RecommendationExplanationCode.reviewedPaperCitation,
+            ],
+            reasonLabel: 'Connected to a reviewed paper',
+            explanationAvailable: true,
+          ),
+        ),
+        batchId: _otherId,
+        paperId: samplePaper.paperId,
+        authEpoch: 7,
+        accountGeneration: 1,
+      ),
       capabilities: const RecommendationInteractionCapabilities.all(),
       operationId: () => _operationId,
     );
@@ -128,6 +146,12 @@ void main() {
     expect(remote.feedback.map((request) => request.operationId), {
       _operationId,
     });
+    for (final request in remote.feedback) {
+      expect(request.batchId, _otherId);
+      expect(request.paperId, samplePaper.paperId);
+      expect(request.expectedAuthEpoch, 7);
+      expect(request.selection, selection);
+    }
     remote.feedback.last.response.complete(
       const RecommendationFeedbackResult(
         feedbackId: _feedbackId,

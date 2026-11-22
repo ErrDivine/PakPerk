@@ -1,3 +1,7 @@
+mod citation;
+
+pub use citation::RecommendationCitationLearningContext;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     str::FromStr as _,
@@ -7,10 +11,12 @@ use chrono::{DateTime, NaiveDate, Utc};
 use domain::{AccountStatus, AuthenticatedUserId, PaperId, PaperSummary};
 use reading_feed::{RecommendationBatchMetadata, RecommendationPosition};
 use recommendations::{
-    BuiltRecommendationBatch, CandidateDocument, CandidateSource, ExplanationCode,
-    GeneratedCandidate, HistoricalSeed, HistoricalSeedState, METADATA_EMBEDDING_VERSION_V1,
-    RECOMMENDATION_ALGORITHM_VERSION_V1, ReasonEvidence, RecommendationCandidateHistory,
-    RecommendationExplanation, RecommendationFeatures, RecommendationMode, explain_candidate,
+    BuiltRecommendationBatch, CandidateDocument, CandidateSource, CitationCandidateEvidence,
+    ExplanationCode, GeneratedCandidate, HistoricalSeed, HistoricalSeedState,
+    METADATA_EMBEDDING_VERSION_V1, RECOMMENDATION_ALGORITHM_VERSION_V1, ReasonEvidence,
+    RecommendationCandidateHistory, RecommendationExplanation, RecommendationFeatures,
+    RecommendationMode, SCORING_POLICY_VERSION_CITATION_ONLINE_V1, SCORING_POLICY_VERSION_V1,
+    explain_candidate, explain_candidate_with_citation, replay_candidate_with_citation,
 };
 use serde_json::json;
 use sha2::{Digest as _, Sha256};
@@ -18,7 +24,10 @@ use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::{DbError, rows::PAPER_SUMMARY_BY_ID, rows::PaperSummaryRow};
+use super::{
+    DbError, recommendation_jobs::ClaimedRecommendationGeneration, rows::PAPER_SUMMARY_BY_ID,
+    rows::PaperSummaryRow,
+};
 
 #[derive(Clone)]
 pub struct RecommendationBatchRepository {
@@ -38,25 +47,76 @@ impl RecommendationBatchRepository {
 
     /// Finalizes an already-built batch only after serializing against the
     /// account's library revision fence and re-proving active count zero.
-    #[allow(clippy::too_many_lines)] // One short transaction binds queue, profile, feedback, header, and candidates atomically.
     pub async fn persist_ready(
         &self,
         request: RecommendationBatchPersistRequest<'_>,
+    ) -> Result<RecommendationBatchPersistOutcome, RecommendationBatchRepositoryError> {
+        self.persist_with_lease(request, None).await
+    }
+
+    /// Publishes a worker-built batch only while its exact claim still owns the
+    /// lease. Account and context fences precede the job row in lock order.
+    pub async fn persist_claimed_ready(
+        &self,
+        request: RecommendationBatchPersistRequest<'_>,
+        claim: &ClaimedRecommendationGeneration,
+        worker_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<RecommendationBatchPersistOutcome, RecommendationBatchRepositoryError> {
+        if claim.user_id != request.user_id
+            || claim.batch_id != request.batch_id
+            || claim.mode != request.batch.mode
+            || claim.query_key != request.query_key
+            || claim.local_date != request.local_date
+            || claim.profile_revision != request.batch.profile_revision
+            || claim.feedback_revision != request.batch.feedback_revision
+            || claim.library_revision != request.batch.library_revision
+            || claim.algorithm_version != request.batch.algorithm_version
+            || claim.policy_version != request.batch.policy_version
+            || claim.seed != request.batch.seed
+            || request.batch.candidates.len() > claim.candidate_count as usize
+            || claim.next_position != request.next_position
+            || claim.saved_search_revision_digest != request.saved_search_revision_digest
+        {
+            return Err(RecommendationBatchRepositoryError::InvalidRequest);
+        }
+        self.persist_with_lease(
+            request,
+            Some(GenerationLease {
+                claim,
+                worker_id,
+                now,
+            }),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_lines)] // One short transaction binds queue, profile, feedback, header, and candidates atomically.
+    async fn persist_with_lease(
+        &self,
+        request: RecommendationBatchPersistRequest<'_>,
+        lease: Option<GenerationLease<'_>>,
     ) -> Result<RecommendationBatchPersistOutcome, RecommendationBatchRepositoryError> {
         validate_persist_request(&request)?;
         let mut transaction = self.pool.begin().await?;
         let authority = lock_queue_authority(&mut transaction, request.user_id).await?;
         let feedback_revision = lock_feedback_revision(&mut transaction, request.user_id).await?;
-        let profile_revision = current_profile_revision(&mut transaction, request.user_id).await?;
+        let (profile_revision, personalization_enabled) =
+            current_profile_fence(&mut transaction, request.user_id).await?;
         let saved_search_revision_digest = if request.batch.mode == RecommendationMode::Following {
             Some(current_saved_search_digest(&mut transaction, request.user_id).await?)
         } else {
             None
         };
+        if let Some(lease) = lease {
+            lock_generation_lease(&mut transaction, lease).await?;
+        }
         if authority.library_revision != request.batch.library_revision
             || authority.active_count != 0
             || feedback_revision != request.batch.feedback_revision
             || request.batch.profile_revision != profile_revision
+            || (request.batch.policy_version == SCORING_POLICY_VERSION_CITATION_ONLINE_V1
+                && !personalization_enabled)
             || request.saved_search_revision_digest != saved_search_revision_digest
         {
             insert_batch_header(
@@ -166,7 +226,8 @@ impl RecommendationBatchRepository {
         let mut transaction = self.pool.begin().await?;
         let authority = lock_queue_authority(&mut transaction, request.user_id).await?;
         let feedback_revision = lock_feedback_revision(&mut transaction, request.user_id).await?;
-        let profile_revision = current_profile_revision(&mut transaction, request.user_id).await?;
+        let (profile_revision, _) =
+            current_profile_fence(&mut transaction, request.user_id).await?;
         let saved_search_revision_digest = if request.mode == RecommendationMode::Following {
             Some(current_saved_search_digest(&mut transaction, request.user_id).await?)
         } else {
@@ -258,7 +319,9 @@ impl RecommendationBatchRepository {
                 candidate.candidate_sources,
                 candidate.raw_features,
                 candidate.reason_codes,
-                candidate.reason_evidence
+                candidate.reason_evidence,
+                candidate.citation_evidence,
+                batch.policy_version
             FROM recommendation_candidates AS candidate
             JOIN recommendation_batches AS batch ON batch.id = candidate.batch_id
             WHERE batch.id = $1
@@ -295,25 +358,44 @@ impl RecommendationBatchRepository {
 
     /// Stores feedback only for an owned, server-created batch/item pair. The
     /// user-scoped idempotency key makes retries content-stable.
+    #[allow(clippy::too_many_lines)] // Acceptance, idempotency, and revision fences share the account transaction.
     pub async fn record_feedback(
         &self,
         request: RecommendationFeedbackWrite,
     ) -> Result<RecommendationFeedbackOutcome, RecommendationBatchRepositoryError> {
         validate_feedback(&request)?;
         let mut transaction = self.pool.begin().await?;
-        let batch_mode: Option<String> = sqlx::query_scalar(
+        // Exclusive account locking serializes consent and accepted feedback,
+        // including first-profile creation and retention of already-rated cards.
+        let account_status =
+            sqlx::query_scalar::<_, String>("SELECT status FROM users WHERE id = $1 FOR UPDATE")
+                .bind(request.user_id.into_inner())
+                .fetch_optional(&mut *transaction)
+                .await?;
+        if account_status.as_deref() != Some("active") {
+            return Ok(RecommendationFeedbackOutcome::NotFound);
+        }
+        let item = sqlx::query_as::<_, FeedbackItemRow>(
             r"
-            SELECT batch.mode
+            SELECT batch.mode,
+                   batch.policy_version,
+                   candidate.served_at,
+                   candidate.candidate_sources,
+                   candidate.raw_features,
+                   candidate.reason_codes,
+                   candidate.reason_evidence,
+                   candidate.citation_evidence,
+                   profile.personalization_enabled IS TRUE AS personalization_enabled
             FROM recommendation_batches AS batch
             JOIN recommendation_candidates AS candidate
               ON candidate.batch_id = batch.id
+            LEFT JOIN research_profiles AS profile ON profile.user_id = batch.user_id
             WHERE batch.id = $1
               AND batch.user_id = $2
               AND candidate.paper_id = $3
               AND batch.status IN ('ready', 'served')
               AND batch.queue_proven_empty IS TRUE
               AND batch.expires_at > $4
-            LIMIT 1
             ",
         )
         .bind(request.batch_id)
@@ -322,20 +404,61 @@ impl RecommendationBatchRepository {
         .bind(request.created_at)
         .fetch_optional(&mut *transaction)
         .await?;
-        let Some(batch_mode) = batch_mode else {
-            transaction.commit().await?;
+        let Some(item) = item else {
             return Ok(RecommendationFeedbackOutcome::NotFound);
         };
-        let mode = RecommendationMode::parse(&batch_mode)
+        let mode = RecommendationMode::parse(&item.mode)
             .ok_or(RecommendationBatchRepositoryError::InvalidPersistedData)?;
-        let inserted = sqlx::query(
+        let existing = sqlx::query_as::<_, StoredFeedbackRow>(
+            r"
+            SELECT id, paper_id, batch_id, feedback_type, reason
+            FROM recommendation_feedback
+            WHERE user_id = $1 AND idempotency_key = $2
+            ",
+        )
+        .bind(request.user_id.into_inner())
+        .bind(request.idempotency_key)
+        .fetch_optional(&mut *transaction)
+        .await?;
+        if let Some(stored) = existing {
+            return Ok(if stored.matches(&request) {
+                RecommendationFeedbackOutcome::Replayed {
+                    feedback_id: stored.id,
+                    mode,
+                }
+            } else {
+                RecommendationFeedbackOutcome::IdempotencyConflict { mode }
+            });
+        }
+
+        let citation = decode_citation_evidence(&item.evidence)?;
+        let feature_mask = if item.personalization_enabled {
+            if let Some(evidence) = citation.as_ref()
+                && mode == RecommendationMode::ForYou
+                && item.served_at.is_some()
+                && request.feedback_type != RecommendationFeedbackType::Dismissed
+            {
+                let paper = sqlx::query_as::<_, PaperSummaryRow>(PAPER_SUMMARY_BY_ID)
+                    .bind(request.paper_id)
+                    .fetch_optional(&mut *transaction)
+                    .await?
+                    .ok_or(RecommendationBatchRepositoryError::InvalidPersistedData)?
+                    .try_into()?;
+                decode_candidate_explanations(paper, item.evidence, Some(evidence))?;
+                Some(i16::from(evidence.feature_mask))
+            } else {
+                Some(0)
+            }
+        } else {
+            None
+        };
+        sqlx::query(
             r"
             INSERT INTO recommendation_feedback (
                 id, user_id, paper_id, batch_id, feedback_type, reason,
-                idempotency_key, created_at
+                idempotency_key, created_at, feature_mask
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (user_id, idempotency_key) DO NOTHING
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             ",
         )
         .bind(request.feedback_id)
@@ -346,57 +469,39 @@ impl RecommendationBatchRepository {
         .bind(request.reason.map(RecommendationFeedbackReason::as_str))
         .bind(request.idempotency_key)
         .bind(request.created_at)
+        .bind(feature_mask)
         .execute(&mut *transaction)
-        .await?
-        .rows_affected()
-            == 1;
-        let stored = sqlx::query_as::<_, StoredFeedbackRow>(
-            r"
-            SELECT id, paper_id, batch_id, feedback_type, reason
-            FROM recommendation_feedback
-            WHERE user_id = $1 AND idempotency_key = $2
-            ",
-        )
-        .bind(request.user_id.into_inner())
-        .bind(request.idempotency_key)
-        .fetch_one(&mut *transaction)
         .await?;
-        let matches = stored.matches(&request);
-        if !matches {
-            transaction.commit().await?;
-            return Ok(RecommendationFeedbackOutcome::IdempotencyConflict { mode });
+        let feedback_revision =
+            advance_feedback_revision(&mut transaction, request.user_id).await?;
+        if request.feedback_type == RecommendationFeedbackType::Relevant {
+            apply_relevant_category_affinity(&mut transaction, &request).await?;
         }
-        if inserted {
-            let feedback_revision =
-                advance_feedback_revision(&mut transaction, request.user_id).await?;
-            if request.feedback_type == RecommendationFeedbackType::Relevant {
-                apply_relevant_category_affinity(&mut transaction, &request).await?;
-            }
-            sqlx::query(
-                r"
-                UPDATE recommendation_batches
-                SET status = 'superseded'
-                WHERE user_id = $1
-                  AND status IN ('building', 'ready')
-                  AND feedback_revision IS DISTINCT FROM $2
-                ",
-            )
-            .bind(request.user_id.into_inner())
-            .bind(feedback_revision)
-            .execute(&mut *transaction)
+        supersede_stale_feedback_batches(&mut transaction, request.user_id, feedback_revision)
             .await?;
-            transaction.commit().await?;
-            Ok(RecommendationFeedbackOutcome::Applied {
-                feedback_id: stored.id,
-                mode,
-            })
-        } else {
-            transaction.commit().await?;
-            Ok(RecommendationFeedbackOutcome::Replayed {
-                feedback_id: stored.id,
-                mode,
-            })
+        transaction.commit().await?;
+        Ok(RecommendationFeedbackOutcome::Applied {
+            feedback_id: request.feedback_id,
+            mode,
+        })
+    }
+
+    /// Reads only the revision fence for a metadata-only fallback. Publishing
+    /// and serving still check it under the account and profile locks.
+    pub async fn profile_revision(
+        &self,
+        user_id: AuthenticatedUserId,
+    ) -> Result<Option<i64>, RecommendationBatchRepositoryError> {
+        let revision = sqlx::query_scalar::<_, i64>(
+            "SELECT profile_revision FROM research_profiles WHERE user_id = $1",
+        )
+        .bind(user_id.into_inner())
+        .fetch_optional(&self.pool)
+        .await?;
+        if revision.is_some_and(|value| value <= 0) {
+            return Err(RecommendationBatchRepositoryError::InvalidPersistedData);
         }
+        Ok(revision)
     }
 
     /// Returns the current feedback fence and bounded, content-free history
@@ -407,65 +512,13 @@ impl RecommendationBatchRepository {
         paper_ids: &[PaperId],
         now: DateTime<Utc>,
     ) -> Result<RecommendationFeedbackContext, RecommendationBatchRepositoryError> {
-        if paper_ids.len() > 500
-            || paper_ids.iter().any(Uuid::is_nil)
-            || paper_ids.iter().collect::<BTreeSet<_>>().len() != paper_ids.len()
-        {
+        if !valid_page_ids(paper_ids, 500) {
             return Err(RecommendationBatchRepositoryError::InvalidRequest);
         }
-        let revision = feedback_revision(&self.pool, user_id).await?;
-        if paper_ids.is_empty() {
-            return Ok(RecommendationFeedbackContext {
-                revision,
-                history: BTreeMap::new(),
-            });
-        }
-        let rows = sqlx::query_as::<_, CandidateHistoryRow>(
-            r"
-            SELECT
-                paper_id,
-                count(*) FILTER (
-                    WHERE event_type = 'impression_qualified' AND expires_at > $3
-                ) AS qualified_impressions,
-                false AS hidden,
-                false AS negative_feedback
-            FROM paper_interactions
-            WHERE user_id = $1 AND paper_id = ANY($2)
-            GROUP BY paper_id
-            ",
-        )
-        .bind(user_id.into_inner())
-        .bind(paper_ids)
-        .bind(now)
-        .fetch_all(&self.pool)
-        .await?;
-        let mut history = rows
-            .into_iter()
-            .map(CandidateHistoryRow::into_pair)
-            .collect::<BTreeMap<_, _>>();
-        let feedback = sqlx::query_as::<_, NegativeFeedbackRow>(
-            r"
-            SELECT
-                paper_id,
-                bool_or(feedback_type = 'dismissed') AS hidden,
-                bool_or(feedback_type IN ('not_relevant', 'dismissed')) AS negative_feedback
-            FROM recommendation_feedback
-            WHERE user_id = $1
-              AND paper_id = ANY($2)
-              AND feedback_type IN ('not_relevant', 'dismissed')
-            GROUP BY paper_id
-            ",
-        )
-        .bind(user_id.into_inner())
-        .bind(paper_ids)
-        .fetch_all(&self.pool)
-        .await?;
-        for row in feedback {
-            let value = history.entry(row.paper_id).or_default();
-            value.hidden |= row.hidden;
-            value.negative_feedback |= row.negative_feedback;
-        }
-        Ok(RecommendationFeedbackContext { revision, history })
+        let mut transaction = begin_consistent_read(&self.pool).await?;
+        let context = load_feedback_context(&mut transaction, user_id, paper_ids, now).await?;
+        transaction.commit().await?;
+        Ok(context)
     }
 
     /// Serves an owned ready batch only after re-locking the same library
@@ -473,13 +526,14 @@ impl RecommendationBatchRepository {
     /// the batch into `superseded` before any item can escape this transaction.
     pub async fn serve_ready(
         &self,
-        request: RecommendationBatchServeRequest,
+        request: RecommendationBatchServeRequest<'_>,
     ) -> Result<RecommendationBatchServeOutcome, RecommendationBatchRepositoryError> {
         validate_serve_request(&request)?;
         let mut transaction = self.pool.begin().await?;
         let authority = lock_queue_authority(&mut transaction, request.user_id).await?;
         let feedback_revision = lock_feedback_revision(&mut transaction, request.user_id).await?;
-        let profile_revision = current_profile_revision(&mut transaction, request.user_id).await?;
+        let (profile_revision, personalization_enabled) =
+            current_profile_fence(&mut transaction, request.user_id).await?;
         if authority.library_revision != request.library_revision || authority.active_count != 0 {
             supersede_owned_batch(&mut transaction, request.user_id, request.batch_id).await?;
             transaction.commit().await?;
@@ -507,9 +561,13 @@ impl RecommendationBatchRepository {
             return Err(RecommendationBatchRepositoryError::InvalidPersistedData);
         };
         if mode != request.mode
+            || batch.algorithm_version != RECOMMENDATION_ALGORITHM_VERSION_V1
+            || batch.policy_version != request.policy_version
             || library_revision != request.library_revision
             || batch.feedback_revision != feedback_revision
             || batch.profile_revision != profile_revision
+            || (batch.policy_version == SCORING_POLICY_VERSION_CITATION_ONLINE_V1
+                && !personalization_enabled)
             || batch_saved_search_revision_digest != saved_search_revision_digest
         {
             supersede_owned_batch(&mut transaction, request.user_id, request.batch_id).await?;
@@ -565,10 +623,7 @@ impl RecommendationBatchRepository {
         &self,
         paper_ids: &[PaperId],
     ) -> Result<BTreeMap<PaperId, BTreeSet<PaperId>>, RecommendationBatchRepositoryError> {
-        if paper_ids.len() > 500
-            || paper_ids.iter().any(Uuid::is_nil)
-            || paper_ids.iter().collect::<BTreeSet<_>>().len() != paper_ids.len()
-        {
+        if !valid_page_ids(paper_ids, 500) {
             return Err(RecommendationBatchRepositoryError::InvalidRequest);
         }
         if paper_ids.is_empty() {
@@ -607,9 +662,8 @@ impl RecommendationBatchRepository {
         Ok(neighbors)
     }
 
-    /// Deletes only expired recommendation batches and raw explicit feedback
-    /// beyond the bounded diagnostic window. Account profile and library rows
-    /// are never consulted or mutated by this maintenance path.
+    /// Bounds retention work and locks accounts before deleting their evidence
+    /// or batches. A batch expired on its own leaves existing votes intact.
     pub async fn cleanup_retention(
         &self,
         now: DateTime<Utc>,
@@ -620,45 +674,103 @@ impl RecommendationBatchRepository {
             return Err(RecommendationBatchRepositoryError::InvalidRequest);
         }
         let mut transaction = self.pool.begin().await?;
-        let feedback = sqlx::query(
+        let feedback_targets = sqlx::query_as::<_, RetentionTarget>(
             r"
-            DELETE FROM recommendation_feedback
-            WHERE id IN (
-                SELECT id
-                FROM recommendation_feedback
-                WHERE created_at <= $1
-                ORDER BY created_at ASC, id ASC
-                LIMIT $2
-                FOR UPDATE SKIP LOCKED
-            )
+            SELECT id, user_id
+            FROM recommendation_feedback
+            WHERE created_at <= $1
+            ORDER BY created_at ASC, id ASC
+            LIMIT $2
             ",
         )
         .bind(feedback_before)
         .bind(i64::from(limit))
-        .execute(&mut *transaction)
+        .fetch_all(&mut *transaction)
+        .await?;
+        let batch_targets = sqlx::query_as::<_, RetentionTarget>(
+            r"
+            SELECT id, user_id
+            FROM recommendation_batches
+            WHERE expires_at <= $1
+            ORDER BY expires_at ASC, id ASC
+            LIMIT $2
+            ",
+        )
+        .bind(now)
+        .bind(i64::from(limit))
+        .fetch_all(&mut *transaction)
+        .await?;
+        let account_ids = feedback_targets
+            .iter()
+            .chain(&batch_targets)
+            .filter_map(|target| target.user_id)
+            .collect::<BTreeSet<_>>();
+        let locked_accounts = sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM users WHERE id = ANY($1) ORDER BY id FOR UPDATE SKIP LOCKED",
+        )
+        .bind(account_ids.into_iter().collect::<Vec<_>>())
+        .fetch_all(&mut *transaction)
         .await?
-        .rows_affected();
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+        let feedback_ids = retention_ids(feedback_targets, &locked_accounts);
+        let batch_ids = retention_ids(batch_targets, &locked_accounts);
+        let feedback_accounts = sqlx::query_scalar::<_, Uuid>(
+            r"
+            DELETE FROM recommendation_feedback
+            WHERE id = ANY($1) AND created_at <= $2
+            RETURNING user_id
+            ",
+        )
+        .bind(feedback_ids)
+        .bind(feedback_before)
+        .fetch_all(&mut *transaction)
+        .await?;
+        let feedback = u64::try_from(feedback_accounts.len())
+            .map_err(|_| RecommendationBatchRepositoryError::InvalidPersistedData)?;
+        for account_id in feedback_accounts.into_iter().collect::<BTreeSet<_>>() {
+            let user_id = AuthenticatedUserId::new(account_id);
+            let revision = advance_feedback_revision(&mut transaction, user_id).await?;
+            supersede_stale_feedback_batches(&mut transaction, user_id, revision).await?;
+        }
         let batches = sqlx::query(
             r"
             DELETE FROM recommendation_batches
             WHERE id IN (
                 SELECT id
                 FROM recommendation_batches
-                WHERE expires_at <= $1
+                WHERE id = ANY($1) AND expires_at <= $2
                 ORDER BY expires_at ASC, id ASC
-                LIMIT $2
                 FOR UPDATE SKIP LOCKED
             )
             ",
         )
+        .bind(batch_ids)
         .bind(now)
-        .bind(i64::from(limit))
         .execute(&mut *transaction)
         .await?
         .rows_affected();
         transaction.commit().await?;
         Ok(RecommendationRetentionCleanup { batches, feedback })
     }
+}
+
+#[derive(FromRow)]
+struct RetentionTarget {
+    id: Uuid,
+    user_id: Option<Uuid>,
+}
+
+fn retention_ids(targets: Vec<RetentionTarget>, locked_accounts: &BTreeSet<Uuid>) -> Vec<Uuid> {
+    targets
+        .into_iter()
+        .filter(|target| {
+            target
+                .user_id
+                .is_none_or(|id| locked_accounts.contains(&id))
+        })
+        .map(|target| target.id)
+        .collect()
 }
 
 pub struct RecommendationBatchPersistRequest<'a> {
@@ -674,10 +786,11 @@ pub struct RecommendationBatchPersistRequest<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct RecommendationBatchServeRequest {
+pub struct RecommendationBatchServeRequest<'a> {
     pub user_id: AuthenticatedUserId,
     pub batch_id: Uuid,
     pub mode: RecommendationMode,
+    pub policy_version: &'a str,
     pub library_revision: i64,
     pub limit: u32,
     pub now: DateTime<Utc>,
@@ -897,6 +1010,8 @@ pub enum RecommendationBatchRepositoryError {
     AccountNotFound,
     #[error("recommendation batch account is unavailable")]
     AccountUnavailable,
+    #[error("recommendation generation lease is no longer owned")]
+    LeaseLost,
     #[error("persisted recommendation batch data is invalid")]
     InvalidPersistedData,
     #[error(transparent)]
@@ -913,6 +1028,51 @@ impl From<sqlx::Error> for RecommendationBatchRepositoryError {
 struct QueueAuthority {
     library_revision: i64,
     active_count: u64,
+}
+
+struct GenerationLease<'a> {
+    claim: &'a ClaimedRecommendationGeneration,
+    worker_id: &'a str,
+    now: DateTime<Utc>,
+}
+
+async fn lock_generation_lease(
+    transaction: &mut Transaction<'_, Postgres>,
+    lease: GenerationLease<'_>,
+) -> Result<(), RecommendationBatchRepositoryError> {
+    let attempt = i32::try_from(lease.claim.attempt)
+        .map_err(|_| RecommendationBatchRepositoryError::InvalidRequest)?;
+    let is_current = sqlx::query_scalar::<_, bool>(
+        r"
+        WITH running_claim AS MATERIALIZED (
+            SELECT lease_expires_at
+            FROM recommendation_generation_jobs
+            WHERE id = $1
+              AND user_id = $2
+              AND batch_id = $3
+              AND state = 'running'
+              AND lease_owner = $4
+              AND attempts = $5
+            FOR UPDATE
+        )
+        SELECT EXISTS (
+            SELECT 1 FROM running_claim
+            WHERE lease_expires_at > GREATEST($6, clock_timestamp())
+        )
+        ",
+    )
+    .bind(lease.claim.job_id)
+    .bind(lease.claim.user_id.into_inner())
+    .bind(lease.claim.batch_id)
+    .bind(lease.worker_id)
+    .bind(attempt)
+    .bind(lease.now)
+    .fetch_one(&mut **transaction)
+    .await?;
+    if !is_current {
+        return Err(RecommendationBatchRepositoryError::LeaseLost);
+    }
+    Ok(())
 }
 
 async fn lock_queue_authority(
@@ -967,10 +1127,10 @@ async fn lock_queue_authority(
     })
 }
 
-async fn feedback_revision(
-    pool: &PgPool,
+pub(super) async fn feedback_revision<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
     user_id: AuthenticatedUserId,
-) -> Result<i64, RecommendationBatchRepositoryError> {
+) -> Result<i64, DbError> {
     let revision: i64 = sqlx::query_scalar(
         r"
         SELECT COALESCE(
@@ -984,10 +1144,12 @@ async fn feedback_revision(
         ",
     )
     .bind(user_id.into_inner())
-    .fetch_one(pool)
+    .fetch_one(executor)
     .await?;
     if revision < 0 {
-        return Err(RecommendationBatchRepositoryError::InvalidPersistedData);
+        return Err(DbError::InvalidData(
+            "negative recommendation feedback revision".to_owned(),
+        ));
     }
     Ok(revision)
 }
@@ -1023,10 +1185,10 @@ async fn lock_feedback_revision(
     Ok(revision)
 }
 
-async fn advance_feedback_revision(
+pub(super) async fn advance_feedback_revision(
     transaction: &mut Transaction<'_, Postgres>,
     user_id: AuthenticatedUserId,
-) -> Result<i64, RecommendationBatchRepositoryError> {
+) -> Result<i64, DbError> {
     let revision: i64 = sqlx::query_scalar(
         r"
         INSERT INTO recommendation_feedback_revisions (
@@ -1042,25 +1204,50 @@ async fn advance_feedback_revision(
     .fetch_one(&mut **transaction)
     .await?;
     if revision <= 0 {
-        return Err(RecommendationBatchRepositoryError::InvalidPersistedData);
+        return Err(DbError::InvalidData(
+            "nonpositive advanced recommendation feedback revision".to_owned(),
+        ));
     }
     Ok(revision)
 }
 
-async fn current_profile_revision(
+async fn supersede_stale_feedback_batches(
     transaction: &mut Transaction<'_, Postgres>,
     user_id: AuthenticatedUserId,
-) -> Result<Option<i64>, RecommendationBatchRepositoryError> {
-    let revision = sqlx::query_scalar::<_, i64>(
-        "SELECT profile_revision FROM research_profiles WHERE user_id = $1 FOR UPDATE",
+    feedback_revision: i64,
+) -> Result<(), RecommendationBatchRepositoryError> {
+    sqlx::query(
+        r"
+        UPDATE recommendation_batches
+        SET status = 'superseded'
+        WHERE user_id = $1
+          AND status IN ('building', 'ready')
+          AND feedback_revision IS DISTINCT FROM $2
+        ",
+    )
+    .bind(user_id.into_inner())
+    .bind(feedback_revision)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
+async fn current_profile_fence(
+    transaction: &mut Transaction<'_, Postgres>,
+    user_id: AuthenticatedUserId,
+) -> Result<(Option<i64>, bool), RecommendationBatchRepositoryError> {
+    let profile = sqlx::query_as::<_, (i64, bool)>(
+        "SELECT profile_revision, personalization_enabled FROM research_profiles \
+         WHERE user_id = $1 FOR UPDATE",
     )
     .bind(user_id.into_inner())
     .fetch_optional(&mut **transaction)
     .await?;
-    if revision.is_some_and(|value| value <= 0) {
-        return Err(RecommendationBatchRepositoryError::InvalidPersistedData);
+    match profile {
+        Some((revision, enabled)) if revision > 0 => Ok((Some(revision), enabled)),
+        Some(_) => Err(RecommendationBatchRepositoryError::InvalidPersistedData),
+        None => Ok((None, false)),
     }
-    Ok(revision)
 }
 
 async fn current_saved_search_digest(
@@ -1153,9 +1340,10 @@ async fn apply_relevant_category_affinity(
 }
 
 fn validate_serve_request(
-    request: &RecommendationBatchServeRequest,
+    request: &RecommendationBatchServeRequest<'_>,
 ) -> Result<(), RecommendationBatchRepositoryError> {
     if request.batch_id.is_nil()
+        || !policy_supports_mode(request.policy_version, request.mode)
         || request.library_revision < 0
         || !(1..=50).contains(&request.limit)
     {
@@ -1201,7 +1389,7 @@ async fn expire_owned_batch(
 
 async fn batch_for_serve(
     transaction: &mut Transaction<'_, Postgres>,
-    request: &RecommendationBatchServeRequest,
+    request: &RecommendationBatchServeRequest<'_>,
 ) -> Result<Option<StoredBatchForServeRow>, RecommendationBatchRepositoryError> {
     Ok(sqlx::query_as(
         r"
@@ -1223,13 +1411,18 @@ async fn batch_for_serve(
 
 async fn load_served_candidates(
     transaction: &mut Transaction<'_, Postgres>,
-    request: &RecommendationBatchServeRequest,
+    request: &RecommendationBatchServeRequest<'_>,
 ) -> Result<Vec<StoredRecommendationCandidate>, RecommendationBatchRepositoryError> {
     let rows = sqlx::query_as::<_, StoredCandidateForServeRow>(
         r"
         SELECT
             candidate.reranked_position,
+            candidate.candidate_sources,
+            candidate.raw_features,
             candidate.reason_codes,
+            candidate.reason_evidence,
+            candidate.citation_evidence,
+            batch.policy_version,
             paper.id,
             paper.arxiv_base_id,
             paper.arxiv_version,
@@ -1251,6 +1444,7 @@ async fn load_served_candidates(
             processing.semantic_facets_ready,
             processing.paper_passport_ready
         FROM recommendation_candidates AS candidate
+        JOIN recommendation_batches AS batch ON batch.id = candidate.batch_id
         JOIN papers AS paper ON paper.id = candidate.paper_id
         JOIN paper_processing AS processing ON processing.paper_id = paper.id
         WHERE candidate.batch_id = $1
@@ -1269,7 +1463,7 @@ async fn load_served_candidates(
 
 async fn mark_batch_served(
     transaction: &mut Transaction<'_, Postgres>,
-    request: &RecommendationBatchServeRequest,
+    request: &RecommendationBatchServeRequest<'_>,
     items: &[StoredRecommendationCandidate],
 ) -> Result<(), RecommendationBatchRepositoryError> {
     sqlx::query(
@@ -1298,8 +1492,87 @@ async fn mark_batch_served(
     Ok(())
 }
 
-async fn load_historical_seeds(
+async fn begin_consistent_read(
     pool: &PgPool,
+) -> Result<Transaction<'static, Postgres>, RecommendationBatchRepositoryError> {
+    let mut transaction = pool.begin().await?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        .execute(&mut *transaction)
+        .await?;
+    Ok(transaction)
+}
+
+fn valid_page_ids(paper_ids: &[PaperId], maximum: usize) -> bool {
+    paper_ids.len() <= maximum
+        && paper_ids.iter().all(|id| !id.is_nil())
+        && paper_ids.iter().collect::<BTreeSet<_>>().len() == paper_ids.len()
+}
+
+async fn load_feedback_context(
+    transaction: &mut Transaction<'_, Postgres>,
+    user_id: AuthenticatedUserId,
+    paper_ids: &[PaperId],
+    now: DateTime<Utc>,
+) -> Result<RecommendationFeedbackContext, RecommendationBatchRepositoryError> {
+    let revision = feedback_revision(&mut **transaction, user_id).await?;
+    if paper_ids.is_empty() {
+        return Ok(RecommendationFeedbackContext {
+            revision,
+            history: BTreeMap::new(),
+        });
+    }
+    let rows = sqlx::query_as::<_, CandidateHistoryRow>(
+        r"
+        SELECT
+            paper_id,
+            count(*) FILTER (
+                WHERE event_type = 'impression_qualified' AND expires_at > $3
+            ) AS qualified_impressions,
+            false AS hidden,
+            false AS negative_feedback
+        FROM paper_interactions
+        WHERE user_id = $1 AND paper_id = ANY($2)
+        GROUP BY paper_id
+        ",
+    )
+    .bind(user_id.into_inner())
+    .bind(paper_ids)
+    .bind(now)
+    .fetch_all(&mut **transaction)
+    .await?;
+    let mut history = rows
+        .into_iter()
+        .map(CandidateHistoryRow::into_pair)
+        .collect::<BTreeMap<_, _>>();
+    let feedback = sqlx::query_as::<_, NegativeFeedbackRow>(
+        r"
+        SELECT
+            candidate.id AS paper_id,
+            bool_or(feedback.feedback_type = 'dismissed') AS hidden,
+            bool_or(feedback.feedback_type IN ('not_relevant', 'dismissed')) AS negative_feedback
+        FROM recommendation_feedback AS feedback
+        JOIN papers AS rated ON rated.id = feedback.paper_id
+        JOIN papers AS candidate ON candidate.arxiv_base_id = rated.arxiv_base_id
+        WHERE feedback.user_id = $1
+          AND candidate.id = ANY($2)
+          AND feedback.feedback_type IN ('not_relevant', 'dismissed')
+        GROUP BY candidate.id
+        ",
+    )
+    .bind(user_id.into_inner())
+    .bind(paper_ids)
+    .fetch_all(&mut **transaction)
+    .await?;
+    for row in feedback {
+        let value = history.entry(row.paper_id).or_default();
+        value.hidden |= row.hidden;
+        value.negative_feedback |= row.negative_feedback;
+    }
+    Ok(RecommendationFeedbackContext { revision, history })
+}
+
+async fn load_historical_seeds<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
     user_id: AuthenticatedUserId,
     limit: u32,
 ) -> Result<Vec<HistoricalSeed>, RecommendationBatchRepositoryError> {
@@ -1318,7 +1591,7 @@ async fn load_historical_seeds(
     )
     .bind(user_id.into_inner())
     .bind(i64::from(limit))
-    .fetch_all(pool)
+    .fetch_all(executor)
     .await?;
     rows.into_iter().map(TryInto::try_into).collect()
 }
@@ -1363,7 +1636,8 @@ fn stored_batch_metadata(
 #[derive(Debug, FromRow)]
 struct StoredCandidateForServeRow {
     reranked_position: Option<i32>,
-    reason_codes: Vec<String>,
+    #[sqlx(flatten)]
+    evidence: StoredCandidateEvidenceRow,
     #[sqlx(flatten)]
     paper: PaperSummaryRow,
 }
@@ -1376,17 +1650,21 @@ impl TryFrom<StoredCandidateForServeRow> for StoredRecommendationCandidate {
             .reranked_position
             .and_then(|value| u32::try_from(value).ok())
             .ok_or(RecommendationBatchRepositoryError::InvalidPersistedData)?;
-        let reason_codes = row
-            .reason_codes
-            .iter()
-            .map(|code| ExplanationCode::parse(code))
-            .collect::<Option<Vec<_>>>()
-            .ok_or(RecommendationBatchRepositoryError::InvalidPersistedData)?;
-        if reason_codes.is_empty() {
-            return Err(RecommendationBatchRepositoryError::InvalidPersistedData);
-        }
+        let paper = PaperSummary::try_from(row.paper)?;
+        let reason_codes =
+            if row.evidence.policy_version == SCORING_POLICY_VERSION_CITATION_ONLINE_V1 {
+                decode_explanations(paper.clone(), row.evidence)?
+                    .into_iter()
+                    .map(|explanation| explanation.code)
+                    .collect()
+            } else {
+                if row.evidence.citation_evidence.is_some() {
+                    return Err(RecommendationBatchRepositoryError::InvalidPersistedData);
+                }
+                decode_reason_codes(&row.evidence.reason_codes)?
+            };
         Ok(Self {
-            paper: row.paper.try_into()?,
+            paper,
             position,
             reason_codes,
         })
@@ -1441,6 +1719,38 @@ struct StoredCandidateEvidenceRow {
     raw_features: serde_json::Value,
     reason_codes: Vec<String>,
     reason_evidence: serde_json::Value,
+    citation_evidence: Option<serde_json::Value>,
+    policy_version: String,
+}
+
+fn decode_citation_evidence(
+    row: &StoredCandidateEvidenceRow,
+) -> Result<Option<CitationCandidateEvidence>, RecommendationBatchRepositoryError> {
+    match (row.policy_version.as_str(), row.citation_evidence.as_ref()) {
+        (SCORING_POLICY_VERSION_V1, None) => Ok(None),
+        (SCORING_POLICY_VERSION_CITATION_ONLINE_V1, Some(stored)) => {
+            let evidence: CitationCandidateEvidence = serde::Deserialize::deserialize(stored)
+                .map_err(|_| RecommendationBatchRepositoryError::InvalidPersistedData)?;
+            evidence
+                .validate()
+                .map_err(|_| RecommendationBatchRepositoryError::InvalidPersistedData)?;
+            Ok(Some(evidence))
+        }
+        _ => Err(RecommendationBatchRepositoryError::InvalidPersistedData),
+    }
+}
+
+fn decode_reason_codes(
+    codes: &[String],
+) -> Result<Vec<ExplanationCode>, RecommendationBatchRepositoryError> {
+    if codes.is_empty() {
+        return Err(RecommendationBatchRepositoryError::InvalidPersistedData);
+    }
+    codes
+        .iter()
+        .map(|code| ExplanationCode::parse(code))
+        .collect::<Option<_>>()
+        .ok_or(RecommendationBatchRepositoryError::InvalidPersistedData)
 }
 
 fn decode_explanations(
@@ -1450,6 +1760,15 @@ fn decode_explanations(
     if !paper.capabilities.metadata {
         return Err(RecommendationBatchRepositoryError::InvalidPersistedData);
     }
+    let citation = decode_citation_evidence(&stored)?;
+    decode_candidate_explanations(paper, stored, citation.as_ref())
+}
+
+fn decode_candidate_explanations(
+    paper: PaperSummary,
+    stored: StoredCandidateEvidenceRow,
+    citation: Option<&CitationCandidateEvidence>,
+) -> Result<Vec<RecommendationExplanation>, RecommendationBatchRepositoryError> {
     let sources = stored
         .candidate_sources
         .iter()
@@ -1482,14 +1801,12 @@ fn decode_explanations(
         hidden: false,
         negative_feedback: false,
     };
-    let explanations = explain_candidate(&candidate)
-        .map_err(|_| RecommendationBatchRepositoryError::InvalidPersistedData)?;
-    let expected_codes = stored
-        .reason_codes
-        .iter()
-        .map(|code| ExplanationCode::parse(code))
-        .collect::<Option<Vec<_>>>()
-        .ok_or(RecommendationBatchRepositoryError::InvalidPersistedData)?;
+    let explanations = match citation {
+        Some(evidence) => replay_candidate_with_citation(&candidate, evidence),
+        None => explain_candidate(&candidate),
+    }
+    .map_err(|_| RecommendationBatchRepositoryError::InvalidPersistedData)?;
+    let expected_codes = decode_reason_codes(&stored.reason_codes)?;
     if explanations
         .iter()
         .map(|explanation| explanation.code)
@@ -1498,6 +1815,15 @@ fn decode_explanations(
         return Err(RecommendationBatchRepositoryError::InvalidPersistedData);
     }
     Ok(explanations)
+}
+
+#[derive(Debug, FromRow)]
+struct FeedbackItemRow {
+    mode: String,
+    served_at: Option<DateTime<Utc>>,
+    personalization_enabled: bool,
+    #[sqlx(flatten)]
+    evidence: StoredCandidateEvidenceRow,
 }
 
 #[derive(Debug, FromRow)]
@@ -1703,15 +2029,21 @@ async fn insert_candidates(
             .map_err(|_| RecommendationBatchRepositoryError::InvalidRequest)?;
         let reason_evidence = serde_json::to_value(&candidate.scored.candidate.reasons)
             .map_err(|_| RecommendationBatchRepositoryError::InvalidRequest)?;
+        let citation_evidence = candidate
+            .citation_evidence
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(|_| RecommendationBatchRepositoryError::InvalidRequest)?;
         let position = i32::try_from(position)
             .map_err(|_| RecommendationBatchRepositoryError::InvalidRequest)?;
         sqlx::query(
             r"
             INSERT INTO recommendation_candidates (
                 batch_id, paper_id, candidate_sources, raw_features, base_score,
-                reranked_position, reason_codes, reason_evidence, served_at
+                reranked_position, reason_codes, reason_evidence, citation_evidence
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             ",
         )
         .bind(batch_id)
@@ -1722,6 +2054,7 @@ async fn insert_candidates(
         .bind(position)
         .bind(reason_codes)
         .bind(reason_evidence)
+        .bind(citation_evidence)
         .execute(&mut **transaction)
         .await?;
     }
@@ -1732,6 +2065,7 @@ fn validate_persist_request(
     request: &RecommendationBatchPersistRequest<'_>,
 ) -> Result<(), RecommendationBatchRepositoryError> {
     if request.batch.algorithm_version != RECOMMENDATION_ALGORITHM_VERSION_V1
+        || !policy_supports_mode(&request.batch.policy_version, request.batch.mode)
         || request.batch_id.is_nil()
         || request.batch.library_revision < 0
         || request.batch.feedback_revision < 0
@@ -1760,7 +2094,27 @@ fn validate_persist_request(
     }) {
         return Err(RecommendationBatchRepositoryError::InvalidRequest);
     }
+    for candidate in &request.batch.candidates {
+        match (&*request.batch.policy_version, &candidate.citation_evidence) {
+            (SCORING_POLICY_VERSION_V1, None) => {}
+            (SCORING_POLICY_VERSION_CITATION_ONLINE_V1, Some(evidence)) => {
+                let expected =
+                    explain_candidate_with_citation(&candidate.scored.candidate, evidence)
+                        .map_err(|_| RecommendationBatchRepositoryError::InvalidRequest)?;
+                if expected != candidate.explanations {
+                    return Err(RecommendationBatchRepositoryError::InvalidRequest);
+                }
+            }
+            _ => return Err(RecommendationBatchRepositoryError::InvalidRequest),
+        }
+    }
     Ok(())
+}
+
+pub(super) fn policy_supports_mode(policy: &str, mode: RecommendationMode) -> bool {
+    policy == SCORING_POLICY_VERSION_V1
+        || (policy == SCORING_POLICY_VERSION_CITATION_ONLINE_V1
+            && mode == RecommendationMode::ForYou)
 }
 
 fn stored_position(
@@ -1914,6 +2268,8 @@ mod tests {
         let explanations = decode_explanations(
             paper_summary(),
             StoredCandidateEvidenceRow {
+                citation_evidence: None,
+                policy_version: SCORING_POLICY_VERSION_V1.to_owned(),
                 candidate_sources: vec!["recent".to_owned()],
                 raw_features: serde_json::to_value(features).unwrap(),
                 reason_codes: vec!["recent_category".to_owned()],

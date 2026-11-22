@@ -534,8 +534,8 @@
 {{- fail "migration.confirmBackupId must identify a verified real backup" -}}
 {{- end -}}
 {{- end -}}
-{{- if ne (int .Values.migration.expectedVersion) 24 -}}
-{{- fail "migration.expectedVersion must match embedded migration version 24" -}}
+{{- if ne (int .Values.migration.expectedVersion) 26 -}}
+{{- fail "migration.expectedVersion must match embedded migration version 26" -}}
 {{- end -}}
 {{- end -}}
 {{- if .Values.metadataSync.enabled -}}

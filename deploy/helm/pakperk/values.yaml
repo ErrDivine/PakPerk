@@ -157,6 +157,9 @@ api:
   readingFeedDefaultLimit: 20
   readingFeedMaxLimit: 50
   readingFeedCursorTtlSeconds: 86400
+  recommendationScoringPolicy: weighted_v1
+  recommendationCitationOnlinePercent: 100
+  recommendationCitationShadow: false
   # Coarse per-client ingress protection. Shared database-backed application
   # quotas remain authoritative for prepare/chat/comment operations.
   edgeRateLimitRps: 20
@@ -250,7 +253,7 @@ migration:
   enabled: true
   command: [/usr/local/bin/pakperk-migrate]
   confirmBackupId: ""
-  expectedVersion: 24
+  expectedVersion: 26
   activeDeadlineSeconds: 900
   resources:
     requests: { cpu: 50m, memory: 96Mi }

@@ -206,7 +206,7 @@ jobs:
           LOG_FORMAT: json
           RUST_LOG: info
           PAKPERK_MIGRATION_BACKUP_ID: ci-snapshot-${{ github.sha }}
-          PAKPERK_MIGRATION_EXPECTED_VERSION: "24"
+          PAKPERK_MIGRATION_EXPECTED_VERSION: "26"
           OTEL_EXPORTER_OTLP_ENDPOINT: http://pakperk-ci-otel-collector:4317
           OTEL_EXPORTER_OTLP_INSECURE: "true"
           OTEL_EXPORT_TIMEOUT_SECONDS: "1"

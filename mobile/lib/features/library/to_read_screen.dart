@@ -29,8 +29,9 @@ class ToReadScreen extends ConsumerWidget {
     if (!ref.watch(featureFlagsProvider).library) {
       return PhaseOnePlaceholderScreen(
         title: 'To Read is not enabled',
-        message: 'Synchronized saves are disabled in this build. Reading and '
-          'cached papers remain available.',
+        message:
+            'Synchronized saves are disabled in this build. Reading and '
+            'cached papers remain available.',
         icon: Icons.bookmarks_outlined,
       );
     }

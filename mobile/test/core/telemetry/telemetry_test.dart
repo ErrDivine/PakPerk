@@ -166,6 +166,31 @@ void main() {
       });
     });
 
+    test(
+      'refill timing accepts only measured duration and closed values',
+      () async {
+        final delegate = _RecordingSink();
+        final sink = RedactingTelemetrySink(delegate);
+        const attributes = {
+          'recommendation_policy': 'citation_online_v1',
+          'outcome': 'success',
+          'elapsed_ms': 217,
+        };
+        const event = PakPerkTelemetryEvent.recommendationRefillCompleted;
+        await sink.event(event, {
+          ...attributes,
+          'batch_id': 'private-batch-id',
+        });
+        await sink.event(event, {
+          ...attributes,
+          'recommendation_policy': 'unknown',
+        });
+        await sink.event(event, {...attributes, 'outcome': 'unknown'});
+        await sink.event(event, {...attributes, 'elapsed_ms': -1});
+        expect(delegate.events, const [_RecordedEvent(event, attributes)]);
+      },
+    );
+
     test('Plan 02 policy telemetry keeps only closed bounded fields', () async {
       final delegate = _RecordingSink();
       final sink = RedactingTelemetrySink(delegate);

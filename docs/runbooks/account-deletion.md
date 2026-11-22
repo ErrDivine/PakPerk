@@ -103,9 +103,10 @@ application-layer encryption. Android backup disablement, iOS backup exclusion
 and file protection, and signed-device removal must be verified against the
 exact candidate.
 
-For schema 24, extend the deletion integration and restore/reapply gate to
-prove zero rows for every owner-bound class above after worker completion and
-again after the current independent ledger is reapplied to an isolated restore.
+For schema 26, prove zero rows for every owner-bound class above, including
+recommendation feedback and candidate citation evidence, after worker
+completion and again after reapplying the current independent deletion ledger
+to an isolated restore.
 Also prove that shared paper data remains intact, the research export was
 principal-scoped, and no private body entered logs, metrics, or evidence. The
 foreign-key and repository checks are implementation evidence only; the live

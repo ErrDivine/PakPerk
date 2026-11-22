@@ -1017,8 +1017,9 @@ pub(super) async fn allocate_revision(
 
     // Phase G account-private surfaces consume the same revision fence. A
     // library mutation invalidates the current brief and makes discovery
-    // delivery unknown before the transaction can commit. The separate work
-    // queue later reuses reading-feed authority to re-evaluate eligibility.
+    // delivery ineligible before the transaction can commit. Preserve known
+    // queue deferrals so the worker can recognize backlog after the final
+    // active item is removed.
     sqlx::query(
         r"
         UPDATE reading_briefs
@@ -1037,7 +1038,7 @@ pub(super) async fn allocate_revision(
         SET delivery_eligibility = 'deferred_unknown',
             eligibility_library_revision = NULL
         WHERE user_id = $1 AND notification_scope = 'discovery'
-          AND delivery_eligibility <> 'expired'
+          AND delivery_eligibility NOT IN ('expired', 'deferred_queue_nonempty')
           AND dismissed_at IS NULL
         ",
     )

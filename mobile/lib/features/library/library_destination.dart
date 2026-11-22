@@ -97,8 +97,9 @@ class _LibraryDestinationState extends ConsumerState<LibraryDestination> {
     if (!ref.watch(featureFlagsProvider).library) {
       return PhaseOnePlaceholderScreen(
         title: 'Library is not enabled',
-        message: 'Synchronized saves are disabled in this build. Reading and '
-          'cached papers remain available.',
+        message:
+            'Synchronized saves are disabled in this build. Reading and '
+            'cached papers remain available.',
         icon: Icons.local_library_outlined,
       );
     }

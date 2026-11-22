@@ -195,6 +195,7 @@ impl AppState {
             BatchRecommendationSource::new(
                 database.recommendation_batches(),
                 services.research_profiles.clone(),
+                config.reading_feed.recommendation_rollout,
             )
         });
         let reading_feed = config

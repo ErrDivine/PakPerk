@@ -713,7 +713,8 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
       key: const ValueKey('skim-stopping-point'),
       semanticLabel: uiString(context, 'Skim stopping point'),
       title: 'Skim ends here',
-      message: 'This compact preview stops deliberately. Continue when you want more depth; your Library state stays unchanged.',
+      message:
+          'This compact preview stops deliberately. Continue when you want more depth; your Library state stays unchanged.',
       actions: [
         ReaderStoppingAction(
           label: uiString(context, 'Continue in Read'),
@@ -777,7 +778,8 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
         'End of $currentSection. Next section: $nextSection',
       ),
       title: 'End of $currentSection',
-      message: 'Next: $nextSection. Pause here, save your place, or continue deliberately.',
+      message:
+          'Next: $nextSection. Pause here, save your place, or continue deliberately.',
       actions: [
         ReaderStoppingAction(
           label: uiString(context, 'Continue'),
@@ -829,7 +831,8 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
       key: const ValueKey('document-end-stopping-point'),
       semanticLabel: uiString(context, 'End of prepared document'),
       title: 'A good place to stop',
-      message: 'You reached the end of this prepared document. Nothing was marked Reviewed or changed in your Library.',
+      message:
+          'You reached the end of this prepared document. Nothing was marked Reviewed or changed in your Library.',
       actions: [
         if (widget.checkpointsEnabled)
           ReaderStoppingAction(

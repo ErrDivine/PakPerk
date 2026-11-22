@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 
 import 'package:drift/native.dart';
@@ -7,17 +8,21 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pakperk/app/account_providers.dart';
+import 'package:pakperk/app/discovery_providers.dart';
 import 'package:pakperk/app/feature_flags.dart';
 import 'package:pakperk/app/library_providers.dart';
 import 'package:pakperk/core/account/account_profile.dart';
 import 'package:pakperk/core/auth/auth.dart';
 import 'package:pakperk/core/database/app_database.dart';
 import 'package:pakperk/core/database/library_dao.dart';
+import 'package:pakperk/core/interactions/interaction_api.dart';
+import 'package:pakperk/core/interactions/interaction_models.dart';
 import 'package:pakperk/core/library/library_api.dart';
 import 'package:pakperk/core/library/library_models.dart';
 import 'package:pakperk/core/library/library_repository.dart';
 import 'package:pakperk/core/models/paper.dart';
 import 'package:pakperk/core/providers.dart';
+import 'package:pakperk/core/sync/event_batcher.dart';
 import 'package:pakperk/core/sync/library_sync_controller.dart';
 import 'package:pakperk/core/sync/outbox_controller.dart';
 import 'package:pakperk/features/library/paper_save_control.dart';
@@ -27,6 +32,111 @@ import 'package:pakperk/features/library/to_read_screen.dart';
 import '../core/auth/auth_fakes.dart';
 
 void main() {
+  testWidgets('a page-two save enters To Read and keeps its attribution', (
+    tester,
+  ) async {
+    const scope = (accountId: _accountId, authEpoch: 7);
+    const batchId = '70000000-0000-7000-8000-000000000008';
+    final paper = _paper('Page two recommendation', 8);
+    final database = PakPerkDatabase(NativeDatabase.memory());
+    final allowWrite = Completer<void>();
+    addTearDown(database.close);
+    addTearDown(() {
+      if (!allowWrite.isCompleted) allowWrite.complete();
+    });
+    final repository = LibraryRepository(
+      local: LibraryDao(database),
+      remote: _UnusedLibraryRemote(),
+      sessionScope: () => scope,
+      verifiedScope: () => scope,
+    );
+    final interactionRemote = _SaveInteractionRemote();
+    final interactions = InteractionEventBatcher(remote: interactionRemote)
+      ..updateConfiguration(
+        scope: AccountInteractionScope(accountId: _accountId, authEpoch: 7),
+        behavioralCollectionEnabled: true,
+      );
+    addTearDown(interactions.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          featureFlagsProvider.overrideWithValue(
+            const FeatureFlags(
+              accounts: true,
+              library: true,
+              comments: false,
+              openingMotion: false,
+              readingFeed: true,
+            ),
+          ),
+          libraryDisplayScopeProvider.overrideWithValue(scope),
+          libraryMutationScopeProvider.overrideWithValue(scope),
+          libraryReadOnlyAccountStatusProvider.overrideWithValue(null),
+          libraryRepositoryProvider.overrideWithValue(repository),
+          interactionEventBatcherProvider.overrideWithValue(interactions),
+          paperSavedStateProvider.overrideWith(
+            (ref, view) => Stream.value(const LibrarySavedState.notSaved()),
+          ),
+        ],
+        child: MaterialApp(
+          theme: ThemeData(splashFactory: InkRipple.splashFactory),
+          home: Scaffold(
+            body: Consumer(
+              builder: (context, ref, _) {
+                final intent = ref.watch(librarySaveIntentSignalProvider);
+                if (intent != null) return const Text('Pending To Read');
+                return PaperSaveControl(
+                  paper: paper,
+                  saveSourceKind: LibrarySaveSourceKind.discovery,
+                  interactionContext: const PaperInteractionContext(
+                    feedMode: InteractionFeedMode.forYou,
+                    batchId: batchId,
+                    position: 0,
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    final control = find.byKey(const ValueKey('paper-save-control'));
+    await _pumpUntil(
+      tester,
+      () => tester.widget<InkWell>(control).onTap != null,
+    );
+    final writeBlocked = Completer<void>();
+    final blockingTransaction = database.transaction(() async {
+      writeBlocked.complete();
+      await allowWrite.future;
+    });
+    await writeBlocked.future;
+
+    await tester.tap(control);
+    await tester.pump();
+    expect(find.text('Pending To Read'), findsOneWidget);
+    expect(control, findsNothing);
+    expect(interactionRemote.events, isEmpty);
+
+    allowWrite.complete();
+    await blockingTransaction;
+    await _pumpUntil(tester, () => interactionRemote.events.isNotEmpty);
+    final event = interactionRemote.events.single;
+    expect(event.eventType, PaperInteractionEventType.saved);
+    expect(event.paperId, paper.paperId);
+    expect(event.feedMode, InteractionFeedMode.forYou);
+    expect(event.batchId, batchId);
+    expect(event.position, 0);
+    final queue = await repository.watchToRead(_accountId).first;
+    expect(queue.single.paper.paperId, paper.paperId);
+    expect(queue.single.saveSourceKind, LibrarySaveSourceKind.discovery);
+    final operation = await database.select(database.syncOutbox).getSingle();
+    expect(event.eventId, operation.operationId);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
   testWidgets(
     'account-keyed library projections never retain account A values for B',
     (tester) async {
@@ -1173,6 +1283,19 @@ final class _UnusedLibraryRemote implements LibraryRemoteDataSource {
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw StateError('The disconnected widget test must not upload.');
+}
+
+final class _SaveInteractionRemote implements InteractionRemoteDataSource {
+  final events = <PaperInteractionEvent>[];
+
+  @override
+  Future<InteractionBatchResult> sendBatch({
+    required InteractionScope scope,
+    required List<PaperInteractionEvent> events,
+  }) async {
+    this.events.addAll(events);
+    return InteractionBatchResult(accepted: events.length, duplicates: 0);
+  }
 }
 
 final class _RecordingLibraryRemote implements LibraryRemoteDataSource {

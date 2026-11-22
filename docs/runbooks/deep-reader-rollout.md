@@ -10,9 +10,9 @@ deployment-binding, alert-adapter, or signed-mobile procedures.
 1. The generated OpenAPI contract matches the candidate and preserves legacy
    Introduction and `/chat` compatibility routes.
 2. The protected migration/restore exercise starts at schema 18, applies
-   migrations 19 through 24 once, proves replay is a no-op, runs
+   migrations through the candidate's embedded schema once, proves replay is a no-op, runs
    schema-compatible rollback/re-forward, and repeats deletion-ledger reapply
-   against every Plan 03 owner-bound table. Feature rollback retains schema 24.
+   against every Plan 03 owner-bound table. Feature rollback retains the installed schema.
 3. GROBID is still the configured default unless the parser benchmark,
    resource budget, fallback, reprocessing, and rollback gates authorize a
    different adapter.
@@ -76,8 +76,8 @@ For each step: deploy dark, verify exact candidate/deployment binding, run the
 named repository and protected checks, enable only the named switch, observe a
 bounded canary, and record the before/after result.
 
-1. Complete the schema 18-to-24 migration, replay, restore/deletion reapply,
-   schema-compatible rollback, and re-forward gate with all Plan 03 switches
+1. Complete the [migration and restore rehearsal](backup-restore.md#migrations-1926-current-release-rehearsal),
+   including deletion reapply, code rollback, and re-forward, with all Plan 03 switches
    false. Repository tests do not satisfy this protected execution.
 2. Enable `DEEP_READER_ENABLED` with GROBID. Exercise outline/block pagination,
    source navigation, large documents, preparation trigger isolation,
@@ -148,8 +148,7 @@ Then return parser selection to the last proven GROBID configuration, stop new
 affected work, let leases settle or explicitly supersede generations, preserve
 private artifacts, and run the tested reprocessing plan only with an approved
 trigger. Do not down-migrate merely to close a feature. Legacy Introduction and
-source access remain available. Keep schema 24; schema 18 is the migration
-starting boundary, not a Plan 03 rollback target.
+source access remain available. Keep the installed schema during rollback.
 
 For queue leakage, first close `TO_READ_FIRST_ENFORCEMENT_ENABLED` as directed
 by the general runbook, then close the affected Plan 03 switch. Unknown or

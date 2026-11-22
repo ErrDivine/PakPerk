@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{future::Future, panic, sync::Arc, time::Duration};
 
 use chrono::{NaiveTime, TimeDelta, Utc};
 use db::{Database, LibraryItemMutation, LibraryMutationIntent, LibraryMutationOutcome};
@@ -23,6 +23,7 @@ use reading_feed::{
     RecommendationMode,
 };
 use serde_json::json;
+use sqlx::{Connection as _, PgConnection};
 use url::Url;
 use uuid::Uuid;
 
@@ -47,14 +48,58 @@ impl ReadingFeedCursorCodec for UnusedCursorCodec {
     }
 }
 
-#[tokio::test]
-async fn postgres_deferred_discovery_metrics_are_aggregate_and_budget_aware() {
+// Worker claims, scheduling, and retention operate across all accounts. Give
+// each test a new database so independent fixtures cannot affect those queries.
+async fn with_engagement_database<Test>(
+    max_connections: u32,
+    check: impl FnOnce(Database) -> Test + Send + 'static,
+) where
+    Test: Future<Output = ()> + Send + 'static,
+{
     let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
-        eprintln!("TEST_DATABASE_URL is absent; skipped deferred-notification telemetry coverage");
+        eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL engagement coverage");
         return;
     };
-    let database = Database::connect(&database_url, 4).await.unwrap();
-    database.migrate_embedded().await.unwrap();
+    let mut admin = PgConnection::connect(&database_url).await.unwrap();
+    let name = format!("pakperk_engagement_{}", Uuid::now_v7().simple());
+    let mut isolated_url = Url::parse(&database_url).unwrap();
+    // SQLx applies the last `dbname` parameter after reading the URL path.
+    isolated_url.query_pairs_mut().append_pair("dbname", &name);
+    sqlx::query(&format!("CREATE DATABASE {name} TEMPLATE template0"))
+        .execute(&mut admin)
+        .await
+        .expect("TEST_DATABASE_URL role must be able to create engagement test databases");
+
+    let result = tokio::spawn(async move {
+        let database = Database::connect(isolated_url.as_str(), max_connections)
+            .await
+            .unwrap();
+        database.migrate_embedded().await.unwrap();
+        check(database).await;
+    })
+    .await;
+    let cleanup = sqlx::query(&format!("DROP DATABASE {name} WITH (FORCE)"))
+        .execute(&mut admin)
+        .await;
+    if let Err(error) = result {
+        if let Err(cleanup_error) = cleanup {
+            eprintln!("could not remove engagement test database {name}: {cleanup_error}");
+        }
+        panic::resume_unwind(error.into_panic());
+    }
+    cleanup.expect("could not remove engagement test database");
+}
+
+#[tokio::test]
+async fn postgres_deferred_discovery_metrics_are_aggregate_and_budget_aware() {
+    with_engagement_database(
+        4,
+        check_deferred_discovery_metrics_are_aggregate_and_budget_aware,
+    )
+    .await;
+}
+
+async fn check_deferred_discovery_metrics_are_aggregate_and_budget_aware(database: Database) {
     let unique = Uuid::now_v7().simple().to_string();
     let account = database
         .accounts()
@@ -147,14 +192,16 @@ async fn postgres_deferred_discovery_metrics_are_aggregate_and_budget_aware() {
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)]
 async fn postgres_notification_frequency_projection_is_rollback_safe_and_closed() {
-    let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
-        eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL engagement coverage");
-        return;
-    };
-    let database = Database::connect(&database_url, 4).await.unwrap();
-    database.migrate_embedded().await.unwrap();
+    with_engagement_database(
+        4,
+        check_notification_frequency_projection_is_rollback_safe_and_closed,
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_lines)]
+async fn check_notification_frequency_projection_is_rollback_safe_and_closed(database: Database) {
     let unique = Uuid::now_v7().simple().to_string();
     let account = database
         .accounts()
@@ -315,14 +362,16 @@ async fn postgres_notification_frequency_projection_is_rollback_safe_and_closed(
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)]
 async fn postgres_notification_work_scheduling_uses_canonical_type_frequencies() {
-    let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
-        eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL engagement coverage");
-        return;
-    };
-    let database = Database::connect(&database_url, 4).await.unwrap();
-    database.migrate_embedded().await.unwrap();
+    with_engagement_database(
+        4,
+        check_notification_work_scheduling_uses_canonical_type_frequencies,
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_lines)]
+async fn check_notification_work_scheduling_uses_canonical_type_frequencies(database: Database) {
     let unique = Uuid::now_v7().simple().to_string();
     let account = database
         .accounts()
@@ -392,21 +441,21 @@ async fn postgres_notification_work_scheduling_uses_canonical_type_frequencies()
     let first = repository.schedule_due_work(now, 100).await.unwrap();
     assert_eq!(first.subscriptions, 0);
     assert_eq!(first.active_updates, 1);
-    sqlx::query(
+    let completed_at: chrono::DateTime<Utc> = sqlx::query_scalar(
         r"
         UPDATE notification_work_items
-        SET state = 'complete', completed_at = $2, updated_at = $2
+        SET state = 'complete', completed_at = statement_timestamp(), updated_at = statement_timestamp()
         WHERE user_id = $1 AND work_kind = 'evaluate_active_papers'
+        RETURNING completed_at
         ",
     )
     .bind(account.id.into_inner())
-    .bind(now)
-    .execute(database.pool())
+    .fetch_one(database.pool())
     .await
     .unwrap();
     assert_eq!(
         repository
-            .schedule_due_work(now + TimeDelta::hours(1), 100)
+            .schedule_due_work(completed_at + TimeDelta::hours(1), 100)
             .await
             .unwrap()
             .active_updates,
@@ -440,14 +489,17 @@ async fn postgres_notification_work_scheduling_uses_canonical_type_frequencies()
         PreferenceWriteOutcome::Applied(_)
     ));
     let digest_schedule = repository
-        .schedule_due_work(now + TimeDelta::hours(1), 100)
+        .schedule_due_work(completed_at + TimeDelta::hours(1), 100)
         .await
         .unwrap();
     assert_eq!(digest_schedule.subscriptions, 1);
     assert_eq!(digest_schedule.active_updates, 0);
     assert_eq!(
         repository
-            .schedule_due_work(now + TimeDelta::days(1) + TimeDelta::seconds(1), 100)
+            .schedule_due_work(
+                completed_at + TimeDelta::days(1) + TimeDelta::seconds(1),
+                100
+            )
             .await
             .unwrap()
             .active_updates,
@@ -456,14 +508,18 @@ async fn postgres_notification_work_scheduling_uses_canonical_type_frequencies()
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)]
 async fn postgres_due_reminders_are_queue_owned_private_idempotent_and_dismiss_only() {
-    let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
-        eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL reminder coverage");
-        return;
-    };
-    let database = Database::connect(&database_url, 4).await.unwrap();
-    database.migrate_embedded().await.unwrap();
+    with_engagement_database(
+        4,
+        check_due_reminders_are_queue_owned_private_idempotent_and_dismiss_only,
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_lines)]
+async fn check_due_reminders_are_queue_owned_private_idempotent_and_dismiss_only(
+    database: Database,
+) {
     let unique = Uuid::now_v7().simple().to_string();
     let account = database
         .accounts()
@@ -501,7 +557,26 @@ async fn postgres_due_reminders_are_queue_owned_private_idempotent_and_dismiss_o
         LibraryMutationOutcome::Applied { .. }
     ));
     let repository = database.engagement();
+    let reading_feed = ReadingFeedService::with_dependencies(
+        Arc::new(database.reading_feed()),
+        Arc::new(ChronologicalRecommendationSource),
+        Arc::new(UnusedCursorCodec),
+        ReadingFeedPolicy::new(20, 50, Duration::from_secs(86_400)).unwrap(),
+    );
+    let service = EngagementService::new(
+        Arc::new(repository.clone()),
+        reading_feed,
+        EngagementPolicy::default(),
+    );
     let now = Utc::now();
+    assert_eq!(
+        service
+            .run_work_once_with_reminders("queue-recheck-worker", now, false)
+            .await
+            .unwrap()
+            .outcome,
+        WorkRunOutcome::Completed(NotificationWorkKind::RecheckNotificationQueueEligibility)
+    );
     assert_eq!(
         repository
             .schedule_due_work_with_reminders(now, 100, false)
@@ -519,10 +594,11 @@ async fn postgres_due_reminders_are_queue_owned_private_idempotent_and_dismiss_o
             .reminders,
         1
     );
+    let claim_at = Utc::now();
     let leased_before_rollback = repository
         .claim_work(&WorkClaim {
             worker_id: "pre-rollback-reminder-worker".to_owned(),
-            now,
+            now: claim_at,
             lease_seconds: 1,
         })
         .await
@@ -533,21 +609,10 @@ async fn postgres_due_reminders_are_queue_owned_private_idempotent_and_dismiss_o
         leased_before_rollback.kind,
         NotificationWorkKind::EvaluateReminders
     );
-    let reading_feed = ReadingFeedService::with_dependencies(
-        Arc::new(database.reading_feed()),
-        Arc::new(ChronologicalRecommendationSource),
-        Arc::new(UnusedCursorCodec),
-        ReadingFeedPolicy::new(20, 50, Duration::from_secs(86_400)).unwrap(),
-    );
-    let service = EngagementService::new(
-        Arc::new(repository.clone()),
-        reading_feed,
-        EngagementPolicy::default(),
-    );
     let rollback_run = service
         .run_work_once_with_reminders(
             "post-rollback-reminder-worker",
-            now + TimeDelta::seconds(2),
+            claim_at + TimeDelta::seconds(2),
             false,
         )
         .await
@@ -631,7 +696,7 @@ async fn postgres_due_reminders_are_queue_owned_private_idempotent_and_dismiss_o
     .unwrap();
     assert!(matches!(
         repository
-            .dismiss_notification(account.id, notification.id, now)
+            .dismiss_notification(account.id, notification.id, Utc::now())
             .await
             .unwrap(),
         NotificationMutationOutcome::Applied { affected: 1 }
@@ -647,7 +712,7 @@ async fn postgres_due_reminders_are_queue_owned_private_idempotent_and_dismiss_o
     assert_eq!(after, before, "dismissal must never mutate queue authority");
 
     sqlx::query(
-        "UPDATE notification_preferences SET user_selected_reminder_frequency = 'off' WHERE user_id = $1",
+        "INSERT INTO notification_preferences (user_id, user_selected_reminder_frequency) VALUES ($1, 'off')",
     )
     .bind(account.id.into_inner())
     .execute(database.pool())
@@ -753,15 +818,12 @@ async fn postgres_due_reminders_are_queue_owned_private_idempotent_and_dismiss_o
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)]
 async fn postgres_engagement_is_idempotent_leased_and_account_owned() {
-    let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
-        eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL engagement coverage");
-        return;
-    };
-    let database = Database::connect(&database_url, 8).await.unwrap();
-    database.migrate_embedded().await.unwrap();
+    with_engagement_database(8, check_engagement_is_idempotent_leased_and_account_owned).await;
+}
 
+#[allow(clippy::too_many_lines)]
+async fn check_engagement_is_idempotent_leased_and_account_owned(database: Database) {
     let unique = Uuid::now_v7().simple().to_string();
     let account = database
         .accounts()
@@ -1488,20 +1550,33 @@ async fn postgres_engagement_is_idempotent_leased_and_account_owned() {
         "an outstanding active-paper evaluation must deduplicate periodic scheduling"
     );
     let active_claim_at = Utc::now() + TimeDelta::seconds(1);
-    let scheduled_active = repository
-        .claim_work(&WorkClaim {
-            worker_id: "postgres-active-paper-test".to_owned(),
-            now: active_claim_at,
-            lease_seconds: 30,
-        })
-        .await
-        .unwrap()
-        .item
-        .unwrap();
-    assert_eq!(
-        scheduled_active.kind,
-        NotificationWorkKind::EvaluateActivePapers
-    );
+    let active_worker = "postgres-active-paper-test";
+    let scheduled_active = loop {
+        let item = repository
+            .claim_work(&WorkClaim {
+                worker_id: active_worker.to_owned(),
+                now: active_claim_at,
+                lease_seconds: 30,
+            })
+            .await
+            .unwrap()
+            .item
+            .expect("scheduled active-paper work must be claimable");
+        assert_eq!(item.user_id, account.id);
+        if item.kind == NotificationWorkKind::EvaluateActivePapers {
+            break item;
+        }
+        // Earlier library writes enqueue rechecks. The fixture has already
+        // applied queue eligibility decisions for those revisions.
+        assert_eq!(
+            item.kind,
+            NotificationWorkKind::RecheckNotificationQueueEligibility
+        );
+        repository
+            .complete_work(item.id, active_worker, active_claim_at)
+            .await
+            .unwrap();
+    };
     assert_eq!(
         repository
             .evaluate_active_papers(&scheduled_active, active_claim_at)
@@ -1511,11 +1586,7 @@ async fn postgres_engagement_is_idempotent_leased_and_account_owned() {
         "opted-in active-paper version work must emit one deduplicated alert"
     );
     repository
-        .complete_work(
-            scheduled_active.id,
-            "postgres-active-paper-test",
-            active_claim_at,
-        )
+        .complete_work(scheduled_active.id, active_worker, active_claim_at)
         .await
         .unwrap();
     let active_version_notifications: i64 = sqlx::query_scalar(
@@ -1743,14 +1814,18 @@ async fn postgres_engagement_is_idempotent_leased_and_account_owned() {
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)]
 async fn postgres_notification_work_rejects_stale_leases_and_terminalizes_crashed_final_attempts() {
-    let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
-        eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL notification lease coverage");
-        return;
-    };
-    let database = Database::connect(&database_url, 8).await.unwrap();
-    database.migrate_embedded().await.unwrap();
+    with_engagement_database(
+        8,
+        check_notification_work_rejects_stale_leases_and_terminalizes_crashed_final_attempts,
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_lines)]
+async fn check_notification_work_rejects_stale_leases_and_terminalizes_crashed_final_attempts(
+    database: Database,
+) {
     let unique = Uuid::now_v7().simple().to_string();
     let account = database
         .accounts()
@@ -1988,12 +2063,16 @@ async fn postgres_notification_work_rejects_stale_leases_and_terminalizes_crashe
 
 #[tokio::test]
 async fn postgres_engagement_rejects_unknown_reason_codes_and_notification_entities() {
-    let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
-        eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL closed engagement values");
-        return;
-    };
-    let database = Database::connect(&database_url, 8).await.unwrap();
-    database.migrate_embedded().await.unwrap();
+    with_engagement_database(
+        8,
+        check_engagement_rejects_unknown_reason_codes_and_notification_entities,
+    )
+    .await;
+}
+
+async fn check_engagement_rejects_unknown_reason_codes_and_notification_entities(
+    database: Database,
+) {
     let unique = Uuid::now_v7().simple().to_string();
     let account = database
         .accounts()
@@ -2047,14 +2126,16 @@ async fn postgres_engagement_rejects_unknown_reason_codes_and_notification_entit
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)]
 async fn postgres_engagement_retention_deletes_expired_rows_but_keeps_live_state() {
-    let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
-        eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL engagement retention coverage");
-        return;
-    };
-    let database = Database::connect(&database_url, 8).await.unwrap();
-    database.migrate_embedded().await.unwrap();
+    with_engagement_database(
+        8,
+        check_engagement_retention_deletes_expired_rows_but_keeps_live_state,
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_lines)]
+async fn check_engagement_retention_deletes_expired_rows_but_keeps_live_state(database: Database) {
     for index_name in [
         "reading_briefs_retention_idx",
         "notifications_retention_idx",
@@ -2293,14 +2374,18 @@ async fn postgres_engagement_retention_deletes_expired_rows_but_keeps_live_state
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)]
 async fn postgres_engagement_revalidates_brief_and_notification_authority_after_waiting() {
-    let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
-        eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL engagement authority races");
-        return;
-    };
-    let database = Database::connect(&database_url, 12).await.unwrap();
-    database.migrate_embedded().await.unwrap();
+    with_engagement_database(
+        12,
+        check_engagement_revalidates_brief_and_notification_authority_after_waiting,
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_lines)]
+async fn check_engagement_revalidates_brief_and_notification_authority_after_waiting(
+    database: Database,
+) {
     let unique = Uuid::now_v7().simple().to_string();
     let accounts = database.accounts();
     let replay_account = accounts
@@ -2536,14 +2621,18 @@ async fn postgres_engagement_revalidates_brief_and_notification_authority_after_
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)]
 async fn postgres_subscription_delete_serializes_after_evaluation_and_withdraws_matches() {
-    let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
-        eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL subscription race coverage");
-        return;
-    };
-    let database = Database::connect(&database_url, 10).await.unwrap();
-    database.migrate_embedded().await.unwrap();
+    with_engagement_database(
+        10,
+        check_subscription_delete_serializes_after_evaluation_and_withdraws_matches,
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_lines)]
+async fn check_subscription_delete_serializes_after_evaluation_and_withdraws_matches(
+    database: Database,
+) {
     let unique = Uuid::now_v7().simple().to_string();
     let account = database
         .accounts()
@@ -2696,15 +2785,16 @@ async fn postgres_subscription_delete_serializes_after_evaluation_and_withdraws_
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)]
 async fn postgres_engagement_collapses_duplicate_papers_and_applies_saved_topics() {
-    let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
-        eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL engagement coverage");
-        return;
-    };
-    let database = Database::connect(&database_url, 8).await.unwrap();
-    database.migrate_embedded().await.unwrap();
+    with_engagement_database(
+        8,
+        check_engagement_collapses_duplicate_papers_and_applies_saved_topics,
+    )
+    .await;
+}
 
+#[allow(clippy::too_many_lines)]
+async fn check_engagement_collapses_duplicate_papers_and_applies_saved_topics(database: Database) {
     let unique = Uuid::now_v7().simple().to_string();
     let account = database
         .accounts()
@@ -2751,7 +2841,11 @@ async fn postgres_engagement_collapses_duplicate_papers_and_applies_saved_topics
         .unwrap();
     }
 
-    let now = Utc::now();
+    let now = (Utc::now() + TimeDelta::days(1))
+        .date_naive()
+        .and_hms_opt(12, 0, 0)
+        .unwrap()
+        .and_utc();
     for (index, saved_search_id) in [matching_search_id, mismatching_search_id]
         .into_iter()
         .enumerate()
@@ -2840,7 +2934,8 @@ async fn postgres_engagement_collapses_duplicate_papers_and_applies_saved_topics
             .unwrap(),
         PreferenceWriteOutcome::Applied(_)
     ));
-    insert_duplicate_discovery_matches(&database, account.id, first_paper, second_paper, now).await;
+    let duplicate_matches = [first_paper, first_paper, second_paper];
+    insert_discovery_matches(&database, account.id, &duplicate_matches, now).await;
     assert_eq!(
         repository
             .apply_queue_decision(account.id, 0, true, now + TimeDelta::seconds(1))
@@ -2869,6 +2964,17 @@ async fn postgres_engagement_collapses_duplicate_papers_and_applies_saved_topics
         .await
         .unwrap()
         .id;
+    let mut extra_matches = Vec::new();
+    for index in 3..5 {
+        extra_matches.push(
+            papers
+                .upsert_metadata(&metadata(&unique, index))
+                .await
+                .unwrap()
+                .id,
+        );
+    }
+    insert_discovery_matches(&database, account.id, &extra_matches, now).await;
     let library = database.library();
     assert!(matches!(
         library
@@ -2960,7 +3066,17 @@ async fn postgres_engagement_collapses_duplicate_papers_and_applies_saved_topics
     .fetch_one(database.pool())
     .await
     .unwrap();
-    assert_eq!((backlog_digests, backlog_items), (1, 2));
+    assert_eq!((backlog_digests, backlog_items), (1, 3));
+    assert_eq!(
+        repository
+            .apply_queue_decision(account.id, empty_revision, true, backlog_release_at)
+            .await
+            .unwrap(),
+        QueueDecisionApplyOutcome::Applied {
+            digest_needed: false
+        },
+        "backlog above the remaining budget must not trigger a second digest"
+    );
 
     sqlx::query("DELETE FROM notifications WHERE user_id = $1")
         .bind(account.id.into_inner())
@@ -2986,7 +3102,7 @@ async fn postgres_engagement_collapses_duplicate_papers_and_applies_saved_topics
             .unwrap(),
         PreferenceWriteOutcome::Applied(_)
     ));
-    insert_duplicate_discovery_matches(&database, account.id, first_paper, second_paper, now).await;
+    insert_discovery_matches(&database, account.id, &duplicate_matches, now).await;
     let decision_at = now + TimeDelta::seconds(4);
     assert_eq!(
         repository
@@ -3040,17 +3156,13 @@ async fn postgres_engagement_collapses_duplicate_papers_and_applies_saved_topics
         .unwrap();
 }
 
-async fn insert_duplicate_discovery_matches(
+async fn insert_discovery_matches(
     database: &Database,
     user_id: AuthenticatedUserId,
-    first_paper: Uuid,
-    second_paper: Uuid,
+    paper_ids: &[Uuid],
     now: chrono::DateTime<Utc>,
 ) {
-    for (index, paper_id) in [first_paper, first_paper, second_paper]
-        .into_iter()
-        .enumerate()
-    {
+    for (index, paper_id) in paper_ids.iter().copied().enumerate() {
         sqlx::query(
             r"
             INSERT INTO notifications (
@@ -3157,7 +3269,7 @@ async fn force_library_authority_change(
         INSERT INTO user_paper_library (
             user_id, paper_id, state, saved_at, updated_at, revision, last_operation_id
         ) VALUES (
-            $1, $2, 'inbox', statement_timestamp(), statement_timestamp(), $3, $4
+            $1, $2, 'to_read', statement_timestamp(), statement_timestamp(), $3, $4
         )
         ",
     )

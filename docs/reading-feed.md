@@ -1,7 +1,7 @@
 # Authenticated reading-feed contract
 
-**Status:** Plan 02 queue arbitration and recommendation handoff implemented
-behind default-off server flags
+**Status:** Queue-first arbitration and both For You ranking policies are
+implemented behind server flags. Weighted ranking is the default.
 **Contract baseline:** `cde04d1b2c49c0c8673559fb8d7816cc604536d9`
 
 This document defines the API and fail-closed client semantics for the To Read
@@ -85,6 +85,7 @@ The response is a strict JSON object with no account identifier:
 | `decision.active_to_read_count` | non-negative integer | Active queue count at the same snapshot. |
 | `decision.queue_proven_empty` | boolean | True only for a successfully proven zero count. |
 | `batch_id` | UUID or null | Page-scoped provenance for a persisted recommendation batch. Queue pages never have a batch; a recommendation page may have both a batch ID and `next_cursor`, and the continuation page may use a different batch ID. |
+| `batch_metadata` | object or null | Profile and feedback revisions, algorithm version, and recommendation policy version for the persisted batch. Non-null exactly when `batch_id` is non-null. |
 | `items` | array | At most the accepted page limit; item rules depend on `mode`. |
 | `next_cursor` | string or null | Opaque continuation bound to account, mode, revision, query, key epoch, and expiry. |
 | `server_time` | RFC 3339 UTC string | Server observation time; not queue authority by itself. |
@@ -229,10 +230,11 @@ library-management list may keep its newest-first order.
 }
 ```
 
-Recommendations exclude active rows, retained removal tombstones, duplicate
-base arXiv identities, and papers unavailable under the active publication
-policy. Exclusions are bounded database anti-joins, not an unbounded in-memory
-list.
+The chronological recommendation page requires metadata readiness and excludes
+all current Library entries, retained removal tombstones, and retained feedback
+of every type by paper ID or base arXiv ID. The ranker deduplicates base IDs.
+The continuation preserves the original chronological page boundary even when
+reranking moves a card or diversity caps shorten the displayed page.
 
 `batch_metadata` is present exactly when `batch_id` is present. It repeats the
 persisted profile and feedback revision fences plus the algorithm and scoring
@@ -251,6 +253,27 @@ appending pages in memory, clients retain each item's originating batch ID and
 its zero-based page-local reranked position for explanations, feedback, saves,
 and interaction events. They never serialize a heterogeneous merged cursor walk
 under one batch ID or cache it as though it were a single batch.
+
+### Citation-aware For You
+
+Signed-in readers with personalization enabled can receive
+`citation_online_v1` when the active queue is proven empty. The source stays
+`for_you_v1` and the algorithm stays `recommendations_v1`. For You resolves to
+Recent when personalization is disabled or unknown.
+
+The ranker compares each authorized page with up to ten eligible Library
+papers. The strongest eligible citation determines the tier. From highest to
+lowest, the tiers are Reviewed with consented positive feedback, other
+Reviewed papers, Archived with consented positive feedback, explicit author
+follows, and other candidates. A retained negative rating or dismissal vetoes
+its root's citation paths. Within a tier, the weighted score incorporates
+citation overlap and learned preferences for references, citing papers, and
+followed authors. Diversity caps apply across the whole selected page.
+
+Citation explanations lead with the stored direction and public root title.
+Replay uses the evidence stored with the served card. On mobile, committing a
+card with three or fewer remaining starts one continuation request when a
+cursor is available.
 
 ## Feedback, profile, and batch revision fences
 
@@ -271,11 +294,25 @@ Positive feedback creates category affinity only when personalization was
 already enabled. It advances the profile revision and stores the paper's
 primary category with `source=feedback`; it never becomes an explicit follow.
 For You may use separately labelled `feedback_affinity` and
-`inferred_affinity` sources and matching reason codes. Following consumes only
-explicit categories, topics, and authors, so its explanations cannot claim
+`inferred_affinity` sources and matching reason codes. Following uses explicit
+categories, topics, authors, and saved-query matches, so its explanations cannot claim
 `you follow` for feedback-derived or inferred material. With personalization
 off, no new feedback-derived category affinity is created, while explicit
-negative feedback remains an exact-paper exclusion.
+negative feedback continues to exclude the paper and its base identity.
+
+Feedback can record a vote only for a relevant or not-relevant rating on a
+served citation-policy For You card while personalization is enabled. The
+server copies the feature bits from the stored card. Other accepted feedback
+with consent records zero voting bits. Feedback accepted without consent and
+older feedback have a null mask. The learner uses the latest trainable rating
+per base identity and draws on up to 100 of those ratings from the preceding
+180 days. Stored votes remain available until feedback retention or erasure,
+independently of the batch's 24-hour lifetime.
+
+Opting out clears stored feature masks and derived interests in one
+transaction. Retained feedback still excludes candidates and vetoes negatively
+rated roots. Opting in again starts with fresh votes. Feedback retention
+advances the revision for each affected account.
 
 `GET /v1/discovery/profile/interests` and the profile export separate
 `explicit`, `feedback`, and `inferred` groups. They do not expose a
@@ -319,13 +356,15 @@ The cursor uses a new cryptographic purpose, `reading_feed.v1`, and binds:
 - library revision fence;
 - queue or recommendation ordering coordinates;
 - category/effective recommendation query and page-size policy;
+- citation scoring policy for a citation-ranked recommendation page;
 - cursor key epoch/version and expiry.
 
 To Read coordinates are `saved_at, paper_id`. Before every continuation the
 server compares the current account revision with the cursor fence. A mismatch
 returns `409 READING_FEED_CURSOR_STALE`; the client discards the cursor and
-restarts page one. Cross-account or wrong-purpose cursors are invalid and never
-reveal whether another account exists.
+restarts page one. A recommendation continuation also restarts when its
+scoring policy changes. Cross-account or wrong-purpose cursors are invalid
+and never reveal whether another account exists.
 
 ## Fail-closed mobile authority
 
@@ -420,9 +459,9 @@ following against the release-shaped database and API topology:
 
 Compatible mobile builds use this exact flag pairing as shadow mode: they keep
 rendering legacy public discovery, but run the account-scoped queue-authority
-controller and authenticated reading-feed request in the background. The only
-new mobile event is `reading_feed_shadow_decision`. Its schema is closed to the
-shadow decision, queue-authority enum, constant legacy decision, closed server
+controller and authenticated reading-feed request in the background.
+`reading_feed_shadow_decision` describes that comparison. Its schema is closed
+to the shadow decision, queue-authority enum, constant legacy decision, closed server
 policy, one decision-agreement boolean, and offline boolean. It accepts no account, paper,
 cursor, category, query, title, URL, token, count, or free-form error value.
 Compare these aggregates with the server's `pakperk.reading_feed.decisions`
@@ -445,3 +484,55 @@ record binds the SLO observation, invariant canary, alert delivery, privacy
 scan, rollback exercise, and accountable approvals. Rollback first closes
 enforcement and then the reading feed. It leaves the public discovery feed,
 library reads, and additive migrations 11 through 18 in place.
+
+### Citation policy rollout
+
+Apply migration `0026_citation_online_evidence.sql` and deploy API workers
+that accept both versions before changing the policy. For You requires both
+`RECOMMENDATIONS_ENABLED` and `RESEARCH_PROFILES_ENABLED`.
+
+| Environment setting | Helm value | Default |
+| --- | --- | --- |
+| `RECOMMENDATION_SCORING_POLICY` | `api.recommendationScoringPolicy` | `weighted_v1` |
+| `RECOMMENDATION_CITATION_ONLINE_PERCENT` | `api.recommendationCitationOnlinePercent` | `100` |
+| `RECOMMENDATION_CITATION_SHADOW` | `api.recommendationCitationShadow` | `false` |
+
+Enable ranking shadow to measure fresh weighted For You builds. It records
+aggregate coverage, latency, and invariant counts and discards the comparison
+ranking. This switch is independent of queue-first enforcement.
+
+Stage every scoring policy or cohort percentage change, including rollback.
+API replicas share the generation queue and each replica applies its own
+startup settings when it claims a job. During a mixed-config rollout, workers
+can supersede valid jobs created by replicas using the other settings.
+
+1. Set `features.recommendations=false` while retaining the current selector
+   and percentage. Wait for all API pods from the old ReplicaSet to exit,
+   including terminating pods. The reading feed can still serve the queue and
+   the authority-bound Recent fallback. Explanation and feedback routes
+   temporarily close while the existing maintenance and retention tasks run.
+2. Apply the target settings and restore `features.recommendations=true`.
+   Select `citation_online_v1` and a percentage from 0 to 100 for a stable
+   cohort, or `weighted_v1` for rollback. Keep the current schema and let
+   workers reclaim expired leases and supersede incompatible jobs.
+3. Wait for all API replicas to converge before starting the measurement
+   window. Run the protected staging backend load gate with
+   `include_reading_feed_recommendations` and
+   `expected_recommendation_policy` for the target policy. Use a server-proven
+   empty, opted-in fixture account in the selected cohort. Retain the policy
+   check with the release evidence.
+
+Retain the exact configuration, window, and aggregate sample counts. Compare
+root-neighbor coverage,
+nDCG with judgment coverage, saves, dismissals, and refill p50/p95 with the
+weighted baseline. Include sparse and no-root pages in coverage and record
+stale, failed, or canceled refills separately from accepted continuations.
+Require zero suggestions over active or uncertain queues, zero out-of-page
+cards, and zero tier inversions. Require observed comparisons and passing
+queue canaries in each phase. Include the worked fixture, revision races,
+and rollback rehearsal in the release record before expanding the cohort.
+
+After rollback, verify that the first eligible For You batch reports
+`weighted_v1`, an old citation continuation receives
+`READING_FEED_CURSOR_STALE`, and its client restarts from page one.
+See the [observability runbook](runbooks/observability.md).

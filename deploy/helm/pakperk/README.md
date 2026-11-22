@@ -69,7 +69,7 @@ must cover security retention; and deletion steps are capped at 1,800 seconds.
 Paper categories use the runtime arXiv category grammar, the contact must be a
 real monitored non-placeholder address, and model IDs are limited to the
 provider's 128-character safe identifier grammar. The migration Job is pinned
-to embedded migration version `24` and accepts only a bounded, non-placeholder
+to embedded migration version `26` and accepts only a bounded, non-placeholder
 backup ID. Metadata sync accepts a bounded five-field numeric/wildcard Cron
 schedule and a JSON object of 1 to 2,000 canonical arXiv IDs no larger than
 1,048,000 bytes; the ConfigMap uses a quoted scalar that preserves those bytes

@@ -46,12 +46,12 @@ pub(crate) mod library_v2;
 pub(crate) mod paper_search;
 pub(crate) mod papers;
 pub(crate) mod passport;
+pub(crate) mod product_surveys;
 pub(crate) mod reading_feed;
 pub(crate) mod recommendations;
 pub(crate) mod research_memory;
 pub(crate) mod research_profiles;
 pub(crate) mod support;
-pub(crate) mod product_surveys;
 pub(crate) mod version_diff;
 
 use support::{

@@ -11,10 +11,11 @@ use observability::{ReadingFeedStageClass, ReadingFeedStageOutcome, record_readi
 use crate::{
     CursorCodecError, CursorKeyEpoch, FeedItemSource, FeedMode, QueueMetadata,
     READING_FEED_CURSOR_POLICY_VERSION, ReadingFeedContinuation, ReadingFeedCursorClaims,
-    ReadingFeedCursorPosition, ReadingFeedDecision, ReadingFeedItem, ReadingFeedPage,
-    ReadingFeedPolicy, ReadingFeedRequest, ReadingFeedServiceError, ReadingFeedSnapshot,
-    ReadingFeedSnapshotRequest, ReadingFeedStore, ReadingFeedStoreError, RecommendationError,
-    RecommendationMode, RecommendationRequest, RecommendationResultPage, RecommendationSource,
+    ReadingFeedCursorOrdering, ReadingFeedCursorPosition, ReadingFeedDecision, ReadingFeedItem,
+    ReadingFeedPage, ReadingFeedPolicy, ReadingFeedRequest, ReadingFeedServiceError,
+    ReadingFeedSnapshot, ReadingFeedSnapshotRequest, ReadingFeedStore, ReadingFeedStoreError,
+    RecommendationError, RecommendationMode, RecommendationRequest, RecommendationResultPage,
+    RecommendationSource,
 };
 
 /// Account-scoped cursor cryptography injected into the policy service.
@@ -160,9 +161,9 @@ impl ReadingFeedService {
             .map(|position| {
                 self.seal_continuation(
                     request,
-                    FeedMode::ToRead,
                     library_revision,
                     ReadingFeedCursorPosition::ToRead { position },
+                    false,
                 )
             })
             .transpose()?;
@@ -194,6 +195,7 @@ impl ReadingFeedService {
         })
     }
 
+    #[allow(clippy::too_many_lines)] // Keep authority checks, ranking, and cursor binding in response order.
     #[tracing::instrument(name = "reading_feed.recommendation_eligibility", skip_all)]
     async fn recommendation_page(
         &self,
@@ -206,7 +208,7 @@ impl ReadingFeedService {
             FeedMode::Recommendations,
             library_revision,
         )?;
-        if library_revision < 0 {
+        if library_revision < 0 || candidates.feedback_revision < 0 {
             return Err(ReadingFeedServiceError::QueueAuthorityUnavailable);
         }
         if candidates.items.len() > usize::try_from(request.limit).unwrap_or(usize::MAX)
@@ -221,12 +223,14 @@ impl ReadingFeedService {
             };
             position
         });
+        let expected_citation_online = request.continuation.map(|cursor| cursor.citation_online);
         let authorized_candidates = candidates
             .items
             .iter()
             .map(|paper| (paper.paper_id, paper.clone()))
             .collect::<BTreeMap<_, _>>();
         let authorized_next_position = candidates.next_position;
+        let authorized_feedback_revision = candidates.feedback_revision;
         if authorized_candidates.len() != candidates.items.len() {
             return Err(ReadingFeedServiceError::QueueAuthorityUnavailable);
         }
@@ -239,6 +243,7 @@ impl ReadingFeedService {
                 category: request.category.clone(),
                 recommendation_mode: request.recommendation_mode,
                 position,
+                expected_citation_online,
                 limit: request.limit,
                 now: request.now,
                 candidates,
@@ -256,18 +261,26 @@ impl ReadingFeedService {
                 &page,
                 &authorized_candidates,
                 authorized_next_position,
+                authorized_feedback_revision,
             )
         {
             return Err(ReadingFeedServiceError::QueueAuthorityUnavailable);
+        }
+        let citation_online = page
+            .batch_metadata
+            .as_ref()
+            .is_some_and(|batch| batch.recommendation_policy_version == "citation_online_v1");
+        if expected_citation_online.is_some_and(|expected| expected != citation_online) {
+            return Err(ReadingFeedServiceError::CursorStale);
         }
         let next_cursor = page
             .next_position
             .map(|position| {
                 self.seal_continuation(
                     request,
-                    FeedMode::Recommendations,
                     library_revision,
                     ReadingFeedCursorPosition::Recommendations { position },
+                    citation_online,
                 )
             })
             .transpose()?;
@@ -320,6 +333,7 @@ impl ReadingFeedService {
             mode: claims.mode,
             library_revision: claims.library_revision,
             position: claims.position,
+            citation_online: claims.ordering == ReadingFeedCursorOrdering::CitationOnlineV1,
         })
     }
 
@@ -339,17 +353,21 @@ impl ReadingFeedService {
     fn seal_continuation(
         &self,
         request: &EffectiveRequest,
-        mode: FeedMode,
         library_revision: i64,
         position: ReadingFeedCursorPosition,
+        citation_online: bool,
     ) -> Result<String, ReadingFeedServiceError> {
         let ttl = ChronoDuration::from_std(self.policy.cursor_ttl())
             .map_err(|_| ReadingFeedServiceError::CursorUnavailable)?;
         let claims = ReadingFeedCursorClaims {
             user_id: request.user_id,
-            mode,
+            mode: position.mode(),
             library_revision,
-            ordering: position.ordering(),
+            ordering: if citation_online {
+                ReadingFeedCursorOrdering::CitationOnlineV1
+            } else {
+                position.ordering()
+            },
             position,
             category: request.category.clone(),
             recommendation_mode: request.recommendation_mode,
@@ -463,9 +481,14 @@ fn recommendation_result_is_valid(
     page: &RecommendationResultPage,
     authorized: &BTreeMap<domain::PaperId, domain::PaperSummary>,
     authorized_next_position: Option<crate::RecommendationPosition>,
+    authorized_feedback_revision: i64,
 ) -> bool {
     let valid_batch_contract = match (&page.batch_id, &page.batch_metadata) {
-        (Some(batch_id), Some(metadata)) => !batch_id.is_nil() && metadata.structurally_valid(),
+        (Some(batch_id), Some(metadata)) => {
+            !batch_id.is_nil()
+                && metadata.structurally_valid()
+                && metadata.feedback_revision == authorized_feedback_revision
+        }
         (None, None) => true,
         _ => false,
     };
@@ -490,6 +513,8 @@ fn recommendation_result_is_valid(
                         && explanation_contract_is_valid(metadata)
                         && !metadata.reason_codes.is_empty()
                         && metadata.reason_codes.len() <= 16
+                        && metadata.reason_codes.iter().collect::<BTreeSet<_>>().len()
+                            == metadata.reason_codes.len()
                         && valid_reason_label(&metadata.reason_label)
                 })
             })
@@ -716,6 +741,7 @@ mod tests {
         let harness = harness(Ok(ReadingFeedSnapshot::Empty {
             library_revision: 12,
             recommendations: RecommendationPage {
+                feedback_revision: 4,
                 items: vec![recommendation.clone()],
                 next_position: Some(next),
             },
@@ -747,7 +773,11 @@ mod tests {
     #[tokio::test]
     async fn persisted_reranked_batch_may_publish_an_authorized_continuation() {
         let chronological = (1..=20).rev().map(summary).collect::<Vec<_>>();
-        let reranked = chronological.iter().cloned().rev().collect::<Vec<_>>();
+        let reranked = chronological[4..7]
+            .iter()
+            .cloned()
+            .rev()
+            .collect::<Vec<_>>();
         let page_boundary = chronological.last().unwrap().clone();
         let next = RecommendationPosition {
             published_at: page_boundary.published_at,
@@ -756,14 +786,17 @@ mod tests {
         let harness = harness(Ok(ReadingFeedSnapshot::Empty {
             library_revision: 12,
             recommendations: RecommendationPage {
+                feedback_revision: 4,
                 items: chronological,
                 next_position: Some(next),
             },
         }));
         let batch_id = Uuid::from_u128(77);
+        let mut metadata = batch_metadata();
+        metadata.recommendation_policy_version = "citation_online_v1".to_owned();
         *harness.recommendations.page.lock().unwrap() = Ok(RecommendationResultPage {
             batch_id: Some(batch_id),
-            batch_metadata: Some(batch_metadata()),
+            batch_metadata: Some(metadata.clone()),
             // Persisted recommendation batches are allowed to rerank the
             // exact candidate page. Only the unbatched fallback promises
             // chronological item order.
@@ -772,29 +805,42 @@ mod tests {
                 .into_iter()
                 .map(|paper| crate::RecommendationResultItem {
                     paper,
-                    source: FeedItemSource::RecentV1,
+                    source: FeedItemSource::ForYouV1,
                     recommendation: Some(RecommendationMetadata {
-                        mode: RecommendationMode::Recent,
+                        mode: RecommendationMode::ForYou,
                         reason_codes: vec![domain::RecommendationReasonCode::RecentCategory],
                         reason_label: "Recent in this category".to_owned(),
-                        explanation_available: false,
+                        explanation_available: true,
                     }),
                 })
                 .collect(),
             next_position: Some(next),
         });
 
-        let page = harness.service.page(request(None)).await.unwrap();
+        let page = harness
+            .service
+            .page(ReadingFeedRequest {
+                recommendation_mode: RecommendationMode::ForYou,
+                ..request(None)
+            })
+            .await
+            .unwrap();
 
         assert_eq!(page.batch_id, Some(batch_id));
-        assert_eq!(page.batch_metadata, Some(batch_metadata()));
-        assert_eq!(page.items.len(), 20);
+        assert_eq!(page.batch_metadata, Some(metadata));
+        assert_eq!(page.items.len(), 3);
         assert_eq!(page.items[0].paper, reranked[0]);
-        assert_eq!(page.items[19].paper, reranked[19]);
+        assert_eq!(page.items[2].paper, reranked[2]);
+        assert_ne!(page.items[2].paper.paper_id, next.paper_id);
         assert_eq!(page.next_cursor.as_deref(), Some("opaque-next"));
         let sealed = harness.cursors.sealed.lock().unwrap();
         assert_eq!(sealed.len(), 1);
         assert_eq!(sealed[0].library_revision, 12);
+        assert_eq!(
+            sealed[0].ordering,
+            ReadingFeedCursorOrdering::CitationOnlineV1
+        );
+        assert!(sealed[0].structurally_valid());
         assert_eq!(
             sealed[0].position,
             ReadingFeedCursorPosition::Recommendations { position: next }
@@ -811,6 +857,7 @@ mod tests {
         let harness = harness(Ok(ReadingFeedSnapshot::Empty {
             library_revision: 12,
             recommendations: RecommendationPage {
+                feedback_revision: 4,
                 items: vec![paper.clone()],
                 next_position: None,
             },
@@ -845,6 +892,7 @@ mod tests {
         let requests = harness.recommendations.requests.lock().unwrap();
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0].position, Some(position));
+        assert_eq!(requests[0].expected_citation_online, Some(false));
         assert_eq!(requests[0].library_revision, 12);
     }
 
@@ -929,6 +977,7 @@ mod tests {
         let harness = harness(Ok(ReadingFeedSnapshot::Empty {
             library_revision: 42,
             recommendations: RecommendationPage {
+                feedback_revision: 4,
                 items: vec![paper.clone()],
                 next_position: None,
             },
@@ -956,6 +1005,7 @@ mod tests {
         let harness = harness(Ok(ReadingFeedSnapshot::Empty {
             library_revision: 42,
             recommendations: RecommendationPage {
+                feedback_revision: 4,
                 items: vec![paper.clone()],
                 next_position: None,
             },
@@ -992,6 +1042,18 @@ mod tests {
             Err(ReadingFeedServiceError::QueueAuthorityUnavailable)
         );
 
+        let mut wrong_revision = valid.clone();
+        wrong_revision
+            .batch_metadata
+            .as_mut()
+            .unwrap()
+            .feedback_revision += 1;
+        *harness.recommendations.page.lock().unwrap() = Ok(wrong_revision);
+        assert_eq!(
+            harness.service.page(request(None)).await,
+            Err(ReadingFeedServiceError::QueueAuthorityUnavailable)
+        );
+
         let mut corrupt = valid;
         corrupt.batch_metadata.as_mut().unwrap().algorithm_version = "Invalid version".to_owned();
         *harness.recommendations.page.lock().unwrap() = Ok(corrupt);
@@ -1007,6 +1069,7 @@ mod tests {
         let harness = harness(Ok(ReadingFeedSnapshot::Empty {
             library_revision: 42,
             recommendations: RecommendationPage {
+                feedback_revision: 4,
                 items: vec![authorized.clone()],
                 next_position: None,
             },
@@ -1032,6 +1095,7 @@ mod tests {
         let harness = harness(Ok(ReadingFeedSnapshot::Empty {
             library_revision: 42,
             recommendations: RecommendationPage {
+                feedback_revision: 4,
                 items: vec![paper.clone()],
                 next_position: None,
             },
@@ -1056,6 +1120,26 @@ mod tests {
         assert_eq!(page.batch_id, Some(batch_id));
         assert_eq!(page.batch_metadata, Some(batch_metadata()));
         assert_eq!(page.items[0].paper, paper);
+
+        *harness.recommendations.page.lock().unwrap() = Ok(RecommendationResultPage {
+            batch_id: Some(batch_id),
+            batch_metadata: Some(batch_metadata()),
+            items: vec![crate::RecommendationResultItem {
+                paper: paper.clone(),
+                source: FeedItemSource::ForYouV1,
+                recommendation: Some(RecommendationMetadata {
+                    mode: RecommendationMode::ForYou,
+                    reason_codes: vec![RecommendationReasonCode::ReviewedPaperCitation; 2],
+                    reason_label: "Cited by a reviewed paper".to_owned(),
+                    explanation_available: true,
+                }),
+            }],
+            next_position: None,
+        });
+        assert_eq!(
+            harness.service.page(request(None)).await,
+            Err(ReadingFeedServiceError::QueueAuthorityUnavailable)
+        );
 
         *harness.recommendations.page.lock().unwrap() = Ok(RecommendationResultPage {
             batch_id: Some(batch_id),
@@ -1105,6 +1189,7 @@ mod tests {
         let harness = harness(Ok(ReadingFeedSnapshot::Empty {
             library_revision: 42,
             recommendations: RecommendationPage {
+                feedback_revision: 4,
                 items: vec![paper.clone()],
                 next_position: None,
             },
@@ -1250,6 +1335,7 @@ mod tests {
 
     fn empty_recommendations() -> RecommendationPage {
         RecommendationPage {
+            feedback_revision: 4,
             items: Vec::new(),
             next_position: None,
         }

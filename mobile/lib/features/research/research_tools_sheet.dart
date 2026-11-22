@@ -441,7 +441,8 @@ class _AnnotationsPanel extends StatelessWidget {
       return _EmptyPanel(
         icon: Icons.border_color_outlined,
         title: 'No annotations yet',
-        message: 'Select source text to highlight it, add a note, or save a question.',
+        message:
+            'Select source text to highlight it, add a note, or save a question.',
       );
     }
     return ListView(
@@ -768,7 +769,8 @@ class _MemoryPanel extends StatelessWidget {
               ? _EmptyPanel(
                   icon: Icons.psychology_alt_outlined,
                   title: 'No memory items for this paper',
-                  message: 'Only artifacts you explicitly choose are added here.',
+                  message:
+                      'Only artifacts you explicitly choose are added here.',
                 )
               : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),

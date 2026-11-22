@@ -52,6 +52,8 @@ abstract final class PakPerkTelemetryEvent {
   static const feedTimeToReadable = 'feed_time_to_readable_ms';
   static const readingFeedShadowDecision = 'reading_feed_shadow_decision';
   static const recommendationCardRendered = 'recommendation_card_rendered';
+  static const recommendationRefillCompleted =
+      'recommendation_refill_completed';
   static const recommendationPublicationRejected =
       'recommendation_publication_rejected';
   static const pendingIntentAge = 'pending_intent_age';
@@ -225,6 +227,14 @@ final class RedactingTelemetrySink implements TelemetrySink {
       }),
       'server_active_count': _StringEnumPolicy({'zero', 'nonzero', 'unknown'}),
       'policy_consistent': _boolean,
+    },
+    PakPerkTelemetryEvent.recommendationRefillCompleted: {
+      'recommendation_policy': _StringEnumPolicy({
+        'weighted_v1',
+        'citation_online_v1',
+      }),
+      'outcome': _StringEnumPolicy({'success', 'stale', 'failed', 'canceled'}),
+      'elapsed_ms': _IntegerRangePolicy(0, 86_400_000),
     },
     PakPerkTelemetryEvent.recommendationPublicationRejected: {
       'reason': _StringEnumPolicy({
@@ -478,6 +488,11 @@ final class RedactingTelemetrySink implements TelemetrySink {
       'queue_authority',
       'server_active_count',
       'policy_consistent',
+    },
+    PakPerkTelemetryEvent.recommendationRefillCompleted: {
+      'recommendation_policy',
+      'outcome',
+      'elapsed_ms',
     },
     PakPerkTelemetryEvent.recommendationPublicationRejected: {'reason'},
     PakPerkTelemetryEvent.pendingIntentAge: {'intent_kind', 'age_bucket'},

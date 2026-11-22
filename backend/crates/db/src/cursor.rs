@@ -198,7 +198,7 @@ fn feed_scope(category: Option<&str>) -> &[u8] {
 
 #[cfg(test)]
 mod tests {
-    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use base64::engine::general_purpose::STANDARD;
     use chrono::TimeZone as _;
 
     use super::*;
@@ -268,6 +268,7 @@ mod tests {
 
     #[test]
     fn reading_feed_cursor_round_trips_every_account_policy_claim() {
+        use chrono::Timelike as _;
         use reading_feed::{
             FeedMode, ReadingFeedCursorOrdering, ReadingFeedCursorPosition, RecommendationPosition,
         };
@@ -298,6 +299,8 @@ mod tests {
             expires_at: Utc.with_ymd_and_hms(2026, 8, 20, 12, 0, 0).unwrap(),
         };
 
+        let weighted_payload = serde_json::to_value(&claims).unwrap();
+        assert_eq!(weighted_payload["o"], "discovery_newest_v1");
         let encoded = codec.seal(&claims).unwrap();
 
         assert!(encoded.len() <= opaque_cursor::MAX_TOKEN_BYTES);
@@ -312,6 +315,30 @@ mod tests {
                 )
                 .unwrap(),
             claims
+        );
+
+        let mut citation = claims;
+        citation.ordering = ReadingFeedCursorOrdering::CitationOnlineV1;
+        citation.expires_at = citation.expires_at.with_nanosecond(123_456_789).unwrap();
+        if let ReadingFeedCursorPosition::Recommendations { position } = &mut citation.position {
+            position.published_at = position.published_at.with_nanosecond(123_456_000).unwrap();
+        }
+        let encoded = codec.seal(&citation).unwrap();
+        assert!(encoded.len() <= opaque_cursor::MAX_TOKEN_BYTES);
+        assert_eq!(
+            codec
+                .open(
+                    user_id,
+                    &encoded,
+                    Utc.with_ymd_and_hms(2026, 8, 19, 12, 0, 0).unwrap(),
+                )
+                .unwrap(),
+            citation
+        );
+        citation.recommendation_mode = reading_feed::RecommendationMode::Recent;
+        assert_eq!(
+            codec.seal(&citation),
+            Err(ReadingFeedCursorCodecError::Unavailable)
         );
     }
 

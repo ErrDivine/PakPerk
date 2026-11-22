@@ -4,7 +4,12 @@ use domain::PaperId;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{ScoredCandidate, explain_candidate};
+use crate::{
+    BatchBuildError, BuiltRecommendationBatch, CitationEvidenceError, CitationOnlineInputs,
+    CitationPair, LearnerVote, LearnerWeights, RecommendationBatchBuildRequest, RecommendationMode,
+    SCORING_POLICY_VERSION_CITATION_ONLINE_V1, SCORING_POLICY_VERSION_V1, ScoredCandidate,
+    build_recommendation_batch, explain_candidate, rerank::base_arxiv_identity,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -136,6 +141,225 @@ pub struct EvaluationResourceReport {
     pub usage: EvaluationResourceUsage,
     pub budget: EvaluationResourceBudget,
     pub passed: bool,
+}
+
+/// One authorized page as of its scoring time. The caller supplies the
+/// historical snapshot and only ratings/consent evidence actually observed.
+pub struct CitationReplayPage<'a> {
+    pub account_id: uuid::Uuid,
+    pub baseline: RecommendationBatchBuildRequest<'a>,
+    pub pairs: &'a [CitationPair],
+    pub judgments: &'a [RelevanceJudgment],
+    /// Erasure observed since the account's previous page, applied before scoring.
+    pub erasure_before_scoring: CitationReplayErasure<'a>,
+    pub accepted_after_scoring: &'a [LearnerVote],
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub enum CitationReplayErasure<'a> {
+    #[default]
+    None,
+    /// Individual feedback rows removed by retention or another observed write.
+    Feedback(&'a [uuid::Uuid]),
+    /// Reset or opt-out cleared all previously consented votes.
+    All,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CitationReplayReport {
+    pub eligible_pages: usize,
+    pub root_neighbor_pages: usize,
+    pub evaluable_pages: usize,
+    pub root_neighbor_coverage: f64,
+    /// In baseline, fixed-weight citation, learned citation order.
+    pub mean_ndcg_at_10: [Option<f64>; 3],
+    /// Fixed minus baseline, learned minus baseline, learned minus fixed.
+    pub mean_paired_ndcg_difference: [Option<f64>; 3],
+    /// In baseline, fixed-weight citation, learned citation order.
+    pub judgment_coverage_at_10: [f64; 3],
+    /// Displayed cards at cutoff whose held-out grade is explicitly zero.
+    pub known_dislikes_at_10: [usize; 3],
+    /// Displayed cards at cutoff without a held-out judgment.
+    pub unjudged_cards_at_10: [usize; 3],
+}
+
+pub async fn evaluate_citation_replay(
+    pages: &[CitationReplayPage<'_>],
+) -> Result<CitationReplayReport, CitationReplayError> {
+    let mut by_account = BTreeMap::<_, (chrono::DateTime<chrono::Utc>, Vec<LearnerVote>)>::new();
+    let mut neighbor_pages = 0;
+    let mut evaluable_pages = 0;
+    let mut totals = [0.0; 3];
+    let mut paired_totals = [0.0; 3];
+    let mut judged = [0; 3];
+    let mut displayed = [0; 3];
+    let mut known_dislikes = [0; 3];
+
+    for page in pages {
+        let mut request = page.baseline.clone();
+        if request.scoring_policy.version != SCORING_POLICY_VERSION_V1
+            || request.citation_online.is_some()
+            || request.mode != RecommendationMode::ForYou
+            || !request.profile.personalization_enabled
+        {
+            return Err(CitationReplayError::InvalidPage);
+        }
+        let (last_time, votes) = by_account
+            .entry(page.account_id)
+            .or_insert_with(|| (request.now, Vec::new()));
+        if request.now < *last_time
+            || page
+                .accepted_after_scoring
+                .iter()
+                .any(|vote| vote.created_at < request.now)
+        {
+            return Err(CitationReplayError::InvalidPage);
+        }
+        *last_time = request.now;
+        match page.erasure_before_scoring {
+            CitationReplayErasure::None => {}
+            CitationReplayErasure::Feedback(erased_ids) => {
+                let erased_ids = erased_ids.iter().copied().collect::<BTreeSet<_>>();
+                votes.retain(|vote| !erased_ids.contains(&vote.id));
+            }
+            CitationReplayErasure::All => votes.clear(),
+        }
+
+        let baseline = build_recommendation_batch(request.clone()).await?;
+        SCORING_POLICY_VERSION_CITATION_ONLINE_V1.clone_into(&mut request.scoring_policy.version);
+        let fixed = CitationOnlineInputs {
+            pairs: page.pairs.to_vec(),
+            weights: LearnerWeights::default(),
+        };
+        let learned = CitationOnlineInputs {
+            pairs: page.pairs.to_vec(),
+            weights: LearnerWeights::from_votes(request.now, votes)?,
+        };
+        request.citation_online = Some(&fixed);
+        let fixed_batch = build_recommendation_batch(request.clone()).await?;
+        request.citation_online = Some(&learned);
+        let learned_batch = build_recommendation_batch(request).await?;
+        neighbor_pages += usize::from(
+            fixed_batch
+                .citation_coverage
+                .is_some_and(|coverage| coverage.root_neighbor_count > 0),
+        );
+
+        let judgments = judgments_by_base(page)?;
+        let mut ideal = judgments.values().copied().collect::<Vec<_>>();
+        ideal.sort_unstable_by(|left, right| right.cmp(left));
+        let idcg = known_dcg(ideal.into_iter());
+        let mut page_scores = [0.0; 3];
+        for (index, batch) in [&baseline, &fixed_batch, &learned_batch]
+            .into_iter()
+            .enumerate()
+        {
+            let (observed, count) = ranked_known_judgments(batch, &judgments);
+            judged[index] += observed.len();
+            let positives = observed.iter().filter(|&&grade| grade > 0).count();
+            known_dislikes[index] += observed.len() - positives;
+            displayed[index] += count;
+            if idcg > f64::EPSILON {
+                page_scores[index] = known_dcg(observed.into_iter()) / idcg;
+                totals[index] += page_scores[index];
+            }
+        }
+        if idcg > f64::EPSILON {
+            evaluable_pages += 1;
+            paired_totals[0] += page_scores[1] - page_scores[0];
+            paired_totals[1] += page_scores[2] - page_scores[0];
+            paired_totals[2] += page_scores[2] - page_scores[1];
+        }
+
+        // A held-out page's accepted ratings are visible to later pages only.
+        votes.extend_from_slice(page.accepted_after_scoring);
+    }
+
+    let mean = |sum| (evaluable_pages > 0).then(|| sum / bounded_usize_to_f64(evaluable_pages));
+    Ok(CitationReplayReport {
+        eligible_pages: pages.len(),
+        root_neighbor_pages: neighbor_pages,
+        evaluable_pages,
+        root_neighbor_coverage: ratio(neighbor_pages, pages.len()),
+        mean_ndcg_at_10: totals.map(mean),
+        mean_paired_ndcg_difference: paired_totals.map(mean),
+        judgment_coverage_at_10: std::array::from_fn(|index| {
+            ratio(judged[index], displayed[index])
+        }),
+        known_dislikes_at_10: known_dislikes,
+        unjudged_cards_at_10: std::array::from_fn(|index| displayed[index] - judged[index]),
+    })
+}
+
+fn judgments_by_base(
+    page: &CitationReplayPage<'_>,
+) -> Result<BTreeMap<String, u8>, CitationReplayError> {
+    let by_id = page
+        .baseline
+        .documents
+        .iter()
+        .map(|document| {
+            (
+                document.paper.paper_id,
+                base_arxiv_identity(&document.paper.arxiv_id),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut judgments = BTreeMap::new();
+    for judgment in page.judgments {
+        let base = by_id
+            .get(&judgment.paper_id)
+            .ok_or(CitationReplayError::InvalidPage)?;
+        if judgment.relevance_grade > 3 {
+            return Err(CitationReplayError::InvalidPage);
+        }
+        let previous = judgments.insert(base.clone(), judgment.relevance_grade);
+        if previous.is_some_and(|grade| grade != judgment.relevance_grade) {
+            return Err(CitationReplayError::InvalidPage);
+        }
+    }
+    Ok(judgments)
+}
+
+fn ranked_known_judgments(
+    batch: &BuiltRecommendationBatch,
+    judgments: &BTreeMap<String, u8>,
+) -> (Vec<u8>, usize) {
+    let observed = batch
+        .candidates
+        .iter()
+        .take(10)
+        .filter_map(|candidate| {
+            let paper = &candidate.scored.candidate.document.paper;
+            judgments
+                .get(&base_arxiv_identity(&paper.arxiv_id))
+                .copied()
+        })
+        .collect();
+    (observed, batch.candidates.len().min(10))
+}
+
+// Use condensed judged order within the first ten displayed positions.
+// An explicit zero consumes a judged position, while an unjudged card
+// contributes to coverage and has no assumed relevance grade.
+fn known_dcg(grades: impl Iterator<Item = u8>) -> f64 {
+    grades
+        .take(10)
+        .enumerate()
+        .map(|(index, grade)| discounted_gain(grade, index))
+        .sum()
+}
+
+#[derive(Debug, Error)]
+pub enum CitationReplayError {
+    #[error(
+        "citation replay requires ordered, opted-in For You pages and consistent page judgments"
+    )]
+    InvalidPage,
+    #[error(transparent)]
+    Build(#[from] BatchBuildError),
+    #[error(transparent)]
+    Evidence(#[from] CitationEvidenceError),
 }
 
 pub fn evaluate_ranking(

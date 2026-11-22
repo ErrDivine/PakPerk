@@ -71,8 +71,8 @@ or Library authority.
 ## Plan 03 Deep Reader state
 
 Plan 03 is another additive expansion of the same monolith and database. The
-current migration boundary is schema 18 to schema 24: preparation-trigger
-audit, parser-independent document generations and objects, Passport/shared
+migrations 19 through 24 add preparation-trigger audit, parser-independent
+document generations and objects, Passport/shared
 provenance/assistant state, principal-scoped annotations and research memory,
 bounded version diffs, and atomic annotation archive import. There is no
 separate research-memory service, vector

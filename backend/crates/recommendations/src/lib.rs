@@ -7,6 +7,7 @@
 
 mod batch;
 pub mod candidates;
+mod citation_online;
 mod evaluation;
 mod explanations;
 mod features;
@@ -27,14 +28,20 @@ pub use candidates::{
     CandidateGenerator, CandidateMergeError, CitationGenerator, ExplorationGenerator,
     FollowingGenerator, RecentGenerator, SemanticGenerator, merge_generated_candidates,
 };
+pub use citation_online::{
+    CitationCandidateEvidence, CitationCoverage, CitationDirection, CitationEvidenceError,
+    CitationOnlineInputs, CitationPair, CitationRoot, CitationSupport, LearnerVote, LearnerWeights,
+};
 pub use evaluation::{
+    CitationReplayErasure, CitationReplayError, CitationReplayPage, CitationReplayReport,
     EvaluationCorpus, EvaluationError, EvaluationMeasurementSource, EvaluationMetrics,
     EvaluationResourceBudget, EvaluationResourceReport, EvaluationResourceUsage,
-    RankingCompositionMetrics, RelevanceJudgment, evaluate_ranking,
+    RankingCompositionMetrics, RelevanceJudgment, evaluate_citation_replay, evaluate_ranking,
     evaluate_ranking_with_resources, ranking_stability, summarize_ranking_composition,
 };
 pub use explanations::{
     ExplanationCode, ExplanationError, RecommendationExplanation, explain_candidate,
+    explain_candidate_with_citation, replay_candidate_with_citation,
 };
 pub use features::{FeatureValidationError, RecommendationFeatures};
 pub use metadata_embedding::{
@@ -48,4 +55,7 @@ pub use model::{
 };
 pub use policy::{DiscoveryPolicy, DiscoveryPolicyError};
 pub use rerank::{RerankError, RerankPolicy, ScoredCandidate, rerank};
-pub use scoring::{SCORING_POLICY_VERSION_V1, ScoringPolicy, ScoringPolicyError};
+pub use scoring::{
+    SCORING_POLICY_VERSION_CITATION_ONLINE_V1, SCORING_POLICY_VERSION_V1, ScoringPolicy,
+    ScoringPolicyError,
+};

@@ -4,6 +4,7 @@ use thiserror::Error;
 use crate::{FeatureValidationError, RecommendationFeatures};
 
 pub const SCORING_POLICY_VERSION_V1: &str = "weighted_v1";
+pub const SCORING_POLICY_VERSION_CITATION_ONLINE_V1: &str = "citation_online_v1";
 
 /// Versioned, inspectable weights. Positive signals and penalties are kept in
 /// separate named fields so monotonicity is directly testable.
@@ -41,7 +42,10 @@ impl Default for ScoringPolicy {
 
 impl ScoringPolicy {
     pub fn validate(&self) -> Result<(), ScoringPolicyError> {
-        if self.version != SCORING_POLICY_VERSION_V1 {
+        if !matches!(
+            self.version.as_str(),
+            SCORING_POLICY_VERSION_V1 | SCORING_POLICY_VERSION_CITATION_ONLINE_V1
+        ) {
             return Err(ScoringPolicyError::UnsupportedVersion);
         }
         for weight in [

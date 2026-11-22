@@ -98,32 +98,35 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
     final repository = ref.read(libraryRepositoryProvider);
     final sync = ref.read(librarySyncControllerProvider.notifier);
     final telemetry = ref.read(telemetrySinkProvider);
+    final interactions = ref.read(interactionEventBatcherProvider);
+    final interaction = widget.interactionContext;
+    final paper = widget.paper;
     setState(() => _committing = true);
     final saved = !current.saved;
-    final saveIntentSequence =
-        saved && ref.read(featureFlagsProvider).readingFeed
-        ? ref
-              .read(librarySaveIntentSignalProvider.notifier)
-              .begin(accountId: scope.accountId, authEpoch: scope.authEpoch)
+    final saveIntent = saved && ref.read(featureFlagsProvider).readingFeed
+        ? ref.read(librarySaveIntentSignalProvider.notifier)
         : null;
+    final saveIntentSequence = saveIntent?.begin(
+      accountId: scope.accountId,
+      authEpoch: scope.authEpoch,
+    );
     emitTelemetry(telemetry, PakPerkTelemetryEvent.saveRequested, {
       'intent': saved ? 'save' : 'remove',
     });
     try {
+      final String operationId;
       try {
-        await repository.setSaved(
+        operationId = await repository.setSaved(
           accountId: scope.accountId,
           authEpoch: scope.authEpoch,
-          paperId: widget.paper.paperId,
+          paperId: paper.paperId,
           saved: saved,
-          paper: widget.paper,
+          paper: paper,
           saveSourceKind: saved ? widget.saveSourceKind : null,
         );
       } on Object {
         if (saveIntentSequence != null) {
-          ref
-              .read(librarySaveIntentSignalProvider.notifier)
-              .end(saveIntentSequence);
+          saveIntent?.end(saveIntentSequence);
         }
         emitTelemetry(telemetry, PakPerkTelemetryEvent.saveFailed, {
           'intent': saved ? 'save' : 'remove',
@@ -141,18 +144,16 @@ class _PaperSaveControlState extends ConsumerState<PaperSaveControl> {
       // A successful local write includes the durable outbox operation. Drain
       // it even if navigation disposes this control while the write awaits.
       unawaited(sync.drain());
-      final interaction = widget.interactionContext;
-      ref
-          .read(interactionEventBatcherProvider)
-          .record(
-            eventType: saved
-                ? PaperInteractionEventType.saved
-                : PaperInteractionEventType.unsaved,
-            paperId: widget.paper.paperId,
-            feedMode: interaction?.feedMode,
-            batchId: interaction?.batchId,
-            position: interaction?.position,
-          );
+      interactions.record(
+        eventType: saved
+            ? PaperInteractionEventType.saved
+            : PaperInteractionEventType.unsaved,
+        paperId: paper.paperId,
+        eventId: saved && interaction?.batchId != null ? operationId : null,
+        feedMode: interaction?.feedMode,
+        batchId: interaction?.batchId,
+        position: interaction?.position,
+      );
       if (!mounted) return;
       // Platform feedback is best-effort. It must not delay durable sync or
       // the time-sensitive Undo affordance.

@@ -65,10 +65,10 @@ def main() -> int:
         "all 31 release switches reconciled",
         "all 40 required dependency edges rejected",
         "remains schema/domain v1",
-        "schema 18 to 24",
-        "new 18-to-24 subject",
+        "schema 18 to 26",
+        "new 18-to-26 subject",
         "31-switch/40-edge contract",
-        "schema-24 private-data/restore checks",
+        "schema-26 private-data/restore checks",
     ):
         assert required in operational, required
 
@@ -138,7 +138,7 @@ def main() -> int:
             "`PAPER_RESOLUTION_ENABLED`",
         ],
     )
-    assert "Keep additive schema 24 in place" in normalized_rollback
+    assert "Keep additive schema 26 in place" in normalized_rollback
     assert (
         "never restore schema 18 merely to disable a Plan 03 capability"
         in normalized_rollback
@@ -162,7 +162,7 @@ def main() -> int:
         ],
     )
     recovery = " ".join(section(incident, "Recovery and closure").split())
-    assert "Keep schema 24 in place for the current candidate" in recovery
+    assert "Keep schema 26 in place for the current candidate" in recovery
     assert "Keep schema 18 in place" in recovery
     assert "historical Plan 02 rule" in recovery
     assert "notifications; and enforcement only after compatible-client" in recovery
@@ -219,8 +219,8 @@ def main() -> int:
     backup = read("docs/runbooks/backup-restore.md")
     assert "## Migrations 12–18 release rehearsal" in backup
     assert "PAKPERK_RESTORE_DRILL_EXPECTED_MIGRATION=18" in backup
-    assert "## Migrations 19–24 current release rehearsal" in backup
-    assert "PAKPERK_RESTORE_DRILL_EXPECTED_MIGRATION=24" in backup
+    assert "## Migrations 19–26 current release rehearsal" in backup
+    assert "PAKPERK_RESTORE_DRILL_EXPECTED_MIGRATION=26" in backup
     assert "provider-backed isolated" in backup
 
     developer = read("docs/developer-guide.md")
@@ -241,8 +241,8 @@ def main() -> int:
     current_migration = " ".join(
         section(boundaries, "Current migration boundary").split()
     )
-    assert "starts at schema 18 and applies migrations 19–24" in current_migration
-    assert "apply the reviewed migration image to schema 24 exactly once" in current_migration
+    assert "starts at schema 18 and applies migrations 19–26" in current_migration
+    assert "apply the reviewed migration image to schema 26 exactly once" in current_migration
     current_boundaries = section(boundaries, "Current default-off server controls")
     deep_reader_rollout = read("docs/runbooks/deep-reader-rollout.md")
     for feature in evidence.RELEASE_FEATURE_SWITCHES:

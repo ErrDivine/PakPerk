@@ -75,6 +75,7 @@ final class InteractionEventBatcher {
   bool record({
     required PaperInteractionEventType eventType,
     required String paperId,
+    String? eventId,
     InteractionFeedMode? feedMode,
     String? batchId,
     int? position,
@@ -88,7 +89,7 @@ final class InteractionEventBatcher {
     }
     try {
       final event = PaperInteractionEvent(
-        eventId: _eventId().toLowerCase(),
+        eventId: (eventId ?? _eventId()).toLowerCase(),
         eventType: eventType,
         paperId: paperId,
         feedMode: feedMode,

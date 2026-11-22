@@ -183,7 +183,9 @@
         "paperSearchMaxQueryChars", "paperSearchMaxResults", "paperSearchPositiveCacheTtlSeconds",
         "paperSearchNegativeCacheTtlSeconds", "paperImportAccountLimitPerMinute",
         "paperSearchAccountLimitPerMinute", "readingFeedDefaultLimit", "readingFeedMaxLimit",
-        "readingFeedCursorTtlSeconds", "edgeRateLimitRps", "edgeBurstMultiplier",
+        "readingFeedCursorTtlSeconds", "recommendationScoringPolicy",
+        "recommendationCitationOnlinePercent", "recommendationCitationShadow",
+        "edgeRateLimitRps", "edgeBurstMultiplier",
         "edgeConnectionLimit", "terminationGracePeriodSeconds", "service", "pdb",
         "topologySpread"
       ],
@@ -208,6 +210,9 @@
         "readingFeedDefaultLimit": { "type": "integer", "minimum": 1, "maximum": 50 },
         "readingFeedMaxLimit": { "type": "integer", "minimum": 1, "maximum": 50 },
         "readingFeedCursorTtlSeconds": { "type": "integer", "minimum": 1, "maximum": 604800 },
+        "recommendationScoringPolicy": { "enum": ["weighted_v1", "citation_online_v1"] },
+        "recommendationCitationOnlinePercent": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "recommendationCitationShadow": { "type": "boolean" },
         "edgeRateLimitRps": { "type": "integer", "minimum": 1, "maximum": 10000 },
         "edgeBurstMultiplier": { "type": "integer", "minimum": 1, "maximum": 10 },
         "edgeConnectionLimit": { "type": "integer", "minimum": 1, "maximum": 10000 },
@@ -315,7 +320,7 @@
         "enabled": { "type": "boolean" },
         "command": { "$ref": "#/definitions/command" },
         "confirmBackupId": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{8,128}$", "minLength": 8, "maxLength": 128 },
-        "expectedVersion": { "type": "integer", "minimum": 24, "maximum": 24 },
+        "expectedVersion": { "type": "integer", "minimum": 26, "maximum": 26 },
         "activeDeadlineSeconds": { "type": "integer", "minimum": 30, "maximum": 7200 },
         "resources": { "$ref": "#/definitions/resources" }
       }

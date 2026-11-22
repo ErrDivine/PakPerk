@@ -121,6 +121,7 @@ async fn postgres_reading_feed_snapshot_is_fifo_excluded_revision_fenced_and_con
         }
     };
     assert_eq!(empty_revision, 2);
+    assert_eq!(recommendation_page.feedback_revision, 0);
     assert_eq!(
         recommendation_page
             .items
@@ -240,6 +241,7 @@ async fn postgres_reading_feed_snapshot_is_fifo_excluded_revision_fenced_and_con
     let stale_continuation = ReadingFeedContinuation {
         mode: FeedMode::ToRead,
         library_revision: queue_revision,
+        citation_online: false,
         position: ReadingFeedCursorPosition::ToRead {
             position: next_position,
         },
@@ -283,6 +285,7 @@ async fn postgres_reading_feed_snapshot_is_fifo_excluded_revision_fenced_and_con
     let cross_account_continuation = ReadingFeedContinuation {
         mode: FeedMode::ToRead,
         library_revision: fresh_revision,
+        citation_online: false,
         position: ReadingFeedCursorPosition::ToRead {
             position: fresh_position.unwrap(),
         },
@@ -369,7 +372,7 @@ async fn postgres_reading_feed_snapshot_is_fifo_excluded_revision_fenced_and_con
         INSERT INTO user_paper_library (
             user_id, paper_id, state, saved_at, updated_at, revision, last_operation_id
         )
-        VALUES ($1, $2, 'inbox', statement_timestamp(), statement_timestamp(), $3, $4)
+        VALUES ($1, $2, 'to_read', statement_timestamp(), statement_timestamp(), $3, $4)
         ",
     )
     .bind(race_user.id.into_inner())

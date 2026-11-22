@@ -219,7 +219,9 @@ void main() {
         ),
       );
 
-      final area = tester.widget<SelectionArea>(find.byType(SelectionArea));
+      final area = tester.widget<SelectionArea>(
+        find.bySubtype<SelectionArea>(),
+      );
       area.onSelectionChanged!(
         const SelectedContent(plainText: 'Exact source sentence'),
       );

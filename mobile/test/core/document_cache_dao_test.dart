@@ -460,7 +460,7 @@ DocumentSnapshot _snapshot() {
     ],
     passport: null,
     provenance: provenance,
-    fetchedAt: DateTime.utc(2026, 8, 31),
+    fetchedAt: DateTime.now().toUtc(),
     semanticFacetsIncluded: true,
   );
 }

@@ -62,6 +62,15 @@ DEFAULT_THRESHOLDS = {
 EVIDENCE_ID = re.compile(r"[A-Za-z0-9._:/-]{1,128}")
 SOURCE_REVISION = re.compile(r"[0-9a-f]{40}")
 CATEGORY = re.compile(r"[A-Za-z0-9.-]{1,64}")
+RECOMMENDATION_POLICIES = ("weighted_v1", "citation_online_v1")
+READING_FEED_RECOMMENDATION_MODES = {
+    "recent_v1": "recent",
+    "following_v1": "following",
+    "for_you_v1": "for_you",
+    "explore_v1": "explore",
+}
+RECOMMENDATION_PREFLIGHT_ATTEMPTS = 6
+RECOMMENDATION_PREFLIGHT_RETRY_SECONDS = 1.0
 ARXIV_ID = re.compile(r"[0-9]{4}\.[0-9]{4,5}(?:v[1-9][0-9]*)?")
 PAPER_SEARCH_ACCOUNT_LIMIT_PER_MINUTE = 10
 PAPER_IMPORT_ACCOUNT_LIMIT_PER_MINUTE = 20
@@ -122,6 +131,7 @@ class Config:
     bearer_token: str | None = field(repr=False)
     reading_feed_queue_token: str | None = field(default=None, repr=False)
     reading_feed_recommendation_token: str | None = field(default=None, repr=False)
+    expected_recommendation_policy: str | None = None
     paper_search_query: str | None = field(default=None, repr=False)
     maximum_paper_search_requests: int = 0
     include_library: bool = False
@@ -428,6 +438,11 @@ def parse_config(argv: list[str] | None = None) -> Config:
     parser.add_argument("--bearer-token-file", type=Path)
     parser.add_argument("--reading-feed-queue-token-file", type=Path)
     parser.add_argument("--reading-feed-recommendation-token-file", type=Path)
+    parser.add_argument(
+        "--expected-recommendation-policy",
+        metavar="POLICY",
+        help="Require a persisted For You page served under weighted_v1 or citation_online_v1.",
+    )
     parser.add_argument("--paper-search-query-file", type=Path)
     parser.add_argument(
         "--max-paper-search-requests",
@@ -481,6 +496,14 @@ def parse_config(argv: list[str] | None = None) -> Config:
     reading_feed_recommendation_token = read_bearer_token(
         arguments.reading_feed_recommendation_token_file
     )
+    expected_recommendation_policy = arguments.expected_recommendation_policy
+    if expected_recommendation_policy is not None:
+        if expected_recommendation_policy not in RECOMMENDATION_POLICIES:
+            raise ConfigurationError("expected recommendation policy is invalid")
+        if reading_feed_recommendation_token is None:
+            raise ConfigurationError(
+                "expected recommendation policy requires a recommendation token file"
+            )
     paper_search_query = normalized_search_query(arguments.paper_search_query_file)
     if arguments.include_library and bearer_token is None:
         raise ConfigurationError("library load requires a bearer-token file")
@@ -644,6 +667,7 @@ def parse_config(argv: list[str] | None = None) -> Config:
         bearer_token=bearer_token,
         reading_feed_queue_token=reading_feed_queue_token,
         reading_feed_recommendation_token=reading_feed_recommendation_token,
+        expected_recommendation_policy=expected_recommendation_policy,
         paper_search_query=paper_search_query,
         maximum_paper_search_requests=maximum_search_requests,
         include_library=arguments.include_library,
@@ -878,7 +902,10 @@ def _contains_account_identity(value: Any) -> bool:
 
 
 def validate_reading_feed(
-    value: dict[str, Any], expected_mode: str, maximum_items: int
+    value: dict[str, Any],
+    expected_mode: str,
+    maximum_items: int,
+    expected_policy: str | None = None,
 ) -> None:
     mode = value.get("mode")
     decision = value.get("decision")
@@ -913,6 +940,28 @@ def validate_reading_feed(
     elif expected_mode == "recommendations":
         if active_count != 0 or not proven_empty:
             raise ProtocolError("reading-feed recommendation decision was invalid")
+        if expected_policy is not None:
+            if decision.get("policy_version") != "queue_first_v1":
+                raise ProtocolError("reading-feed queue authority policy was invalid")
+            batch_id = value.get("batch_id")
+            metadata = value.get("batch_metadata")
+            if (
+                not items
+                or not isinstance(batch_id, str)
+                or not isinstance(metadata, dict)
+            ):
+                raise ProtocolError("reading-feed For You batch was missing or invalid")
+            try:
+                parsed_batch_id = uuid.UUID(batch_id)
+            except ValueError as error:
+                raise ProtocolError("reading-feed For You batch was invalid") from error
+            if parsed_batch_id.int == 0:
+                raise ProtocolError("reading-feed For You batch was invalid")
+            policy = metadata.get("recommendation_policy_version")
+            if policy not in RECOMMENDATION_POLICIES:
+                raise ProtocolError("reading-feed For You batch policy was invalid")
+            if policy != expected_policy:
+                raise ProtocolError("reading-feed For You batch policy did not match")
     else:
         raise ProtocolError("reading-feed expected mode was invalid")
     for entry in items:
@@ -931,7 +980,27 @@ def validate_reading_feed(
                 or queue["revision"] < 0
             ):
                 raise ProtocolError("reading-feed queue item was invalid")
-        elif source != "discovery_v1" or queue is not None:
+            continue
+        if queue is not None:
+            raise ProtocolError("reading-feed recommendation item was invalid")
+        recommendation = entry.get("recommendation")
+        if (
+            expected_policy is None
+            and source == "discovery_v1"
+            and recommendation is None
+        ):
+            continue
+        item_mode = (
+            READING_FEED_RECOMMENDATION_MODES.get(source)
+            if isinstance(source, str)
+            else None
+        )
+        if (
+            item_mode is None
+            or (expected_policy is not None and item_mode != "for_you")
+            or not isinstance(recommendation, dict)
+            or recommendation.get("mode") != item_mode
+        ):
             raise ProtocolError("reading-feed recommendation item was invalid")
 
 
@@ -1086,10 +1155,12 @@ def feed_path(config: Config, cursor: str | None = None) -> str:
     return "/v1/feed?" + urlencode(query)
 
 
-def reading_feed_path(config: Config) -> str:
+def reading_feed_path(config: Config, *, check_policy: bool = False) -> str:
     query: dict[str, str | int] = {"limit": config.reading_feed_page_size}
     if config.category is not None:
         query["category"] = config.category
+    if check_policy:
+        query["recommendation_mode"] = "for_you"
     return "/v1/me/reading-feed?" + urlencode(query)
 
 
@@ -1102,17 +1173,40 @@ def preflight_json(
     json_body: dict[str, Any] | None = None,
     extra_headers: dict[str, str] | None = None,
     deadline: float | None = None,
+    retry_reading_feed_unavailable: bool = False,
 ) -> dict[str, Any]:
-    if deadline is not None and time.monotonic() >= deadline:
-        raise LoadError(f"{operation} exceeded the preflight deadline")
-    result = client.request(method, path, token, json_body, extra_headers)
-    if result.error_class is not None or result.status != 200:
-        raise LoadError(f"{operation} failed")
-    try:
-        require_json_content_type(result.content_type)
-        return json_object(result.body)
-    except ProtocolError as error:
-        raise LoadError(f"{operation} returned an invalid response") from error
+    attempts = (
+        RECOMMENDATION_PREFLIGHT_ATTEMPTS if retry_reading_feed_unavailable else 1
+    )
+    for attempt in range(attempts):
+        if deadline is not None and time.monotonic() >= deadline:
+            raise LoadError(f"{operation} exceeded the preflight deadline")
+        result = client.request(method, path, token, json_body, extra_headers)
+        if result.error_class is not None or (
+            result.status != 200
+            and not (retry_reading_feed_unavailable and result.status == 503)
+        ):
+            raise LoadError(f"{operation} failed")
+        try:
+            require_json_content_type(result.content_type)
+            value = json_object(result.body)
+        except ProtocolError as error:
+            raise LoadError(f"{operation} returned an invalid response") from error
+        if result.status == 200:
+            return value
+        problem = value.get("error")
+        if (
+            not isinstance(problem, dict)
+            or problem.get("code") != "QUEUE_AUTHORITY_UNAVAILABLE"
+            or problem.get("retryable") is not True
+        ):
+            raise LoadError(f"{operation} failed")
+        if attempt + 1 < attempts:
+            delay = RECOMMENDATION_PREFLIGHT_RETRY_SECONDS
+            if deadline is not None:
+                delay = min(delay, max(0, deadline - time.monotonic()))
+            time.sleep(delay)
+    raise LoadError(f"{operation} exhausted the reading-feed retry limit")
 
 
 def bootstrap_feed(
@@ -1164,7 +1258,6 @@ def bootstrap_feed(
 def preflight_private_workloads(
     config: Config, client: HttpClient, deadline: float
 ) -> None:
-    path = reading_feed_path(config)
     for token, expected_mode, operation in (
         (
             config.reading_feed_queue_token,
@@ -1179,17 +1272,27 @@ def preflight_private_workloads(
     ):
         if token is None:
             continue
+        expected_policy = (
+            config.expected_recommendation_policy
+            if expected_mode == "recommendations"
+            else None
+        )
         page = preflight_json(
             client,
             "GET",
-            path,
+            reading_feed_path(config, check_policy=expected_policy is not None),
             operation,
             token,
             deadline=deadline,
+            retry_reading_feed_unavailable=expected_policy is not None,
         )
         try:
-            validate_reading_feed(page, expected_mode, config.reading_feed_page_size)
+            validate_reading_feed(
+                page, expected_mode, config.reading_feed_page_size, expected_policy
+            )
         except ProtocolError as error:
+            if expected_policy is not None:
+                raise LoadError(f"{operation}: {error}") from error
             raise LoadError(f"{operation} returned an invalid response") from error
 
     query = config.paper_search_query
@@ -1408,14 +1511,20 @@ class Workload:
                 ),
             )
         if scenario == "reading_feed_recommendations":
+            expected_policy = self.config.expected_recommendation_policy
             return measure(
                 client,
                 scenario,
                 "GET",
-                reading_feed_path(self.config),
+                reading_feed_path(
+                    self.config, check_policy=expected_policy is not None
+                ),
                 self.config.reading_feed_recommendation_token,
                 lambda value: validate_reading_feed(
-                    value, "recommendations", self.config.reading_feed_page_size
+                    value,
+                    "recommendations",
+                    self.config.reading_feed_page_size,
+                    expected_policy,
                 ),
             )
         if scenario == "paper_title_search":
@@ -1765,6 +1874,19 @@ def build_evidence(
                 "maximum_error_rate": threshold.maximum_error_rate,
             },
         }
+        if (
+            scenario == "reading_feed_recommendations"
+            and config.expected_recommendation_policy is not None
+        ):
+            invalid_responses = payload["errors_by_class"].get("protocol", 0)
+            matching_responses = payload["successful_requests"]
+            scenario_payload[scenario]["recommendation_policy_check"] = {
+                "expected_policy": config.expected_recommendation_policy,
+                "matching_responses": matching_responses,
+                "invalid_responses": invalid_responses,
+            }
+            if invalid_responses or not matching_responses:
+                failures.append(f"{scenario}:recommendation_policy")
         if payload["requests"] < config.minimum_samples_per_scenario:
             failures.append(f"{scenario}:minimum_samples")
         raw_error_rate = (
@@ -1878,6 +2000,14 @@ def build_evidence(
             "explicitly confirmed dedicated staging fixture; an unseeded "
             "operation may create durable staging data",
             "results require separately recorded staging topology, database saturation, and telemetry context",
+            *(
+                [
+                    "For You policy verification covers serving provenance and backend HTTP latency. "
+                    "Ranking quality, refill behavior, and shadow comparisons require separate evidence."
+                ]
+                if config.expected_recommendation_policy is not None
+                else []
+            ),
         ],
     }
 

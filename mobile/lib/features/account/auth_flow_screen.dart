@@ -20,8 +20,9 @@ class AccountAuthRouteScreen extends ConsumerWidget {
     if (!ref.watch(featureFlagsProvider).accounts) {
       return PhaseOnePlaceholderScreen(
         title: 'Accounts are not enabled',
-        message: 'Sign in and account creation are disabled in this build. No '
-          'credentials are collected by this screen.',
+        message:
+            'Sign in and account creation are disabled in this build. No '
+            'credentials are collected by this screen.',
         icon: Icons.lock_outline,
         closeTooltip: 'Close account sign in',
         onClose: () => closePakPerkRootRoute(context),

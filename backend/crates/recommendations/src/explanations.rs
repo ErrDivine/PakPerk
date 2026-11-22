@@ -1,10 +1,14 @@
+use std::collections::BTreeSet;
+
 use domain::PaperId;
 pub use domain::RecommendationReasonCode as ExplanationCode;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    CandidateSource, GeneratedCandidate, HistoricalRelation, HistoricalSeedState, ReasonEvidence,
+    CandidateSource, CitationCandidateEvidence, CitationDirection, CitationGenerator,
+    GeneratedCandidate, HistoricalRelation, HistoricalSeedState, ReasonEvidence,
+    citation_online::FOLLOWED_AUTHOR, rerank::base_arxiv_identity,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,6 +30,36 @@ pub struct RecommendationExplanation {
 pub fn explain_candidate(
     candidate: &GeneratedCandidate,
 ) -> Result<Vec<RecommendationExplanation>, ExplanationError> {
+    validate_candidate_metadata(candidate)?;
+    explain_recorded_candidate(candidate)
+}
+
+fn validate_candidate_metadata(candidate: &GeneratedCandidate) -> Result<(), ExplanationError> {
+    let paper = &candidate.document.paper;
+    for reason in &candidate.reasons {
+        let matches = match reason {
+            ReasonEvidence::RecentCategory { category }
+            | ReasonEvidence::FollowedCategory { category }
+            | ReasonEvidence::FeedbackCategoryAffinity { category }
+            | ReasonEvidence::InferredCategoryAffinity { category } => {
+                category == &paper.primary_category
+            }
+            ReasonEvidence::FollowedAuthor { author } => paper
+                .authors
+                .iter()
+                .any(|value| value.eq_ignore_ascii_case(author)),
+            _ => true,
+        };
+        if !matches {
+            return Err(ExplanationError::EvidenceMismatch);
+        }
+    }
+    Ok(())
+}
+
+fn explain_recorded_candidate(
+    candidate: &GeneratedCandidate,
+) -> Result<Vec<RecommendationExplanation>, ExplanationError> {
     candidate
         .features
         .validate()
@@ -38,6 +72,127 @@ pub fn explain_candidate(
         .iter()
         .map(|reason| explain_reason(candidate, reason))
         .collect()
+}
+
+pub(crate) fn order_citation_reasons(
+    candidate: &mut GeneratedCandidate,
+    evidence: &CitationCandidateEvidence,
+) -> Result<(), ExplanationError> {
+    validate_candidate_metadata(candidate)?;
+    let mut reasons = std::mem::take(&mut candidate.reasons);
+    reasons.sort_by_key(|reason| match (evidence.tier, reason) {
+        (
+            2..=4,
+            ReasonEvidence::HistoricalSeed {
+                relation: HistoricalRelation::Citation,
+                ..
+            },
+        )
+        | (1, ReasonEvidence::FollowedAuthor { .. }) => 0,
+        _ => 1,
+    });
+    let mut seen = BTreeSet::new();
+    for mut reason in reasons {
+        if let ReasonEvidence::HistoricalSeed { title, .. } = &mut reason {
+            title.truncate(title.floor_char_boundary(256));
+        }
+        if seen.insert(explain_reason(candidate, &reason)?.code) {
+            candidate.reasons.push(reason);
+        }
+    }
+    Ok(())
+}
+
+pub fn explain_candidate_with_citation(
+    candidate: &GeneratedCandidate,
+    evidence: &CitationCandidateEvidence,
+) -> Result<Vec<RecommendationExplanation>, ExplanationError> {
+    validate_candidate_metadata(candidate)?;
+    replay_candidate_with_citation(candidate, evidence)
+}
+
+/// Replays citation explanations whose author and category were verified
+/// against candidate metadata before the batch was stored.
+pub fn replay_candidate_with_citation(
+    candidate: &GeneratedCandidate,
+    evidence: &CitationCandidateEvidence,
+) -> Result<Vec<RecommendationExplanation>, ExplanationError> {
+    evidence
+        .validate()
+        .map_err(|_| ExplanationError::EvidenceMismatch)?;
+    let root_reasons = CitationGenerator::reasons(evidence);
+    let candidate_base = base_arxiv_identity(&candidate.document.paper.arxiv_id);
+    if (evidence.feature_mask & FOLLOWED_AUTHOR != 0)
+        != candidate.sources.contains(&CandidateSource::AuthorFollow)
+        || (evidence.tier >= 2) != candidate.sources.contains(&CandidateSource::Citation)
+        || (evidence.tier >= 2) != (candidate.features.citation_affinity > 0.0)
+        || evidence.supporting_roots.iter().any(|support| {
+            support.base_arxiv_id == candidate_base
+                || support.paper_id == candidate.document.paper.paper_id
+        })
+        || !candidate.reasons.starts_with(&root_reasons)
+        || candidate
+            .reasons
+            .iter()
+            .filter(|reason| {
+                matches!(
+                    reason,
+                    ReasonEvidence::HistoricalSeed {
+                        relation: HistoricalRelation::Citation,
+                        ..
+                    }
+                )
+            })
+            .count()
+            != root_reasons.len()
+        || (evidence.tier == 1
+            && !matches!(
+                candidate.reasons.first(),
+                Some(ReasonEvidence::FollowedAuthor { .. })
+            ))
+        || (evidence.feature_mask & FOLLOWED_AUTHOR != 0)
+            != candidate
+                .reasons
+                .iter()
+                .any(|reason| matches!(reason, ReasonEvidence::FollowedAuthor { .. }))
+    {
+        return Err(ExplanationError::EvidenceMismatch);
+    }
+    let mut explanations = explain_recorded_candidate(candidate)?;
+    let mut seen = BTreeSet::new();
+    for explanation in &mut explanations {
+        if !seen.insert(explanation.code) {
+            return Err(ExplanationError::EvidenceMismatch);
+        }
+        if explanation.source == CandidateSource::Citation {
+            let support = evidence
+                .supporting_roots
+                .iter()
+                .find(|support| Some(support.paper_id) == explanation.seed_paper_id)
+                .ok_or(ExplanationError::EvidenceMismatch)?;
+            let state = match support.state {
+                HistoricalSeedState::Reviewed => "reviewed",
+                HistoricalSeedState::Archived => "archived",
+            };
+            let title = &support.title;
+            explanation.detail = match support.direction {
+                CitationDirection::Reference => {
+                    format!("Your {state} paper ‘{title}’ references this paper.")
+                }
+                CitationDirection::Citing => {
+                    format!("This paper cites your {state} paper ‘{title}’.")
+                }
+                CitationDirection::Reciprocal => {
+                    format!("This paper and your {state} paper ‘{title}’ cite each other.")
+                }
+            };
+        }
+        explanation.behavior_used |= evidence.learned_adjustment != 0.0;
+        explanation
+            .detail
+            .truncate(explanation.detail.floor_char_boundary(1024));
+    }
+    Ok(explanations)
 }
 
 fn explain_reason(
@@ -90,9 +245,6 @@ fn recent_explanation(
     category: &str,
 ) -> Result<RecommendationExplanation, ExplanationError> {
     require_source(candidate, CandidateSource::Recent)?;
-    if category != candidate.document.paper.primary_category {
-        return Err(ExplanationError::EvidenceMismatch);
-    }
     Ok(RecommendationExplanation {
         code: ExplanationCode::RecentCategory,
         title: "Recent in your categories".to_owned(),
@@ -109,9 +261,6 @@ fn followed_category_explanation(
 ) -> Result<RecommendationExplanation, ExplanationError> {
     require_source(candidate, CandidateSource::CategoryFollow)?;
     require_positive(candidate.features.explicit_follow)?;
-    if category != candidate.document.paper.primary_category {
-        return Err(ExplanationError::EvidenceMismatch);
-    }
     Ok(RecommendationExplanation {
         code: ExplanationCode::FollowedCategory,
         title: "From a followed category".to_owned(),
@@ -153,15 +302,6 @@ fn followed_author_explanation(
 ) -> Result<RecommendationExplanation, ExplanationError> {
     require_source(candidate, CandidateSource::AuthorFollow)?;
     require_positive(candidate.features.explicit_follow)?;
-    if !candidate
-        .document
-        .paper
-        .authors
-        .iter()
-        .any(|value| value.eq_ignore_ascii_case(author))
-    {
-        return Err(ExplanationError::EvidenceMismatch);
-    }
     Ok(RecommendationExplanation {
         code: ExplanationCode::FollowedAuthor,
         title: "From a followed author".to_owned(),
@@ -213,9 +353,6 @@ fn affinity_explanation(
     };
     require_source(candidate, source)?;
     require_positive(candidate.features.topic_overlap)?;
-    if category != candidate.document.paper.primary_category {
-        return Err(ExplanationError::EvidenceMismatch);
-    }
     Ok(RecommendationExplanation {
         code,
         title: title.to_owned(),

@@ -142,7 +142,8 @@ final class _MemoryReviewScreenState extends State<MemoryReviewScreen> {
             if (widget.state.offline)
               _MessageBanner(
                 icon: Icons.cloud_off_outlined,
-                message: 'Offline: cached reviews stay private on this device and changes keep their sync operation.',
+                message:
+                    'Offline: cached reviews stay private on this device and changes keep their sync operation.',
               ),
             if (message != null)
               _MessageBanner(

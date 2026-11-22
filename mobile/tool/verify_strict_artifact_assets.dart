@@ -19,6 +19,12 @@ const _strictAppAssetAllowlist = <String>{
   'assets/legal/support.md',
   'assets/legal/account_deletion.md',
   'assets/legal/open_source_licenses.md',
+  'assets/legal/zh/privacy.md',
+  'assets/legal/zh/terms.md',
+  'assets/legal/zh/community_guidelines.md',
+  'assets/legal/zh/support.md',
+  'assets/legal/zh/account_deletion.md',
+  'assets/legal/zh/open_source_licenses.md',
 };
 
 // These are the stock Flutter launcher PNGs that previously shipped in this

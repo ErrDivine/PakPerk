@@ -444,7 +444,9 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
         .iter()
         .map(|change| change["entity"].as_str().unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(entities, vec!["item", "list", "list_item"]);
+    // Changes carry the latest revision for each entity. The Reading update
+    // happened after creating the list and adding its member.
+    assert_eq!(entities, vec!["list", "list_item", "item"]);
 
     let second_feed_paper = database
         .papers()
@@ -494,6 +496,9 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
     assert_eq!(reading_feed_page["mode"], "to_read");
     assert_eq!(reading_feed_page["decision"]["active_to_read_count"], 2);
     assert_eq!(reading_feed_page["decision"]["queue_proven_empty"], false);
+    let latest_queue_revision = reading_feed_page["decision"]["library_revision"]
+        .as_i64()
+        .unwrap();
     assert_eq!(reading_feed_page["items"].as_array().unwrap().len(), 1);
     assert_eq!(reading_feed_page["items"][0]["source"], "to_read");
     assert_eq!(reading_feed_page["items"][0]["queue"]["state"], "reading");
@@ -567,7 +572,8 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
     );
 
     // Device B removes the item through an independent router. Device A then
-    // advances from its saved revision and receives the durable tombstone.
+    // advances from the revision of the queue it already read and receives
+    // the durable tombstone.
     let remove_operation = Uuid::now_v7();
     let removed = second
         .clone()
@@ -611,7 +617,7 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
     let changes = first
         .clone()
         .oneshot(authorized_get(
-            &format!("/v1/me/library/changes?after_revision={saved_revision}&limit=10"),
+            &format!("/v1/me/library/changes?after_revision={latest_queue_revision}&limit=10"),
             &recent_token,
         ))
         .await
@@ -918,6 +924,7 @@ async fn postgres_oidc_routes_enforce_auth_consent_mutations_flags_cors_and_rece
     let mut library_disabled_config = config.clone();
     library_disabled_config.features.library = false;
     library_disabled_config.features.library_writes = false;
+    library_disabled_config.features.library_v2 = false;
     library_disabled_config.features.reading_feed = false;
     library_disabled_config.library = None;
     let library_disabled = build_router(

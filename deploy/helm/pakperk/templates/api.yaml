@@ -82,6 +82,9 @@ spec:
             - { name: READING_FEED_DEFAULT_LIMIT, value: {{ .Values.api.readingFeedDefaultLimit | quote }} }
             - { name: READING_FEED_MAX_LIMIT, value: {{ .Values.api.readingFeedMaxLimit | quote }} }
             - { name: READING_FEED_CURSOR_TTL_SECONDS, value: {{ .Values.api.readingFeedCursorTtlSeconds | quote }} }
+            - { name: RECOMMENDATION_SCORING_POLICY, value: {{ .Values.api.recommendationScoringPolicy | quote }} }
+            - { name: RECOMMENDATION_CITATION_ONLINE_PERCENT, value: {{ .Values.api.recommendationCitationOnlinePercent | quote }} }
+            - { name: RECOMMENDATION_CITATION_SHADOW, value: {{ .Values.api.recommendationCitationShadow | quote }} }
             - { name: CORS_ALLOWED_ORIGINS, value: {{ .Values.public.siteOrigin | quote }} }
             - { name: FULLTEXT_POLICY, value: {{ .Values.policy.fulltext | quote }} }
             - { name: ACCOUNTS_ENABLED, value: {{ include "pakperk.bool" .Values.features.accounts | quote }} }

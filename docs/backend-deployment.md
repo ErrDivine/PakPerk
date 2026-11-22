@@ -169,7 +169,7 @@ Keycloak uses its own database and role, not the Pakperk application database.
 The repository's grant matrix defines the required boundaries, but it is not an
 executable role-provisioning script. The database owner must maintain and review
 an environment-specific SQL/IaC grant artifact that maps those boundaries to
-the tables in migrations 1 through 24. Do not replace that missing artifact with
+the tables in migrations 1 through 26. Do not replace that missing artifact with
 `GRANT ALL`, schema ownership, a shared login, or the migration role in a
 runtime Secret.
 
@@ -501,7 +501,7 @@ FROM public.external_rate_limits
 WHERE service = 'arxiv';
 ```
 
-Require successful migrations 1 through 24, all three extensions exactly once
+Require successful migrations 1 through 26, all three extensions exactly once
 in `public`, and exactly one `arxiv` gate row. Then run the grant artifact's
 component-specific allowed and denied probes: each role must have only its DML
 scope, must not write migration history, and must not own the schema. Record
@@ -542,7 +542,7 @@ The Job:
 - forces and verifies `public, pg_catalog` search order;
 - obtains an advisory lock;
 - checks the backup identifier and embedded migration version;
-- applies forward-only migrations through schema 24; and
+- applies forward-only migrations through schema 26; and
 - verifies migration checksums and required extensions.
 
 It has no retry and a bounded deadline. A failed migration blocks the ordinary
@@ -829,8 +829,8 @@ Prepare rollback before deployment, not after an incident begins.
 
 1. Disable enforcement and write switches in reverse dependency order.
 2. If only application code is bad, deploy the previously approved image
-   digests only when that code is explicitly compatible with schema 24.
-3. Keep schema 24 in place during an ordinary application rollback. The
+   digests only when that code is explicitly compatible with the installed schema.
+3. Keep schema 26 in place during an ordinary application rollback. The
    repository uses forward-only expand/contract migrations and provides no
    automatic destructive down migration.
 4. If database restoration is unavoidable, follow the backup/restore runbook
@@ -915,7 +915,7 @@ Before declaring the backend deployed, answer **yes** to every applicable item:
 - Is the cluster version and exact context recorded?
 - Are backend and site images pulled by immutable registry digest from the
   approved handoff?
-- Are PostgreSQL roles distinct, least-privilege, and schema-24 ready?
+- Are PostgreSQL roles distinct, least-privilege, and ready on schema 26?
 - Is the backup real, restorable, and bound to the migration attempt?
 - Are the current deletion ledger and retained keys backed up separately?
 - Are Secret bytes absent from values, logs, commands, and evidence?

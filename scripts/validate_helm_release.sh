@@ -3,6 +3,9 @@ set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 chart="$project_dir/deploy/helm/pakperk"
+sql_migrations=("$project_dir"/backend/migrations/[0-9][0-9][0-9][0-9]_*.sql)
+latest_sql_migration="${sql_migrations[${#sql_migrations[@]}-1]##*/}"
+expected_migration_version=$((10#${latest_sql_migration%%_*}))
 fixture="$chart/ci/staging-values.yaml"
 production_fixture="$chart/ci/production-render-values.yaml"
 ingress_controller_values="$project_dir/deploy/helm/ingress-nginx-production-values.yaml"
@@ -10,6 +13,7 @@ helm_bin="${HELM_BIN:-helm}"
 temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/pakperk-helm-validation.XXXXXX")"
 trap 'rm -rf "$temporary_dir"' EXIT
 rendered="$temporary_dir/rendered.yaml"
+citation_rollout_rendered="$temporary_dir/citation-rollout-rendered.yaml"
 http_moderation_rendered="$temporary_dir/http-moderation-rendered.yaml"
 production_rendered="$temporary_dir/production-rendered.yaml"
 long_name_production_rendered="$temporary_dir/long-name-production-rendered.yaml"
@@ -65,6 +69,16 @@ expect_template_rejection() {
 
 "$helm_bin" lint "$chart" --values "$fixture"
 "$helm_bin" template pakperk "$chart" --values "$fixture" >"$rendered"
+grep -Fq "name: PAKPERK_MIGRATION_EXPECTED_VERSION, value: \"$expected_migration_version\"" "$rendered"
+grep -Fq 'name: RECOMMENDATION_SCORING_POLICY, value: "weighted_v1"' "$rendered"
+grep -Fq 'name: RECOMMENDATION_CITATION_SHADOW, value: "false"' "$rendered"
+"$helm_bin" template pakperk "$chart" --values "$fixture" \
+  --set api.recommendationScoringPolicy=citation_online_v1 \
+  --set api.recommendationCitationOnlinePercent=25 \
+  --set api.recommendationCitationShadow=true >"$citation_rollout_rendered"
+grep -Fq 'name: RECOMMENDATION_SCORING_POLICY, value: "citation_online_v1"' "$citation_rollout_rendered"
+grep -Fq 'name: RECOMMENDATION_CITATION_ONLINE_PERCENT, value: "25"' "$citation_rollout_rendered"
+grep -Fq 'name: RECOMMENDATION_CITATION_SHADOW, value: "true"' "$citation_rollout_rendered"
 "$helm_bin" template pakperk "$chart" \
   --values "$fixture" \
   --set api.commentModerationProvider=http \
@@ -115,7 +129,7 @@ overlong_dns_host="$(python3 -c 'print(".".join(["a"] * 126 + ["app"]))')"
   --set api.readingFeedCursorTtlSeconds=604800 \
   --set-json "api.trustedProxyCidrs=$trusted_proxy_boundary_json" \
   --set-string migration.confirmBackupId=pitr-20260801T020000Z-a7f9 \
-  --set migration.expectedVersion=24 \
+  --set migration.expectedVersion="$expected_migration_version" \
   --set-json 'metadataSync.manifestJson="{\"papers\":[{\"arxiv_id\":\"2401.12345v2\"}]}"' \
   >/dev/null
 "$helm_bin" template pakperk "$chart" \
@@ -346,8 +360,8 @@ grep -Fq 'emptyDir: { sizeLimit: 128Mi }' "$rendered"
 grep -Fq -- '-migration-*_*/migrate/*.log' "$rendered"
 grep -Fq 'nginx.ingress.kubernetes.io/limit-rps: "5"' "$rendered"
 grep -Fq 'nginx.ingress.kubernetes.io/enable-access-log: "false"' "$rendered"
-grep -Fq 'nginx.ingress.kubernetes.io/proxy-read-timeout: "75"' "$rendered"
-grep -Fq 'nginx.ingress.kubernetes.io/proxy-send-timeout: "75"' "$rendered"
+grep -Fq 'nginx.ingress.kubernetes.io/proxy-read-timeout: "905"' "$rendered"
+grep -Fq 'nginx.ingress.kubernetes.io/proxy-send-timeout: "905"' "$rendered"
 grep -Fq 'nginx.ingress.kubernetes.io/proxy-body-size: "65536"' "$rendered"
 grep -Fq 'nginx.ingress.kubernetes.io/limit-rps: "20"' "$rendered"
 grep -Fq 'nginx.ingress.kubernetes.io/limit-connections: "40"' "$rendered"
@@ -1023,7 +1037,7 @@ expect_template_rejection \
   --set-string api.pdb.minAvailable=bogus
 expect_template_rejection \
   "an API termination budget equal to an ordinary request plus preStop" \
-  "api.terminationGracePeriodSeconds must exceed the maximum request/chat timeout plus the five-second preStop budget" \
+  "api.terminationGracePeriodSeconds must exceed api.requestTimeoutSeconds plus the five-second preStop budget" \
   --values "$fixture" \
   --set api.requestTimeoutSeconds=300 \
   --set api.chatTimeoutSeconds=1 \
@@ -1155,7 +1169,7 @@ expect_template_rejection \
   --set migration.expectedVersion=10
 expect_template_rejection \
   "a migration version different from the release binary with schema validation bypassed" \
-  "migration.expectedVersion must match embedded migration version 24" \
+  "migration.expectedVersion must match embedded migration version $expected_migration_version" \
   --values "$fixture" \
   --skip-schema-validation \
   --set migration.expectedVersion=10

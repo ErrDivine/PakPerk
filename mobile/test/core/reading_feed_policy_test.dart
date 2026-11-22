@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pakperk/core/reading_feed/reading_feed_models.dart';
 import 'package:pakperk/core/reading_feed/reading_feed_policy.dart';
+import 'package:pakperk/core/recommendations/recommendation_interaction_models.dart';
 
 import '../support/fakes.dart';
 
@@ -276,6 +277,38 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test('weighted and citation policies decode with ordered unique reasons', () {
+    final baseline = ReadingFeedPage.fromJson(_personalizedPageJson());
+    expect(baseline.batchMetadata?.recommendationPolicyVersion, 'weighted_v1');
+
+    final wirePage = _personalizedPageJson();
+    (wirePage['batch_metadata'] as Map)['recommendation_policy_version'] =
+        'citation_online_v1';
+    final row = (wirePage['items'] as List).single as Map;
+    final metadata = row['recommendation'] as Map;
+    metadata['reason_codes'] = ['reviewed_paper_citation', 'followed_author'];
+    metadata['reason_label'] = 'Connected to a reviewed paper';
+    final ranked = ReadingFeedPage.fromJson(wirePage);
+    expect(
+      ranked.batchMetadata?.recommendationPolicyVersion,
+      'citation_online_v1',
+    );
+    expect(ranked.items.single.recommendation?.reasonCodes, [
+      RecommendationExplanationCode.reviewedPaperCitation,
+      RecommendationExplanationCode.followedAuthor,
+    ]);
+    expect(
+      ReadingFeedPage.fromJson(ranked.toJson()).batchMetadata,
+      ranked.batchMetadata,
+    );
+
+    metadata['reason_codes'] = [
+      'reviewed_paper_citation',
+      'reviewed_paper_citation',
+    ];
+    expect(() => ReadingFeedPage.fromJson(wirePage), throwsFormatException);
+  });
 }
 
 ReadingFeedPolicyInput _input({
@@ -350,8 +383,8 @@ Map<String, dynamic> _personalizedPageJson() => {
   'batch_metadata': {
     'profile_revision': 4,
     'feedback_revision': 6,
-    'algorithm_version': 'ranker-v2',
-    'recommendation_policy_version': 'policy-v2',
+    'algorithm_version': 'recommendations_v1',
+    'recommendation_policy_version': 'weighted_v1',
   },
   'items': [
     {

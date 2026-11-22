@@ -158,7 +158,7 @@ the Helm approval IDs:
 
 | Gate | Content ID | Closed protected scope |
 | --- | --- | --- |
-| `migration_expand_contract` | `pakperk-migration-exercise-v1:sha256:` | Staging schema 18 to 24; verified restore evidence; reviewed migration image; one migration Job and DDL role; old/new compatibility; all 31 release switches reconciled and all 40 required dependency edges rejected when unsatisfied; private-artifact deletion/restore integrity; schema-compatible code rollback and re-forward; database/privacy/release approvals |
+| `migration_expand_contract` | `pakperk-migration-exercise-v1:sha256:` | Staging schema 18 to 26; verified restore evidence; reviewed migration image; one migration Job and DDL role; old/new compatibility; all 31 release switches reconciled and all 40 required dependency edges rejected when unsatisfied; private-artifact deletion/restore integrity; schema-compatible code rollback and re-forward; database/privacy/release approvals |
 | `live_telemetry_retention` | `pakperk-live-telemetry-v1:sha256:` | Distinct production and staging-copy Collector/gateway/adapter/configuration/receiver/retention identities for one image candidate; reviewed parity diff; production safe-canary delivery and exact 30-day retention boundary; staging valid/hostile/redaction/restart/page/ticket checks; platform/observability/privacy approvals |
 | `mobile_performance_crash` | `pakperk-mobile-performance-v1:sha256:` | Exact signed APK/IPA and version/build; reviewed device/OS matrix; at least 20 cached-frame and opening samples with p95 at most 1,500 ms and opening at most 700 ms; at least 20 sequential requests with 95% hits and no blank cards; at least 20 frame samples; at least 24 hours and 200 aggregate exact-candidate sessions with 99.5% crash-free; mobile/release/privacy approvals |
 
@@ -172,16 +172,16 @@ execution-subject ID, then require every named owner to approve that exact ID
 within 14 days after cleanup. Approval records cannot reuse the cleanup audit
 reference. A forward fix may be retained as additional incident evidence, but
 it does not replace the schema-compatible rollback required for this additive
-18-to-24 release gate. Validate the three results:
+18-to-26 release gate.
 
 The migration manifest remains schema/domain v1 because the canonical document
 shape and hashing algorithm did not change. Its closed current-release policy
-did change: a prior manifest for schema 10-to-11, 11-to-16, 11-to-17, or the
-completed Plan 02 schema 11-to-18 gate cannot satisfy the new 18-to-24 subject.
+did change: prior manifests through the Plan 03 schema 18-to-24 exercise
+cannot satisfy the new 18-to-26 subject.
 Neither can an artifact that attests only six or eleven switches. The current
 manifest must bind the exact subject, ordered assertion IDs, 31-switch/40-edge
-contract, and schema-24 private-data/restore checks; prior content IDs must not
-be reused for this candidate.
+contract, and schema-26 private-data/restore checks. Obtain a new content ID
+for the candidate.
 
 For telemetry, use the same immutable Collector, gateway, and adapter images in
 production and the staging canary copy. Bind their configurations, alert-policy
@@ -538,7 +538,7 @@ protected execution and human gates.
 ## Queue-first discovery staged enablement
 
 This subsection preserves the Plan 02 schema 11-to-18 enablement sequence. It
-is historical prerequisite evidence, not the current schema-24 migration gate.
+is historical prerequisite evidence for the current schema-26 migration gate.
 Run this sequence in protected staging against the exact Plan 02 candidate and
 release-shaped topology. Every optional queue-first/Plan 02 switch starts
 false. Change one flag at a time, retain the rendered before/after value and
@@ -817,10 +817,13 @@ switches, artifact, and approvals remain **P/H** until this exact run succeeds.
    must not create it. Migrations 19 through 24 add only the preparation audit,
    normalized document/Passport/provenance, private research, version-diff,
    and annotation archive-import boundaries; none may become a second Library
-   or reading-feed authority.
+   or reading-feed authority. Migration 25 adds anonymous product surveys.
+   Migration 26 adds nullable consent and citation evidence fields to existing
+   recommendation rows. Legacy feedback keeps a null feature mask. Directional
+   votes require new consented feedback from an eligible citation batch.
 2. Run the chart migration Job once, with the reviewed image digest, distinct
    migration database role, `RUN_MIGRATIONS=false` everywhere else, expected
-   embedded migration version `24`, and a bounded non-placeholder backup
+   embedded migration version `26`, and a bounded non-placeholder backup
    evidence ID. The scheduled metadata manifest must be valid JSON containing
    1 to 2,000 canonical arXiv IDs within the chart's 1,048,000-byte ConfigMap
    boundary, and its bounded five-field Cron expression must render
@@ -857,6 +860,8 @@ switches, artifact, and approvals remain **P/H** until this exact run succeeds.
    parser/preparation/Passport/assistant/visual/version-diff outcomes, mobile
    reader/cache/annotation/memory signals, moderation SLA, deletion failures,
    OTLP drops, and ingress errors through the release observation window.
+   For the citation policy, start with weighted serving and follow the
+   [ranking shadow and cohort procedure](../reading-feed.md#citation-policy-rollout).
    Record the exact window and approver. Source instruments do not replace the
    protected live telemetry, human, legal, signed-device, accessibility, or
    release-approval gates.
@@ -887,22 +892,26 @@ are dark; the optional recommendation-event stream may close at any point
 because product state cannot depend on it. Preserve ordinary Library
 reads/writes and account deletion as the incident permits.
 
+For a citation ranking regression, follow the
+[staged citation policy rollback](../reading-feed.md#citation-policy-rollout)
+to `weighted_v1`. Check a fresh weighted For You batch, stale rejection of a
+citation continuation, and a client restart from page one.
+
 For Plan 03, close switches in the reverse order documented by
 [Deep Reader rollout](deep-reader-rollout.md#rollback): Docling experiment,
 version diff, memory, annotations, assistant v2, visual objects, semantic
 facets, Passport, then Deep Reader. Preserve readable source/legacy
-Introduction access and private data. Keep additive schema 24 in place and use
-a schema-24-compatible image; never restore schema 18 merely to disable a Plan
+Introduction access and private data. Keep additive schema 26 in place and use
+a schema-26-compatible image; never restore schema 18 merely to disable a Plan
 03 capability. The historical Plan 02 rule likewise never allowed a downgrade
 from schema 18 to schema 11. Verify anonymous `GET /v1/feed`, the
 existing exact-paper route, Library reads, and explicit search navigation after
 each applicable rollback step.
 
 The schema-18 Plan 02 history allowed the verified v0.0 image only before any
-Library v2 writes. It is not a current schema-24 rollback target. Once Plan 03
-writes may exist, use the last expand-compatible image that understands the
-five Library states and safely ignores or reads the additive Plan 03 tables,
-close their consumers, and leave schema 24 in place.
+Library v2 writes. Once Plan 03 writes may exist, use the last image verified
+against the installed schema that understands the five Library states and
+safely ignores or reads the additive Plan 03 tables, then close their consumers.
 
 Never restore only PostgreSQL while leaving deletion obligations behind. A
 store action never downgrades an already installed mobile binary: increment the

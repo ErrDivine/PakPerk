@@ -219,6 +219,7 @@ fn feedback_operation_outcome(
         ) => OperationOutcome::Rejected,
         Err(
             RecommendationBatchRepositoryError::InvalidPersistedData
+            | RecommendationBatchRepositoryError::LeaseLost
             | RecommendationBatchRepositoryError::Database(_),
         ) => OperationOutcome::RetryableFailure,
     }
@@ -313,6 +314,7 @@ fn repository_error(
             false,
         ),
         RecommendationBatchRepositoryError::InvalidPersistedData
+        | RecommendationBatchRepositoryError::LeaseLost
         | RecommendationBatchRepositoryError::Database(_) => {
             error!(
                 request_id = %request_id.0,

@@ -54,8 +54,7 @@ class _SelectionToolbarShellState extends State<SelectionToolbarShell> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SelectionArea(
-          contextMenuBuilder: readerSelectionContextMenu,
+        ReaderPageSelectionArea(
           onSelectionChanged: (content) {
             final text = content?.plainText.trim();
             final next = text?.isNotEmpty == true ? text : null;

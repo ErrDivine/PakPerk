@@ -56,6 +56,9 @@ impl RecommendationMode {
 pub enum ReadingFeedCursorOrdering {
     QueueFifoV1,
     DiscoveryNewestV1,
+    /// The same discovery boundary, with the citation scorer bound to the walk.
+    #[serde(rename = "c")]
+    CitationOnlineV1,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -188,7 +191,10 @@ impl ReadingFeedCursorClaims {
             && self.page_policy_version > 0
             && self.key_epoch.is_valid()
             && self.mode == self.position.mode()
-            && self.ordering == self.position.ordering()
+            && (self.ordering == self.position.ordering()
+                || (self.ordering == ReadingFeedCursorOrdering::CitationOnlineV1
+                    && self.mode == FeedMode::Recommendations
+                    && self.recommendation_mode == RecommendationMode::ForYou))
     }
 }
 

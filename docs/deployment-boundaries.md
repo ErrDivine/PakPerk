@@ -71,15 +71,14 @@ described below.
 ## Current migration boundary
 
 Schema 18 is the accepted Plan 02 boundary; its historical release exercise ran
-from schema 11 through migrations 12–18. The current Plan 03 exercise starts at
-schema 18 and applies migrations 19–24: preparation-trigger audit, normalized
-document model, Passport/provenance/assistant, private annotations/research
-memory, version diff, and annotation archive import/conflict fidelity. The
-protected release gate must restore schema 18,
-apply the reviewed migration image to schema 24 exactly once, prove replay,
+from schema 11 through migrations 12–18. The current release exercise starts at
+schema 18 and applies migrations 19–26. These include the Plan 03 reader and
+private research tables, anonymous product surveys, and nullable evidence for
+citation recommendations. The protected release gate must restore schema 18,
+apply the reviewed migration image to schema 26 exactly once, prove replay,
 old/new compatibility, private-data deletion and restore reapply, integrity, a
 schema-compatible code rollback, and re-forward. Feature rollback preserves
-schema 24; it never runs a down migration merely to close a capability.
+schema 26; it never runs a down migration merely to close a capability.
 
 ## Current default-off server controls
 
@@ -143,7 +142,7 @@ never rewrites an already signed binary.
 | Public discovery `GET /v1/feed` | Existing API route, anonymous/public cache; unchanged. |
 | Authenticated reading feed | API orchestration and one PostgreSQL repeatable-read snapshot; private/no-store and authorization-varying. |
 | Title search and exact import | Authenticated API routes using the existing arXiv client, shared DB gate/cache, paper metadata repository, and library service. |
-| Queue and import state | PostgreSQL through additive migrations 11–18; the canonical Library revision remains authority after migrations 19–24. |
+| Queue and import state | PostgreSQL through additive migrations 11–18. The canonical Library revision remains authoritative through schema 26. |
 | Profiles, recommendations, and feedback | Account-private PostgreSQL state with independent profile and feedback revision fences; never direct queue mutation. |
 | Lookup, Explore, and saved queries | Bounded public local-metadata reads plus an account-owned explicit saved-query definition; no implicit search history. |
 | Briefs, subscriptions, and notifications | Account-private delivery state subordinate to reading-feed authority; in-app only. |
@@ -235,7 +234,7 @@ the [release runbook](runbooks/release.md#queue-first-discovery-staged-enablemen
 ## Current Plan 03 enablement and rollback
 
 Every Plan 03 server/Helm switch and every corresponding mobile build switch is
-false by default. Complete the schema 18-to-24 migration/restore/deletion
+false by default. Complete the current migration, restore, and deletion
 reapply gate first, then enable Deep Reader, Passport/facets, visual objects,
 assistant v2, annotations, research memory, version diff, and finally any
 Docling experiment in the dependency order documented by the
@@ -244,7 +243,8 @@ Plan 03 switch also requires the exact immutable
 `releaseEvidence.deepReaderReleaseId` for a complete 23-gate bundle.
 
 Rollback closes those capabilities in reverse order, preserves legacy
-Introduction and source access, keeps private artifacts, and retains schema 24.
+Introduction and source access, keeps private artifacts, and retains the
+installed schema.
 The feature gate never authorizes a down migration to schema 18 or a switch to
 Docling as default. Repository checks are not protected staging, human domain,
 legal, live-model, live-telemetry, accessibility, signed-device, security, or

@@ -1731,6 +1731,83 @@ const RECOMMENDATION_BATCH_GENERATED_CANDIDATES_METRIC: &str =
 const RECOMMENDATION_BATCH_CONCENTRATION_METRIC: &str =
     "pakperk.recommendation.batch.concentration";
 
+/// Aggregate measurements from one authorized citation-policy page.
+pub struct CitationRankingMetrics {
+    pub authorized_candidates: u64,
+    pub root_neighbors: u64,
+    pub out_of_page: u64,
+    pub tier_inversions: u64,
+}
+
+pub fn record_citation_ranking(
+    shadow: bool,
+    duration: Duration,
+    measurements: Option<CitationRankingMetrics>,
+) {
+    static PAGES: OnceLock<Counter<u64>> = OnceLock::new();
+    static DURATION: OnceLock<Histogram<f64>> = OnceLock::new();
+    static CANDIDATES: OnceLock<Histogram<u64>> = OnceLock::new();
+    static VIOLATIONS: OnceLock<Counter<u64>> = OnceLock::new();
+    let rollout = KeyValue::new(
+        "recommendation.rollout",
+        if shadow { "shadow" } else { "enabled" },
+    );
+    let outcome = match &measurements {
+        Some(page) if page.root_neighbors > 0 => "has_neighbor",
+        Some(_) => "no_neighbor",
+        None => "unavailable",
+    };
+    let page_attributes = [
+        rollout.clone(),
+        KeyValue::new("recommendation.outcome", outcome),
+    ];
+    PAGES
+        .get_or_init(|| {
+            global::meter("pakperk")
+                .u64_counter("pakperk.recommendation.citation.pages")
+                .build()
+        })
+        .add(1, &page_attributes);
+    DURATION
+        .get_or_init(|| {
+            global::meter("pakperk")
+                .f64_histogram("pakperk.recommendation.citation.duration")
+                .with_unit("s")
+                .build()
+        })
+        .record(duration.as_secs_f64(), &page_attributes);
+    if let Some(page) = measurements {
+        let candidates = CANDIDATES.get_or_init(|| {
+            global::meter("pakperk")
+                .u64_histogram("pakperk.recommendation.citation.candidates")
+                .build()
+        });
+        for (kind, count) in [
+            ("authorized", page.authorized_candidates),
+            ("root_neighbor", page.root_neighbors),
+        ] {
+            candidates.record(
+                count,
+                &[rollout.clone(), KeyValue::new("recommendation.kind", kind)],
+            );
+        }
+        let violations = VIOLATIONS.get_or_init(|| {
+            global::meter("pakperk")
+                .u64_counter("pakperk.recommendation.citation.violations")
+                .build()
+        });
+        for (kind, count) in [
+            ("out_of_page", page.out_of_page),
+            ("tier_inversion", page.tier_inversions),
+        ] {
+            violations.add(
+                count,
+                &[rollout.clone(), KeyValue::new("recommendation.kind", kind)],
+            );
+        }
+    }
+}
+
 /// Records one completed recommendation batch using its closed mode and only
 /// aggregate generation properties. Concentration ratios are bounded to the
 /// unit interval, and no candidate or account identity can cross this API.

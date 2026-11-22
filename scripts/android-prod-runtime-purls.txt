@@ -15,7 +15,11 @@
 # unchanged. This was reviewed statically against pubspec.lock, the generated
 # plugin list, and verification-metadata.xml; the CI SBOM job regenerates and
 # validates it.
-contract-sha256:b3643b7d844ebbbcc1037a2fcc2cb55ec33d65f3d9738b54d97eea0c958f9db3
+# The Flutter SDK localizations and intl additions are pure Dart. html and
+# markdown became direct dependencies at the same locked versions and hashes.
+# Pinned Flutter 3.44.8 resolved the same Android plugins and dependency edges,
+# and the Gradle inputs and verification metadata are byte-identical.
+contract-sha256:852d003f0b98a5f0bb97b51f26a5ebd0d54fa72dba93bafc0d1ae721966b48cf
 pkg:maven/androidx.activity/activity-ktx@1.9.0?type=aar
 pkg:maven/androidx.activity/activity@1.9.0?type=aar
 pkg:maven/androidx.annotation/annotation-experimental@1.4.1?type=aar

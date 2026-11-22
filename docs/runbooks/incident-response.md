@@ -19,7 +19,7 @@ Protect anonymous reading while containing narrower writes:
   `ASSISTANT_TOOLS_ENABLED`, `ASSISTANT_V2_ENABLED`, `VISUAL_OBJECTS_ENABLED`,
   `SEMANTIC_FACETS_ENABLED`, `PAPER_PASSPORT_ENABLED`, and finally
   `DEEP_READER_ENABLED` as the affected dependency requires. Preserve private
-  artifacts, legacy Introduction/source access, and schema 24. A parser rollback
+  artifacts, legacy Introduction/source access, and the installed schema. A parser rollback
   returns to the last proven GROBID configuration and does not merge adapters;
 - on a private-research exposure, stop the affected routes and telemetry export,
   preserve access-restricted evidence, keep account deletion available when
@@ -99,7 +99,7 @@ headers, or lower TLS/auth validation during containment.
 
 Recovery requires cause-specific tests plus guest reading, health/readiness,
 error/latency, database, queue, deletion, moderation, and telemetry checks.
-Keep schema 24 in place for the current candidate. Re-enable Plan 02 in
+Keep schema 26 in place for the current candidate. Re-enable Plan 02 in
 dependency order: accounts/Library;
 resolution then title search and import independently; reading feed with
 enforcement off; Library v2 and research profiles; Lookup then Explore then

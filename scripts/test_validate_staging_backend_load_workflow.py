@@ -96,6 +96,62 @@ class StagingBackendLoadWorkflowTests(unittest.TestCase):
         )
         self._assert_rejected(source)
 
+    def test_recommendation_policy_dispatch_is_optional_and_closed(self) -> None:
+        for original, replacement in (
+            (
+                "required: false\n        default: disabled",
+                "required: true\n        default: disabled",
+            ),
+            ("default: disabled", "default: citation_online_v1"),
+            (
+                "options: [disabled, weighted_v1, citation_online_v1]",
+                "options: [disabled, weighted_v1, citation_online_v1, arbitrary]",
+            ),
+        ):
+            with self.subTest(original=original):
+                self._assert_rejected(
+                    self._replace(self._source(), original, replacement)
+                )
+
+    def test_recommendation_policy_must_bind_the_dispatch_choice(self) -> None:
+        self._assert_rejected(
+            self._replace(
+                self._source(),
+                "EXPECTED_RECOMMENDATION_POLICY: ${{ inputs.expected_recommendation_policy }}",
+                "EXPECTED_RECOMMENDATION_POLICY: disabled",
+            )
+        )
+
+    def test_recommendation_policy_runtime_guard_is_closed(self) -> None:
+        for original, replacement in (
+            (
+                "disabled|weighted_v1|citation_online_v1) ;;",
+                "disabled|weighted_v1|citation_online_v1|arbitrary) ;;",
+            ),
+            (
+                ' && "$INCLUDE_READING_RECOMMENDATIONS" != "true" ]]; then',
+                ' && "$INCLUDE_READING_QUEUE" != "true" ]]; then',
+            ),
+        ):
+            with self.subTest(original=original):
+                self._assert_rejected(
+                    self._replace(self._source(), original, replacement)
+                )
+
+    def test_recommendation_policy_argument_must_reach_runner_when_enabled(self) -> None:
+        argument = (
+            "              arguments+=(--expected-recommendation-policy "
+            '"$EXPECTED_RECOMMENDATION_POLICY")\n'
+        )
+        self._assert_rejected(self._comment_out(self._source(), argument))
+        self._assert_rejected(
+            self._replace(
+                self._source(),
+                '            if [[ "$EXPECTED_RECOMMENDATION_POLICY" != "disabled" ]]; then',
+                '            if [[ "$EXPECTED_RECOMMENDATION_POLICY" == "disabled" ]]; then',
+            )
+        )
+
     def test_runtime_choice_allowlists_cannot_be_widened(self) -> None:
         for original, replacement in (
             ("30|60|120|300) ;;", "30|60|120|300|3600) ;;"),

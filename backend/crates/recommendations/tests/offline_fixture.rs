@@ -258,7 +258,7 @@ fn cold_start_user_and_paper_fixture_gates_deterministic_recent_fallback() {
     assert!(fixture.profile.saved_query_matches.is_empty());
     assert!(fixture.profile.feedback_categories.is_empty());
     assert!(fixture.profile.inferred_categories.is_empty());
-    assert!(fixture.profile.historical_seeds.is_empty());
+    assert_eq!(fixture.profile.historical_seeds, []);
     assert!(fixture.negative_feedback_paper_ids.is_empty());
     assert!(fixture.small_profile_change.categories.is_empty());
     assert!(fixture.small_profile_change.topics.is_empty());
@@ -677,5 +677,249 @@ impl FixtureDocument {
             citation_neighbors: self.citation_neighbors.clone(),
             metadata_completeness: self.metadata_completeness,
         }
+    }
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)] // Keep the worked example and chronological replay assertions together.
+async fn citation_online_worked_example_and_paired_replay_use_the_production_builder() {
+    use std::collections::BTreeMap;
+
+    use chrono::TimeDelta;
+    use recommendations::{
+        CandidateFanoutPolicy, CitationDirection, CitationOnlineInputs, CitationPair,
+        CitationReplayErasure, CitationReplayPage, CitationRoot, ExplanationCode, LearnerVote,
+        LearnerWeights, ProvenEmptyQueueBinding, RecommendationBatchBuildRequest,
+        RecommendationMode, SCORING_POLICY_VERSION_CITATION_ONLINE_V1, build_recommendation_batch,
+        evaluate_citation_replay, explain_candidate_with_citation,
+    };
+
+    let now: DateTime<Utc> = "2026-08-19T12:00:00Z".parse().unwrap();
+    let profile = DiscoveryProfileSnapshot {
+        personalization_enabled: true,
+        authors: BTreeSet::from([" Example Author ".to_owned()]),
+        categories: BTreeSet::from(["cs.CL".to_owned()]),
+        topics: BTreeSet::new(),
+        saved_query_matches: BTreeMap::new(),
+        feedback_categories: BTreeSet::new(),
+        inferred_categories: BTreeSet::new(),
+        historical_seeds: Vec::new(),
+    };
+    let document = |id, title: &str, author: &str| CandidateDocument {
+        paper: PaperSummary {
+            paper_id: PaperId::from_u128(id),
+            arxiv_id: format!("2608.{id:05}v1"),
+            title: title.to_owned(),
+            abstract_text: "Public metadata".to_owned(),
+            authors: vec![author.to_owned()],
+            primary_category: "cs.CL".to_owned(),
+            categories: vec!["cs.CL".to_owned()],
+            published_at: now - TimeDelta::days(10),
+            updated_at: now - TimeDelta::days(3),
+            abs_url: Url::parse(&format!("https://arxiv.org/abs/2608.{id:05}")).unwrap(),
+            pdf_url: Url::parse(&format!("https://arxiv.org/pdf/2608.{id:05}")).unwrap(),
+            capabilities: Capabilities::metadata_only(),
+        },
+        topics: BTreeSet::new(),
+        embedding: Vec::new(),
+        citation_neighbors: BTreeSet::new(),
+        metadata_completeness: 1.0,
+    };
+    let documents = [
+        document(1, "P", "P Author"),
+        document(2, "Q", "Q Author"),
+        document(3, "R", "example author"),
+        document(4, "S", "Example Author"),
+    ];
+    let training = [
+        document(71, "Earlier reference 1", "Other"),
+        document(72, "Earlier reference 2", "Other"),
+        document(73, "Earlier citing paper", "Other"),
+    ];
+    let root_a = CitationRoot {
+        paper_id: PaperId::from_u128(51),
+        base_arxiv_id: "2608.00051".to_owned(),
+        title: "A".to_owned(),
+        state: HistoricalSeedState::Reviewed,
+        tier: 4,
+        updated_at: now - TimeDelta::days(5),
+    };
+    let root_b = CitationRoot {
+        paper_id: PaperId::from_u128(52),
+        base_arxiv_id: "2608.00052".to_owned(),
+        title: "B".to_owned(),
+        tier: 3,
+        ..root_a.clone()
+    };
+    let pair = |id, root: &CitationRoot, direction| CitationPair {
+        candidate_paper_id: PaperId::from_u128(id),
+        root: root.clone(),
+        direction,
+    };
+    let pairs = [
+        pair(1, &root_a, CitationDirection::Reference),
+        pair(2, &root_a, CitationDirection::Citing),
+        pair(3, &root_b, CitationDirection::Reference),
+    ];
+    let training_pairs = [
+        pair(71, &root_a, CitationDirection::Reference),
+        pair(72, &root_a, CitationDirection::Reference),
+        pair(73, &root_a, CitationDirection::Citing),
+    ];
+    let votes =
+        [(71, 1, true), (72, 1, true), (73, 2, false)].map(|(id, feature_mask, relevant)| {
+            LearnerVote {
+                id: PaperId::from_u128(id),
+                base_arxiv_id: format!("2608.{id:05}"),
+                created_at: now - TimeDelta::days(1),
+                feature_mask,
+                relevant,
+            }
+        });
+    let input = CitationOnlineInputs {
+        pairs: pairs.to_vec(),
+        weights: LearnerWeights::from_votes(now, &votes).unwrap(),
+    };
+    let history = BTreeMap::new();
+    let request = |documents, now| RecommendationBatchBuildRequest {
+        mode: RecommendationMode::ForYou,
+        queue: ProvenEmptyQueueBinding::from_decision(7, 0, true).unwrap(),
+        profile_revision: Some(3),
+        feedback_revision: 4,
+        profile: &profile,
+        documents,
+        candidate_history: &history,
+        now,
+        candidate_limit: 20,
+        fanout_policy: CandidateFanoutPolicy::default(),
+        generator_observer: None,
+        rerank_policy: RerankPolicy {
+            batch_seed: 0,
+            max_items: 20,
+            max_per_author: 20,
+            max_per_category: 20,
+            max_per_topic: 20,
+            diversity_penalty: 0.0,
+            exploration_positions: BTreeSet::new(),
+        },
+        scoring_policy: ScoringPolicy {
+            follow: 0.0,
+            graph: 0.0,
+            ..ScoringPolicy::default()
+        },
+        citation_online: None,
+    };
+    let baseline = request(&documents, now);
+    let mut online = baseline.clone();
+    online.scoring_policy.version = SCORING_POLICY_VERSION_CITATION_ONLINE_V1.to_owned();
+    online.citation_online = Some(&input);
+    let batch = build_recommendation_batch(online).await.unwrap();
+    assert_eq!(batch.citation_coverage.unwrap().root_neighbor_count, 3);
+    assert_eq!(
+        batch
+            .citation_coverage
+            .unwrap()
+            .cap_eligible_tier_inversions,
+        0
+    );
+    for (candidate, (title, tier, mask, learned, first_reason)) in batch.candidates.iter().zip([
+        ("P", 4, 1, 1.0 / 6.0, ExplanationCode::ReviewedPaperCitation),
+        (
+            "Q",
+            4,
+            2,
+            -1.0 / 10.0,
+            ExplanationCode::ReviewedPaperCitation,
+        ),
+        ("R", 3, 5, 1.0 / 6.0, ExplanationCode::ReviewedPaperCitation),
+        ("S", 1, 4, 0.0, ExplanationCode::FollowedAuthor),
+    ]) {
+        let evidence = candidate.citation_evidence.as_ref().unwrap();
+        assert_eq!(candidate.scored.candidate.document.paper.title, title);
+        assert_eq!((evidence.tier, evidence.feature_mask), (tier, mask));
+        assert!((evidence.learned_adjustment - learned).abs() < 0.000_001);
+        assert_eq!(candidate.explanations[0].code, first_reason);
+        assert_eq!(
+            explain_candidate_with_citation(&candidate.scored.candidate, evidence).unwrap(),
+            candidate.explanations,
+        );
+    }
+    assert_eq!(batch.candidates.len(), 4);
+    assert_eq!(
+        batch.candidates[0].explanations[0].detail,
+        "Your reviewed paper ‘A’ references this paper."
+    );
+    assert_eq!(
+        batch.candidates[1].explanations[0].detail,
+        "This paper cites your reviewed paper ‘A’."
+    );
+
+    let judgments = [
+        RelevanceJudgment {
+            paper_id: PaperId::from_u128(1),
+            relevance_grade: 3,
+        },
+        RelevanceJudgment {
+            paper_id: PaperId::from_u128(2),
+            relevance_grade: 0,
+        },
+    ];
+    let account_id = PaperId::from_u128(91);
+    let sparse_page = [document(99, "Sparse page", "Other")];
+    let training_page = || CitationReplayPage {
+        account_id,
+        baseline: request(&training, now - TimeDelta::days(2)),
+        pairs: &training_pairs,
+        judgments: &[],
+        erasure_before_scoring: CitationReplayErasure::None,
+        accepted_after_scoring: &votes,
+    };
+    let held_out = |erasure_before_scoring| CitationReplayPage {
+        account_id,
+        baseline: baseline.clone(),
+        pairs: &pairs,
+        judgments: &judgments,
+        erasure_before_scoring,
+        accepted_after_scoring: &[],
+    };
+    let report = evaluate_citation_replay(&[
+        training_page(),
+        held_out(CitationReplayErasure::None),
+        CitationReplayPage {
+            account_id,
+            baseline: request(&sparse_page, now + TimeDelta::days(1)),
+            pairs: &[],
+            judgments: &[],
+            erasure_before_scoring: CitationReplayErasure::None,
+            accepted_after_scoring: &[],
+        },
+    ])
+    .await
+    .unwrap();
+    println!("Worked citation offline fixture: {report:?}");
+    assert_eq!(report.evaluable_pages, 1);
+    assert_eq!(report.root_neighbor_pages, 2);
+    assert!((report.root_neighbor_coverage - 2.0 / 3.0).abs() < f64::EPSILON);
+    for coverage in report.judgment_coverage_at_10 {
+        assert!((coverage - 0.25).abs() < f64::EPSILON);
+    }
+    assert_eq!(report.known_dislikes_at_10, [1; 3]);
+    assert_eq!(report.unjudged_cards_at_10, [6; 3]);
+    assert_eq!(report.mean_ndcg_at_10[2], Some(1.0));
+    assert!(
+        report.mean_paired_ndcg_difference[2].unwrap() > 0.0,
+        "{report:?}"
+    );
+
+    let removed_votes = votes.each_ref().map(|vote| vote.id);
+    for erasure in [
+        CitationReplayErasure::All,
+        CitationReplayErasure::Feedback(&removed_votes),
+    ] {
+        let erased_report = evaluate_citation_replay(&[training_page(), held_out(erasure)])
+            .await
+            .unwrap();
+        assert_eq!(erased_report.mean_ndcg_at_10[2], report.mean_ndcg_at_10[1]);
+        assert_eq!(erased_report.mean_paired_ndcg_difference[2], Some(0.0));
     }
 }

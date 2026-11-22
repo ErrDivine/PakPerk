@@ -81,8 +81,18 @@ void main() {
       await tester.pump();
       await tester.tap(introduction);
       await tester.pumpAndSettle();
+      final heading = find.text(sampleIntroduction.heading);
+      await tester.scrollUntilVisible(
+        heading,
+        120,
+        scrollable: find.descendant(
+          of: find.byKey(const PageStorageKey('introduction-scroll')),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.text('1 Introduction'), findsOneWidget);
+      expect(heading.hitTestable(), findsOneWidget);
 
       final connections = find.byKey(const ValueKey('stage-connections'));
       await tester.ensureVisible(connections);

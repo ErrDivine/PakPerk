@@ -111,6 +111,16 @@ artifact, and each request uses a bounded page size of 20. Their default
 p50/p95/p99 limits are 350/700/1,400 ms with at most 1% errors. These are two
 separate authority fixtures; one account or token must never stand in for both.
 
+For a citation rollout or rollback, enable `include_reading_feed_recommendations`
+and set `expected_recommendation_policy` to `weighted_v1` or
+`citation_online_v1`. The CLI equivalent is
+`--expected-recommendation-policy`. The fixture must have personalization
+enabled and return a nonempty For You page with the expected stored policy.
+Use the same release-shaped fixture and retain the redacted policy check with
+the candidate's rollout evidence. The check covers the API response policy.
+Use the [citation evaluation procedure](../reading-feed.md#citation-policy-rollout)
+for shadow ranking, user outcomes, refill latency, and cursor rollback checks.
+
 `paper_title_search` sends only the protected normalized query loaded from an
 owner-only regular file to `POST /v1/me/paper-searches` with `limit=8`. One
 private preflight warms and validates the bounded response. Measured search

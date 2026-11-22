@@ -1,12 +1,14 @@
-use chrono::{TimeDelta, Utc};
+use std::collections::HashSet;
+
+use chrono::{DateTime, TimeDelta, Utc};
 use db::{ArtifactPersistOutcome, Database, DbError, FeedbackEvaluationOutcome};
 use domain::{
-    ArtifactConfidenceStatus, ArxivIdentifier, Author, DOCUMENT_SCHEMA_VERSION,
+    ArtifactConfidenceStatus, ArxivIdentifier, Author, DOCUMENT_SCHEMA_VERSION, DocumentBlockKind,
     PAPER_PASSPORT_SCHEMA_VERSION, PaperMetadata, PaperPassport, PassportFeedback,
     PassportFeedbackType, PassportField, PassportFieldKey, PassportFieldStatus, PassportStatus,
     ProvenanceActivityType, ProvenanceArtifactType, ProvenanceParameters, ProvenancePrincipal,
     ProvenanceRecord, SEMANTIC_FACET_SCHEMA_VERSION, SemanticDensity, SemanticFacet, SemanticSpan,
-    SemanticSpanSourceKind, SemanticSupportStatus, content_hash,
+    SemanticSpanSourceKind, SemanticSupportStatus, content_hash, stable_block_key,
 };
 use url::Url;
 use uuid::Uuid;
@@ -23,7 +25,7 @@ async fn postgres_passport_artifacts_are_source_linked_and_generation_safe() {
 
     let unique = Uuid::now_v7().simple().to_string();
     let base_id = format!("passport.{unique}");
-    let now = Utc::now();
+    let now = DateTime::from_timestamp_micros(Utc::now().timestamp_micros()).unwrap();
     let papers = database.papers();
     let paper = papers
         .upsert_metadata(&metadata(&base_id, 1, now))
@@ -141,12 +143,12 @@ async fn postgres_passport_artifacts_are_source_linked_and_generation_safe() {
             .fields
             .iter()
             .map(|field| (field.key, field.id))
-            .collect::<Vec<_>>(),
+            .collect::<HashSet<_>>(),
         passport
             .fields
             .iter()
             .map(|field| (field.key, field.id))
-            .collect::<Vec<_>>()
+            .collect::<HashSet<_>>()
     );
     assert!(
         repository
@@ -254,11 +256,24 @@ async fn postgres_passport_artifacts_are_source_linked_and_generation_safe() {
             .unwrap();
     assert_eq!(retained_fields, 10);
 
-    sqlx::query("DELETE FROM papers WHERE id = $1")
-        .bind(paper.id)
-        .execute(database.pool())
+    // Remove artifacts before the paper's cascade deletes their provenance records.
+    let mut transaction = database.pool().begin().await.unwrap();
+    sqlx::query("DELETE FROM paper_passports WHERE id = $1")
+        .bind(passport.id)
+        .execute(&mut *transaction)
         .await
         .unwrap();
+    sqlx::query("DELETE FROM semantic_spans WHERE paper_id = $1")
+        .bind(paper.id)
+        .execute(&mut *transaction)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM papers WHERE id = $1")
+        .bind(paper.id)
+        .execute(&mut *transaction)
+        .await
+        .unwrap();
+    transaction.commit().await.unwrap();
 }
 
 async fn insert_document_generation(
@@ -286,19 +301,23 @@ async fn insert_document_generation(
     .execute(database.pool())
     .await
     .unwrap();
+    let section_path = ["Results".to_owned()];
+    let kind = DocumentBlockKind::Paragraph;
     sqlx::query(
         r"
         INSERT INTO document_blocks (
             id, paper_id, generation, stable_key, ordinal, section_path,
             kind, text, content_hash, page_start, page_end, inline_spans, created_at
         ) VALUES (
-            $1, $2, 1, 'results:p0', 0, ARRAY['Results'], 'paragraph',
-            $3, $4, 2, 2, '[]'::jsonb, $5
+            $1, $2, 1, $3, 0, $4, $5, $6, $7, 2, 2, '[]'::jsonb, $8
         )
         ",
     )
     .bind(block_id)
     .bind(paper_id)
+    .bind(stable_block_key(&section_path, kind, 0, block_text))
+    .bind(section_path.as_slice())
+    .bind(kind.as_str())
     .bind(block_text)
     .bind(content_hash(block_text))
     .bind(now)

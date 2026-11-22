@@ -7,13 +7,14 @@ use crate::{
     FeedMode, ReadingFeedCursorPosition, ReadingFeedStoreError, RecommendationPage, ToReadPosition,
 };
 
-/// Cursor fence presented to the snapshot store. Implementations must compare
-/// the revision inside the same consistent read that chooses the feed mode.
+/// Authenticated cursor fence. The store checks the revision and mode in the
+/// same consistent read that chooses the feed mode. The source checks policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReadingFeedContinuation {
     pub mode: FeedMode,
     pub library_revision: i64,
     pub position: ReadingFeedCursorPosition,
+    pub citation_online: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

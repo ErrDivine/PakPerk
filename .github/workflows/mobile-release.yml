@@ -1042,7 +1042,7 @@ jobs:
             "062872df7e0b74235372e854c9eec15341dfe08f46d9e82326288aaed4db8786 scripts/verify_android_release_artifacts.sh" \
             "ccd7b2361bbc0b18ff4746811f386be4281a5b0775a8d234eb9f6c75b48b1572 scripts/validate_android_native_sbom.py" \
             "a55e0a5d9cdfd6f3b8e36874afde685e4d9af2b43f95b929c706fb83d8abfb5c scripts/cyclonedx-gradle.init.gradle.kts" \
-            "e9b147299ad1fa1c5dcd002a0d06a65c70ec574ff807e990c482e07dc9098bf3 mobile/tool/verify_strict_artifact_assets.dart"; do
+            "db8396747af0d55487c2bcf1695433170ab6162f95918a41a2a8c6470d0a86aa mobile/tool/verify_strict_artifact_assets.dart"; do
             expected="${reviewed%% *}"
             relative="${reviewed#* }"
             observed="$(/usr/bin/shasum -a 256 "$GITHUB_WORKSPACE/$relative")"
@@ -1210,7 +1210,7 @@ jobs:
           [[ "${config_digest%% *}" == "$EXPECTED_CONFIG_SHA256" ]] || exit 1
           for reviewed in \
             "062872df7e0b74235372e854c9eec15341dfe08f46d9e82326288aaed4db8786 scripts/verify_android_release_artifacts.sh" \
-            "e9b147299ad1fa1c5dcd002a0d06a65c70ec574ff807e990c482e07dc9098bf3 mobile/tool/verify_strict_artifact_assets.dart"; do
+            "db8396747af0d55487c2bcf1695433170ab6162f95918a41a2a8c6470d0a86aa mobile/tool/verify_strict_artifact_assets.dart"; do
             expected="${reviewed%% *}"; relative="${reviewed#* }"
             observed="$(/usr/bin/shasum -a 256 "$GITHUB_WORKSPACE/$relative")"
             [[ "${observed%% *}" == "$expected" ]] || exit 1
@@ -1843,7 +1843,7 @@ jobs:
             "2d51f03bd21f2afa2af0396e801e0e950172210814a229ca50df67c5a8d135cd scripts/capture_mobile_credentialed_runtime.py" \
             "d0787d5c01349d8f8a6166a530823a77a788b68ad6523ed5f684d2879c6f7f2d scripts/validate_flutter_toolchain.py" \
             "e5e0193a51b71f1455eeadae610d82155abaf5257ddf7fad1d927c1fcadeaee5 scripts/verify_ios_release_artifact.sh" \
-            "e9b147299ad1fa1c5dcd002a0d06a65c70ec574ff807e990c482e07dc9098bf3 mobile/tool/verify_strict_artifact_assets.dart"; do
+            "db8396747af0d55487c2bcf1695433170ab6162f95918a41a2a8c6470d0a86aa mobile/tool/verify_strict_artifact_assets.dart"; do
             expected="${reviewed%% *}"; relative="${reviewed#* }"
             observed="$(/usr/bin/shasum -a 256 "$GITHUB_WORKSPACE/$relative")"
             [[ "${observed%% *}" == "$expected" ]] || exit 1
@@ -2049,7 +2049,7 @@ jobs:
           [[ "${config_digest%% *}" == "$EXPECTED_CONFIG_SHA256" ]] || exit 1
           for reviewed in \
             "e5e0193a51b71f1455eeadae610d82155abaf5257ddf7fad1d927c1fcadeaee5 scripts/verify_ios_release_artifact.sh" \
-            "e9b147299ad1fa1c5dcd002a0d06a65c70ec574ff807e990c482e07dc9098bf3 mobile/tool/verify_strict_artifact_assets.dart"; do
+            "db8396747af0d55487c2bcf1695433170ab6162f95918a41a2a8c6470d0a86aa mobile/tool/verify_strict_artifact_assets.dart"; do
             expected="${reviewed%% *}"; relative="${reviewed#* }"
             observed="$(/usr/bin/shasum -a 256 "$GITHUB_WORKSPACE/$relative")"
             [[ "${observed%% *}" == "$expected" ]] || exit 1

@@ -59,9 +59,6 @@ paperWorker:
   llmChatModel: production-render-chat
   llmEmbeddingModel: production-render-embedding
 
-visualAssets:
-  existingClaim: pakperk-production-render-visual-assets
-
 deletionLedger:
   existingClaim: pakperk-production-render-deletion-ledger
   environmentId: production

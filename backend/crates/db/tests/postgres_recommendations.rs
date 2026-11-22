@@ -4,22 +4,26 @@ use chrono::{Days, Utc};
 use db::{
     Database, LibraryMutationIntent, RecommendationBatchBlockOutcome,
     RecommendationBatchBlockRequest, RecommendationBatchPersistOutcome,
-    RecommendationBatchPersistRequest, RecommendationBatchServeOutcome,
-    RecommendationBatchServeRequest, RecommendationExplanationReadOutcome,
-    RecommendationFeedbackOutcome, RecommendationFeedbackReason, RecommendationFeedbackType,
-    RecommendationFeedbackWrite, RecommendationGenerationEnqueue,
-    RecommendationGenerationEnqueueOutcome, RecommendationGenerationJobState,
-    RecommendationGenerationRepositoryError, StoredRecommendationBatchStatus,
+    RecommendationBatchPersistRequest, RecommendationBatchRepositoryError,
+    RecommendationBatchServeOutcome, RecommendationBatchServeRequest,
+    RecommendationExplanationReadOutcome, RecommendationFeedbackOutcome,
+    RecommendationFeedbackReason, RecommendationFeedbackType, RecommendationFeedbackWrite,
+    RecommendationGenerationEnqueue, RecommendationGenerationEnqueueOutcome,
+    RecommendationGenerationJobState, RecommendationGenerationRepositoryError,
+    StoredRecommendationBatchStatus,
 };
 use domain::{ArxivIdentifier, Author, Capabilities, LibraryState, PaperMetadata, PaperSummary};
 use reading_feed::RecommendationPosition;
 use recommendations::{
-    CandidateDocument, DiscoveryProfileSnapshot, ProvenEmptyQueueBinding,
+    BuiltRecommendationBatch, CandidateDocument, DiscoveryProfileSnapshot, ProvenEmptyQueueBinding,
     RECOMMENDATION_ALGORITHM_VERSION_V1, RecommendationBatchBuildRequest, RecommendationMode,
     RerankPolicy, ScoringPolicy, build_recommendation_batch,
 };
 use url::Url;
 use uuid::Uuid;
+
+// The cleanup API is global, so retention fixtures in this binary run serially.
+static RETENTION_FIXTURES: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
@@ -28,6 +32,7 @@ async fn postgres_batches_recheck_queue_replay_and_supersede_on_library_mutation
         eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL recommendation coverage");
         return;
     };
+    let _retention = RETENTION_FIXTURES.lock().await;
     let database = Database::connect(&database_url, 12).await.unwrap();
     database.migrate_embedded().await.unwrap();
     for index_name in [
@@ -111,6 +116,7 @@ async fn postgres_batches_recheck_queue_replay_and_supersede_on_library_mutation
         generator_observer: None,
         rerank_policy: RerankPolicy::default(),
         scoring_policy: ScoringPolicy::default(),
+        citation_online: None,
     })
     .await
     .unwrap();
@@ -204,6 +210,7 @@ async fn postgres_batches_recheck_queue_replay_and_supersede_on_library_mutation
                 user_id: account.id,
                 batch_id: first_batch_id,
                 mode: RecommendationMode::Recent,
+                policy_version: "weighted_v1",
                 library_revision: 0,
                 limit: 20,
                 now,
@@ -327,13 +334,31 @@ async fn postgres_batches_recheck_queue_replay_and_supersede_on_library_mutation
         .unwrap();
     assert_eq!(feedback_context.revision, 2);
     assert!(feedback_context.history[&paper.id].negative_feedback);
-    let feedback_superseded: String =
+    let retained_status: String =
         sqlx::query_scalar("SELECT status FROM recommendation_batches WHERE id = $1")
             .bind(first_batch_id)
             .fetch_one(database.pool())
             .await
             .unwrap();
-    assert_eq!(feedback_superseded, "superseded");
+    assert_eq!(retained_status, "served");
+    assert_eq!(
+        repository
+            .serve_ready(RecommendationBatchServeRequest {
+                user_id: account.id,
+                batch_id: first_batch_id,
+                mode: RecommendationMode::Recent,
+                policy_version: "weighted_v1",
+                library_revision: 0,
+                limit: 20,
+                now,
+            })
+            .await
+            .unwrap(),
+        RecommendationBatchServeOutcome::AuthorityChanged {
+            current_library_revision: 0,
+            active_count: 0,
+        }
+    );
     assert_eq!(
         repository
             .record_feedback(RecommendationFeedbackWrite {
@@ -368,7 +393,25 @@ async fn postgres_batches_recheck_queue_replay_and_supersede_on_library_mutation
             .fetch_one(database.pool())
             .await
             .unwrap();
-    assert_eq!(status, "superseded");
+    assert_eq!(status, "served");
+    assert_eq!(
+        repository
+            .serve_ready(RecommendationBatchServeRequest {
+                user_id: account.id,
+                batch_id: first_batch_id,
+                mode: RecommendationMode::Recent,
+                policy_version: "weighted_v1",
+                library_revision: 0,
+                limit: 20,
+                now,
+            })
+            .await
+            .unwrap(),
+        RecommendationBatchServeOutcome::AuthorityChanged {
+            current_library_revision: 1,
+            active_count: 1,
+        }
+    );
 
     let later_date = local_date.checked_add_days(Days::new(1)).unwrap();
     assert!(matches!(
@@ -392,6 +435,12 @@ async fn postgres_batches_recheck_queue_replay_and_supersede_on_library_mutation
             ..
         }
     ));
+    let saved_search_revision_digest = database
+        .recommendation_generation()
+        .saved_search_context(account.id, &[])
+        .await
+        .unwrap()
+        .revision_digest;
     let blocked_id = Uuid::now_v7();
     assert!(matches!(
         repository
@@ -403,7 +452,7 @@ async fn postgres_batches_recheck_queue_replay_and_supersede_on_library_mutation
                 local_date,
                 profile_revision: None,
                 feedback_revision: 2,
-                saved_search_revision_digest: None,
+                saved_search_revision_digest: Some(saved_search_revision_digest),
                 algorithm_version: RECOMMENDATION_ALGORITHM_VERSION_V1,
                 policy_version: "weighted_v1",
                 seed: 7,
@@ -491,7 +540,7 @@ async fn postgres_batches_recheck_queue_replay_and_supersede_on_library_mutation
         .await
         .unwrap();
     assert!(cleanup.batches >= 2);
-    assert_eq!(cleanup.feedback, 2);
+    assert!(cleanup.feedback >= 2);
     let remaining_batches: i64 =
         sqlx::query_scalar("SELECT count(*) FROM recommendation_batches WHERE user_id = $1")
             .bind(account.id.into_inner())
@@ -633,6 +682,52 @@ async fn postgres_generation_jobs_bind_context_leases_retention_and_account_casc
         .unwrap();
     assert_eq!(reclaimed.job_id, job_id);
     assert_eq!(reclaimed.attempt, 2);
+    let batches = database.recommendation_batches();
+    let claimed_batch = BuiltRecommendationBatch {
+        mode: claimed.mode,
+        library_revision: claimed.library_revision,
+        profile_revision: claimed.profile_revision,
+        feedback_revision: claimed.feedback_revision,
+        algorithm_version: RECOMMENDATION_ALGORITHM_VERSION_V1,
+        policy_version: claimed.policy_version.clone(),
+        seed: claimed.seed,
+        candidates: Vec::new(),
+        citation_coverage: None,
+    };
+    let publication_request = || RecommendationBatchPersistRequest {
+        user_id: claimed.user_id,
+        batch_id: claimed.batch_id,
+        query_key: &claimed.query_key,
+        local_date: claimed.local_date,
+        created_at: now,
+        expires_at: now + chrono::Duration::hours(24),
+        next_position: claimed.next_position,
+        saved_search_revision_digest: claimed.saved_search_revision_digest,
+        batch: &claimed_batch,
+    };
+    assert!(matches!(
+        batches
+            .persist_claimed_ready(
+                publication_request(),
+                &claimed,
+                "generation-worker-one",
+                reclaimed_at,
+            )
+            .await,
+        Err(RecommendationBatchRepositoryError::LeaseLost)
+    ));
+    assert!(matches!(
+        batches
+            .persist_claimed_ready(
+                publication_request(),
+                &reclaimed,
+                "generation-worker-two",
+                reclaimed_at,
+            )
+            .await
+            .unwrap(),
+        RecommendationBatchPersistOutcome::Ready { .. }
+    ));
     assert!(matches!(
         repository
             .complete(
@@ -667,6 +762,62 @@ async fn postgres_generation_jobs_bind_context_leases_retention_and_account_casc
             ..
         }
     ));
+
+    let rollback_intent = RecommendationGenerationEnqueue {
+        job_id: Uuid::now_v7(),
+        batch_id: Uuid::now_v7(),
+        query_key: "following:v2:unpublished-before-rollback",
+        ..request
+    };
+    assert!(matches!(
+        repository.enqueue(rollback_intent).await.unwrap(),
+        RecommendationGenerationEnqueueOutcome::Queued { .. }
+    ));
+    let claimed = repository
+        .claim("generation-worker-rollback", now, Duration::from_secs(5))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(claimed.job_id, rollback_intent.job_id);
+    repository
+        .complete(
+            claimed.job_id,
+            "generation-worker-rollback",
+            now,
+            RecommendationGenerationJobState::Superseded,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        repository
+            .enqueue(RecommendationGenerationEnqueue {
+                job_id: Uuid::now_v7(),
+                batch_id: Uuid::now_v7(),
+                ..rollback_intent
+            })
+            .await
+            .unwrap(),
+        RecommendationGenerationEnqueueOutcome::Queued {
+            job_id: claimed.job_id,
+            batch_id: claimed.batch_id,
+        }
+    );
+    let claimed = repository
+        .claim("generation-worker-rollback", now, Duration::from_secs(5))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(claimed.job_id, rollback_intent.job_id);
+    assert_eq!(claimed.attempt, 1);
+    repository
+        .complete(
+            claimed.job_id,
+            "generation-worker-rollback",
+            now,
+            RecommendationGenerationJobState::Completed,
+        )
+        .await
+        .unwrap();
 
     sqlx::query(
         "UPDATE saved_searches SET revision = revision + 1, updated_at = statement_timestamp() WHERE id = $1",
@@ -927,3 +1078,6 @@ fn metadata(unique: &str) -> PaperMetadata {
         metadata_fetched_at: Utc::now(),
     }
 }
+
+#[path = "postgres_recommendations/citation_online.rs"]
+mod citation_online;

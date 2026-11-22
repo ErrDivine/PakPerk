@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -32,6 +33,65 @@ void main() {
       expect(result.skip(1), [copy, alternative]);
       expect(readerSelectionMenuItems([copy], translateLabel: '翻译'), [copy]);
     },
+  );
+
+  testWidgets(
+    'pager receives touch swipes while its text still accepts touch and mouse selection',
+    (tester) async {
+      const first = 'Language models learn from text.';
+      const second = 'Exact document selection';
+      final controller = PageController();
+      addTearDown(controller.dispose);
+      String? selection;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PageView(
+              controller: controller,
+              children: [
+                ReaderSelectionArea(
+                  onSelectionChanged: (content) =>
+                      selection = content?.plainText,
+                  child: const Center(child: Text(first)),
+                ),
+                ReaderPageSelectionArea(
+                  onSelectionChanged: (content) =>
+                      selection = content?.plainText,
+                  child: const Center(child: Text(second)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      final firstStart = tester.getTopLeft(find.text(first));
+      await tester.longPressAt(firstStart + const Offset(12, 8));
+      await tester.pumpAndSettle();
+      expect(selection, 'Language');
+      expect(controller.page, 0);
+
+      await tester.tapAt(firstStart + const Offset(120, 8));
+      await tester.pumpAndSettle();
+      await tester.fling(find.text(first), const Offset(-360, 0), 1200);
+      await tester.pumpAndSettle();
+      expect(controller.page, 1);
+
+      final secondStart = tester.getTopLeft(find.text(second));
+      final mouse = await tester.startGesture(
+        secondStart + const Offset(1, 8),
+        kind: PointerDeviceKind.mouse,
+      );
+      await mouse.moveBy(const Offset(100, 0));
+      await mouse.up();
+      await tester.pumpAndSettle();
+      expect(selection, startsWith('Exact'));
+      expect(controller.page, 1);
+
+      await tester.fling(find.text(second), const Offset(360, 0), 1200);
+      await tester.pumpAndSettle();
+      expect(controller.page, 0);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
   );
 
   testWidgets(

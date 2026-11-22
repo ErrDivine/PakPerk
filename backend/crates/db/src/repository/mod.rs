@@ -126,10 +126,10 @@ pub use recommendations::{
     RecommendationBatchPersistOutcome, RecommendationBatchPersistRequest,
     RecommendationBatchRepository, RecommendationBatchRepositoryError,
     RecommendationBatchServeOutcome, RecommendationBatchServeRequest,
-    RecommendationExplanationReadOutcome, RecommendationFeedbackContext,
-    RecommendationFeedbackOutcome, RecommendationFeedbackReason, RecommendationFeedbackType,
-    RecommendationFeedbackWrite, RecommendationRetentionCleanup, StoredRecommendationBatchStatus,
-    StoredRecommendationCandidate,
+    RecommendationCitationLearningContext, RecommendationExplanationReadOutcome,
+    RecommendationFeedbackContext, RecommendationFeedbackOutcome, RecommendationFeedbackReason,
+    RecommendationFeedbackType, RecommendationFeedbackWrite, RecommendationRetentionCleanup,
+    StoredRecommendationBatchStatus, StoredRecommendationCandidate,
 };
 pub use research_memory::{
     ObservedAnnotationReanchor, PendingAnnotationReanchor, ResearchAnnotationImport,

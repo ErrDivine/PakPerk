@@ -3,13 +3,13 @@ use std::{collections::BTreeMap, str::FromStr as _, time::Duration};
 use chrono::{DateTime, NaiveDate, Utc};
 use domain::{AccountStatus, AuthenticatedUserId, PaperId, PaperSummary};
 use reading_feed::RecommendationPosition;
-use recommendations::RecommendationMode;
+use recommendations::{RECOMMENDATION_ALGORITHM_VERSION_V1, RecommendationMode};
 use sha2::{Digest as _, Sha256};
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::{DbError, rows::PaperSummaryRow};
+use super::{DbError, recommendations::policy_supports_mode, rows::PaperSummaryRow};
 
 const MAX_GENERATION_CANDIDATES: usize = 50;
 const MAX_EXHAUSTED_LEASE_REAP: i64 = 100;
@@ -134,6 +134,15 @@ impl RecommendationGenerationRepository {
             return Err(RecommendationGenerationRepositoryError::FingerprintCollision);
         }
         let state = RecommendationGenerationJobState::parse(&existing.state)?;
+        if state == RecommendationGenerationJobState::Superseded
+            && requeue_unpublished(&mut transaction, existing.id, request.now).await?
+        {
+            transaction.commit().await?;
+            return Ok(RecommendationGenerationEnqueueOutcome::Queued {
+                job_id: existing.id,
+                batch_id: existing.batch_id,
+            });
+        }
         transaction.commit().await?;
         Ok(RecommendationGenerationEnqueueOutcome::Replayed {
             job_id: existing.id,
@@ -808,6 +817,31 @@ async fn insert_candidate_identities(
     Ok(())
 }
 
+// A policy flip can supersede an intent before publication. When a later
+// request explicitly selects that policy again and all fences and candidate
+// identities still match, the exact intent can resume on a fresh lease.
+async fn requeue_unpublished(
+    transaction: &mut Transaction<'_, Postgres>,
+    job_id: Uuid,
+    now: DateTime<Utc>,
+) -> Result<bool, RecommendationGenerationRepositoryError> {
+    let updated = sqlx::query(
+        r"
+        UPDATE recommendation_generation_jobs AS job
+        SET state = 'queued', available_at = $2, updated_at = $2,
+            attempts = 0, last_error_code = NULL, completed_at = NULL
+        WHERE id = $1
+          AND state = 'superseded'
+          AND NOT EXISTS (SELECT 1 FROM recommendation_batches WHERE id = job.batch_id)
+        ",
+    )
+    .bind(job_id)
+    .bind(now)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(updated.rows_affected() == 1)
+}
+
 fn validate_enqueue(
     request: &RecommendationGenerationEnqueue<'_>,
 ) -> Result<(), RecommendationGenerationRepositoryError> {
@@ -836,8 +870,8 @@ fn validate_enqueue(
         || request.candidate_paper_ids.iter().any(Uuid::is_nil)
         || !next_matches
         || !valid_text(request.query_key, 160)
-        || !valid_version(request.algorithm_version)
-        || !valid_version(request.policy_version)
+        || request.algorithm_version != RECOMMENDATION_ALGORITHM_VERSION_V1
+        || !policy_supports_mode(request.policy_version, request.mode)
         || i64::try_from(request.seed).is_err()
     {
         return Err(RecommendationGenerationRepositoryError::InvalidRequest);

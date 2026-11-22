@@ -55,6 +55,30 @@ pub(crate) struct RecommendationFeedbackBody {
     pub(crate) reason: Option<RecommendationFeedbackReasonBody>,
 }
 
+#[cfg(test)]
+mod feedback_body_tests {
+    use super::*;
+
+    #[test]
+    fn feedback_rejects_client_supplied_learning_evidence() {
+        let body = serde_json::json!({
+            "paper_id": Uuid::from_u128(1),
+            "feedback_type": "relevant"
+        });
+        assert!(serde_json::from_value::<RecommendationFeedbackBody>(body.clone()).is_ok());
+        for (field, value) in [
+            ("feature_mask", serde_json::json!(7)),
+            ("tier", serde_json::json!(4)),
+            ("served_at", serde_json::json!("2026-11-21T00:00:00Z")),
+            ("personalization_enabled", serde_json::json!(true)),
+        ] {
+            let mut forged = body.clone();
+            forged[field] = value;
+            assert!(serde_json::from_value::<RecommendationFeedbackBody>(forged).is_err());
+        }
+    }
+}
+
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 pub(crate) struct RecommendationFeedbackEnvelope {
     pub(crate) feedback_id: Uuid,

@@ -288,6 +288,44 @@ async fn postgres_profile_revision_privacy_idempotency_queue_isolation_and_delet
     .await
     .unwrap();
 
+    let rated_paper: Uuid = sqlx::query_scalar(
+        r"
+        INSERT INTO papers (
+            arxiv_base_id, arxiv_version, title, abstract, authors, primary_category,
+            categories, published_at, updated_at, abs_url, pdf_url, metadata_fetched_at
+        )
+        VALUES ($1, 1, 'Privacy fixture', 'Public fixture', '[]', 'cs.CL',
+                ARRAY['cs.CL'], now(), now(), 'https://arxiv.org', 'https://arxiv.org', now())
+        RETURNING id
+        ",
+    )
+    .bind(format!("profile-fixture-{unique}"))
+    .fetch_one(database.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        r"
+        INSERT INTO recommendation_feedback (
+            id, user_id, paper_id, feedback_type, feature_mask, idempotency_key
+        ) VALUES
+            (gen_random_uuid(), $1, $2, 'relevant', 1, gen_random_uuid()),
+            (gen_random_uuid(), $1, $2, 'relevant', 0, gen_random_uuid()),
+            (gen_random_uuid(), $1, $2, 'not_relevant', NULL, gen_random_uuid())
+        ",
+    )
+    .bind(user.id.into_inner())
+    .bind(rated_paper)
+    .execute(database.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO recommendation_feedback_revisions (user_id, current_revision) VALUES ($1, 7)",
+    )
+    .bind(user.id.into_inner())
+    .execute(database.pool())
+    .await
+    .unwrap();
+
     // Disabling personalization has the broader privacy semantics: it clears
     // both feedback-derived and inferred interests but retains explicit ones.
     let disabled = service
@@ -315,6 +353,21 @@ async fn postgres_profile_revision_privacy_idempotency_queue_isolation_and_delet
         queue_authority(&database, user.id.into_inner()).await,
         queue_before
     );
+
+    let retained_masks: Vec<Option<i16>> =
+        sqlx::query_scalar("SELECT feature_mask FROM recommendation_feedback WHERE user_id = $1")
+            .bind(user.id.into_inner())
+            .fetch_all(database.pool())
+            .await
+            .unwrap();
+    assert_eq!(retained_masks, vec![None; 3]);
+    let feedback_context = database
+        .recommendation_batches()
+        .feedback_context(user.id, &[rated_paper], chrono::Utc::now())
+        .await
+        .unwrap();
+    assert_eq!(feedback_context.revision, 8);
+    assert!(feedback_context.history[&rated_paper].negative_feedback);
 
     assert!(matches!(
         service
@@ -378,13 +431,27 @@ async fn postgres_profile_revision_privacy_idempotency_queue_isolation_and_delet
         retained_batches, 0,
         "a complete profile reset purges batches"
     );
+    let retained_feedback: (i64, i64) = sqlx::query_as(
+        "SELECT (SELECT count(*) FROM recommendation_feedback WHERE user_id = $1),
+                (SELECT count(*) FROM recommendation_feedback_revisions WHERE user_id = $1)",
+    )
+    .bind(user.id.into_inner())
+    .fetch_one(database.pool())
+    .await
+    .unwrap();
+    assert_eq!(retained_feedback, (0, 0));
     assert_eq!(
         queue_authority(&database, user.id.into_inner()).await,
         queue_before
     );
 
     sqlx::query(
-        "UPDATE research_profile_operations SET expires_at = statement_timestamp() - interval '1 second' WHERE user_id = $1",
+        r"
+        UPDATE research_profile_operations
+        SET created_at = statement_timestamp() - interval '2 seconds',
+            expires_at = statement_timestamp() - interval '1 second'
+        WHERE user_id = $1
+        ",
     )
     .bind(user.id.into_inner())
     .execute(database.pool())

@@ -221,18 +221,38 @@ this metric. `pakperk.recommendation.feedback.signal.count` adds the closed
 feedback outcomes. None of these instruments accepts an identifier, revision,
 feedback reason, text, query, topic/category, or paper value.
 
+For the [citation policy rollout](../reading-feed.md#citation-policy-rollout),
+group `pakperk.recommendation.citation.pages` by
+`recommendation.rollout=shadow|enabled`. Record all three outcome counts for
+the exact observation window. Divide `has_neighbor` by
+`has_neighbor + no_neighbor` for root-neighbor coverage before caps when all
+eligible pages were measured. Pages with no selected roots count as
+`no_neighbor`. Reconcile the samples with the exercised fresh For You pages
+and report unavailable comparisons and generation retries. A window with
+missing comparisons does not establish full coverage. If every missing
+comparison is accounted for, report the lower and upper bounds by treating
+all missing pages first as having no neighbor and then as having a neighbor.
+`.duration` measures input reads and ranking in seconds for completed samples. `.candidates`
+reports authorized and root-neighbor candidate counts, and `.violations`
+counts out-of-page results and cap-eligible tier inversions. Both violation
+counts must stay at zero. Require a positive measured sample in each rollout
+phase and confirm telemetry is reaching the sink during the same window.
+Exercise active and uncertain queue canaries in that window and verify they
+return and render zero recommendation cards.
+
+The mobile `recommendation_refill_completed` event records one three-card
+triggered For You refill with its starting `recommendation_policy`, closed
+`outcome` and bounded `elapsed_ms`. Report successful p50/p95 and sample size
+alongside the stale, failed, and canceled counts for each policy.
+
 Qualified recommendation impressions and recommendation-attributed saves are
 persisted as content-free, event-ID-deduplicated rows bound to an authenticated
-servable batch item and closed feed mode. They are not yet safe online rate
-metrics: the repository currently returns only whole-batch accepted/duplicate
-totals, so counting submitted event types at the route would inflate retries.
-`read_next` is canonical Library state but is not present in the interaction
-event contract and carries no originating recommendation batch/mode. Do not
-infer impression, save, or Read Next rates from request totals, generic Library
-provenance, or queue transitions. A future source must return a fresh accepted
-breakdown by closed mode/event type and retain explicit recommendation
-attribution through the relevant Library transition before these rates can be
-claimed.
+servable batch item and closed feed mode. Use
+`demo/recommendation_evaluation/rollout_outcomes.sql` for deduplicated save and
+dismissal rates over a completed rollout window. The report joins served cards
+to accepted feedback and Library writes with matching save attribution.
+Request-level batch totals measure ingestion, which includes retries.
+`read_next` has no recommendation-attributed interaction event.
 `pakperk.retention.removed` accepts only the closed paper-import-operation,
 profile-operation, saved-search-operation, interaction-event,
 recommendation-batch/feedback, recommendation-generation-job, brief,

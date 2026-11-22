@@ -15,7 +15,9 @@ use research_profiles::{
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
-use super::{DbError, RateLimitRepository, RateLimitRequest};
+use super::{
+    DbError, RateLimitRepository, RateLimitRequest, recommendations::advance_feedback_revision,
+};
 
 const SOURCE_COUNT: usize = 3;
 
@@ -656,6 +658,17 @@ async fn apply_settings(
     }
     if patch.personalization_enabled == Some(false) {
         delete_personalization_interests(transaction, user_id).await?;
+        let erased = sqlx::query(
+            "UPDATE recommendation_feedback SET feature_mask = NULL \
+             WHERE user_id = $1 AND feature_mask IS NOT NULL",
+        )
+        .bind(user_id.into_inner())
+        .execute(&mut **transaction)
+        .await?
+        .rows_affected();
+        if erased > 0 {
+            advance_feedback_revision(transaction, user_id).await?;
+        }
     }
     Ok(revision)
 }

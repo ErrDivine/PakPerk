@@ -13,7 +13,8 @@ void main() {
     'history is disabled by default and disabling removes raw queries',
     () async {
       final store = SharedPreferencesSearchPrivacyStore();
-      expect((await store.loadHistory(_accountA)).enabled, isFalse);
+      final now = DateTime.utc(2026, 8, 28);
+      expect((await store.loadHistory(_accountA, now: now)).enabled, isFalse);
 
       final snapshot = PrivateSearchHistorySnapshot(
         enabled: true,
@@ -21,12 +22,12 @@ void main() {
           PrivateSearchHistoryEntry(
             query: '  Efficient   adaptation  ',
             mode: PrivateSearchHistoryMode.explore,
-            searchedAt: DateTime.utc(2026, 8, 28),
+            searchedAt: now,
           ),
         ],
       );
       await store.saveHistory(_accountA, snapshot);
-      final loaded = await store.loadHistory(_accountA);
+      final loaded = await store.loadHistory(_accountA, now: now);
       expect(loaded.enabled, isTrue);
       expect(loaded.entries.single.query, 'Efficient adaptation');
 
@@ -44,7 +45,7 @@ void main() {
         preferences.getString(key),
         isNot(contains('Efficient adaptation')),
       );
-      expect((await store.loadHistory(_accountA)).entries, isEmpty);
+      expect((await store.loadHistory(_accountA, now: now)).entries, isEmpty);
     },
   );
 

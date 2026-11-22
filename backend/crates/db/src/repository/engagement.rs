@@ -1660,6 +1660,33 @@ impl EngagementStore for EngagementRepository {
                     digest_needed: false,
                 });
             }
+            // When the queue clears, summarize previously deferred matches
+            // before resuming individual delivery for newly evaluated matches.
+            if match_frequency == SubscriptionFrequency::Immediate {
+                let backlog = sqlx::query_scalar::<_, bool>(
+                    r"
+                    SELECT EXISTS (
+                        SELECT 1 FROM notifications
+                        WHERE user_id = $1 AND notification_scope = 'discovery'
+                          AND notification_type = 'discovery_match'
+                          AND delivery_eligibility = 'deferred_queue_nonempty'
+                          AND entity_id IS NOT NULL AND dismissed_at IS NULL
+                          AND (expires_at IS NULL OR expires_at > $2)
+                    )
+                    ",
+                )
+                .bind(user_id.into_inner())
+                .bind(now)
+                .fetch_one(&mut *transaction)
+                .await
+                .map_err(store_sql)?;
+                if backlog {
+                    transaction.commit().await.map_err(store_sql)?;
+                    return Ok(QueueDecisionApplyOutcome::Applied {
+                        digest_needed: true,
+                    });
+                }
+            }
             sqlx::query(
                 r"
                 WITH canonical_per_paper AS MATERIALIZED (
@@ -1674,6 +1701,7 @@ impl EngagementStore for EngagementRepository {
                       )
                       AND dismissed_at IS NULL
                       AND entity_id IS NOT NULL
+                      AND (expires_at IS NULL OR expires_at > $3)
                       AND NOT EXISTS (
                           SELECT 1
                           FROM notifications AS published
@@ -1791,17 +1819,20 @@ impl EngagementStore for EngagementRepository {
         let preferences = load_preferences(&mut transaction, user_id)
             .await?
             .unwrap_or_else(default_preferences);
-        if preferences.type_frequencies.discovery_match.is_enabled()
-            || !preferences.type_frequencies.discovery_digest.is_enabled()
+        let match_frequency = preferences.type_frequencies.discovery_match;
+        let backlog_only = match_frequency == SubscriptionFrequency::Immediate;
+        let digest_frequency = preferences.type_frequencies.discovery_digest;
+        if (!backlog_only && (match_frequency.is_enabled() || !digest_frequency.is_enabled()))
             || !delivery_window_open(&mut transaction, &preferences, now).await?
-            || !notification_frequency_due(
-                &mut transaction,
-                user_id,
-                NotificationType::DiscoveryDigest,
-                preferences.type_frequencies.discovery_digest,
-                now,
-            )
-            .await?
+            || (!backlog_only
+                && !notification_frequency_due(
+                    &mut transaction,
+                    user_id,
+                    NotificationType::DiscoveryDigest,
+                    digest_frequency,
+                    now,
+                )
+                .await?)
         {
             transaction.commit().await.map_err(store_sql)?;
             return Ok(QueueDecisionApplyOutcome::Applied {
@@ -1822,10 +1853,12 @@ impl EngagementStore for EngagementRepository {
               AND notification_type = 'discovery_digest'
               AND delivery_eligibility = 'deferred_queue_nonempty'
               AND dismissed_at IS NULL AND read_at IS NOT NULL
+              AND NOT $3
             ",
         )
         .bind(user_id.into_inner())
         .bind(now)
+        .bind(backlog_only)
         .execute(&mut *transaction)
         .await
         .map_err(store_sql)?;
@@ -1839,6 +1872,7 @@ impl EngagementStore for EngagementRepository {
                   AND delivery_eligibility = 'deferred_queue_nonempty'
                   AND dismissed_at IS NULL AND read_at IS NULL
                   AND (expires_at IS NULL OR expires_at > $3)
+                  AND NOT $4
                 ORDER BY created_at, id
                 LIMIT 1
                 FOR UPDATE
@@ -1853,6 +1887,7 @@ impl EngagementStore for EngagementRepository {
         .bind(user_id.into_inner())
         .bind(library_revision)
         .bind(now)
+        .bind(backlog_only)
         .execute(&mut *transaction)
         .await
         .map_err(store_sql)?;
@@ -1884,6 +1919,7 @@ impl EngagementStore for EngagementRepository {
                       'deferred_unknown',
                       'deferred_queue_nonempty'
                   )
+                  AND (NOT $4 OR delivery_eligibility = 'deferred_queue_nonempty')
                   AND dismissed_at IS NULL
                   AND entity_id IS NOT NULL
                   AND (expires_at IS NULL OR expires_at > $3)
@@ -1896,6 +1932,7 @@ impl EngagementStore for EngagementRepository {
         .bind(user_id.into_inner())
         .bind(i64::from(capacity))
         .bind(now)
+        .bind(backlog_only)
         .fetch_all(&mut *transaction)
         .await
         .map_err(store_sql)?;
@@ -1950,6 +1987,9 @@ impl EngagementStore for EngagementRepository {
             .iter()
             .map(|(_, paper_id)| *paper_id)
             .collect::<Vec<_>>();
+        // Immediate mode releases a single bounded digest for the queue
+        // backlog. Retire overflow with the same commit so another worker
+        // cannot turn it into a second digest or a burst of matches.
         sqlx::query(
             r"
             UPDATE notifications
@@ -1957,13 +1997,15 @@ impl EngagementStore for EngagementRepository {
             WHERE user_id = $1
               AND notification_type = 'discovery_match'
               AND notification_scope = 'discovery'
-              AND entity_id = ANY($3)
+              AND (entity_id = ANY($3)
+                   OR ($4 AND delivery_eligibility = 'deferred_queue_nonempty'))
               AND dismissed_at IS NULL
             ",
         )
         .bind(user_id.into_inner())
         .bind(now)
         .bind(&paper_ids)
+        .bind(backlog_only)
         .execute(&mut *transaction)
         .await
         .map_err(store_sql)?;

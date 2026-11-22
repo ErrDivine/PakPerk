@@ -659,7 +659,7 @@ async fn postgres_library_idempotency_sync_races_and_cleanup() {
             revision,
             last_operation_id
         )
-        VALUES ($1, $2, 'inbox', statement_timestamp(), statement_timestamp(), $3, $4)
+        VALUES ($1, $2, 'to_read', statement_timestamp(), statement_timestamp(), $3, $4)
         ",
     )
     .bind(cleanup_race_user.id.into_inner())

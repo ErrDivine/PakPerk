@@ -1101,8 +1101,9 @@ class _ExploreStatus extends StatelessWidget {
         key: ValueKey('research-search-explore-unavailable'),
         icon: Icons.lock_outline_rounded,
         title: 'Explore search is not enabled',
-        message: 'Recent papers are not substituted for a query search. Explore '
-          'will appear here only when its search source is available.',
+        message:
+            'Recent papers are not substituted for a query search. Explore '
+            'will appear here only when its search source is available.',
       );
     }
     return switch (state.phase) {

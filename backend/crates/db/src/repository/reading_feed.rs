@@ -284,6 +284,8 @@ async fn recommendation_snapshot(
     library_revision: i64,
 ) -> Result<ReadingFeedSnapshot, SnapshotError> {
     let position = recommendation_position(request)?;
+    let feedback_revision =
+        super::recommendations::feedback_revision(&mut **transaction, request.user_id).await?;
     let mut builder = QueryBuilder::<Postgres>::new(
         r"
         SELECT
@@ -381,6 +383,7 @@ async fn recommendation_snapshot(
     Ok(ReadingFeedSnapshot::Empty {
         library_revision,
         recommendations: RecommendationPage {
+            feedback_revision,
             items,
             next_position,
         },

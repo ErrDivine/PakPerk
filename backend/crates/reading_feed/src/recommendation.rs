@@ -16,6 +16,8 @@ pub struct RecommendationRequest {
     pub category: Option<String>,
     pub recommendation_mode: RecommendationMode,
     pub position: Option<RecommendationPosition>,
+    /// The scoring policy bound into a continuation. Absent on page one.
+    pub expected_citation_online: Option<bool>,
     pub limit: u32,
     /// Injected observation time keeps batch expiry and tests deterministic.
     pub now: chrono::DateTime<chrono::Utc>,
@@ -26,6 +28,8 @@ pub struct RecommendationRequest {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecommendationPage {
+    /// Feedback revision used when applying the page's eligibility exclusions.
+    pub feedback_revision: i64,
     pub items: Vec<PaperSummary>,
     pub next_position: Option<RecommendationPosition>,
 }
@@ -54,8 +58,8 @@ pub struct RecommendationResultPage {
 /// Recommendation ranking is deliberately below queue authority. Eligibility
 /// and exclusions belong to the snapshot store; a source may only filter or
 /// order the supplied candidates and must never introduce another paper. The
-/// v1 cursor policy requires chronological order, so a differently ranked
-/// source must ship with a new explicit ordering/cursor policy.
+/// chronological cursor is the authorized page boundary, independent of the
+/// source's ordering and any cards it filters out.
 #[async_trait]
 pub trait RecommendationSource: Send + Sync {
     async fn page(
@@ -111,6 +115,7 @@ mod tests {
             paper_id: paper.paper_id,
         };
         let candidates = RecommendationPage {
+            feedback_revision: 0,
             items: vec![paper],
             next_position: Some(position),
         };
@@ -122,6 +127,7 @@ mod tests {
                 category: Some("cs.AI".to_owned()),
                 recommendation_mode: RecommendationMode::Recent,
                 position: None,
+                expected_citation_online: None,
                 limit: 20,
                 now: Utc.with_ymd_and_hms(2026, 8, 19, 12, 0, 0).unwrap(),
                 candidates: candidates.clone(),

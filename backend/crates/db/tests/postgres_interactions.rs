@@ -115,6 +115,7 @@ async fn postgres_interactions_are_closed_idempotent_retained_and_account_owned(
         generator_observer: None,
         rerank_policy: RerankPolicy::default(),
         scoring_policy: ScoringPolicy::default(),
+        citation_online: None,
     })
     .await
     .unwrap();

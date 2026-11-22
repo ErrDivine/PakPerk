@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show SelectedContent;
 
@@ -65,12 +66,111 @@ class _ReaderSelectionAreaState extends State<ReaderSelectionArea> {
   }
 
   @override
-  Widget build(BuildContext context) => SelectionArea(
-    contextMenuBuilder: readerSelectionContextMenu,
+  Widget build(BuildContext context) => ReaderPageSelectionArea(
     onSelectionChanged: (content) {
       _selected = content?.plainText.isNotEmpty == true;
       widget.onSelectionChanged?.call(content);
     },
     child: widget.child,
   );
+}
+
+/// Keeps native text selection without taking ordinary swipes from the pager.
+class ReaderPageSelectionArea extends SelectionArea {
+  const ReaderPageSelectionArea({
+    required super.child,
+    super.onSelectionChanged,
+    super.key,
+  }) : super(contextMenuBuilder: readerSelectionContextMenu);
+
+  @override
+  SelectionAreaState createState() => _ReaderPageSelectionAreaState();
+}
+
+class _ReaderPageSelectionAreaState extends SelectionAreaState {
+  @override
+  Widget build(BuildContext context) {
+    final region = super.build(context);
+    if (region is! SelectableRegion ||
+        Scrollable.maybeOf(context, axis: Axis.horizontal) == null) {
+      return region;
+    }
+    return _PagerSelectableRegion(
+      key: region.key,
+      focusNode: region.focusNode,
+      selectionControls: region.selectionControls,
+      contextMenuBuilder: region.contextMenuBuilder,
+      magnifierConfiguration: region.magnifierConfiguration,
+      onSelectionChanged: region.onSelectionChanged,
+      child: region.child,
+    );
+  }
+}
+
+class _PagerSelectableRegion extends SelectableRegion {
+  const _PagerSelectableRegion({
+    required super.child,
+    required super.selectionControls,
+    super.contextMenuBuilder,
+    super.focusNode,
+    super.key,
+    super.magnifierConfiguration,
+    super.onSelectionChanged,
+  });
+
+  @override
+  SelectableRegionState createState() => _PagerSelectableRegionState();
+}
+
+class _PagerSelectableRegionState extends SelectableRegionState {
+  @override
+  Widget build(BuildContext context) {
+    // Flutter 3.44's SelectableRegion eagerly claims touch drags outside iOS.
+    // Use its non-eager arbitration around a pager and keep all of Flutter's
+    // tap, long-press, mouse, toolbar, and selection-handle callbacks.
+    final region = super.build(context);
+    if (region is! TapRegion) return region;
+    final target = region.child;
+    if (target is! CompositedTransformTarget) return region;
+    final detector = target.child;
+    if (detector is! RawGestureDetector) return region;
+    final drag = detector.gestures[TapAndHorizontalDragGestureRecognizer];
+    if (drag
+        is! GestureRecognizerFactory<TapAndHorizontalDragGestureRecognizer>) {
+      return region;
+    }
+    return TapRegion(
+      key: region.key,
+      behavior: region.behavior,
+      enabled: region.enabled,
+      groupId: region.groupId,
+      onTapInside: region.onTapInside,
+      onTapOutside: region.onTapOutside,
+      onTapUpInside: region.onTapUpInside,
+      onTapUpOutside: region.onTapUpOutside,
+      consumeOutsideTaps: region.consumeOutsideTaps,
+      debugLabel: region.debugLabel,
+      child: CompositedTransformTarget(
+        key: target.key,
+        link: target.link,
+        child: RawGestureDetector(
+          key: detector.key,
+          behavior: detector.behavior,
+          excludeFromSemantics: detector.excludeFromSemantics,
+          semantics: detector.semantics,
+          gestures: {
+            ...detector.gestures,
+            TapAndHorizontalDragGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<
+                  TapAndHorizontalDragGestureRecognizer
+                >(drag.constructor, (recognizer) {
+                  drag.initializer(recognizer);
+                  recognizer.eagerVictoryOnDrag = false;
+                }),
+          },
+          child: detector.child,
+        ),
+      ),
+    );
+  }
 }

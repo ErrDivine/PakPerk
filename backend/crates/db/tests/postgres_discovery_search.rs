@@ -132,9 +132,15 @@ async fn postgres_search_is_deterministic_private_and_never_mutates_queue_state(
     assert_eq!(lookup_fixture.schema_version, 1);
     assert_eq!(queue_fixture.schema_version, 1);
 
-    let unique = Uuid::now_v7().simple().to_string();
+    // Lookup and suggestions search across every fixture in the shared database.
+    let unique = Uuid::new_v4().simple().to_string();
     let suffix = 10_000 + (Uuid::now_v7().as_u128() % 80_000) as u32;
-    let category = format!("ds.A{}", &unique[..8]);
+    let search_tag = &unique[..16];
+    let category = format!("ds.{search_tag}");
+    let shared_title = format!("Bounded Retrieval Systems {search_tag}");
+    let exact_author = format!("Ada Lovelace {}", Uuid::new_v4().simple());
+    let author_with_title_tokens = format!("{exact_author} metadata");
+    let topic_label = format!("Retrieval Systems {search_tag}");
     let accounts = database.accounts();
     let owner = accounts
         .provision_oidc_identity(
@@ -157,8 +163,8 @@ async fn postgres_search_is_deterministic_private_and_never_mutates_queue_state(
     let first = papers
         .upsert_metadata(&metadata(
             &format!("2608.{suffix:05}"),
-            2,
-            "Bounded Retrieval Systems",
+            1,
+            &shared_title,
             "Grace Hopper",
             &category,
         ))
@@ -167,8 +173,8 @@ async fn postgres_search_is_deterministic_private_and_never_mutates_queue_state(
     let second = papers
         .upsert_metadata(&metadata(
             &format!("2607.{:05}", suffix + 1),
-            1,
-            "Bounded Retrieval Systems",
+            2,
+            &shared_title,
             "Katherine Johnson",
             &category,
         ))
@@ -179,7 +185,7 @@ async fn postgres_search_is_deterministic_private_and_never_mutates_queue_state(
             &format!("2606.{:05}", suffix + 2),
             0,
             "Auditable Metadata Navigation",
-            "Ada Lovelace",
+            &exact_author,
             &category,
         ))
         .await
@@ -200,9 +206,9 @@ async fn postgres_search_is_deterministic_private_and_never_mutates_queue_state(
         ",
     )
     .bind(topic_id)
-    .bind(format!("fixture:retrieval-{}", &unique[..8]))
-    .bind(format!("Retrieval Systems {}", &unique[..8]))
-    .bind(format!("retrieval systems {}", &unique[..8]))
+    .bind(format!("fixture:retrieval-{search_tag}"))
+    .bind(&topic_label)
+    .bind(topic_label.to_lowercase())
     .execute(database.pool())
     .await
     .unwrap();
@@ -210,8 +216,8 @@ async fn postgres_search_is_deterministic_private_and_never_mutates_queue_state(
     for case in lookup_fixture.cases {
         let query = match case.query_source {
             LookupQuerySource::FirstArxivBase => first.metadata.arxiv_id.base_id.as_str(),
-            LookupQuerySource::SharedTitle => "Bounded Retrieval Systems",
-            LookupQuerySource::AuthorWithTitleTokens => "Ada Lovelace metadata",
+            LookupQuerySource::SharedTitle => &shared_title,
+            LookupQuerySource::AuthorWithTitleTokens => &author_with_title_tokens,
         };
         let expected_paper = match case.expected_paper {
             ExpectedPaper::First => first.id,
@@ -230,23 +236,21 @@ async fn postgres_search_is_deterministic_private_and_never_mutates_queue_state(
         );
     }
 
-    let author_only = service.lookup("Ada Lovelace", None, 20).await.unwrap();
+    let author_only = service.lookup(&exact_author, None, 20).await.unwrap();
     assert_eq!(author_only.items[0].paper.paper_id, author_match.id);
     assert_eq!(author_only.items[0].match_kind, MatchKind::RelatedText);
 
-    let first_page = service
-        .lookup("Bounded Retrieval Systems", None, 1)
-        .await
-        .unwrap();
+    let first_page = service.lookup(&shared_title, None, 1).await.unwrap();
     assert_eq!(first_page.items.len(), 1);
     assert_eq!(first_page.items[0].paper.paper_id, first.id);
     assert_eq!(first_page.items[0].match_kind, MatchKind::ExactTitle);
     let cursor = first_page.next_cursor.as_deref().unwrap();
     let second_page = service
-        .lookup("Bounded Retrieval Systems", Some(cursor), 1)
+        .lookup(&shared_title, Some(cursor), 1)
         .await
         .unwrap();
     assert_eq!(second_page.items[0].paper.paper_id, second.id);
+    assert_eq!(second_page.items[0].match_kind, MatchKind::ExactTitle);
     assert!(matches!(
         service
             .lookup("different private query", Some(cursor), 1)
@@ -299,7 +303,7 @@ async fn postgres_search_is_deterministic_private_and_never_mutates_queue_state(
     .unwrap();
     let citation_union = service
         .explore(
-            "bounded",
+            &format!("bounded {search_tag}"),
             SearchFilters {
                 sources: vec![SearchSource::ArxivMetadata],
                 ..SearchFilters::default()
@@ -340,7 +344,7 @@ async fn postgres_search_is_deterministic_private_and_never_mutates_queue_state(
         .explore(
             "unrelated quantum term",
             SearchFilters {
-                categories: vec![format!("ds.A{}", &unique[..8])],
+                categories: vec![category.clone()],
                 sources: vec![SearchSource::ArxivMetadata],
                 ..SearchFilters::default()
             },
@@ -355,7 +359,10 @@ async fn postgres_search_is_deterministic_private_and_never_mutates_queue_state(
         3,
         "explicit category filters participate in the auditable candidate union"
     );
-    let suggestions = service.suggestions("retrieval systems").await.unwrap();
+    let suggestions = service
+        .suggestions(&format!("retrieval {search_tag}"))
+        .await
+        .unwrap();
     assert!(suggestions.items.len() <= 8);
     assert!(
         suggestions
@@ -372,7 +379,7 @@ async fn postgres_search_is_deterministic_private_and_never_mutates_queue_state(
                 operation_id,
                 query: "Retrieval Systems".to_owned(),
                 filters: SearchFilters {
-                    categories: vec![category],
+                    categories: vec![category.clone()],
                     ..SearchFilters::default()
                 },
                 sort: SearchSort::Relevance,
@@ -394,7 +401,7 @@ async fn postgres_search_is_deterministic_private_and_never_mutates_queue_state(
                 operation_id: duplicate_operation_id,
                 query: "Retrieval Systems".to_owned(),
                 filters: SearchFilters {
-                    categories: vec![format!("ds.A{}", &unique[..8])],
+                    categories: vec![category],
                     ..SearchFilters::default()
                 },
                 sort: SearchSort::Relevance,
@@ -419,7 +426,8 @@ async fn postgres_search_is_deterministic_private_and_never_mutates_queue_state(
     sqlx::query(
         r"
         UPDATE saved_search_operations
-        SET expires_at = statement_timestamp() - interval '1 second'
+        SET created_at = created_at - interval '31 days',
+            expires_at = expires_at - interval '31 days'
         WHERE user_id = $1 AND operation_id = $2
         ",
     )
@@ -428,14 +436,18 @@ async fn postgres_search_is_deterministic_private_and_never_mutates_queue_state(
     .execute(database.pool())
     .await
     .unwrap();
-    assert_eq!(
-        database
-            .discovery_search()
-            .cleanup_expired_operations(10)
+    database
+        .discovery_search()
+        .cleanup_expired_operations(10)
+        .await
+        .unwrap();
+    let active_operations: Vec<Uuid> =
+        sqlx::query_scalar("SELECT operation_id FROM saved_search_operations WHERE user_id = $1")
+            .bind(owner.id.into_inner())
+            .fetch_all(database.pool())
             .await
-            .unwrap(),
-        1
-    );
+            .unwrap();
+    assert_eq!(active_operations, vec![duplicate_operation_id]);
 
     let other_saved = service
         .save(

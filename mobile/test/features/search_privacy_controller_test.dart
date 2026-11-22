@@ -43,6 +43,7 @@ void main() {
 
   test('account switch clears visible history synchronously', () async {
     final store = SharedPreferencesSearchPrivacyStore();
+    final now = DateTime.now().toUtc();
     await store.saveHistory(
       _scopeA.accountId,
       PrivateSearchHistorySnapshot(
@@ -51,7 +52,7 @@ void main() {
           PrivateSearchHistoryEntry(
             query: 'private account A query',
             mode: PrivateSearchHistoryMode.lookup,
-            searchedAt: DateTime.utc(2026, 8, 28),
+            searchedAt: now,
           ),
         ],
       ),

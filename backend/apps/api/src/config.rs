@@ -487,6 +487,7 @@ pub struct ReadingFeedFeatureConfig {
     pub default_limit: u32,
     pub max_limit: u32,
     pub cursor_ttl: Duration,
+    pub recommendation_rollout: RecommendationRolloutConfig,
 }
 
 impl Default for ReadingFeedFeatureConfig {
@@ -495,6 +496,7 @@ impl Default for ReadingFeedFeatureConfig {
             default_limit: 20,
             max_limit: 50,
             cursor_ttl: Duration::from_secs(86_400),
+            recommendation_rollout: RecommendationRolloutConfig::default(),
         }
     }
 }
@@ -508,6 +510,7 @@ impl ReadingFeedFeatureConfig {
                 "READING_FEED_CURSOR_TTL_SECONDS",
                 86_400_u64,
             )?),
+            recommendation_rollout: RecommendationRolloutConfig::from_env()?,
         })
     }
 
@@ -522,7 +525,72 @@ impl ReadingFeedFeatureConfig {
     }
 
     fn validate(self) -> anyhow::Result<()> {
+        self.recommendation_rollout.validate()?;
         self.policy().map(|_| ()).map_err(anyhow::Error::from)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RecommendationScoringPolicy {
+    #[default]
+    WeightedV1,
+    CitationOnlineV1,
+}
+
+impl FromStr for RecommendationScoringPolicy {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            recommendations::SCORING_POLICY_VERSION_V1 => Ok(Self::WeightedV1),
+            recommendations::SCORING_POLICY_VERSION_CITATION_ONLINE_V1 => {
+                Ok(Self::CitationOnlineV1)
+            }
+            _ => anyhow::bail!(
+                "RECOMMENDATION_SCORING_POLICY must be weighted_v1 or citation_online_v1"
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RecommendationRolloutConfig {
+    pub scoring_policy: RecommendationScoringPolicy,
+    pub citation_online_percent: u8,
+    pub citation_shadow: bool,
+}
+
+impl Default for RecommendationRolloutConfig {
+    fn default() -> Self {
+        Self {
+            scoring_policy: RecommendationScoringPolicy::WeightedV1,
+            citation_online_percent: 100,
+            citation_shadow: false,
+        }
+    }
+}
+
+impl RecommendationRolloutConfig {
+    fn from_env() -> anyhow::Result<Self> {
+        let rollout = Self {
+            scoring_policy: match std::env::var("RECOMMENDATION_SCORING_POLICY") {
+                Ok(policy) => policy.parse()?,
+                Err(std::env::VarError::NotPresent) => RecommendationScoringPolicy::default(),
+                Err(error) => return Err(error.into()),
+            },
+            citation_online_percent: env_parse("RECOMMENDATION_CITATION_ONLINE_PERCENT", 100)?,
+            citation_shadow: env_bool("RECOMMENDATION_CITATION_SHADOW", false)?,
+        };
+        rollout.validate()?;
+        Ok(rollout)
+    }
+
+    fn validate(self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.citation_online_percent <= 100,
+            "RECOMMENDATION_CITATION_ONLINE_PERCENT must be between 0 and 100"
+        );
+        Ok(())
     }
 }
 

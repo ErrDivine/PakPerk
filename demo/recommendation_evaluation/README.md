@@ -51,3 +51,51 @@ benchmark harness may instead supply `measurement_source: measured`, but live
 wall-clock measurements remain staging evidence and must not become a flaky
 deterministic quality gate. These fixtures are not claims about production
 relevance or online outcomes.
+
+The citation worked fixture ranks P, Q, R, S with feature masks 1, 2, 5, 4.
+It runs the production builder on the same replay pages with weighted
+ranking, fixed citation weights, and learned citation weights. It prints
+paired nDCG@10 differences and judgment coverage.
+
+```sh
+cd backend
+cargo test -p recommendations --test offline_fixture --locked citation_online_worked_example -- --nocapture
+```
+
+For a live rollout comparison, run [rollout_outcomes.sql](rollout_outcomes.sql)
+on the retained database with the same completed UTC window for both policies.
+Run it after the 30-minute attribution window closes and before the cohort's
+24-hour batches expire. The report returns aggregate counts only.
+Use the same client build in both arms. Save attribution requires
+`RECOMMENDATION_EVENTS_ENABLED=true`, behavioral interaction collection, and
+a build that uses the Library operation ID as the recommendation save event ID.
+Older builds' save events cannot be matched exactly.
+
+```sh
+psql -v ON_ERROR_STOP=1 -v window_start="$window_start" -v window_end="$window_end" \
+  -f demo/recommendation_evaluation/rollout_outcomes.sql
+```
+
+A session starts at an account's first observed For You page and continues
+through subsequent page batches under the same scoring policy and Library
+revision while consecutive batches are at most 30 minutes apart. Each batch
+contributes its first serve. Empty served batches use their creation time as
+an approximation. Session counts include accounts that never save. The report
+uses accepted Library writes with discovery provenance and a matching
+consented save interaction on the served card. The event and write must
+share the account, paper, and operation ID. Saves are deduplicated by base
+arXiv ID per session. An accepted dismissal counts once per served card within
+the same attribution window. Both measures use the 30 minutes after each
+card's first serve. Shadow predictions have no served batches of their own.
+
+The report counts observed first serves. Reusing a cached batch can collapse
+repeat visits and continuation cards served after the window ends are outside
+the sample. Record comparable event collection and client coverage in both
+arms. Use observed cursor walks for an exact session-level release decision.
+
+For refill latency, group `recommendation_refill_completed` mobile events in
+the same UTC window by `recommendation_policy`. Compute p50 and p95 from
+`elapsed_ms` for `outcome=success`. Report that sample size and the counts
+for `stale`, `failed`, and `canceled` alongside the percentiles. Timing starts
+at the three-card trigger, includes waiting for a foreground refresh, and ends
+when the controller accepts the continuation or records its outcome.

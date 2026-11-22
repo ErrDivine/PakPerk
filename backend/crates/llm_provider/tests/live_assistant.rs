@@ -15,7 +15,8 @@
 use std::time::{Duration, Instant};
 
 use domain::{
-    AssistantAnswerStatus, AssistantRequest, AssistantScope, AssistantScopeKind, AssistantAnswerStyle,
+    AssistantAnswerStatus, AssistantAnswerStyle, AssistantRequest, AssistantScope,
+    AssistantScopeKind,
 };
 use llm_provider::{
     AssistantCompletionRequest, AssistantProvider, BlockEvidenceExcerpt, OpenAiCompatibleConfig,
@@ -26,7 +27,9 @@ use url::Url;
 use uuid::Uuid;
 
 fn env(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|value| !value.trim().is_empty())
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
 }
 
 fn evidence(paper_id: Uuid, heading: &str, page: u32, text: &str) -> BlockEvidenceExcerpt {
@@ -66,34 +69,8 @@ fn request(
     }
 }
 
-#[tokio::test]
-#[ignore = "calls a live model endpoint; set LIVE_LLM_* and run with --ignored"]
-async fn live_assistant_answers_pass_evidence_validation() {
-    let base = env("LIVE_LLM_PROXY_URL")
-        .or_else(|| env("LIVE_LLM_BASE_URL"))
-        .expect("set LIVE_LLM_BASE_URL");
-    let mut config = OpenAiCompatibleConfig::default();
-    config.base_url = Url::parse(&base).expect("LIVE_LLM_BASE_URL must be a URL");
-    config.api_key = Some(SecretString::from(
-        env("LIVE_LLM_API_KEY").expect("set LIVE_LLM_API_KEY"),
-    ));
-    config.chat_model = env("LIVE_LLM_MODEL").expect("set LIVE_LLM_MODEL");
-    config.thinking = env("LIVE_LLM_THINKING")
-        .map(|value| value.parse::<ThinkingMode>().expect("LIVE_LLM_THINKING"))
-        .unwrap_or_default();
-    config.request_timeout = Duration::from_secs(180);
-    config.maximum_retries = 0;
-    let attempts = env("LIVE_LLM_ATTEMPTS")
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(3);
-    println!(
-        "model={} thinking={:?} attempts_per_answerable_question={attempts}",
-        config.chat_model, config.thinking
-    );
-    let provider = OpenAiCompatibleProvider::new_assistant_only(config).expect("provider config");
-
-    let paper_id = Uuid::new_v4();
-    let blocks = vec![
+fn lora_evidence(paper_id: Uuid) -> [BlockEvidenceExcerpt; 4] {
+    [
         evidence(
             paper_id,
             "Abstract",
@@ -124,10 +101,45 @@ async fn live_assistant_answers_pass_evidence_validation() {
              low-rank decomposition W0 + BA, where B and A are trainable and only the rank r is a \
              hyperparameter.",
         ),
-    ];
+    ]
+}
+
+#[tokio::test]
+#[ignore = "calls a live model endpoint; set LIVE_LLM_* and run with --ignored"]
+async fn live_assistant_answers_pass_evidence_validation() {
+    let base = env("LIVE_LLM_PROXY_URL")
+        .or_else(|| env("LIVE_LLM_BASE_URL"))
+        .expect("set LIVE_LLM_BASE_URL");
+    let config = OpenAiCompatibleConfig {
+        base_url: Url::parse(&base).expect("LIVE_LLM_BASE_URL must be a URL"),
+        api_key: Some(SecretString::from(
+            env("LIVE_LLM_API_KEY").expect("set LIVE_LLM_API_KEY"),
+        )),
+        chat_model: env("LIVE_LLM_MODEL").expect("set LIVE_LLM_MODEL"),
+        thinking: env("LIVE_LLM_THINKING")
+            .map(|value| value.parse::<ThinkingMode>().expect("LIVE_LLM_THINKING"))
+            .unwrap_or_default(),
+        request_timeout: Duration::from_secs(180),
+        maximum_retries: 0,
+        ..OpenAiCompatibleConfig::default()
+    };
+    let attempts = env("LIVE_LLM_ATTEMPTS")
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(3);
+    println!(
+        "model={} thinking={:?} attempts_per_answerable_question={attempts}",
+        config.chat_model, config.thinking
+    );
+    let provider = OpenAiCompatibleProvider::new_assistant_only(config).expect("provider config");
+
+    let paper_id = Uuid::new_v4();
+    let blocks = lora_evidence(paper_id);
     // (question, answerable from the blocks?)
     let questions = [
-        ("What does LoRA freeze, and what does it train instead?", true),
+        (
+            "What does LoRA freeze, and what does it train instead?",
+            true,
+        ),
         (
             "By how much does LoRA reduce trainable parameters and GPU memory?",
             true,
@@ -177,7 +189,10 @@ async fn live_assistant_answers_pass_evidence_validation() {
                                 let index = blocks
                                     .iter()
                                     .position(|block| block.block_id == reference.block_id)
-                                    .map_or_else(|| "?".to_owned(), |index| format!("B{}", index + 1));
+                                    .map_or_else(
+                                        || "?".to_owned(),
+                                        |index| format!("B{}", index + 1),
+                                    );
                                 format!("{index}[{}..{}]", reference.start, reference.end)
                             })
                             .collect::<Vec<_>>()
@@ -226,7 +241,9 @@ fn replay_recorded_exchanges_through_the_validator() {
                 paper_id,
                 generation: 1,
                 section_heading: block["section_heading"].as_str().map(str::to_owned),
-                page_start: block["page_start"].as_u64().map(|page| page as u32),
+                page_start: block["page_start"]
+                    .as_u64()
+                    .map(|page| u32::try_from(page).expect("recorded page_start must fit in u32")),
                 text: block["text"].as_str().unwrap().to_owned(),
             })
             .collect::<Vec<_>>();
@@ -237,8 +254,13 @@ fn replay_recorded_exchanges_through_the_validator() {
             .as_str()
             .unwrap_or("");
         total += 1;
-        match llm_provider::validate_assistant_output(content, &completion, Uuid::new_v4(), None, None)
-        {
+        match llm_provider::validate_assistant_output(
+            content,
+            &completion,
+            Uuid::new_v4(),
+            None,
+            None,
+        ) {
             Ok(answer) => {
                 valid += 1;
                 println!(

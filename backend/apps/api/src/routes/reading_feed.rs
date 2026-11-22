@@ -320,7 +320,7 @@ fn reading_feed_error(request_id: RequestId, error_value: ReadingFeedServiceErro
             request_id,
             StatusCode::CONFLICT,
             "READING_FEED_CURSOR_STALE",
-            "The To Read list changed. Restart from the first page.",
+            "The reading feed changed. Restart from the first page.",
             true,
         ),
         ReadingFeedServiceError::Suspended => ApiError::new(
@@ -436,6 +436,10 @@ mod tests {
         let stale = reading_feed_error(request_id, ReadingFeedServiceError::CursorStale);
         assert_eq!(stale.status, StatusCode::CONFLICT);
         assert_eq!(stale.code, "READING_FEED_CURSOR_STALE");
+        assert_eq!(
+            stale.message,
+            "The reading feed changed. Restart from the first page."
+        );
         assert!(stale.retryable);
     }
 
@@ -592,6 +596,7 @@ mod tests {
             Ok(ReadingFeedSnapshot::Empty {
                 library_revision: 7,
                 recommendations: RecommendationPage {
+                    feedback_revision: 0,
                     items: Vec::new(),
                     next_position: None,
                 },

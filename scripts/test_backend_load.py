@@ -41,7 +41,9 @@ RECOMMENDATION_TOKEN_SENTINEL = (
 SEARCH_QUERY_SENTINEL = "private paper title fixture must never be recorded"
 COMMENT_SENTINEL = "private comment content must never be recorded"
 METADATA_SENTINEL = "private metadata title must never be recorded"
+FOREIGN_POLICY_SENTINEL = "private policy text must never be recorded"
 PAPER_IDS = tuple(str(uuid.UUID(int=index + 1)) for index in range(220))
+RECOMMENDATION_BATCH_ID = str(uuid.UUID(int=30_001))
 COMMENTS_PAPER_ID = PAPER_IDS[0]
 MUTATION_PAPER_ID = str(uuid.UUID(int=10_001))
 IMPORT_OPERATION_ID = str(uuid.UUID(int=20_001))
@@ -61,6 +63,8 @@ class MockApiHandler(BaseHTTPRequestHandler):
     active_imports = 0
     maximum_active_imports = 0
     slow_metadata_seconds = 0.0
+    recommendation_policy: str | None = None
+    recommendation_pending_requests = 0
     state_lock = threading.Lock()
 
     def log_message(self, _format: str, *_args: Any) -> None:
@@ -79,6 +83,8 @@ class MockApiHandler(BaseHTTPRequestHandler):
             cls.active_imports = 0
             cls.maximum_active_imports = 0
             cls.slow_metadata_seconds = 0.0
+            cls.recommendation_policy = None
+            cls.recommendation_pending_requests = 0
 
     def _json(self, status: int, payload: dict[str, Any]) -> None:
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
@@ -172,15 +178,44 @@ class MockApiHandler(BaseHTTPRequestHandler):
                 )
                 return
             if authorization == f"Bearer {RECOMMENDATION_TOKEN_SENTINEL}":
+                explicit_for_you = query.get("recommendation_mode") == ["for_you"]
+                with type(self).state_lock:
+                    policy = type(self).recommendation_policy
+                    pending = (
+                        explicit_for_you
+                        and type(self).recommendation_pending_requests > 0
+                    )
+                    if pending:
+                        type(self).recommendation_pending_requests -= 1
+                if pending:
+                    self._json(
+                        503,
+                        {
+                            "error": {
+                                "code": "QUEUE_AUTHORITY_UNAVAILABLE",
+                                "retryable": True,
+                            }
+                        },
+                    )
+                    return
                 self._json(
                     200,
                     {
                         "mode": "recommendations",
                         "decision": {
+                            "policy_version": "queue_first_v1",
                             "library_revision": 42,
                             "active_to_read_count": 0,
                             "queue_proven_empty": True,
                         },
+                        "batch_id": (
+                            RECOMMENDATION_BATCH_ID if explicit_for_you else None
+                        ),
+                        "batch_metadata": (
+                            {"recommendation_policy_version": policy}
+                            if explicit_for_you
+                            else None
+                        ),
                         "items": [
                             {
                                 "paper": {
@@ -188,7 +223,12 @@ class MockApiHandler(BaseHTTPRequestHandler):
                                     "title": METADATA_SENTINEL,
                                 },
                                 "queue": None,
-                                "source": "discovery_v1",
+                                "source": (
+                                    "for_you_v1" if explicit_for_you else "discovery_v1"
+                                ),
+                                "recommendation": (
+                                    {"mode": "for_you"} if explicit_for_you else None
+                                ),
                             }
                         ],
                         "next_cursor": None,
@@ -588,6 +628,10 @@ class BackendLoadContractTest(unittest.TestCase):
         )
         self.assertEqual(evidence["workload"]["paper_search_request_cap"], 4)
         self.assertEqual(evidence["workload"]["paper_import_request_cap"], 4)
+        self.assertNotIn(
+            "recommendation_policy_check",
+            evidence["measurements"]["scenarios"]["reading_feed_recommendations"],
+        )
         self.assertFalse(evidence["workload"]["private_fixture_content_recorded"])
         import_measurement = evidence["measurements"]["scenarios"][
             "paper_import_replay"
@@ -623,6 +667,196 @@ class BackendLoadContractTest(unittest.TestCase):
         ):
             self.assertNotIn(private_value, serialized)
 
+    def test_expected_recommendation_policy_requires_matching_persisted_for_you(
+        self,
+    ) -> None:
+        token_file = self.private_file(
+            "recommendation-token", RECOMMENDATION_TOKEN_SENTINEL
+        )
+        for index, (expected, served, failure) in enumerate(
+            (
+                ("weighted_v1", "weighted_v1", None),
+                ("citation_online_v1", "citation_online_v1", None),
+                ("citation_online_v1", "weighted_v1", "policy did not match"),
+                ("citation_online_v1", FOREIGN_POLICY_SENTINEL, "policy was invalid"),
+            )
+        ):
+            with self.subTest(expected=expected, served=served):
+                MockApiHandler.recommendation_policy = served
+                MockApiHandler.recommendation_pending_requests = int(
+                    expected == served == "citation_online_v1"
+                )
+                output = self.directory / f"policy-{index}.json"
+                result, stdout, stderr = self.run_main(
+                    self.base_arguments(output)
+                    + [
+                        "--reading-feed-recommendation-token-file",
+                        str(token_file),
+                        "--expected-recommendation-policy",
+                        expected,
+                    ]
+                )
+                serialized = stdout + stderr
+                if failure is None:
+                    self.assertEqual(result, 0, stderr)
+                    artifact = output.read_text(encoding="utf-8")
+                    serialized += artifact
+                    evidence = json.loads(artifact)
+                    scenario = evidence["measurements"]["scenarios"][
+                        "reading_feed_recommendations"
+                    ]
+                    self.assertEqual(MockApiHandler.recommendation_pending_requests, 0)
+                    self.assertGreater(scenario["successful_requests"], 0)
+                    self.assertEqual(scenario["errors"], 0)
+                    self.assertEqual(
+                        scenario["recommendation_policy_check"],
+                        {
+                            "expected_policy": expected,
+                            "matching_responses": scenario["successful_requests"],
+                            "invalid_responses": 0,
+                        },
+                    )
+                else:
+                    self.assertEqual(result, 1, stderr)
+                    self.assertIn(failure, stderr)
+                    self.assertFalse(output.exists())
+                for private_value in (
+                    FOREIGN_POLICY_SENTINEL,
+                    RECOMMENDATION_BATCH_ID,
+                    RECOMMENDATION_TOKEN_SENTINEL,
+                    PAPER_IDS[1],
+                    METADATA_SENTINEL,
+                ):
+                    self.assertNotIn(private_value, serialized)
+
+    def test_for_you_policy_requires_queue_authority_and_persisted_for_you_items(
+        self,
+    ) -> None:
+        item = {
+            "paper": {"paper_id": PAPER_IDS[0]},
+            "queue": None,
+            "source": "for_you_v1",
+            "recommendation": {"mode": "for_you"},
+        }
+        page = {
+            "mode": "recommendations",
+            "decision": {
+                "policy_version": "queue_first_v1",
+                "library_revision": 1,
+                "active_to_read_count": 0,
+                "queue_proven_empty": True,
+            },
+            "batch_id": RECOMMENDATION_BATCH_ID,
+            "batch_metadata": {"recommendation_policy_version": "citation_online_v1"},
+            "items": [item],
+            "server_time": "2026-08-19T00:00:00Z",
+        }
+        LOAD.validate_reading_feed(page, "recommendations", 20, "citation_online_v1")
+        for changes in (
+            {"decision": {**page["decision"], "policy_version": None}},
+            {"decision": {**page["decision"], "policy_version": "queue_first_v2"}},
+            {"batch_id": None},
+            {"batch_id": "malformed"},
+            {"batch_id": str(uuid.UUID(int=0))},
+            {"batch_metadata": []},
+            {"items": []},
+            {"items": [{**item, "recommendation": {"mode": "recent"}}]},
+            {"items": [{**item, "source": "discovery_v1"}]},
+            {
+                "items": [
+                    {
+                        **item,
+                        "source": "recent_v1",
+                        "recommendation": {"mode": "recent"},
+                    }
+                ]
+            },
+        ):
+            with self.subTest(fields=changes.keys()), self.assertRaises(
+                LOAD.ProtocolError
+            ):
+                LOAD.validate_reading_feed(
+                    {**page, **changes}, "recommendations", 20, "citation_online_v1"
+                )
+
+    def test_default_recommendation_feed_accepts_current_mode_pairs_and_legacy_discovery(
+        self,
+    ) -> None:
+        page = {
+            "mode": "recommendations",
+            "decision": {
+                "library_revision": 1,
+                "active_to_read_count": 0,
+                "queue_proven_empty": True,
+            },
+            "server_time": "2026-08-19T00:00:00Z",
+        }
+        item = {"paper": {"paper_id": PAPER_IDS[0]}, "queue": None}
+        for mode in ("recent", "following", "for_you", "explore"):
+            with self.subTest(mode=mode):
+                ranked = {
+                    **item,
+                    "source": f"{mode}_v1",
+                    "recommendation": {"mode": mode},
+                }
+                LOAD.validate_reading_feed(
+                    {**page, "items": [ranked]}, "recommendations", 20
+                )
+        legacy = {**item, "source": "discovery_v1"}
+        LOAD.validate_reading_feed({**page, "items": [legacy]}, "recommendations", 20)
+        for source, recommendation in (
+            ("for_you_v1", {"mode": "recent"}),
+            ("for_you_v1", None),
+            ("recent_v2", {"mode": "recent"}),
+            ("discovery_v1", {"mode": "for_you"}),
+            ([], {"mode": "recent"}),
+        ):
+            with self.subTest(source=source), self.assertRaises(LOAD.ProtocolError):
+                invalid = {**item, "source": source, "recommendation": recommendation}
+                LOAD.validate_reading_feed(
+                    {**page, "items": [invalid]}, "recommendations", 20
+                )
+
+    def test_recommendation_policy_protocol_error_fails_below_http_error_budget(
+        self,
+    ) -> None:
+        token_file = self.private_file(
+            "recommendation-token", RECOMMENDATION_TOKEN_SENTINEL
+        )
+        config = LOAD.parse_config(
+            self.base_arguments(self.directory / "unused.json")
+            + [
+                "--reading-feed-recommendation-token-file",
+                str(token_file),
+                "--expected-recommendation-policy",
+                "weighted_v1",
+            ]
+        )
+        scenario = "reading_feed_recommendations"
+        measurements = (
+            [
+                LOAD.Measurement("feed", 1000, True),
+                LOAD.Measurement("metadata", 1000, True),
+            ]
+            * 2
+            + [LOAD.Measurement(scenario, 1000, True)] * 100
+            + [LOAD.Measurement(scenario, 1000, False, "protocol")]
+        )
+
+        evidence = LOAD.build_evidence(
+            config, 2, 200, measurements, [], 100, False, True
+        )
+
+        self.assertEqual(
+            evidence["gate"]["failures"], [f"{scenario}:recommendation_policy"]
+        )
+        self.assertEqual(
+            evidence["measurements"]["scenarios"][scenario][
+                "recommendation_policy_check"
+            ]["invalid_responses"],
+            1,
+        )
+
     def test_private_workloads_fail_closed_without_complete_fixture_authority(
         self,
     ) -> None:
@@ -632,6 +866,20 @@ class BackendLoadContractTest(unittest.TestCase):
             LOAD.parse_config(
                 self.base_arguments(output)
                 + ["--paper-search-query-file", str(query_file)]
+            )
+        with self.assertRaisesRegex(
+            LOAD.ConfigurationError, "requires a recommendation token"
+        ):
+            LOAD.parse_config(
+                self.base_arguments(output)
+                + ["--expected-recommendation-policy", "weighted_v1"]
+            )
+        with self.assertRaisesRegex(
+            LOAD.ConfigurationError, "expected recommendation policy is invalid"
+        ):
+            LOAD.parse_config(
+                self.base_arguments(output)
+                + ["--expected-recommendation-policy", FOREIGN_POLICY_SENTINEL]
             )
 
         token_file = self.private_file("token", TOKEN_SENTINEL)
@@ -879,6 +1127,15 @@ class BackendLoadContractTest(unittest.TestCase):
         self.assertIn("--allow-library-mutations", workflow)
         self.assertIn("--reading-feed-queue-token-file", workflow)
         self.assertIn("--reading-feed-recommendation-token-file", workflow)
+        self.assertIn("options: [disabled, weighted_v1, citation_online_v1]", workflow)
+        self.assertIn(
+            "expected_recommendation_policy requires include_reading_feed_recommendations",
+            workflow,
+        )
+        self.assertIn(
+            '--expected-recommendation-policy "$EXPECTED_RECOMMENDATION_POLICY"',
+            workflow,
+        )
         self.assertIn("--paper-search-query-file", workflow)
         self.assertIn("--allow-paper-import-replays", workflow)
         self.assertIn("RUN_DEDICATED_STAGING_PAPER_IMPORT_REPLAYS", workflow)
@@ -891,6 +1148,7 @@ class BackendLoadContractTest(unittest.TestCase):
         all_dispatch_inputs = (
             "include_reading_feed_queue",
             "include_reading_feed_recommendations",
+            "expected_recommendation_policy",
             "include_paper_title_search",
             "allow_library_mutations",
             "mutation_confirmation",

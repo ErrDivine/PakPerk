@@ -10,17 +10,18 @@ use db::{
     RecommendationBatchBlockRequest, RecommendationBatchPersistOutcome,
     RecommendationBatchPersistRequest, RecommendationBatchRepository,
     RecommendationBatchServeOutcome, RecommendationBatchServeRequest,
-    RecommendationGenerationEnqueue, RecommendationGenerationEnqueueOutcome,
-    RecommendationGenerationJobState, RecommendationGenerationRepository,
-    RecommendationGenerationRetryOutcome, StoredRecommendationBatchStatus,
+    RecommendationCitationLearningContext, RecommendationGenerationEnqueue,
+    RecommendationGenerationEnqueueOutcome, RecommendationGenerationJobState,
+    RecommendationGenerationRepository, RecommendationGenerationRetryOutcome,
+    StoredRecommendationBatchStatus,
 };
 use observability::{
-    RecommendationBatchServeClass as BatchServeMetricClass,
+    CitationRankingMetrics, RecommendationBatchServeClass as BatchServeMetricClass,
     RecommendationBatchServeOutcome as BatchServeMetricOutcome,
     RecommendationGeneratorClass as GeneratorMetricClass,
     RecommendationGeneratorOutcome as GeneratorMetricOutcome,
     RecommendationGeneratorRole as GeneratorMetricRole, RecommendationModeClass as ModeMetricClass,
-    RecommendationSourceClass, record_recommendation_batch_completion,
+    RecommendationSourceClass, record_citation_ranking, record_recommendation_batch_completion,
     record_recommendation_batch_serve, record_recommendation_generator,
     record_recommendation_source_invocation,
 };
@@ -30,12 +31,12 @@ use reading_feed::{
     RecommendationResultPage, RecommendationSource,
 };
 use recommendations::{
-    CandidateDocument, DiscoveryProfileSnapshot, MetadataEmbeddingInput, ProvenEmptyQueueBinding,
-    RECOMMENDATION_ALGORITHM_VERSION_V1, RecommendationBatchBuildRequest,
+    CandidateDocument, CitationOnlineInputs, DiscoveryProfileSnapshot, MetadataEmbeddingInput,
+    ProvenEmptyQueueBinding, RECOMMENDATION_ALGORITHM_VERSION_V1, RecommendationBatchBuildRequest,
     RecommendationGeneratorClass, RecommendationGeneratorObserver, RecommendationGeneratorOutcome,
     RecommendationGeneratorRole, RecommendationGeneratorRun, RecommendationMode, RerankPolicy,
-    ScoringPolicy, build_recommendation_batch, metadata_embedding_v1,
-    summarize_ranking_composition,
+    SCORING_POLICY_VERSION_CITATION_ONLINE_V1, SCORING_POLICY_VERSION_V1, ScoringPolicy,
+    build_recommendation_batch, metadata_embedding_v1, summarize_ranking_composition,
 };
 use research_profiles::{
     DiscoveryMode, InterestGroup, ProfileSettings, ResearchProfileService, ResearchProfileSnapshot,
@@ -43,6 +44,8 @@ use research_profiles::{
 use sha2::{Digest as _, Sha256};
 use tracing::warn;
 use uuid::Uuid;
+
+use crate::config::{RecommendationRolloutConfig, RecommendationScoringPolicy};
 
 /// Application adapter below `ReadingFeedService`'s queue gate. It receives
 /// only candidates selected by the same snapshot that proved emptiness, then
@@ -53,6 +56,7 @@ pub(crate) struct BatchRecommendationSource {
     generation: RecommendationGenerationRepository,
     profiles: Option<ResearchProfileService>,
     policy: BatchSourcePolicy,
+    rollout: RecommendationRolloutConfig,
 }
 
 #[derive(Clone, Copy)]
@@ -66,7 +70,6 @@ struct PreparedRecommendation {
     selected_mode: RecommendationMode,
     paper_ids: Vec<domain::PaperId>,
     feedback_revision: i64,
-    candidate_history: BTreeMap<domain::PaperId, recommendations::RecommendationCandidateHistory>,
     saved_search_revision_digest: Option<[u8; 32]>,
     seed: u64,
     query_key: String,
@@ -145,6 +148,7 @@ impl BatchRecommendationSource {
     pub(crate) fn new(
         batches: RecommendationBatchRepository,
         profiles: Option<ResearchProfileService>,
+        rollout: RecommendationRolloutConfig,
     ) -> Self {
         let generation = RecommendationGenerationRepository::new(batches.pool().clone());
         Self {
@@ -152,6 +156,7 @@ impl BatchRecommendationSource {
             generation,
             profiles,
             policy: BatchSourcePolicy::Configured,
+            rollout,
         }
     }
 
@@ -165,6 +170,7 @@ impl BatchRecommendationSource {
             generation,
             profiles: None,
             policy: BatchSourcePolicy::RecentOnly,
+            rollout: RecommendationRolloutConfig::default(),
         }
     }
 
@@ -175,52 +181,58 @@ impl BatchRecommendationSource {
     ) -> Result<RecommendationContext, RecommendationError> {
         let max_items = usize::try_from(limit).unwrap_or(usize::MAX);
         let Some(service) = &self.profiles else {
-            return Ok(fallback_context(max_items));
+            return self.metadata_only_context(user_id, max_items).await;
         };
         let snapshot = match service.get(user_id).await {
             Ok(snapshot) => snapshot,
             Err(_error_value) => {
                 warn!(
                     error.kind = "recommendation_profile_unavailable",
-                    "recommendation profile was unavailable; using deterministic defaults"
+                    "recommendation profile was unavailable"
                 );
-                return Ok(fallback_context(max_items));
+                return Err(RecommendationError::Unavailable);
             }
         };
         let Some((rerank_policy, scoring_policy)) = ranking_policies(&snapshot.settings, max_items)
         else {
             warn!(
                 error.kind = "recommendation_profile_invalid",
-                "recommendation profile policy was invalid; using deterministic defaults"
+                "recommendation profile policy was invalid"
             );
-            return Ok(fallback_context(max_items));
+            return Err(RecommendationError::Unavailable);
         };
-        let mut profile = map_profile(&snapshot);
-        if profile.personalization_enabled {
-            profile.historical_seeds = self
-                .batches
-                .historical_seeds(user_id, 50)
-                .await
-                .map_err(recommendation_unavailable)?;
-        }
         Ok(RecommendationContext {
-            profile_revision: Some(snapshot.profile_revision),
-            profile,
+            profile_revision: (snapshot.profile_revision > 0).then_some(snapshot.profile_revision),
+            profile: map_profile(&snapshot),
             rerank_policy,
             scoring_policy,
         })
     }
 
+    async fn metadata_only_context(
+        &self,
+        user_id: domain::AuthenticatedUserId,
+        max_items: usize,
+    ) -> Result<RecommendationContext, RecommendationError> {
+        let mut context = fallback_context(max_items);
+        context.profile_revision = self
+            .batches
+            .profile_revision(user_id)
+            .await
+            .map_err(recommendation_unavailable)?;
+        Ok(context)
+    }
+
     async fn candidate_documents(
         &self,
-        mode: RecommendationMode,
+        legacy_citations: bool,
         papers: &[domain::PaperSummary],
-    ) -> Result<(Vec<domain::PaperId>, Vec<CandidateDocument>), RecommendationError> {
-        let paper_ids = papers
-            .iter()
-            .map(|paper| paper.paper_id)
-            .collect::<Vec<_>>();
-        let mut citation_neighbors = if mode == RecommendationMode::ForYou {
+    ) -> Result<Vec<CandidateDocument>, RecommendationError> {
+        let mut citation_neighbors = if legacy_citations {
+            let paper_ids = papers
+                .iter()
+                .map(|paper| paper.paper_id)
+                .collect::<Vec<_>>();
             self.batches
                 .citation_neighbors(&paper_ids)
                 .await
@@ -228,7 +240,7 @@ impl BatchRecommendationSource {
         } else {
             std::collections::BTreeMap::new()
         };
-        let documents = papers
+        Ok(papers
             .iter()
             .cloned()
             .map(|paper| {
@@ -237,8 +249,7 @@ impl BatchRecommendationSource {
                     .unwrap_or_default();
                 candidate_document(paper, neighbors)
             })
-            .collect();
-        Ok((paper_ids, documents))
+            .collect())
     }
 
     async fn prepare(
@@ -248,9 +259,19 @@ impl BatchRecommendationSource {
         let max_items = usize::try_from(request.limit).unwrap_or(usize::MAX);
         let mut context = match self.policy {
             BatchSourcePolicy::Configured => {
-                self.profile_context(request.user_id, request.limit).await?
+                match self.profile_context(request.user_id, request.limit).await {
+                    Ok(context) => context,
+                    Err(RecommendationError::Unavailable) if self.profiles.is_some() => {
+                        self.metadata_only_context(request.user_id, max_items)
+                            .await?
+                    }
+                    Err(error) => return Err(error),
+                }
             }
-            BatchSourcePolicy::RecentOnly => fallback_context(max_items),
+            BatchSourcePolicy::RecentOnly => {
+                self.metadata_only_context(request.user_id, max_items)
+                    .await?
+            }
         };
         let paper_ids = request
             .candidates
@@ -282,18 +303,22 @@ impl BatchRecommendationSource {
         let saved_search_revision_digest = (selected_mode == RecommendationMode::Following)
             .then(|| saved_search_context.map(|context| context.revision_digest))
             .flatten();
-        let feedback = self
-            .batches
-            .feedback_context(request.user_id, &paper_ids, request.now)
-            .await
-            .map_err(recommendation_unavailable)?;
-        let feedback_revision = feedback.revision;
-        let candidate_history = candidate_history_for_mode(
-            self.policy,
+        scoring_version(
+            self.rollout,
+            request.user_id,
             selected_mode,
             context.profile.personalization_enabled,
-            feedback.history,
-        );
+        )
+        .clone_into(&mut context.scoring_policy.version);
+        let citation_online =
+            context.scoring_policy.version == SCORING_POLICY_VERSION_CITATION_ONLINE_V1;
+        if request
+            .expected_citation_online
+            .is_some_and(|expected| expected != citation_online)
+        {
+            return Err(RecommendationError::RevisionStale);
+        }
+        let feedback_revision = request.candidates.feedback_revision;
         let seed = batch_seed(
             request,
             context.profile_revision,
@@ -308,12 +333,16 @@ impl BatchRecommendationSource {
             request.limit,
             saved_search_revision_digest.as_ref(),
         );
+        let query_key = if citation_online {
+            citation_page_key(&query_key, &paper_ids, request.candidates.next_position)
+        } else {
+            query_key
+        };
         Ok(PreparedRecommendation {
             context,
             selected_mode,
             paper_ids,
             feedback_revision,
-            candidate_history,
             saved_search_revision_digest,
             seed,
             query_key,
@@ -377,6 +406,7 @@ impl BatchRecommendationSource {
         &self,
         request: &RecommendationRequest,
         mode: RecommendationMode,
+        policy_version: &str,
         batch_id: Uuid,
         class: BatchServeMetricClass,
     ) -> Result<RecommendationResultPage, RecommendationError> {
@@ -386,6 +416,7 @@ impl BatchRecommendationSource {
                 user_id: request.user_id,
                 batch_id,
                 mode,
+                policy_version,
                 library_revision: request.library_revision,
                 limit: request.limit,
                 now: request.now,
@@ -448,8 +479,8 @@ impl BatchRecommendationSource {
         mut prepared: PreparedRecommendation,
     ) -> Result<RecommendationResultPage, RecommendationError> {
         let effective_mode = prepared.selected_mode;
-        let (_, documents) = match self
-            .candidate_documents(prepared.selected_mode, &request.candidates.items)
+        let documents = match self
+            .candidate_documents(false, &request.candidates.items)
             .await
         {
             Ok(documents) => documents,
@@ -469,12 +500,14 @@ impl BatchRecommendationSource {
         let batch = match build_batch(
             prepared.selected_mode,
             request.library_revision,
-            prepared.context,
+            &prepared.context,
             prepared.feedback_revision,
             &documents,
-            &prepared.candidate_history,
+            &BTreeMap::new(),
             request.now,
             request.limit,
+            None,
+            false,
         )
         .await
         {
@@ -537,6 +570,7 @@ impl BatchRecommendationSource {
         self.serve_batch(
             request,
             prepared.selected_mode,
+            &prepared.context.scoring_policy.version,
             batch_id,
             BatchServeMetricClass::InlineGeneration,
         )
@@ -590,6 +624,7 @@ impl BatchRecommendationSource {
                 self.serve_batch(
                     request,
                     prepared.selected_mode,
+                    &prepared.context.scoring_policy.version,
                     batch_id,
                     BatchServeMetricClass::GenerationQueue,
                 )
@@ -626,7 +661,7 @@ impl BatchRecommendationSource {
             Ok(None) => return RecommendationGenerationRunOutcome::Idle,
             Err(_error_value) => return RecommendationGenerationRunOutcome::Unavailable,
         };
-        let generation = self.process_generation(&claimed, now).await;
+        let generation = self.process_generation(&claimed, worker_id, now).await;
         // Lease checks must use wall clock time after generation. Reusing the
         // claim timestamp would let an expired owner mutate a reclaimed job.
         let completion_time = chrono::Utc::now();
@@ -692,32 +727,42 @@ impl BatchRecommendationSource {
     async fn process_generation(
         &self,
         claimed: &ClaimedRecommendationGeneration,
+        worker_id: &str,
         now: chrono::DateTime<chrono::Utc>,
     ) -> Result<RecommendationGenerationJobState, RecommendationError> {
+        let mut context = self
+            .profile_context(claimed.user_id, claimed.page_limit)
+            .await?;
+        let policy_version = scoring_version(
+            self.rollout,
+            claimed.user_id,
+            claimed.mode,
+            context.profile.personalization_enabled,
+        );
+        if claimed.profile_revision != context.profile_revision
+            || claimed.algorithm_version != RECOMMENDATION_ALGORITHM_VERSION_V1
+            || claimed.policy_version != policy_version
+        {
+            return Err(RecommendationError::RevisionStale);
+        }
         let papers = self
             .generation
             .candidates(claimed.job_id)
             .await
             .map_err(recommendation_unavailable)?;
-        if papers.len() != usize::try_from(claimed.candidate_count).unwrap_or(usize::MAX) {
+        if claimed.candidate_count > claimed.page_limit
+            || papers.len() != usize::try_from(claimed.candidate_count).unwrap_or(usize::MAX)
+        {
             return Err(RecommendationError::Unavailable);
         }
-        let mut context = self
-            .profile_context(claimed.user_id, claimed.page_limit)
-            .await?;
-        if claimed.profile_revision != context.profile_revision {
-            return Err(RecommendationError::RevisionStale);
-        }
+        let paper_ids = papers
+            .iter()
+            .map(|paper| paper.paper_id)
+            .collect::<Vec<_>>();
         if claimed.mode == RecommendationMode::Following {
             let saved = self
                 .generation
-                .saved_search_context(
-                    claimed.user_id,
-                    &papers
-                        .iter()
-                        .map(|paper| paper.paper_id)
-                        .collect::<Vec<_>>(),
-                )
+                .saved_search_context(claimed.user_id, &paper_ids)
                 .await
                 .map_err(recommendation_unavailable)?;
             if Some(saved.revision_digest) != claimed.saved_search_revision_digest {
@@ -725,23 +770,64 @@ impl BatchRecommendationSource {
             }
             context.profile.saved_query_matches = saved.matches;
         }
-        let feedback = self
-            .batches
-            .feedback_context(
-                claimed.user_id,
-                &papers
-                    .iter()
-                    .map(|paper| paper.paper_id)
-                    .collect::<Vec<_>>(),
-                now,
+        if selected_mode(feed_mode(claimed.mode), &context.profile) != claimed.mode {
+            return Err(RecommendationError::RevisionStale);
+        }
+
+        let citation_policy = policy_version == SCORING_POLICY_VERSION_CITATION_ONLINE_V1;
+        let for_you = claimed.mode == RecommendationMode::ForYou;
+        let shadow = self.rollout.citation_shadow && for_you && !citation_policy;
+        let citation_started = Instant::now();
+        let record_citation_failure = |error: &RecommendationError| {
+            if citation_policy && matches!(error, RecommendationError::Unavailable) {
+                record_citation_ranking(false, citation_started.elapsed(), None);
+            }
+        };
+        let citation_snapshot = if citation_policy {
+            Some(
+                self.citation_context(claimed, &paper_ids, now)
+                    .await
+                    .inspect_err(record_citation_failure)?,
+            )
+        } else if shadow {
+            tokio::time::timeout(
+                StdDuration::from_secs(2),
+                self.citation_context(claimed, &paper_ids, now),
             )
             .await
-            .map_err(recommendation_unavailable)?;
+            .ok()
+            .and_then(Result::ok)
+        } else {
+            None
+        };
+        let citation_read_time = citation_started.elapsed();
+        let (feedback, citation) = if let Some(snapshot) = citation_snapshot {
+            context.profile.historical_seeds = snapshot.historical_seeds;
+            (snapshot.feedback, Some(snapshot.citation))
+        } else {
+            if for_you {
+                context.profile.historical_seeds = self
+                    .batches
+                    .historical_seeds(claimed.user_id, 50)
+                    .await
+                    .map_err(recommendation_unavailable)?;
+            }
+            let history_ids = if for_you { paper_ids.as_slice() } else { &[] };
+            let feedback = self
+                .batches
+                .feedback_context(claimed.user_id, history_ids, now)
+                .await
+                .map_err(recommendation_unavailable)?;
+            (feedback, None)
+        };
         if feedback.revision != claimed.feedback_revision {
             return Err(RecommendationError::RevisionStale);
         }
+        policy_version.clone_into(&mut context.scoring_policy.version);
         context.rerank_policy.batch_seed = claimed.seed;
-        let (_, documents) = self.candidate_documents(claimed.mode, &papers).await?;
+        let documents = self
+            .candidate_documents(for_you && !citation_policy, &papers)
+            .await?;
         let candidate_history = candidate_history_for_mode(
             self.policy,
             claimed.mode,
@@ -751,37 +837,92 @@ impl BatchRecommendationSource {
         let batch = build_batch(
             claimed.mode,
             claimed.library_revision,
-            context,
+            &context,
             feedback.revision,
             &documents,
             &candidate_history,
             now,
             claimed.page_limit,
+            citation.as_ref().filter(|_| citation_policy),
+            false,
         )
-        .await?;
+        .await
+        .inspect_err(record_citation_failure)?;
+        let citation_rank_time = citation_started.elapsed();
         if batch.algorithm_version != claimed.algorithm_version
             || batch.policy_version != claimed.policy_version
         {
             return Err(RecommendationError::RevisionStale);
         }
+        let measurements = if citation_policy {
+            let measurements = citation_metrics(&batch, &paper_ids);
+            if measurements
+                .as_ref()
+                .is_none_or(|page| page.out_of_page != 0 || page.tier_inversions != 0)
+            {
+                record_citation_ranking(false, citation_rank_time, measurements);
+                return Err(RecommendationError::Unavailable);
+            }
+            measurements
+        } else {
+            None
+        };
         let outcome = self
             .batches
-            .persist_ready(RecommendationBatchPersistRequest {
-                user_id: claimed.user_id,
-                batch_id: claimed.batch_id,
-                query_key: &claimed.query_key,
-                local_date: claimed.local_date,
-                created_at: now,
-                expires_at: now + Duration::hours(24),
-                next_position: claimed.next_position,
-                saved_search_revision_digest: claimed.saved_search_revision_digest,
-                batch: &batch,
-            })
+            .persist_claimed_ready(
+                RecommendationBatchPersistRequest {
+                    user_id: claimed.user_id,
+                    batch_id: claimed.batch_id,
+                    query_key: &claimed.query_key,
+                    local_date: claimed.local_date,
+                    created_at: now,
+                    expires_at: now + Duration::hours(24),
+                    next_position: claimed.next_position,
+                    saved_search_revision_digest: claimed.saved_search_revision_digest,
+                    batch: &batch,
+                },
+                claimed,
+                worker_id,
+                chrono::Utc::now(),
+            )
             .await
-            .map_err(recommendation_unavailable)?;
+            .map_err(recommendation_unavailable)
+            .inspect_err(record_citation_failure)?;
         match outcome {
-            RecommendationBatchPersistOutcome::Ready { .. }
-            | RecommendationBatchPersistOutcome::Replayed {
+            RecommendationBatchPersistOutcome::Ready { .. } => {
+                if citation_policy {
+                    record_citation_ranking(false, citation_rank_time, measurements);
+                }
+                if let Some(citation) = citation.as_ref().filter(|_| shadow) {
+                    SCORING_POLICY_VERSION_CITATION_ONLINE_V1
+                        .clone_into(&mut context.scoring_policy.version);
+                    let shadow_started = Instant::now();
+                    let comparison = build_batch(
+                        claimed.mode,
+                        claimed.library_revision,
+                        &context,
+                        feedback.revision,
+                        &documents,
+                        &candidate_history,
+                        now,
+                        claimed.page_limit,
+                        Some(citation),
+                        true,
+                    )
+                    .await;
+                    record_citation_ranking(
+                        true,
+                        citation_read_time + shadow_started.elapsed(),
+                        comparison
+                            .ok()
+                            .and_then(|batch| citation_metrics(&batch, &paper_ids)),
+                    );
+                } else if shadow {
+                    record_citation_ranking(true, citation_read_time, None);
+                }
+                Ok(RecommendationGenerationJobState::Completed)
+            }
+            RecommendationBatchPersistOutcome::Replayed {
                 status:
                     StoredRecommendationBatchStatus::Ready | StoredRecommendationBatchStatus::Served,
                 ..
@@ -795,6 +936,27 @@ impl BatchRecommendationSource {
                 Err(RecommendationError::Unavailable)
             }
         }
+    }
+
+    async fn citation_context(
+        &self,
+        claimed: &ClaimedRecommendationGeneration,
+        paper_ids: &[domain::PaperId],
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<RecommendationCitationLearningContext, RecommendationError> {
+        let snapshot = self
+            .batches
+            .citation_learning_context(claimed.user_id, paper_ids, now)
+            .await
+            .map_err(recommendation_unavailable)?;
+        if snapshot.library_revision != claimed.library_revision
+            || snapshot.profile_revision != claimed.profile_revision
+            || snapshot.feedback.revision != claimed.feedback_revision
+            || !snapshot.personalization_enabled
+        {
+            return Err(RecommendationError::RevisionStale);
+        }
+        Ok(snapshot)
     }
 }
 
@@ -829,6 +991,7 @@ impl RecommendationSource for BatchRecommendationSource {
                     .serve_batch(
                         &request,
                         prepared.selected_mode,
+                        &prepared.context.scoring_policy.version,
                         batch_id,
                         BatchServeMetricClass::ExistingBatch,
                     )
@@ -884,12 +1047,14 @@ fn recommendation_unavailable<T>(_error: T) -> RecommendationError {
 async fn build_batch(
     mode: RecommendationMode,
     library_revision: i64,
-    context: RecommendationContext,
+    context: &RecommendationContext,
     feedback_revision: i64,
     documents: &[CandidateDocument],
     candidate_history: &BTreeMap<domain::PaperId, recommendations::RecommendationCandidateHistory>,
     now: chrono::DateTime<chrono::Utc>,
     limit: u32,
+    citation_online: Option<&CitationOnlineInputs>,
+    shadow: bool,
 ) -> Result<recommendations::BuiltRecommendationBatch, RecommendationError> {
     let queue = ProvenEmptyQueueBinding::from_decision(library_revision, 0, true)
         .map_err(|_| RecommendationError::RevisionStale)?;
@@ -902,15 +1067,20 @@ async fn build_batch(
         profile: &context.profile,
         documents,
         candidate_history,
+        citation_online,
         now,
         candidate_limit: usize::try_from(limit).unwrap_or(usize::MAX),
         fanout_policy: recommendations::CandidateFanoutPolicy::default(),
-        generator_observer: Some(&GENERATOR_METRICS_OBSERVER),
-        rerank_policy: context.rerank_policy,
-        scoring_policy: context.scoring_policy,
+        generator_observer: (!shadow)
+            .then_some(&GENERATOR_METRICS_OBSERVER as &dyn RecommendationGeneratorObserver),
+        rerank_policy: context.rerank_policy.clone(),
+        scoring_policy: context.scoring_policy.clone(),
     })
     .await
     .map_err(recommendation_unavailable)?;
+    if shadow {
+        return Ok(batch);
+    }
     let composition =
         summarize_ranking_composition(batch.candidates.iter().map(|candidate| &candidate.scored));
     record_recommendation_batch_completion(
@@ -922,6 +1092,23 @@ async fn build_batch(
         composition.max_topic_concentration,
     );
     Ok(batch)
+}
+
+fn citation_metrics(
+    batch: &recommendations::BuiltRecommendationBatch,
+    paper_ids: &[domain::PaperId],
+) -> Option<CitationRankingMetrics> {
+    let coverage = batch.citation_coverage.as_ref()?;
+    Some(CitationRankingMetrics {
+        authorized_candidates: coverage.authorized_candidate_count as u64,
+        root_neighbors: coverage.root_neighbor_count as u64,
+        out_of_page: batch
+            .candidates
+            .iter()
+            .filter(|item| !paper_ids.contains(&item.scored.candidate.document.paper.paper_id))
+            .count() as u64,
+        tier_inversions: coverage.cap_eligible_tier_inversions as u64,
+    })
 }
 
 fn ready_batch_id(
@@ -1168,6 +1355,28 @@ fn selected_mode(
     }
 }
 
+fn scoring_version(
+    rollout: RecommendationRolloutConfig,
+    user_id: domain::AuthenticatedUserId,
+    mode: RecommendationMode,
+    personalization_enabled: bool,
+) -> &'static str {
+    if mode == RecommendationMode::ForYou
+        && personalization_enabled
+        && rollout.scoring_policy == RecommendationScoringPolicy::CitationOnlineV1
+    {
+        let mut hash = Sha256::new();
+        hash.update(b"pakperk:citation_online_v1:cohort");
+        hash.update(user_id.as_uuid().as_bytes());
+        let digest = hash.finalize();
+        let bucket = u16::from_be_bytes([digest[0], digest[1]]) % 100;
+        if bucket < u16::from(rollout.citation_online_percent) {
+            return SCORING_POLICY_VERSION_CITATION_ONLINE_V1;
+        }
+    }
+    SCORING_POLICY_VERSION_V1
+}
+
 fn candidate_history_for_mode(
     policy: BatchSourcePolicy,
     mode: RecommendationMode,
@@ -1252,6 +1461,31 @@ fn query_key(
         write!(&mut suffix, "{byte:02x}").expect("writing to a String cannot fail");
     }
     format!("{}:v3:l{limit}:{suffix}", mode.as_str())
+}
+
+fn citation_page_key(
+    query_key: &str,
+    paper_ids: &[domain::PaperId],
+    next_position: Option<reading_feed::RecommendationPosition>,
+) -> String {
+    let mut hash = Sha256::new();
+    hash.update(b"pakperk:citation_online_v1:page");
+    hash.update(query_key.as_bytes());
+    hash.update((paper_ids.len() as u64).to_be_bytes());
+    for id in paper_ids {
+        hash.update(id.as_bytes());
+    }
+    if let Some(position) = next_position {
+        hash.update(position.published_at.timestamp_micros().to_be_bytes());
+        hash.update(position.paper_id.as_bytes());
+    }
+    let digest = hash.finalize();
+    let mut key = format!("{query_key}:");
+    for byte in &digest[..16] {
+        use std::fmt::Write as _;
+        write!(&mut key, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    key
 }
 
 fn map_served_page(
@@ -1479,6 +1713,46 @@ mod tests {
     }
 
     #[test]
+    fn citation_rollout_uses_a_stable_account_cohort_only_for_opted_in_for_you() {
+        let user = AuthenticatedUserId::new(Uuid::from_u128(7));
+        let citation = RecommendationRolloutConfig {
+            scoring_policy: RecommendationScoringPolicy::CitationOnlineV1,
+            ..RecommendationRolloutConfig::default()
+        };
+        assert_eq!(
+            scoring_version(citation, user, RecommendationMode::ForYou, true),
+            SCORING_POLICY_VERSION_CITATION_ONLINE_V1
+        );
+        for mode in [
+            RecommendationMode::Recent,
+            RecommendationMode::Following,
+            RecommendationMode::Explore,
+        ] {
+            assert_eq!(
+                scoring_version(citation, user, mode, true),
+                SCORING_POLICY_VERSION_V1
+            );
+        }
+        assert_eq!(
+            scoring_version(citation, user, RecommendationMode::ForYou, false),
+            SCORING_POLICY_VERSION_V1
+        );
+        for rollout in [
+            RecommendationRolloutConfig::default(),
+            RecommendationRolloutConfig {
+                citation_online_percent: 0,
+                ..citation
+            },
+        ] {
+            assert_eq!(
+                scoring_version(rollout, user, RecommendationMode::ForYou, true),
+                SCORING_POLICY_VERSION_V1
+            );
+        }
+        assert!("unknown".parse::<RecommendationScoringPolicy>().is_err());
+    }
+
+    #[test]
     fn source_and_mode_labels_are_closed() {
         assert!(BatchSourcePolicy::Configured.explanation_available());
         assert!(!BatchSourcePolicy::RecentOnly.explanation_available());
@@ -1531,6 +1805,17 @@ mod tests {
             query_key(RecommendationMode::Recent, None, None, 20, None),
             query_key(RecommendationMode::Recent, None, Some(position), 20, None,),
             "a continuation is a separately persisted candidate-page batch"
+        );
+        let key = query_key(RecommendationMode::ForYou, None, None, 20, None);
+        let a = Uuid::from_u128(1);
+        let b = Uuid::from_u128(2);
+        assert_ne!(
+            citation_page_key(&key, &[a, b], Some(position)),
+            citation_page_key(&key, &[b, a], Some(position))
+        );
+        assert_ne!(
+            citation_page_key(&key, &[a, b], Some(position)),
+            citation_page_key(&key, &[a, b], None)
         );
     }
 
@@ -1952,7 +2237,7 @@ mod tests {
         let database = Database::connect(&database_url, 10).await.unwrap();
         database.migrate_embedded().await.unwrap();
         let unique = Uuid::now_v7().simple().to_string();
-        let category = format!("rf.A{}", &unique[..8]);
+        let category = format!("rf.A{}", &unique[20..]);
         let account = database
             .accounts()
             .provision_oidc_identity(
@@ -2076,6 +2361,300 @@ mod tests {
         assert!(brief.recommendation_batch_id.is_some());
         assert_eq!(brief.items.len(), 1);
         assert_eq!(brief.items[0].paper.paper_id, brief_paper);
+
+        sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(account.id.into_inner())
+            .execute(database.pool())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)] // Rehearse rollout, rollback, replay and a rating crossing the page fence.
+    async fn postgres_citation_generation_respects_rollout_and_the_authorized_page() {
+        use db::{
+            RecommendationFeedbackOutcome, RecommendationFeedbackType, RecommendationFeedbackWrite,
+        };
+        use reading_feed::{ReadingFeedSnapshot, ReadingFeedSnapshotRequest, ReadingFeedStore};
+        use research_profiles::{ResearchProfilePolicy, UpdateProfileCommand};
+
+        let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
+            eprintln!("TEST_DATABASE_URL is absent; skipped PostgreSQL citation rollout coverage");
+            return;
+        };
+        let database = Database::connect(&database_url, 10).await.unwrap();
+        database.migrate_embedded().await.unwrap();
+        let unique = Uuid::now_v7().simple().to_string();
+        let category = format!("rf.C{}", &unique[20..]);
+        let account = database
+            .accounts()
+            .provision_oidc_identity(
+                &format!("https://citation-rollout.test/{unique}"),
+                "owner",
+                StdDuration::from_secs(900),
+            )
+            .await
+            .unwrap();
+        for index in 0..3 {
+            database
+                .papers()
+                .upsert_metadata(&metadata(&unique, &category, index))
+                .await
+                .unwrap();
+        }
+        let profiles = ResearchProfileService::new(
+            Arc::new(database.research_profiles()),
+            Arc::new(database.rate_limits()),
+            ResearchProfilePolicy::default(),
+        );
+        let citation = BatchRecommendationSource::new(
+            database.recommendation_batches(),
+            Some(profiles.clone()),
+            RecommendationRolloutConfig {
+                scoring_policy: RecommendationScoringPolicy::CitationOnlineV1,
+                ..RecommendationRolloutConfig::default()
+            },
+        );
+        let weighted = BatchRecommendationSource::new(
+            database.recommendation_batches(),
+            Some(profiles.clone()),
+            RecommendationRolloutConfig {
+                citation_shadow: true,
+                ..RecommendationRolloutConfig::default()
+            },
+        );
+        let ReadingFeedSnapshot::Empty {
+            library_revision,
+            recommendations,
+        } = database
+            .reading_feed()
+            .snapshot(&ReadingFeedSnapshotRequest {
+                user_id: account.id,
+                category: Some(category.clone()),
+                continuation: None,
+                limit: 2,
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("fixture queue must be empty");
+        };
+        let request = RecommendationRequest {
+            user_id: account.id,
+            library_revision,
+            category: Some(category),
+            recommendation_mode: FeedRecommendationMode::ForYou,
+            position: None,
+            expected_citation_online: None,
+            limit: 2,
+            now: Utc::now(),
+            candidates: recommendations,
+        };
+        assert!(request.candidates.next_position.is_some());
+        assert!(matches!(
+            citation.page(request.clone()).await,
+            Err(RecommendationError::Unavailable)
+        ));
+        assert_eq!(
+            citation
+                .run_generation_once("fixture-worker", Utc::now())
+                .await,
+            RecommendationGenerationRunOutcome::Completed
+        );
+        let recent = citation.page(request.clone()).await.unwrap();
+        assert_eq!(recent.items[0].source, FeedItemSource::RecentV1);
+        assert_eq!(
+            recent.batch_metadata.unwrap().recommendation_policy_version,
+            SCORING_POLICY_VERSION_V1
+        );
+
+        profiles
+            .update(
+                account.id,
+                UpdateProfileCommand {
+                    expected_revision: 0,
+                    operation_id: Uuid::now_v7(),
+                    personalization_enabled: Some(true),
+                    ..UpdateProfileCommand::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert!(matches!(
+            weighted.page(request.clone()).await,
+            Err(RecommendationError::Unavailable)
+        ));
+        assert_eq!(
+            citation
+                .run_generation_once("fixture-worker", Utc::now())
+                .await,
+            RecommendationGenerationRunOutcome::Superseded,
+            "an old-policy claim must be superseded"
+        );
+        assert!(matches!(
+            citation.page(request.clone()).await,
+            Err(RecommendationError::Unavailable)
+        ));
+        assert_eq!(
+            citation
+                .run_generation_once("fixture-worker", Utc::now())
+                .await,
+            RecommendationGenerationRunOutcome::Completed
+        );
+        let first = citation.page(request.clone()).await.unwrap();
+        assert_eq!(citation.page(request.clone()).await.unwrap(), first);
+        assert_eq!(
+            first
+                .batch_metadata
+                .as_ref()
+                .unwrap()
+                .recommendation_policy_version,
+            SCORING_POLICY_VERSION_CITATION_ONLINE_V1
+        );
+        assert_eq!(first.next_position, request.candidates.next_position);
+        assert!(!first.items.is_empty());
+        assert!(first.items.iter().all(|item| {
+            item.source == FeedItemSource::ForYouV1
+                && request.candidates.items.contains(&item.paper)
+        }));
+
+        assert!(matches!(
+            weighted.page(request.clone()).await,
+            Err(RecommendationError::Unavailable)
+        ));
+        assert_eq!(
+            weighted
+                .run_generation_once("fixture-worker", Utc::now())
+                .await,
+            RecommendationGenerationRunOutcome::Completed,
+            "rollback must regenerate the previously superseded weighted intent"
+        );
+        let rolled_back = weighted.page(request.clone()).await.unwrap();
+        assert_ne!(rolled_back.batch_id, first.batch_id);
+        assert_eq!(
+            rolled_back
+                .batch_metadata
+                .as_ref()
+                .unwrap()
+                .recommendation_policy_version,
+            SCORING_POLICY_VERSION_V1
+        );
+        let citation_batches: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM recommendation_batches WHERE user_id = $1 AND policy_version = $2",
+        )
+        .bind(account.id.into_inner())
+        .bind(SCORING_POLICY_VERSION_CITATION_ONLINE_V1)
+        .fetch_one(database.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            citation_batches, 1,
+            "a shadow result must not create a batch"
+        );
+        let cursors = Arc::new(db::EncryptedReadingFeedCursorCodec::new(
+            crate::config::CursorConfig::for_local_development("citation cursor fixture")
+                .unwrap()
+                .codec(),
+        ));
+        let services = [&weighted, &citation].map(|source| {
+            ReadingFeedService::with_dependencies(
+                Arc::new(database.reading_feed()),
+                Arc::new(source.clone()),
+                cursors.clone(),
+                ReadingFeedPolicy::new(2, 50, StdDuration::from_secs(300)).unwrap(),
+            )
+        });
+        let feed_request = ReadingFeedRequest {
+            user_id: request.user_id,
+            category: request.category.clone(),
+            recommendation_mode: request.recommendation_mode,
+            cursor: None,
+            limit: Some(request.limit),
+            now: request.now,
+        };
+        let weighted_cursor = services[0]
+            .page(feed_request.clone())
+            .await
+            .unwrap()
+            .next_cursor;
+        let citation_cursor = services[1]
+            .page(feed_request.clone())
+            .await
+            .unwrap()
+            .next_cursor;
+        assert!(weighted_cursor.is_some() && citation_cursor.is_some());
+        let continuations = [weighted_cursor, citation_cursor].map(|cursor| ReadingFeedRequest {
+            cursor,
+            ..feed_request.clone()
+        });
+        assert_eq!(
+            services[0].page(continuations[1].clone()).await,
+            Err(ReadingFeedServiceError::CursorStale),
+            "rollback must reject a citation cursor before creating weighted work",
+        );
+        assert_eq!(
+            services[1].page(continuations[0].clone()).await,
+            Err(ReadingFeedServiceError::CursorStale),
+            "enabling citation must reject a weighted cursor before creating citation work",
+        );
+        let job_count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM recommendation_generation_jobs WHERE user_id = $1",
+        )
+        .bind(account.id.into_inner())
+        .fetch_one(database.pool())
+        .await
+        .unwrap();
+        assert_eq!(job_count, 3, "stale continuations must not enqueue work");
+        for ((service, source), (continuation, first_batch)) in services
+            .iter()
+            .zip([&weighted, &citation])
+            .zip(continuations.into_iter().zip([&rolled_back, &first]))
+        {
+            assert_eq!(
+                service.page(continuation.clone()).await,
+                Err(ReadingFeedServiceError::RecommendationsUnavailable),
+            );
+            assert_eq!(
+                source
+                    .run_generation_once("fixture-worker", Utc::now())
+                    .await,
+                RecommendationGenerationRunOutcome::Completed,
+            );
+            let page = service.page(continuation).await.unwrap();
+            assert_ne!(page.batch_id, first_batch.batch_id);
+            assert_eq!(page.batch_metadata, first_batch.batch_metadata);
+        }
+        let minimal = BatchRecommendationSource::recent_only(database.recommendation_batches())
+            .page(request.clone())
+            .await
+            .unwrap();
+        assert!(!minimal.items.is_empty());
+        assert!(minimal.items.iter().all(|item| {
+            item.source == FeedItemSource::RecentV1
+                && !item.recommendation.as_ref().unwrap().explanation_available
+        }));
+        let rated_paper = first.items[0].paper.paper_id;
+        assert!(matches!(
+            database
+                .recommendation_batches()
+                .record_feedback(RecommendationFeedbackWrite {
+                    user_id: account.id,
+                    feedback_id: Uuid::now_v7(),
+                    idempotency_key: Uuid::now_v7(),
+                    batch_id: first.batch_id.unwrap(),
+                    paper_id: rated_paper,
+                    feedback_type: RecommendationFeedbackType::Relevant,
+                    reason: None,
+                    created_at: Utc::now(),
+                })
+                .await
+                .unwrap(),
+            RecommendationFeedbackOutcome::Applied { .. }
+        ));
+        assert!(matches!(
+            citation.page(request).await,
+            Err(RecommendationError::RevisionStale)
+        ));
 
         sqlx::query("DELETE FROM users WHERE id = $1")
             .bind(account.id.into_inner())

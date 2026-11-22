@@ -1,4 +1,5 @@
 {{- if .Values.otelCollector.enabled }}
+{{- $mobileEventPattern := `^(app_cold_start|startup_ready|startup_failure|shell_destination_selected|paper_page_committed|paper_stage_committed|feed_prefetch_requested|feed_prefetch_succeeded|feed_prefetch_failed|feed_prefetch_deduplicated|next_paper_cache_hit|next_paper_cache_miss|feed_blank_card|feed_cache_rows|feed_cache_bytes|feed_time_to_readable_ms|reading_feed_shadow_decision|recommendation_card_rendered|recommendation_refill_completed|recommendation_publication_rejected|pending_intent_age|discovery_suppression_latency|discovery_unlock_latency|save_requested|save_synced|save_failed|library_outbox_backlog|library_sync_conflict|auth_started|auth_completed|auth_cancelled|comment_sheet_opened|comment_created|comment_pending|comment_rejected|comment_reported|user_reported|account_deletion_requested|account_deletion_accepted|account_deletion_unavailable|account_deletion_local_cleanup_failed|http_request_completed|mobile_error)$` }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -255,7 +256,7 @@ data:
             resource.attributes["service.name"] != "pakperk-mobile" or
             resource.attributes["deployment.environment.name"] != {{ .Values.environment | quote }} or
             scope.name != "app.pakperk.mobile" or
-            not IsMatch(log.body, "^(app_cold_start|startup_ready|startup_failure|shell_destination_selected|paper_page_committed|paper_stage_committed|feed_prefetch_requested|feed_prefetch_succeeded|feed_prefetch_failed|feed_prefetch_deduplicated|next_paper_cache_hit|next_paper_cache_miss|feed_blank_card|feed_cache_rows|feed_cache_bytes|feed_time_to_readable_ms|reading_feed_shadow_decision|recommendation_card_rendered|save_requested|save_synced|save_failed|library_outbox_backlog|auth_started|auth_completed|auth_cancelled|comment_sheet_opened|comment_created|comment_pending|comment_rejected|comment_reported|user_reported|account_deletion_requested|account_deletion_accepted|account_deletion_unavailable|account_deletion_local_cleanup_failed|http_request_completed|mobile_error)$")
+            not IsMatch(log.body, {{ $mobileEventPattern | quote }})
       transform/redact-backend-log-body:
         # Filelog messages are not trusted merely because they came from a
         # selected Pakperk container. Preserve only the exact content-free
@@ -350,7 +351,7 @@ spec:
       labels:
         {{- include "pakperk.componentLabels" (dict "root" . "component" "otel-collector") | nindent 8 }}
       annotations:
-        checksum/config: {{ printf "%s|%s|%s" .Chart.Version .Values.environment (toJson .Values.otelCollector) | sha256sum }}
+        checksum/config: {{ printf "%s|%s|%s|%s" .Chart.Version .Values.environment (toJson .Values.otelCollector) $mobileEventPattern | sha256sum }}
         checksum/runtime-secrets: {{ printf "%s|%s|%s" .Values.secret.existingSecret .Values.secret.rotationVersion .Values.secret.telemetryExporterHeadersKey | sha256sum }}
     spec:
       serviceAccountName: {{ include "pakperk.componentServiceAccountName" (dict "root" . "component" "otel-collector") }}

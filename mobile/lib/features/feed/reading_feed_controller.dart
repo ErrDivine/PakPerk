@@ -427,6 +427,8 @@ final readingFeedRuntimeProvider = Provider<void>((ref) {
   ref.watch(readingFeedControllerProvider);
 });
 
+typedef _RefillTiming = ({DateTime startedAt, String policyVersion});
+
 final class ReadingFeedController extends StateNotifier<ReadingFeedState> {
   ReadingFeedController({
     required ReadingFeedRepository repository,
@@ -471,6 +473,7 @@ final class ReadingFeedController extends StateNotifier<ReadingFeedState> {
   RequestCancellation? _initialRequest;
   RequestCancellation? _pageRequest;
   Future<void>? _refreshFlight;
+  ({int index, String paperId, _RefillTiming? timing})? _committedRefill;
   int _generation = 0;
   int _cacheGeneration = 0;
   String? _lastRefreshKey;
@@ -552,7 +555,6 @@ final class ReadingFeedController extends StateNotifier<ReadingFeedState> {
       _lastRefreshKey = null;
       _lastError = null;
       _loadingInitial = false;
-      _loadingMore = false;
       _lastShadowDecisionKey = null;
       final scope = next.verifiedScope;
       if (scope != null && _pageCache != null) {
@@ -584,6 +586,9 @@ final class ReadingFeedController extends StateNotifier<ReadingFeedState> {
     }
 
     _initialRequest?.cancel('A newer reading-feed refresh replaced this one.');
+    _pageRequest?.cancel('Reading-feed refresh replaced the continuation.');
+    _pageRequest = null;
+    _loadingMore = false;
     final request = RequestCancellation();
     _initialRequest = request;
     final generation = ++_generation;
@@ -606,7 +611,18 @@ final class ReadingFeedController extends StateNotifier<ReadingFeedState> {
           requestedMode: requestedMode,
         ).whenComplete(() {
           if (identical(_refreshFlight, flight)) _refreshFlight = null;
-          if (identical(_initialRequest, request)) _initialRequest = null;
+          if (!identical(_initialRequest, request)) return;
+          _initialRequest = null;
+          final refill = _committedRefill;
+          // The visible card can stay committed when a refresh cancels its
+          // continuation. Resume it without waiting for the reader to move.
+          if (refill != null &&
+              refill.index < state.items.length &&
+              state.items[refill.index].paperId == refill.paperId) {
+            unawaited(onCommittedPage(refill.index));
+          } else {
+            _discardCommittedRefill('stale');
+          }
         });
     _refreshFlight = flight;
     return flight;
@@ -686,7 +702,7 @@ final class ReadingFeedController extends StateNotifier<ReadingFeedState> {
     }
   }
 
-  Future<void> loadMore() async {
+  Future<void> loadMore({bool fromCommittedPage = false}) async {
     final input = _input;
     final firstPage = _serverPage;
     final existingPages = firstPage == null
@@ -700,7 +716,13 @@ final class ReadingFeedController extends StateNotifier<ReadingFeedState> {
         cursor.isEmpty ||
         scope == null ||
         !input.canRequest ||
+        _initialRequest != null ||
         _loadingMore) {
+      if (fromCommittedPage &&
+          _initialRequest == null &&
+          _committedRefill?.timing != null) {
+        _discardCommittedRefill('stale');
+      }
       return;
     }
 
@@ -715,6 +737,42 @@ final class ReadingFeedController extends StateNotifier<ReadingFeedState> {
       authEpoch: scope.authEpoch,
       generation: generation,
     );
+    final refill = fromCommittedPage ? _committedRefill : null;
+    final policyVersion = fromCommittedPage ? _refillPolicy(firstPage) : null;
+    final pendingTiming = refill?.timing;
+    if (refill != null) {
+      // The request now owns the sample. If a refresh cancels it, a retry can
+      // still use the same committed card without reusing this sample.
+      _committedRefill = (
+        index: refill.index,
+        paperId: refill.paperId,
+        timing: null,
+      );
+    }
+    final _RefillTiming? timing;
+    if (pendingTiming != null && pendingTiming.policyVersion != policyVersion) {
+      _recordRefill(pendingTiming, 'stale');
+      timing = null;
+    } else {
+      timing =
+          pendingTiming ??
+          (policyVersion == null
+              ? null
+              : (startedAt: _clock(), policyVersion: policyVersion));
+    }
+    var refillOutcome = 'stale';
+    var refillRecorded = false;
+    void recordRefill(String outcome) {
+      if (timing == null || refillRecorded) return;
+      refillRecorded = true;
+      _recordRefill(timing, outcome);
+    }
+
+    if (timing != null) {
+      unawaited(
+        request.dioToken.whenCancel.then((_) => recordRefill('canceled')),
+      );
+    }
     _loadingMore = true;
     _lastError = null;
     _publish();
@@ -760,21 +818,30 @@ final class ReadingFeedController extends StateNotifier<ReadingFeedState> {
       }
       _continuationPages.add(response);
       _lastError = null;
+      refillOutcome = 'success';
       // Each persisted recommendation batch owns only its response page. Keep
       // the already-cached first page instead of serializing a heterogeneous
       // cursor walk beneath one page-level batch identity.
     } on ApiException catch (error) {
-      if (!_isCurrent(requestScope) || error.cancelled) return;
+      if (error.cancelled) {
+        refillOutcome = 'canceled';
+        return;
+      }
+      if (!_isCurrent(requestScope)) return;
       if (error.code == 'READING_FEED_CURSOR_STALE') {
         _restartAfterStalePage();
         return;
       }
       _lastError = error;
+      refillOutcome = 'failed';
     } on Object catch (error) {
       if (!_isCurrent(requestScope)) return;
       _lastError = error;
+      refillOutcome = 'failed';
     } finally {
+      recordRefill(request.isCancelled ? 'canceled' : refillOutcome);
       if (_isCurrent(requestScope)) {
+        _discardCommittedRefill('stale');
         _loadingMore = false;
         _publish();
       }
@@ -784,9 +851,60 @@ final class ReadingFeedController extends StateNotifier<ReadingFeedState> {
 
   Future<void> onCommittedPage(int index) async {
     if (index < 0 || index >= state.items.length) return;
-    if (state.items.length - index - 1 <= _readingFeedLoadTrigger) {
-      await loadMore();
+    if (state.items.length - index - 1 > _readingFeedLoadTrigger ||
+        state.nextCursor == null ||
+        _input?.canRequest != true) {
+      _discardCommittedRefill('stale');
+      return;
     }
+    var timing = _committedRefill?.timing;
+    if (timing == null && _initialRequest != null) {
+      final policyVersion = _refillPolicy(_serverPage);
+      if (policyVersion != null) {
+        timing = (startedAt: _clock(), policyVersion: policyVersion);
+      }
+    }
+    _committedRefill = (
+      index: index,
+      paperId: state.items[index].paperId,
+      timing: timing,
+    );
+    await loadMore(fromCommittedPage: true);
+  }
+
+  String? _refillPolicy(ReadingFeedPage? firstPage) {
+    if (firstPage == null ||
+        !firstPage.decision.queueProvenEmpty ||
+        _batchedRecommendationMode(firstPage) !=
+            ReadingFeedRecommendationMode.forYou) {
+      return null;
+    }
+    final policyVersion = firstPage.batchMetadata?.recommendationPolicyVersion;
+    return policyVersion == 'weighted_v1' ||
+            policyVersion == 'citation_online_v1'
+        ? policyVersion
+        : null;
+  }
+
+  void _discardCommittedRefill(String outcome) {
+    final timing = _committedRefill?.timing;
+    _committedRefill = null;
+    if (timing != null) _recordRefill(timing, outcome);
+  }
+
+  void _recordRefill(_RefillTiming timing, String outcome) {
+    emitTelemetry(
+      _telemetry,
+      PakPerkTelemetryEvent.recommendationRefillCompleted,
+      {
+        'recommendation_policy': timing.policyVersion,
+        'outcome': outcome,
+        'elapsed_ms': _clock()
+            .difference(timing.startedAt)
+            .inMilliseconds
+            .clamp(0, Duration.millisecondsPerDay),
+      },
+    );
   }
 
   Future<void> onForeground() => refresh(force: true);
@@ -894,6 +1012,8 @@ final class ReadingFeedController extends StateNotifier<ReadingFeedState> {
     _continuationPages.clear();
     _lastRefreshKey = null;
     _lastError = null;
+    _pageRequest = null;
+    _discardCommittedRefill('stale');
     _loadingMore = false;
     _publish();
     unawaited(refresh(force: true));
@@ -1344,6 +1464,8 @@ final class ReadingFeedController extends StateNotifier<ReadingFeedState> {
     _pageRequest?.cancel(reason);
     _initialRequest = null;
     _pageRequest = null;
+    _discardCommittedRefill('canceled');
+    _loadingMore = false;
     _refreshFlight = null;
   }
 
@@ -1396,6 +1518,11 @@ bool _isValidContinuation(
       incoming.decision.activeToReadCount !=
           initial.decision.activeToReadCount ||
       incoming.decision.queueProvenEmpty != initial.decision.queueProvenEmpty) {
+    return false;
+  }
+  final incomingBatchId = incoming.batchId;
+  if (incomingBatchId != null &&
+      existingPages.any((page) => page.batchId == incomingBatchId)) {
     return false;
   }
   final existingIds = existingItems.map((item) => item.paper.paperId).toSet();

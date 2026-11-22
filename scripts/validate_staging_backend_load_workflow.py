@@ -16,19 +16,19 @@ DEFAULT_CHECK = ROOT / "scripts/check.sh"
 CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 UPLOAD_ACTION = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
 EXPECTED_TRIGGER_SHA256 = (
-    "49c51256110a23b83e1e9f32ef76f1bdd4f2fd96343864c6937c76c163a8c59c"
+    "de1edfd72844f5816fd5700bf32e2ce500a9271827660f6970cccb876a643800"
 )
 EXPECTED_RUN_SHA256 = {
-    "source gate": "085ab007f5ef8054bd289f7aec17cfb2798c79fd376993fc73098bcaa5d6a02b",
-    "bounded runner": "ca720a9b54c3a508d904c11b84d7971eb3ef7685b24ece4597f7e57bed7f74f9",
+    "source gate": "e8540df2249967fc7d5d7eaa7705af77b86129537cf9515a84c289af50179682",
+    "bounded runner": "1cfa097b5ce38c27b1cd7d56176edba0ec509c06478b72b32b9e1739eb201ae4",
     "final enforcement": "d64d089eecbec5591a7e140c4371cf07713b84261adfa9d7c34072c0e71a078d",
 }
 EXPECTED_CHECKOUT_STEP_SHA256 = (
     "6bc05ec1a7fbb3a14b447485291230172fdfe398392d701d6fc4ec2a09b4ca50"
 )
 EXPECTED_STEP_SHA256 = {
-    "source gate": "4756dbeac202a85cb2cc1d027c631cd633439b9d8f4e0134fd009b95c02e4b11",
-    "bounded runner": "479532f466b09484dc03867a6031227684fa2cd9d7c054d959d5c48d0d67ced4",
+    "source gate": "e1c9b1172d71d9f69252dd01933805724b6ee7a195b4bbb0cb338bffb6da13e9",
+    "bounded runner": "3d983ff07bbf4b5059f5285379b195a9470feeecce57275e445bae60980deac2",
     "evidence upload": "e810128426d200e4f483095ff03c68be912035e47e57fc842b591fbd5ab150b3",
     "final enforcement": "0a196f8fd691841d59867d538e64d1274ba91625463e2534be3b39d07262fcf3",
 }
@@ -43,6 +43,7 @@ EXPECTED_INPUTS = [
     "include_authenticated_comments",
     "include_reading_feed_queue",
     "include_reading_feed_recommendations",
+    "expected_recommendation_policy",
     "include_paper_title_search",
     "allow_library_mutations",
     "mutation_confirmation",
@@ -73,6 +74,7 @@ EXPECTED_JOB_ENV = {
     "INCLUDE_READING_RECOMMENDATIONS": (
         "${{ inputs.include_reading_feed_recommendations }}"
     ),
+    "EXPECTED_RECOMMENDATION_POLICY": "${{ inputs.expected_recommendation_policy }}",
     "INCLUDE_PAPER_SEARCH": "${{ inputs.include_paper_title_search }}",
     "ALLOW_MUTATIONS": "${{ inputs.allow_library_mutations }}",
     "MUTATION_CONFIRMATION": "${{ inputs.mutation_confirmation }}",
@@ -341,6 +343,12 @@ def validate(
         ),
         'case "${!boolean_input}" in',
         "true|false) ;;",
+        'case "$EXPECTED_RECOMMENDATION_POLICY" in',
+        "disabled|weighted_v1|citation_online_v1) ;;",
+        (
+            'if [[ "$EXPECTED_RECOMMENDATION_POLICY" != "disabled" && '
+            '"$INCLUDE_READING_RECOMMENDATIONS" != "true" ]]; then'
+        ),
         '"RUN_DEDICATED_STAGING_LIBRARY_MUTATIONS"',
         '"RUN_DEDICATED_STAGING_PAPER_IMPORT_REPLAYS"',
         (
@@ -386,6 +394,14 @@ def validate(
         runner,
         "--max-paper-search-requests 9",
         "bounded staging runner",
+    )
+    _require(
+        runner,
+        '            if [[ "$EXPECTED_RECOMMENDATION_POLICY" != "disabled" ]]; then\n'
+        "              arguments+=(--expected-recommendation-policy "
+        '"$EXPECTED_RECOMMENDATION_POLICY")\n'
+        "            fi\n",
+        "bounded staging runner recommendation policy wiring",
     )
     _require_exact_run(runner, "bounded runner")
     if source.count('python3 scripts/run_backend_load.py "${arguments[@]}"') != 1:

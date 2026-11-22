@@ -84,6 +84,61 @@ void main() {
     expect(explanation.behaviorUsed, isFalse);
   });
 
+  test('citation replay preserves the leading reason and direction', () {
+    for (final (code, detail, expected) in [
+      (
+        'reviewed_paper_citation',
+        'Your reviewed paper A references this paper.',
+        RecommendationExplanationCode.reviewedPaperCitation,
+      ),
+      (
+        'archived_paper_citation',
+        'This paper cites your archived paper A.',
+        RecommendationExplanationCode.archivedPaperCitation,
+      ),
+    ]) {
+      final citation = {
+        'code': code,
+        'title': 'Connected to a paper in your Library',
+        'detail': detail,
+        'source': 'citation',
+        'behavior_used': true,
+        'seed_paper_id': _batchId,
+      };
+      final payload = {
+        'batch_id': _batchId,
+        'paper_id': _paperId,
+        'explanations': [
+          citation,
+          {
+            'code': 'followed_author',
+            'title': 'From an author you follow',
+            'detail': 'You follow an author of this paper.',
+            'source': 'author_follow',
+            'behavior_used': false,
+            'seed_paper_id': null,
+          },
+        ],
+      };
+      final decoded = RecommendationExplanationEnvelope.fromJson(payload);
+      expect(decoded.explanations.map((reason) => reason.code), [
+        expected,
+        RecommendationExplanationCode.followedAuthor,
+      ]);
+      expect(decoded.explanations.first.detail, detail);
+      expect(decoded.explanations.first.source, RecommendationSource.citation);
+      expect(decoded.explanations.first.seedPaperId, _batchId);
+      expect(decoded.explanations.first.behaviorUsed, isTrue);
+      expect(
+        () => RecommendationExplanationEnvelope.fromJson({
+          ...payload,
+          'explanations': [citation, citation],
+        }),
+        throwsFormatException,
+      );
+    }
+  });
+
   test('behavior-used evidence is required and boolean', () {
     const explanation = {
       'code': 'recent_category',

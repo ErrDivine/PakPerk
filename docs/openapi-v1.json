@@ -10554,6 +10554,41 @@
         ]
       }
     },
+    "/v1/product-surveys": {
+      "post": {
+        "tags": [
+          "routes::product_surveys"
+        ],
+        "operationId": "submit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SurveySubmission"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Feedback saved; repeating the same response is safe"
+          },
+          "400": {
+            "description": "Invalid answers"
+          },
+          "409": {
+            "description": "Response ID already used for different answers"
+          },
+          "429": {
+            "description": "Too many submissions"
+          },
+          "503": {
+            "description": "Storage temporarily unavailable"
+          }
+        }
+      }
+    },
     "/v1/reading/checkpoints": {
       "get": {
         "tags": [
@@ -19293,6 +19328,48 @@
             }
           }
         }
+      },
+      "SurveySubmission": {
+        "type": "object",
+        "required": [
+          "response_id",
+          "survey_version",
+          "locale",
+          "ratings",
+          "suggestions"
+        ],
+        "properties": {
+          "locale": {
+            "type": "string"
+          },
+          "ratings": {
+            "type": "object",
+            "description": "Scores 1 (poor) through 5 (excellent); null means not tried yet.",
+            "additionalProperties": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "response_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "suggestions": {
+            "type": "string"
+          },
+          "survey_version": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
       },
       "TableCellResponse": {
         "type": "object",

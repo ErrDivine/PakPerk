@@ -428,6 +428,7 @@ fn valid_event(event: &str) -> bool {
             | "feed_time_to_readable_ms"
             | "reading_feed_shadow_decision"
             | "recommendation_card_rendered"
+            | "recommendation_refill_completed"
             | "recommendation_publication_rejected"
             | "pending_intent_age"
             | "discovery_suppression_latency"
@@ -600,6 +601,14 @@ fn valid_duration_bucket(value: &OtlpValue) -> bool {
 
 fn valid_plan02_mobile_attribute(event: &str, key: &str, value: &OtlpValue) -> bool {
     match (event, key) {
+        ("recommendation_refill_completed", "recommendation_policy") => matches!(
+            string_value(Some(value)),
+            Some("weighted_v1" | "citation_online_v1")
+        ),
+        ("recommendation_refill_completed", "outcome") => matches!(
+            string_value(Some(value)),
+            Some("success" | "stale" | "failed" | "canceled")
+        ),
         ("recommendation_publication_rejected", "reason") => matches!(
             string_value(Some(value)),
             Some(
@@ -678,7 +687,7 @@ fn valid_event_attribute(event: &str, key: &str, value: &OtlpValue, environment:
         ("feed_cache_bytes", "bytes") => {
             int_value(value).is_some_and(|value| value <= 1_073_741_824)
         }
-        ("feed_time_to_readable_ms", "elapsed_ms") => {
+        ("feed_time_to_readable_ms" | "recommendation_refill_completed", "elapsed_ms") => {
             int_value(value).is_some_and(|value| value <= 86_400_000)
         }
         ("reading_feed_shadow_decision", key) => valid_reading_feed_shadow_attribute(key, value),
@@ -686,7 +695,8 @@ fn valid_event_attribute(event: &str, key: &str, value: &OtlpValue, environment:
             valid_recommendation_card_rendered_attribute(key, value)
         }
         (
-            "recommendation_publication_rejected"
+            "recommendation_refill_completed"
+            | "recommendation_publication_rejected"
             | "pending_intent_age"
             | "discovery_suppression_latency"
             | "discovery_unlock_latency"
@@ -762,6 +772,7 @@ fn valid_event_attribute_set(event: &str, attributes: &HashMap<&str, &OtlpValue>
             "server_active_count",
             "policy_consistent",
         ],
+        "recommendation_refill_completed" => &["recommendation_policy", "outcome", "elapsed_ms"],
         "recommendation_publication_rejected" => &["reason"],
         "pending_intent_age" => &["intent_kind", "age_bucket"],
         "discovery_suppression_latency" | "discovery_unlock_latency" => {
@@ -1182,6 +1193,47 @@ mod tests {
                 )
                 .is_err()
             );
+        }
+    }
+
+    #[test]
+    fn accepts_only_closed_recommendation_refill_timings() {
+        let event = "recommendation_refill_completed";
+        let now = SystemTime::now();
+        let attributes = |policy, outcome, elapsed| {
+            json!([
+                {"key": "recommendation_policy", "value": {"stringValue": policy}},
+                {"key": "outcome", "value": {"stringValue": outcome}},
+                {"key": "elapsed_ms", "value": elapsed}
+            ])
+        };
+
+        for policy in ["weighted_v1", "citation_online_v1"] {
+            for outcome in ["success", "stale", "failed", "canceled"] {
+                for elapsed in ["0", "217", "86400000"] {
+                    let valid = attributes(policy, outcome, json!({"intValue": elapsed}));
+                    assert!(validate_payload(&payload(event, &valid), "staging", now).is_ok());
+                }
+            }
+        }
+
+        let mut missing = attributes("weighted_v1", "success", json!({"intValue": "217"}));
+        missing.as_array_mut().unwrap().pop();
+        let mut extra = attributes("weighted_v1", "success", json!({"intValue": "217"}));
+        extra
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"key": "batch_id", "value": {"stringValue": "private"}}));
+        for invalid in [
+            missing,
+            extra,
+            attributes("unknown", "success", json!({"intValue": "217"})),
+            attributes("weighted_v1", "unknown", json!({"intValue": "217"})),
+            attributes("weighted_v1", "success", json!({"intValue": "-1"})),
+            attributes("weighted_v1", "success", json!({"intValue": "86400001"})),
+            attributes("weighted_v1", "success", json!({"stringValue": "217"})),
+        ] {
+            assert!(validate_payload(&payload(event, &invalid), "staging", now).is_err());
         }
     }
 

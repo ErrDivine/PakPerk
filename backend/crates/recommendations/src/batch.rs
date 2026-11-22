@@ -11,12 +11,14 @@ use thiserror::Error;
 
 use crate::{
     AffinityGenerator, AuthorGenerator, CandidateDocument, CandidateGenerationError,
-    CandidateGenerationRequest, CandidateGenerator, CandidateMergeError, CitationGenerator,
-    DiscoveryPolicy, DiscoveryPolicyError, DiscoveryProfileSnapshot, ExplanationError,
-    ExplorationGenerator, FollowingGenerator, RecentGenerator, RecommendationCandidateHistory,
-    RecommendationExplanation, RecommendationMode, RerankError, RerankPolicy, ScoredCandidate,
-    ScoringPolicy, ScoringPolicyError, SemanticGenerator, explain_candidate,
-    merge_generated_candidates, rerank,
+    CandidateGenerationRequest, CandidateGenerator, CandidateMergeError, CandidateSource,
+    CitationCandidateEvidence, CitationCoverage, CitationEvidenceError, CitationGenerator,
+    CitationOnlineInputs, DiscoveryPolicy, DiscoveryPolicyError, DiscoveryProfileSnapshot,
+    ExplanationError, ExplorationGenerator, FollowingGenerator, RecentGenerator,
+    RecommendationCandidateHistory, RecommendationExplanation, RecommendationMode, RerankError,
+    RerankPolicy, SCORING_POLICY_VERSION_CITATION_ONLINE_V1, ScoredCandidate, ScoringPolicy,
+    ScoringPolicyError, SemanticGenerator, explain_candidate, explain_candidate_with_citation,
+    explanations::order_citation_reasons, merge_generated_candidates, rerank::rerank_with_evidence,
 };
 
 pub const RECOMMENDATION_ALGORITHM_VERSION_V1: &str = "recommendations_v1";
@@ -143,6 +145,7 @@ impl CandidateFanoutPolicy {
     }
 }
 
+#[derive(Clone)]
 pub struct RecommendationBatchBuildRequest<'a> {
     pub mode: RecommendationMode,
     pub queue: ProvenEmptyQueueBinding,
@@ -157,12 +160,14 @@ pub struct RecommendationBatchBuildRequest<'a> {
     pub generator_observer: Option<&'a dyn RecommendationGeneratorObserver>,
     pub rerank_policy: RerankPolicy,
     pub scoring_policy: ScoringPolicy,
+    pub citation_online: Option<&'a CitationOnlineInputs>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BuiltRecommendationCandidate {
     pub scored: ScoredCandidate,
     pub explanations: Vec<RecommendationExplanation>,
+    pub citation_evidence: Option<CitationCandidateEvidence>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -175,6 +180,7 @@ pub struct BuiltRecommendationBatch {
     pub policy_version: String,
     pub seed: u64,
     pub candidates: Vec<BuiltRecommendationCandidate>,
+    pub citation_coverage: Option<CitationCoverage>,
 }
 
 /// Inspectable generation pipeline. It has no queue reads and therefore cannot
@@ -188,6 +194,7 @@ pub async fn build_recommendation_batch(
     build_recommendation_batch_with_specs(request, None).await
 }
 
+#[allow(clippy::too_many_lines)] // Keep validation, generation, and ranking in pipeline order.
 async fn build_recommendation_batch_with_specs(
     request: RecommendationBatchBuildRequest<'_>,
     override_specs: Option<Vec<GeneratorSpec>>,
@@ -209,11 +216,27 @@ async fn build_recommendation_batch_with_specs(
     }
     request.scoring_policy.validate()?;
 
+    let uses_citation = request.scoring_policy.version == SCORING_POLICY_VERSION_CITATION_ONLINE_V1;
+    if uses_citation != request.citation_online.is_some()
+        || (uses_citation
+            && (request.mode != RecommendationMode::ForYou || request.profile_revision.is_none()))
+    {
+        return Err(BatchBuildError::InvalidRequest);
+    }
+    let citation = request
+        .citation_online
+        .map(|input| input.classify(request.documents).map(Arc::new))
+        .transpose()?;
     let generation_request = Arc::new(OwnedCandidateGenerationRequest {
         profile: request.profile.clone(),
         documents: request.documents.to_vec(),
         now: request.now,
-        limit: request.candidate_limit,
+        limit: if uses_citation {
+            request.documents.len().max(1)
+        } else {
+            request.candidate_limit
+        },
+        citation: citation.clone(),
     });
     let specs = override_specs.unwrap_or_else(|| primary_generator_specs(request.mode));
     let mut fanout = run_generator_fanout(
@@ -225,7 +248,7 @@ async fn build_recommendation_batch_with_specs(
     .await;
     if fanout.successful_generators == 0 && supports_recent_fallback(request.mode) {
         let fallback = run_generator_fanout(
-            generation_request,
+            Arc::clone(&generation_request),
             &[GeneratorSpec::fallback(
                 RecommendationGeneratorClass::Recent,
             )],
@@ -239,43 +262,73 @@ async fn build_recommendation_batch_with_specs(
     if fanout.successful_generators == 0 {
         return Err(BatchBuildError::GeneratorsUnavailable);
     }
-    let generated = fanout.generated;
+    let generated = if let Some(citation) = &citation {
+        preserve_classified_candidates(fanout.generated, &generation_request, citation)
+    } else {
+        fanout.generated
+    };
     let behavior_history_enabled =
         request.mode == RecommendationMode::ForYou && request.profile.personalization_enabled;
-    let scored = merge_generated_candidates(generated)?
+    let mut evidence_by_paper = BTreeMap::new();
+    let mut scored = Vec::new();
+    for mut candidate in merge_generated_candidates(generated)? {
+        let paper_id = candidate.document.paper.paper_id;
+        if let Some(history) = request
+            .candidate_history
+            .get(&paper_id)
+            .filter(|_| behavior_history_enabled)
+        {
+            candidate.qualified_impressions = history.qualified_impressions;
+            candidate.hidden = history.hidden;
+            candidate.negative_feedback = history.negative_feedback;
+            let bounded_impressions =
+                u16::try_from(history.qualified_impressions.min(5)).unwrap_or(5);
+            candidate.features.repeat_exposure = f32::from(bounded_impressions) / 5.0;
+            candidate.features.negative_feedback =
+                if history.negative_feedback { 1.0 } else { 0.0 };
+        }
+        let mut base_score = request.scoring_policy.score(candidate.features)?;
+        if let (Some(citation), Some(input)) = (&citation, request.citation_online) {
+            let mut evidence = citation.get(&paper_id).cloned().unwrap_or_default();
+            evidence.apply_author(
+                candidate.sources.contains(&CandidateSource::AuthorFollow),
+                input.weights,
+            );
+            evidence.validate()?;
+            base_score += evidence.score_adjustment();
+            evidence_by_paper.insert(paper_id, evidence);
+        }
+        scored.push(ScoredCandidate {
+            candidate,
+            base_score,
+        });
+    }
+    let (ranked, cap_eligible_tier_inversions) = rerank_with_evidence(
+        scored,
+        &request.rerank_policy,
+        uses_citation.then_some(&evidence_by_paper),
+    )?;
+    let citation_coverage = citation.as_ref().map(|evidence| CitationCoverage {
+        authorized_candidate_count: request.documents.len(),
+        root_neighbor_count: evidence.len(),
+        cap_eligible_tier_inversions,
+    });
+    let candidates = ranked
         .into_iter()
-        .map(|mut candidate| {
-            if let Some(history) = request
-                .candidate_history
-                .get(&candidate.document.paper.paper_id)
-                .filter(|_| behavior_history_enabled)
-            {
-                candidate.qualified_impressions = history.qualified_impressions;
-                candidate.hidden = history.hidden;
-                candidate.negative_feedback = history.negative_feedback;
-                let bounded_impressions =
-                    u16::try_from(history.qualified_impressions.min(5)).unwrap_or(5);
-                candidate.features.repeat_exposure = f32::from(bounded_impressions) / 5.0;
-                candidate.features.negative_feedback =
-                    if history.negative_feedback { 1.0 } else { 0.0 };
-            }
-            candidate
-        })
-        .map(|candidate| {
-            let base_score = request.scoring_policy.score(candidate.features)?;
-            Ok(ScoredCandidate {
-                candidate,
-                base_score,
-            })
-        })
-        .collect::<Result<Vec<_>, ScoringPolicyError>>()?;
-    let candidates = rerank(scored, &request.rerank_policy)?
-        .into_iter()
-        .map(|scored| {
-            let explanations = explain_candidate(&scored.candidate)?;
+        .map(|mut scored| {
+            let citation_evidence =
+                evidence_by_paper.remove(&scored.candidate.document.paper.paper_id);
+            let explanations = match &citation_evidence {
+                Some(evidence) => {
+                    order_citation_reasons(&mut scored.candidate, evidence)?;
+                    explain_candidate_with_citation(&scored.candidate, evidence)?
+                }
+                None => explain_candidate(&scored.candidate)?,
+            };
             Ok(BuiltRecommendationCandidate {
                 scored,
                 explanations,
+                citation_evidence,
             })
         })
         .collect::<Result<Vec<_>, ExplanationError>>()?;
@@ -289,7 +342,48 @@ async fn build_recommendation_batch_with_specs(
         policy_version: request.scoring_policy.version,
         seed: request.rerank_policy.batch_seed,
         candidates,
+        citation_coverage,
     })
+}
+
+// Structured citation and author evidence is complete for the authorized
+// page, even if an independent fanout task times out. Fill those two sources
+// from the same matchers without dropping or demoting their candidates.
+fn preserve_classified_candidates(
+    mut generated: Vec<Vec<crate::GeneratedCandidate>>,
+    request: &OwnedCandidateGenerationRequest,
+    citation: &BTreeMap<PaperId, CitationCandidateEvidence>,
+) -> Vec<Vec<crate::GeneratedCandidate>> {
+    let classified =
+        generated
+            .iter()
+            .flatten()
+            .fold(BTreeMap::<_, _>::new(), |mut seen, candidate| {
+                let sources = seen
+                    .entry(candidate.document.paper.paper_id)
+                    .or_insert((false, false));
+                sources.0 |= candidate.sources.contains(&CandidateSource::Citation);
+                sources.1 |= candidate.sources.contains(&CandidateSource::AuthorFollow);
+                seen
+            });
+    let followed = AuthorGenerator::followed_names(&request.profile);
+    let mut recovered = Vec::new();
+    for document in &request.documents {
+        let paper_id = document.paper.paper_id;
+        let (has_citation, has_author) = classified.get(&paper_id).copied().unwrap_or_default();
+        if !has_citation && let Some(evidence) = citation.get(&paper_id) {
+            recovered.extend(CitationGenerator::candidate_for(document, evidence));
+        }
+        if !has_author {
+            recovered.extend(AuthorGenerator::candidate_for(
+                document,
+                &followed,
+                request.now,
+            ));
+        }
+    }
+    generated.push(recovered);
+    generated
 }
 
 #[derive(Debug, Clone)]
@@ -298,6 +392,7 @@ struct OwnedCandidateGenerationRequest {
     documents: Vec<CandidateDocument>,
     now: DateTime<Utc>,
     limit: usize,
+    citation: Option<Arc<BTreeMap<PaperId, CitationCandidateEvidence>>>,
 }
 
 impl OwnedCandidateGenerationRequest {
@@ -369,16 +464,20 @@ impl GeneratorImplementation {
 
     fn generate(
         self,
-        request: &CandidateGenerationRequest<'_>,
+        request: &OwnedCandidateGenerationRequest,
     ) -> Result<Vec<crate::GeneratedCandidate>, CandidateGenerationError> {
+        let borrowed = request.borrowed();
         match self {
-            Self::Recent => RecentGenerator.generate(request),
-            Self::Following => FollowingGenerator.generate(request),
-            Self::Author => AuthorGenerator.generate(request),
-            Self::Affinity => AffinityGenerator.generate(request),
-            Self::Semantic => SemanticGenerator::default().generate(request),
-            Self::Citation => CitationGenerator.generate(request),
-            Self::Exploration => ExplorationGenerator::default().generate(request),
+            Self::Recent => RecentGenerator.generate(&borrowed),
+            Self::Following => FollowingGenerator.generate(&borrowed),
+            Self::Author => AuthorGenerator.generate(&borrowed),
+            Self::Affinity => AffinityGenerator.generate(&borrowed),
+            Self::Semantic => SemanticGenerator::default().generate(&borrowed),
+            Self::Citation => match &request.citation {
+                Some(evidence) => CitationGenerator::generate_classified(&borrowed, evidence),
+                None => CitationGenerator.generate(&borrowed),
+            },
+            Self::Exploration => ExplorationGenerator::default().generate(&borrowed),
             #[cfg(test)]
             Self::Delayed { delay, delegate } => {
                 std::thread::sleep(delay);
@@ -486,8 +585,7 @@ async fn run_generator_task(
     timeout: Duration,
 ) -> GeneratorTaskOutput {
     let started = Instant::now();
-    let task =
-        tokio::task::spawn_blocking(move || spec.implementation.generate(&request.borrowed()));
+    let task = tokio::task::spawn_blocking(move || spec.implementation.generate(&request));
     match tokio::time::timeout(timeout, task).await {
         Ok(Ok(Ok(candidates))) => GeneratorTaskOutput {
             run: RecommendationGeneratorRun {
@@ -542,6 +640,8 @@ pub enum BatchBuildError {
     Rerank(#[from] RerankError),
     #[error(transparent)]
     Explanation(#[from] ExplanationError),
+    #[error(transparent)]
+    Citation(#[from] CitationEvidenceError),
 }
 
 #[cfg(test)]
@@ -617,7 +717,160 @@ mod tests {
                 ..RerankPolicy::default()
             },
             scoring_policy: ScoringPolicy::default(),
+            citation_online: None,
         }
+    }
+
+    #[tokio::test]
+    async fn citation_slots_share_caps_and_choose_best_eligible_version_before_exploration() {
+        use crate::{CitationDirection::Reference, citation_online::tests::pair};
+
+        let mut profile = profile(true);
+        profile.historical_seeds.clear();
+        profile.authors.insert("Followed Author".to_owned());
+        let mut documents = [
+            document(1, "cs.CL"),
+            document(2, "cs.CL"),
+            document(3, "cs.CL"),
+            document(4, "cs.AI"),
+            document(5, "cs.CL"),
+        ];
+        documents[0].paper.updated_at += chrono::TimeDelta::days(1);
+        documents[2].paper.authors = vec!["Another author".to_owned()];
+        documents[3].paper.authors = vec!["Explorer author".to_owned()];
+        documents[4].paper.authors = vec!["Followed Author".to_owned()];
+        documents[4].paper.arxiv_id = "2401.00001v2".to_owned();
+        let input = CitationOnlineInputs {
+            pairs: vec![
+                pair(1, 20, 4, Reference),
+                pair(2, 20, 4, Reference),
+                pair(3, 21, 3, Reference),
+            ],
+            ..CitationOnlineInputs::default()
+        };
+        let history = BTreeMap::new();
+        let observer = RecordingObserver::default();
+        let mut request = fanout_request(
+            RecommendationMode::ForYou,
+            &profile,
+            &documents,
+            &history,
+            &observer,
+            DEFAULT_GENERATOR_TIMEOUT,
+        );
+        request.scoring_policy.version = SCORING_POLICY_VERSION_CITATION_ONLINE_V1.to_owned();
+        request.scoring_policy.follow = 4.0;
+        request.scoring_policy.graph = 0.0;
+        request.citation_online = Some(&input);
+        request.rerank_policy.max_per_author = 1;
+        request.rerank_policy.exploration_positions = BTreeSet::from([0, 1, 2]);
+        let batch = build_recommendation_batch(request).await.unwrap();
+        assert_eq!(
+            batch
+                .candidates
+                .iter()
+                .map(|candidate| {
+                    (
+                        candidate.scored.candidate.document.paper.paper_id.as_u128(),
+                        candidate.citation_evidence.as_ref().unwrap().tier,
+                    )
+                })
+                .collect::<Vec<_>>(),
+            vec![(1, 4), (3, 3), (4, 0)],
+        );
+        assert_eq!(
+            batch.candidates[0].scored.candidate.document.paper,
+            documents[0].paper
+        );
+        let coverage = batch.citation_coverage.unwrap();
+        assert_eq!(coverage.root_neighbor_count, 3);
+        assert_eq!(coverage.cap_eligible_tier_inversions, 0);
+    }
+
+    #[tokio::test]
+    async fn unavailable_fanout_cannot_drop_classified_sources_or_credit_generic_follows() {
+        use crate::{
+            CitationDirection::Citing, ExplanationCode, LearnerVote, LearnerWeights,
+            citation_online::tests::pair,
+        };
+
+        let mut profile = profile(true);
+        profile.historical_seeds.clear();
+        profile.authors.insert(" ada reader ".to_owned());
+        let mut documents = [
+            document(1, "cs.AI"),
+            document(2, "cs.AI"),
+            document(3, "cs.CL"),
+        ];
+        documents[0].paper.authors.clear();
+        documents[2].paper.authors.clear();
+        let input = CitationOnlineInputs {
+            pairs: vec![pair(1, 20, 2, Citing)],
+            weights: LearnerWeights::from_votes(
+                DateTime::UNIX_EPOCH,
+                &[LearnerVote {
+                    id: PaperId::from_u128(101),
+                    base_arxiv_id: "2401.00101".to_owned(),
+                    created_at: DateTime::UNIX_EPOCH,
+                    feature_mask: 4,
+                    relevant: true,
+                }],
+            )
+            .unwrap(),
+        };
+        let history = BTreeMap::new();
+        let observer = RecordingObserver::default();
+        let mut request = fanout_request(
+            RecommendationMode::ForYou,
+            &profile,
+            &documents,
+            &history,
+            &observer,
+            DEFAULT_GENERATOR_TIMEOUT,
+        );
+        request.scoring_policy.version = SCORING_POLICY_VERSION_CITATION_ONLINE_V1.to_owned();
+        request.citation_online = Some(&input);
+        let batch = build_recommendation_batch_with_specs(
+            request,
+            Some(vec![
+                GeneratorSpec::primary(RecommendationGeneratorClass::Following),
+                GeneratorSpec {
+                    implementation: GeneratorImplementation::Failure,
+                    ..GeneratorSpec::primary(RecommendationGeneratorClass::Author)
+                },
+                GeneratorSpec {
+                    implementation: GeneratorImplementation::Failure,
+                    ..GeneratorSpec::primary(RecommendationGeneratorClass::Citation)
+                },
+            ]),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            batch
+                .candidates
+                .iter()
+                .map(|candidate| {
+                    let evidence = candidate.citation_evidence.as_ref().unwrap();
+                    (
+                        evidence.tier,
+                        evidence.feature_mask,
+                        candidate.explanations[0].code,
+                    )
+                })
+                .collect::<Vec<_>>(),
+            vec![
+                (2, 2, ExplanationCode::ArchivedPaperCitation),
+                (1, 4, ExplanationCode::FollowedAuthor),
+                (0, 0, ExplanationCode::FollowedCategory),
+            ],
+        );
+        assert_eq!(
+            batch.candidates[0].explanations[0].detail,
+            "This paper cites your archived paper ‘Historical root 20’."
+        );
+        assert!(batch.candidates[1].explanations[0].behavior_used);
+        assert!(!batch.candidates[2].explanations[0].behavior_used);
     }
 
     #[test]
@@ -664,13 +917,14 @@ mod tests {
                 ..RerankPolicy::default()
             },
             scoring_policy: ScoringPolicy::default(),
+            citation_online: None,
         })
         .await
         .unwrap();
         assert_eq!(batch.library_revision, 7);
         assert_eq!(batch.profile_revision, Some(3));
         assert_eq!(batch.candidates.len(), 1);
-        assert!(!batch.candidates[0].explanations.is_empty());
+        assert_ne!(batch.candidates[0].explanations, []);
     }
 
     #[tokio::test]
@@ -691,6 +945,7 @@ mod tests {
                 generator_observer: None,
                 rerank_policy: RerankPolicy::default(),
                 scoring_policy: ScoringPolicy::default(),
+                citation_online: None,
             })
             .await,
             Err(BatchBuildError::Policy(
@@ -725,11 +980,12 @@ mod tests {
             generator_observer: None,
             rerank_policy: RerankPolicy::default(),
             scoring_policy: ScoringPolicy::default(),
+            citation_online: None,
         })
         .await
         .unwrap();
         assert_eq!(batch.feedback_revision, 4);
-        assert!(batch.candidates.is_empty());
+        assert_eq!(batch.candidates, []);
     }
 
     #[tokio::test]
@@ -769,6 +1025,7 @@ mod tests {
                 generator_observer: None,
                 rerank_policy: RerankPolicy::default(),
                 scoring_policy: ScoringPolicy::default(),
+                citation_online: None,
             })
             .await
             .unwrap();
@@ -1036,6 +1293,6 @@ mod tests {
             .await;
             assert!(matches!(result, Err(BatchBuildError::InvalidRequest)));
         }
-        assert!(observer.runs().is_empty());
+        assert_eq!(observer.runs(), []);
     }
 }

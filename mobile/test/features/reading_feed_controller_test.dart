@@ -653,7 +653,7 @@ void main() {
   );
 
   test(
-    'batched recommendation pages append with page-local provenance',
+    'the three-card refill is single-flight and retains page-local provenance',
     () async {
       final remote = _ReadingFeedRemote();
       final cache = _RecordingReadingFeedPageCache();
@@ -667,6 +667,8 @@ void main() {
       remote.complete(
         0,
         _personalizedRecommendations(
+          mode: ReadingFeedRecommendationMode.forYou,
+          batchMetadata: _citationBatchMetadata,
           papers: firstPagePapers,
           nextCursor: 'opaque-batch-next',
         ),
@@ -674,21 +676,29 @@ void main() {
       await _settle();
       expect(controller.state.items, hasLength(20));
 
-      final load = controller.loadMore();
-      await _settle();
+      await controller.onCommittedPage(15);
+      expect(remote.requests, hasLength(1));
+      final load = controller.onCommittedPage(16);
+      await controller.onCommittedPage(17);
+      await controller.onCommittedPage(18);
+      expect(remote.requests, hasLength(2));
+      expect(remote.requests.map((request) => request.limit), [20, 20]);
+      expect(remote.requests.last.authEpoch, 1);
       expect(remote.requests.last.cursor, 'opaque-batch-next');
       remote.complete(
         1,
         _personalizedRecommendations(
-          papers: [_paper(21)],
+          mode: ReadingFeedRecommendationMode.forYou,
+          batchMetadata: _citationBatchMetadata,
+          papers: [_paper(21), _paper(22)],
           batchId: _otherBatchId,
         ),
       );
       await load;
 
       final state = controller.state;
-      expect(state.items, hasLength(21));
-      expect(state.items.last.paperId, _paper(21).paperId);
+      expect(state.items, hasLength(22));
+      expect(state.items[20].paperId, _paper(21).paperId);
       expect(state.recommendationBatchId, isNull);
       expect(state.recommendationProvenanceAt(0)?.batchId, _batchId);
       expect(state.recommendationProvenanceAt(0)?.rerankedPosition, 0);
@@ -698,24 +708,432 @@ void main() {
       expect(state.recommendationProvenanceAt(20)?.rerankedPosition, 0);
       expect(state.recommendationBatchIdAt(20), _otherBatchId);
       expect(state.recommendationPositionAt(20), 0);
+      expect(state.recommendationBatchIdAt(21), _otherBatchId);
+      expect(state.recommendationPositionAt(21), 1);
       expect(cache.savedPages, hasLength(1));
       expect(cache.savedPages.single.batchId, _batchId);
       expect(cache.savedPages.single.items, hasLength(20));
     },
   );
 
+  test('foreground authority refresh cancels and reopens the refill', () async {
+    final remote = _ReadingFeedRemote();
+    final controller = _controller(remote);
+    addTearDown(controller.dispose);
+    controller.updateInput(_input());
+    remote.complete(
+      0,
+      _personalizedRecommendations(papers: [_paper(1)], nextCursor: 'old'),
+    );
+    await _settle();
+
+    final obsolete = controller.onCommittedPage(0);
+    expect(controller.state.loadingMore, isTrue);
+    final refresh = controller.onForeground();
+    expect(remote.requests[1].cancellation?.isCancelled, isTrue);
+    expect(controller.state.loadingMore, isFalse);
+    await controller.onCommittedPage(0);
+    expect(remote.requests, hasLength(3));
+    expect(remote.requests.last.cursor, isNull);
+    remote.complete(
+      2,
+      _personalizedRecommendations(papers: [_paper(3)], nextCursor: 'new'),
+    );
+    await refresh;
+
+    final refill = controller.onCommittedPage(0);
+    expect(remote.requests.last.cursor, 'new');
+    remote.complete(1, _personalizedRecommendations(papers: [_paper(2)]));
+    await obsolete;
+    expect(controller.state.items.single.paperId, _paper(3).paperId);
+    expect(controller.state.loadingMore, isTrue);
+    remote.complete(
+      3,
+      _personalizedRecommendations(papers: [_paper(4)], batchId: _otherBatchId),
+    );
+    await refill;
+    expect(controller.state.items, hasLength(2));
+    expect(controller.state.loadingMore, isFalse);
+  });
+
+  for (final refillStartedBeforeRefresh in [true, false]) {
+    test(
+      'a failed authority refresh resumes a '
+      '${refillStartedBeforeRefresh ? 'canceled' : 'deferred'} committed refill',
+      () async {
+        final remote = _ReadingFeedRemote();
+        final recording = _RecordingTelemetrySink();
+        var now = DateTime.utc(2026, 8, 19);
+        final controller = _controller(
+          remote,
+          telemetry: recording,
+          clock: () => now,
+        );
+        addTearDown(controller.dispose);
+        controller.updateInput(_input());
+        remote.complete(
+          0,
+          _personalizedRecommendations(
+            mode: ReadingFeedRecommendationMode.forYou,
+            papers: [_paper(1)],
+            nextCursor: 'page-two',
+          ),
+        );
+        await _settle();
+
+        final canceledRefill = refillStartedBeforeRefresh
+            ? controller.onCommittedPage(0)
+            : null;
+        if (refillStartedBeforeRefresh) {
+          now = now.add(const Duration(milliseconds: 50));
+        }
+        final refresh = controller.onForeground();
+        final refreshIndex = refillStartedBeforeRefresh ? 2 : 1;
+        if (refillStartedBeforeRefresh) {
+          expect(remote.requests[1].cancellation?.isCancelled, isTrue);
+        } else {
+          await controller.onCommittedPage(0);
+        }
+        expect(remote.requests, hasLength(refreshIndex + 1));
+        expect(remote.requests[refreshIndex].cursor, isNull);
+        await _settle();
+        now = now.add(const Duration(milliseconds: 150));
+
+        remote.completeError(
+          refreshIndex,
+          const ApiException(code: 'READING_FEED_UNAVAILABLE', message: ''),
+        );
+        await refresh;
+
+        expect(remote.requests, hasLength(refreshIndex + 2));
+        expect(remote.requests.last.cursor, 'page-two');
+        if (canceledRefill != null) {
+          remote.complete(1, _personalizedRecommendations(papers: [_paper(3)]));
+          await canceledRefill;
+          expect(controller.state.items.single.paperId, _paper(1).paperId);
+          expect(controller.state.loadingMore, isTrue);
+        }
+        now = now.add(const Duration(milliseconds: 70));
+        remote.complete(
+          refreshIndex + 1,
+          _personalizedRecommendations(
+            mode: ReadingFeedRecommendationMode.forYou,
+            papers: [_paper(2)],
+            batchId: _otherBatchId,
+          ),
+        );
+        await _settle();
+        expect(controller.state.items.map((paper) => paper.paperId), [
+          _paper(1).paperId,
+          _paper(2).paperId,
+        ]);
+        expect(controller.state.loadingMore, isFalse);
+        expect(
+          recording.events
+              .where(
+                (event) =>
+                    event.$1 ==
+                    PakPerkTelemetryEvent.recommendationRefillCompleted,
+              )
+              .map((event) => event.$2),
+          [
+            if (refillStartedBeforeRefresh)
+              {
+                'recommendation_policy': 'weighted_v1',
+                'outcome': 'canceled',
+                'elapsed_ms': 50,
+              },
+            {
+              'recommendation_policy': 'weighted_v1',
+              'outcome': 'success',
+              'elapsed_ms': refillStartedBeforeRefresh ? 70 : 220,
+            },
+          ],
+        );
+      },
+    );
+  }
+
   test(
-    'batched continuation metadata mode or revision drift restarts closed',
+    'refresh replacing a pending For You refill reports it as stale',
+    () async {
+      final remote = _ReadingFeedRemote();
+      final recording = _RecordingTelemetrySink();
+      var now = DateTime.utc(2026, 8, 19);
+      final controller = _controller(
+        remote,
+        telemetry: recording,
+        clock: () => now,
+      );
+      addTearDown(controller.dispose);
+      controller.updateInput(_input());
+      remote.complete(
+        0,
+        _personalizedRecommendations(
+          mode: ReadingFeedRecommendationMode.forYou,
+          papers: [_paper(1)],
+          nextCursor: 'page-two',
+        ),
+      );
+      await _settle();
+
+      final refresh = controller.onForeground();
+      await controller.onCommittedPage(0);
+      now = now.add(const Duration(milliseconds: 150));
+      remote.complete(
+        1,
+        _personalizedRecommendations(
+          mode: ReadingFeedRecommendationMode.forYou,
+          papers: [_paper(2)],
+          nextCursor: 'new-page-two',
+        ),
+      );
+      await refresh;
+
+      expect(remote.requests, hasLength(2));
+      expect(
+        recording.events
+            .where(
+              (event) =>
+                  event.$1 ==
+                  PakPerkTelemetryEvent.recommendationRefillCompleted,
+            )
+            .map((event) => event.$2),
+        [
+          {
+            'recommendation_policy': 'weighted_v1',
+            'outcome': 'stale',
+            'elapsed_ms': 150,
+          },
+        ],
+      );
+    },
+  );
+
+  for (final (outcome, batchMetadata) in [
+    ('success', _citationBatchMetadata),
+    ('stale', _citationBatchMetadata),
+    ('failed', _batchMetadata),
+    ('canceled', _batchMetadata),
+  ]) {
+    test('committed For You refill records one $outcome duration', () async {
+      final remote = _ReadingFeedRemote();
+      final recording = _RecordingTelemetrySink();
+      var now = DateTime.utc(2026, 8, 19);
+      final controller = _controller(
+        remote,
+        telemetry: RedactingTelemetrySink(recording),
+        clock: () => now,
+      );
+      addTearDown(controller.dispose);
+      controller.updateInput(_input());
+      remote.complete(
+        0,
+        _personalizedRecommendations(
+          mode: ReadingFeedRecommendationMode.forYou,
+          batchMetadata: batchMetadata,
+          papers: [for (var index = 1; index <= 20; index++) _paper(index)],
+          nextCursor: 'page-two',
+        ),
+      );
+      await _settle();
+
+      await controller.onCommittedPage(15);
+      final refill = controller.onCommittedPage(16);
+      await controller.onCommittedPage(17);
+      expect(remote.requests, hasLength(2));
+      now = now.add(const Duration(milliseconds: 217));
+      final refillEvents = recording.events
+          .where(
+            (event) =>
+                event.$1 == PakPerkTelemetryEvent.recommendationRefillCompleted,
+          )
+          .map((event) => event.$2);
+      switch (outcome) {
+        case 'success':
+          remote.complete(
+            1,
+            _personalizedRecommendations(
+              mode: ReadingFeedRecommendationMode.forYou,
+              batchMetadata: batchMetadata,
+              papers: [_paper(21)],
+              batchId: _otherBatchId,
+            ),
+          );
+        case 'stale':
+          remote.completeError(
+            1,
+            const ApiException(code: 'READING_FEED_CURSOR_STALE', message: ''),
+          );
+        case 'failed':
+          remote.completeError(
+            1,
+            const ApiException(code: 'READING_FEED_UNAVAILABLE', message: ''),
+          );
+        case 'canceled':
+          controller.updateInput(_input(pendingImportCount: 1));
+          await _settle();
+          expect(refillEvents, hasLength(1));
+          now = now.add(const Duration(milliseconds: 50));
+          remote.complete(
+            1,
+            _personalizedRecommendations(
+              mode: ReadingFeedRecommendationMode.forYou,
+              batchMetadata: batchMetadata,
+              papers: [_paper(21)],
+              batchId: _otherBatchId,
+            ),
+          );
+      }
+      await refill;
+      expect(refillEvents.single, {
+        'recommendation_policy': batchMetadata.recommendationPolicyVersion,
+        'outcome': outcome,
+        'elapsed_ms': 217,
+      });
+    });
+  }
+
+  for (final (change, input, authority) in [
+    (
+      'pending save',
+      _input(pending: const LibraryPendingIntentCounts(saves: 1, removes: 0)),
+      QueueAuthority.pendingSave,
+    ),
+    (
+      'pending import',
+      _input(pendingImportCount: 1),
+      QueueAuthority.pendingSave,
+    ),
+    ('opt-out', _input(personalizationEnabled: false), QueueAuthority.unknown),
+    (
+      'account switch',
+      _input(accountId: _accountB, authEpoch: 2),
+      QueueAuthority.unknown,
+    ),
+    (
+      'library revision change',
+      _input(libraryRevision: 6),
+      QueueAuthority.unknown,
+    ),
+  ]) {
+    test('a paused For You refill stays hidden after $change', () async {
+      final remote = _ReadingFeedRemote();
+      final controller = _controller(remote);
+      addTearDown(controller.dispose);
+      controller.updateInput(_input());
+      remote.complete(
+        0,
+        _personalizedRecommendations(
+          mode: ReadingFeedRecommendationMode.forYou,
+          batchMetadata: _citationBatchMetadata,
+          papers: [_paper(1)],
+          nextCursor: 'page-two',
+        ),
+      );
+      await _settle();
+      final load = controller.onCommittedPage(0);
+      expect(controller.state.loadingMore, isTrue);
+
+      controller.updateInput(input);
+      expect(remote.requests[1].cancellation?.isCancelled, isTrue);
+      expect(controller.state.queueAuthority, authority);
+      expect(controller.state.items, isEmpty);
+      remote.complete(
+        1,
+        _personalizedRecommendations(
+          mode: ReadingFeedRecommendationMode.forYou,
+          batchMetadata: _citationBatchMetadata,
+          papers: [_paper(2)],
+          batchId: _otherBatchId,
+        ),
+      );
+      await load;
+      expect(controller.state.items, isEmpty);
+      expect(controller.state.recommendationsVisible, isFalse);
+      expect(controller.state.loadingMore, isFalse);
+    });
+  }
+
+  test('For You policy rollback restarts without appending', () async {
+    final remote = _ReadingFeedRemote();
+    final controller = _controller(remote);
+    addTearDown(controller.dispose);
+    controller.updateInput(_input());
+    remote.complete(
+      0,
+      _personalizedRecommendations(
+        mode: ReadingFeedRecommendationMode.forYou,
+        batchMetadata: _citationBatchMetadata,
+        papers: [_paper(1)],
+        nextCursor: 'citation-page-two',
+      ),
+    );
+    await _settle();
+    final refill = controller.onCommittedPage(0);
+    remote.complete(
+      1,
+      _personalizedRecommendations(
+        mode: ReadingFeedRecommendationMode.forYou,
+        papers: [_paper(2)],
+        batchId: _otherBatchId,
+        batchMetadata: _batchMetadata,
+      ),
+    );
+    await refill;
+    expect(remote.requests, hasLength(3));
+    expect(remote.requests.last.cursor, isNull);
+    expect(controller.state.items, isEmpty);
+    remote.complete(
+      2,
+      _personalizedRecommendations(
+        mode: ReadingFeedRecommendationMode.forYou,
+        papers: [_paper(3)],
+        batchId: _otherBatchId,
+        batchMetadata: _batchMetadata,
+      ),
+    );
+    await _settle();
+    expect(controller.state.items.single.paperId, _paper(3).paperId);
+    expect(
+      controller.state.recommendationProvenanceAt(0)?.batchMetadata,
+      _batchMetadata,
+    );
+  });
+
+  test(
+    'incompatible or reused continuation provenance restarts closed',
     () async {
       final incompatiblePages = <ReadingFeedPage>[
+        _personalizedRecommendations(papers: [_paper(2)], batchId: _batchId),
         _personalizedRecommendations(
           papers: [_paper(2)],
           batchId: _otherBatchId,
           batchMetadata: const ReadingFeedBatchMetadata(
             profileRevision: 4,
             feedbackRevision: 3,
-            algorithmVersion: 'ranker-v2',
-            recommendationPolicyVersion: 'policy-v2',
+            algorithmVersion: 'recommendations_v1',
+            recommendationPolicyVersion: 'weighted_v1',
+          ),
+        ),
+        _personalizedRecommendations(
+          papers: [_paper(2)],
+          batchId: _otherBatchId,
+          batchMetadata: const ReadingFeedBatchMetadata(
+            profileRevision: 5,
+            feedbackRevision: 2,
+            algorithmVersion: 'recommendations_v1',
+            recommendationPolicyVersion: 'weighted_v1',
+          ),
+        ),
+        _personalizedRecommendations(
+          papers: [_paper(2)],
+          batchId: _otherBatchId,
+          batchMetadata: const ReadingFeedBatchMetadata(
+            profileRevision: 4,
+            feedbackRevision: 2,
+            algorithmVersion: 'recommendations_v2',
+            recommendationPolicyVersion: 'weighted_v1',
           ),
         ),
         _personalizedRecommendations(
@@ -1103,6 +1521,7 @@ ReadingFeedControllerInput _input({
   List<LibraryListItem> localItems = const [],
   LibraryPendingIntentCounts pending = const LibraryPendingIntentCounts.empty(),
   int pendingImportCount = 0,
+  int libraryRevision = 5,
   bool offline = false,
   bool? personalizationEnabled = true,
   LibrarySaveIntentSignal? saveIntent,
@@ -1120,7 +1539,10 @@ ReadingFeedControllerInput _input({
     localItems: localItems,
     pendingIntents: pending,
     pendingImportCount: pendingImportCount,
-    checkpoint: const LibrarySyncCheckpoint(initialized: true, lastRevision: 5),
+    checkpoint: LibrarySyncCheckpoint(
+      initialized: true,
+      lastRevision: libraryRevision,
+    ),
     offline: offline,
     dataReady: true,
     personalizationEnabled: personalizationEnabled,
@@ -1301,8 +1723,10 @@ final class _ReadingFeedRemote implements ReadingFeedRemoteDataSource {
       <
         ({
           int authEpoch,
+          int limit,
           String? cursor,
           ReadingFeedRecommendationMode? recommendationMode,
+          RequestCancellation? cancellation,
         })
       >[];
   final _responses = <Completer<ReadingFeedPage>>[];
@@ -1319,8 +1743,10 @@ final class _ReadingFeedRemote implements ReadingFeedRemoteDataSource {
   }) {
     requests.add((
       authEpoch: expectedAuthEpoch,
+      limit: limit,
       cursor: cursor,
       recommendationMode: recommendationMode,
+      cancellation: cancellation,
     ));
     final response = Completer<ReadingFeedPage>();
     _responses.add(response);
@@ -1389,11 +1815,17 @@ const _accountA = '10000000-0000-4000-8000-000000000001';
 const _accountB = '20000000-0000-4000-8000-000000000002';
 const _batchId = '70000000-0000-7000-8000-000000000007';
 const _otherBatchId = '70000000-0000-7000-8000-000000000008';
+const _citationBatchMetadata = ReadingFeedBatchMetadata(
+  profileRevision: 4,
+  feedbackRevision: 2,
+  algorithmVersion: 'recommendations_v1',
+  recommendationPolicyVersion: 'citation_online_v1',
+);
 const _batchMetadata = ReadingFeedBatchMetadata(
   profileRevision: 4,
   feedbackRevision: 2,
-  algorithmVersion: 'ranker-v2',
-  recommendationPolicyVersion: 'policy-v2',
+  algorithmVersion: 'recommendations_v1',
+  recommendationPolicyVersion: 'weighted_v1',
 );
 
 const _strictReadingFeedFlags = FeatureFlags(

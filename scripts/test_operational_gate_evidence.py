@@ -59,8 +59,8 @@ def subject(gate: str) -> dict[str, object]:
                 "pakperk-restore-evidence-v2:sha256:", "verified restore evidence"
             ),
             "starting_schema_version": 18,
-            "ending_schema_version": 24,
-            "embedded_migration_version": 24,
+            "ending_schema_version": 26,
+            "embedded_migration_version": 26,
             "starting_app_version": "0.1.0",
             "ending_app_version": "0.2.0",
             "resolution_path": "schema_compatible_code_rollback",
@@ -308,9 +308,11 @@ class OperationalGateEvidenceTests(unittest.TestCase):
                 "[0-9][0-9][0-9][0-9]_*.sql"
             )
         )
-        self.assertEqual(migrations, list(range(1, 25)))
         self.assertEqual(evidence.PRIOR_DATABASE_MIGRATION, 18)
-        self.assertEqual(evidence.CURRENT_DATABASE_MIGRATION, 24)
+        self.assertEqual(evidence.CURRENT_DATABASE_MIGRATION, migrations[-1])
+        self.assertEqual(
+            migrations, list(range(1, evidence.CURRENT_DATABASE_MIGRATION + 1))
+        )
 
         values_text = (
             repository / "deploy" / "helm" / "pakperk" / "values.yaml"
@@ -708,7 +710,7 @@ class OperationalGateEvidenceTests(unittest.TestCase):
         cases: list[tuple[str, str, Callable[[dict[str, object]], None]]] = []
 
         def embedded_version(value: dict[str, object]) -> None:
-            value["subject"]["embedded_migration_version"] = 10
+            value["subject"]["embedded_migration_version"] = 24
 
         def resolution_path(value: dict[str, object]) -> None:
             value["subject"]["resolution_path"] = "statement_only"

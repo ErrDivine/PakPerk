@@ -55,6 +55,12 @@ on:
         required: true
         default: false
         type: boolean
+      expected_recommendation_policy:
+        description: For the protected recommendation scenario, require a persisted For You page under this policy
+        required: false
+        default: disabled
+        type: choice
+        options: [disabled, weighted_v1, citation_online_v1]
       include_paper_title_search:
         description: Exercise the protected title-query cache fixture; choose a 5-sample floor
         required: true
@@ -131,6 +137,7 @@ jobs:
       INCLUDE_COMMENTS: ${{ inputs.include_authenticated_comments }}
       INCLUDE_READING_QUEUE: ${{ inputs.include_reading_feed_queue }}
       INCLUDE_READING_RECOMMENDATIONS: ${{ inputs.include_reading_feed_recommendations }}
+      EXPECTED_RECOMMENDATION_POLICY: ${{ inputs.expected_recommendation_policy }}
       INCLUDE_PAPER_SEARCH: ${{ inputs.include_paper_title_search }}
       ALLOW_MUTATIONS: ${{ inputs.allow_library_mutations }}
       MUTATION_CONFIRMATION: ${{ inputs.mutation_confirmation }}
@@ -210,6 +217,14 @@ jobs:
               *) echo "A boolean dispatch input is outside true or false." >&2; exit 2 ;;
             esac
           done
+          case "$EXPECTED_RECOMMENDATION_POLICY" in
+            disabled|weighted_v1|citation_online_v1) ;;
+            *) echo "expected_recommendation_policy is outside the reviewed workflow choices." >&2; exit 2 ;;
+          esac
+          if [[ "$EXPECTED_RECOMMENDATION_POLICY" != "disabled" && "$INCLUDE_READING_RECOMMENDATIONS" != "true" ]]; then
+            echo "expected_recommendation_policy requires include_reading_feed_recommendations." >&2
+            exit 2
+          fi
           if [[ "$ALLOW_MUTATIONS" == "true" && "$MUTATION_CONFIRMATION" != "RUN_DEDICATED_STAGING_LIBRARY_MUTATIONS" ]]; then
             echo "Mutation confirmation did not match the required phrase." >&2
             exit 2
@@ -314,6 +329,9 @@ jobs:
             printf '%s' "$STAGING_READING_RECOMMENDATION_TOKEN" >"$recommendation_token_file"
             chmod 0600 "$recommendation_token_file"
             arguments+=(--reading-feed-recommendation-token-file "$recommendation_token_file")
+            if [[ "$EXPECTED_RECOMMENDATION_POLICY" != "disabled" ]]; then
+              arguments+=(--expected-recommendation-policy "$EXPECTED_RECOMMENDATION_POLICY")
+            fi
           fi
           unset STAGING_READING_RECOMMENDATION_TOKEN
           if [[ "$INCLUDE_PAPER_SEARCH" == "true" ]]; then

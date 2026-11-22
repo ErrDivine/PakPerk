@@ -1527,6 +1527,7 @@ mod tests {
             "/v1/me/blocked-users/{user_id}",
             "/v1/me/blocked-users",
             "/v1/me/comments",
+            "/v1/product-surveys",
         ];
         for path in expected {
             assert!(actual.contains(&path), "OpenAPI is missing {path}");
