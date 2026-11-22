@@ -249,16 +249,11 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('Save'), findsNothing);
       expect(find.byIcon(Icons.bookmark_outline), findsOneWidget);
-      expect(find.text('Comments'), findsOneWidget);
+      expect(find.byIcon(Icons.forum_outlined), findsOneWidget);
       expect(find.text('arXiv'), findsOneWidget);
-      for (final key in const [
-        ValueKey('paper-comments-label'),
-        ValueKey('paper-arxiv-label'),
-      ]) {
-        final label = tester.widget<Text>(find.byKey(key));
-        expect(label.maxLines, isNull);
-        expect(label.overflow, isNull);
-      }
+      final arxivLabel = tester.widget<Text>(find.text('arXiv'));
+      expect(arxivLabel.maxLines, isNull);
+      expect(arxivLabel.overflow, isNull);
 
       expect(find.bySemanticsLabel('Save to To Read'), findsOneWidget);
       expect(find.bySemanticsLabel('Open paper discussions'), findsOneWidget);

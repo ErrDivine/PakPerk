@@ -43,20 +43,33 @@ class PaperActionBar extends ConsumerWidget {
       _PaperArxivControl(paper: paper, interactionContext: interactionContext),
     ];
 
-    return Material(
-      key: const ValueKey('paper-action-bar'),
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      child: FocusTraversalGroup(
-        policy: OrderedTraversalPolicy(),
-        child: Wrap(
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            for (var index = 0; index < actions.length; index++)
-              FocusTraversalOrder(
-                order: NumericFocusOrder(index.toDouble()),
-                child: actions[index],
+    final colors = Theme.of(context).colorScheme;
+    return Align(
+      alignment: AlignmentDirectional.centerEnd,
+      widthFactor: 1,
+      child: Material(
+        key: const ValueKey('paper-action-bar'),
+        color: colors.surfaceContainerLow,
+        shape: StadiumBorder(side: BorderSide(color: colors.outlineVariant)),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: FocusTraversalGroup(
+            policy: OrderedTraversalPolicy(),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var index = 0; index < actions.length; index++)
+                    FocusTraversalOrder(
+                      order: NumericFocusOrder(index.toDouble()),
+                      child: actions[index],
+                    ),
+                ],
               ),
-          ],
+            ),
+          ),
         ),
       ),
     );
@@ -87,11 +100,17 @@ class _PaperArxivControl extends ConsumerWidget {
           onTap: () => unawaited(_open(context, ref)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-            child: const Center(
+            child: Center(
               widthFactor: 1,
               child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: UiText('arXiv', key: ValueKey('paper-arxiv-label')),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: UiText(
+                  'arXiv',
+                  key: const ValueKey('paper-arxiv-label'),
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
               ),
             ),
           ),

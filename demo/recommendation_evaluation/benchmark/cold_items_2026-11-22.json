@@ -1,0 +1,95 @@
+{
+  "analysis_type": "exploratory post-hoc slice, not a new independent test",
+  "definition": "test positives with exactly zero training interactions, on the original unchanged 50-item pages",
+  "aggregation": "mean per eligible user across their eligible split-seed pages; 2000 user-cluster bootstrap resamples",
+  "eligible_users": 57,
+  "eligible_pages": 65,
+  "cold_positive_occurrences": 68,
+  "per_seed_pages": {
+    "42": 25,
+    "43": 21,
+    "44": 19
+  },
+  "summary": [
+    {
+      "model": "Random",
+      "cold_item_recall10": 0.2543859649122807,
+      "lo": 0.14912280701754385,
+      "hi": 0.3684210526315789
+    },
+    {
+      "model": "MostPop",
+      "cold_item_recall10": 0.0,
+      "lo": 0.0,
+      "hi": 0.0
+    },
+    {
+      "model": "TF-IDF",
+      "cold_item_recall10": 0.6608187134502923,
+      "lo": 0.5350877192982456,
+      "hi": 0.7719298245614035
+    },
+    {
+      "model": "ItemKNN",
+      "cold_item_recall10": 0.06335282651072124,
+      "lo": 0.017543859649122806,
+      "hi": 0.12475633528265107
+    },
+    {
+      "model": "PureSVD",
+      "cold_item_recall10": 0.0,
+      "lo": 0.0,
+      "hi": 0.0
+    },
+    {
+      "model": "PakPerk weighted",
+      "cold_item_recall10": 0.3606237816764133,
+      "lo": 0.2378167641325536,
+      "hi": 0.4756335282651072
+    },
+    {
+      "model": "PakPerk citation (prior)",
+      "cold_item_recall10": 0.3079922027290449,
+      "lo": 0.19298245614035087,
+      "hi": 0.4220272904483431
+    }
+  ],
+  "paired": [
+    {
+      "comparison": "PakPerk weighted minus Random",
+      "recall_difference": 0.10623781676413255,
+      "lo": -0.06045321637426901,
+      "hi": 0.266106237816764
+    },
+    {
+      "comparison": "PakPerk weighted minus MostPop",
+      "recall_difference": 0.3606237816764133,
+      "lo": 0.2378167641325536,
+      "hi": 0.4756335282651072
+    },
+    {
+      "comparison": "PakPerk weighted minus TF-IDF",
+      "recall_difference": -0.3001949317738791,
+      "lo": -0.4513157894736842,
+      "hi": -0.14912280701754385
+    },
+    {
+      "comparison": "PakPerk weighted minus ItemKNN",
+      "recall_difference": 0.29727095516569196,
+      "lo": 0.15692007797270954,
+      "hi": 0.4376218323586744
+    },
+    {
+      "comparison": "PakPerk weighted minus PureSVD",
+      "recall_difference": 0.3606237816764133,
+      "lo": 0.2378167641325536,
+      "hi": 0.4756335282651072
+    },
+    {
+      "comparison": "PakPerk weighted minus PakPerk citation (prior)",
+      "recall_difference": 0.05263157894736842,
+      "lo": -0.017543859649122806,
+      "hi": 0.12280701754385964
+    }
+  ]
+}

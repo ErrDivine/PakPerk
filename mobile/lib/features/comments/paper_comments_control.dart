@@ -22,7 +22,7 @@ final class PaperCommentsControl extends StatelessWidget {
       button: true,
       label: uiString(context, 'Open paper discussions'),
       child: Tooltip(
-        message: 'Open paper discussions',
+        message: uiString(context, 'Open paper discussions'),
         excludeFromSemantics: true,
         child: InkWell(
           key: const ValueKey('paper-comments-control'),
@@ -34,25 +34,20 @@ final class PaperCommentsControl extends StatelessWidget {
             ),
           ),
           child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: compact ? 56 : 48),
+            constraints: BoxConstraints(
+              minWidth: compact ? 48 : 0,
+              minHeight: 48,
+            ),
             child: Padding(
               padding: EdgeInsets.symmetric(
-                horizontal: compact ? 4 : 16,
-                vertical: compact ? 8 : 6,
+                horizontal: compact ? 12 : 16,
+                vertical: compact ? 12 : 6,
               ),
               child: compact
-                  ? const Column(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.forum_outlined, size: 22),
-                        SizedBox(height: 4),
-                        UiText(
-                          'Comments',
-                          key: ValueKey('paper-comments-label'),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                  ? const Icon(
+                      Icons.forum_outlined,
+                      size: 22,
+                      key: ValueKey('paper-comments-label'),
                     )
                   : const Row(
                       mainAxisAlignment: MainAxisAlignment.center,

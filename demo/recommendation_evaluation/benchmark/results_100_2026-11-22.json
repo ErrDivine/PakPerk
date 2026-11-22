@@ -1,0 +1,335 @@
+{
+  "configuration": {
+    "source_revision": "f5d94ca7f9a1a1814a50b4d03908a3a742d2b43c",
+    "seeds": [
+      42,
+      43,
+      44
+    ],
+    "eval_users": 1000,
+    "eligible_users": 2465,
+    "dataset_users": 5551,
+    "dataset_items": 16980,
+    "dataset_interactions": 204986,
+    "unique_citation_edges": 44709,
+    "split": "per-user random 60/20/20; min 25 interactions for evaluation",
+    "candidate_page": "original 5 positives + original 45 negatives + 50 additional uniform unobserved items",
+    "selection": "1000 fixed users sampled using seed 20261122; all users used for training",
+    "bootstrap": "2000 user-cluster bootstrap resamples after averaging the three split seeds",
+    "python": "3.12.5",
+    "numpy": "1.26.4",
+    "scipy": "1.14.1",
+    "sklearn": "1.5.2",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "tfidf_features": 30000,
+    "audit": [
+      {
+        "seed": 42,
+        "input_sha256": "1e4f097415a30b83deda13d01f254c1af7744d5eeb85c489e5e7cefb5d2ab5e5",
+        "train_interactions": 120854,
+        "preserved_original_pages": 1000,
+        "elapsed_seconds": 46.342
+      },
+      {
+        "seed": 43,
+        "input_sha256": "0cf8ccf0c2fa44c25d4c28e1d4ff5621e220682dd21533d619cc10bd21c90b6e",
+        "train_interactions": 120854,
+        "preserved_original_pages": 1000,
+        "elapsed_seconds": 39.403
+      },
+      {
+        "seed": 44,
+        "input_sha256": "5f724c8ec83f323ffa2c3480a31cec3adb24dc9eaf416dbdab72325eec555ff2",
+        "train_interactions": 120854,
+        "preserved_original_pages": 1000,
+        "elapsed_seconds": 43.622
+      }
+    ],
+    "data_manifest": {
+      "repository": "https://github.com/js05212/citeulike-a",
+      "commit": "91b603922d7f2d3db18071d4798bf78c9c5d1680",
+      "files": {
+        "users.dat": {
+          "url": "https://raw.githubusercontent.com/js05212/citeulike-a/91b603922d7f2d3db18071d4798bf78c9c5d1680/users.dat",
+          "bytes": 1094785,
+          "sha256": "53211d82c14ff261e595634d285ed9fbf8049cf81dcb751d924d695b9612a02c"
+        },
+        "raw-data.csv": {
+          "url": "https://raw.githubusercontent.com/js05212/citeulike-a/91b603922d7f2d3db18071d4798bf78c9c5d1680/raw-data.csv",
+          "bytes": 23719886,
+          "sha256": "10b7a15ac2f7f1e03c6c8229c1398b716b89edfd199dbbdb7be547345d51c50f"
+        },
+        "citations.dat": {
+          "url": "https://raw.githubusercontent.com/js05212/citeulike-a/91b603922d7f2d3db18071d4798bf78c9c5d1680/citations.dat",
+          "bytes": 511127,
+          "sha256": "78458ba6b6f013552c43f47dbec1c2d19073820155c40567744cd8a038044364"
+        }
+      }
+    },
+    "candidate_count": 100,
+    "positive_count": 5,
+    "negative_count": 95,
+    "models": [
+      "PakPerk weighted",
+      "MostPop",
+      "Citation-neighbor"
+    ],
+    "citation_baseline": "count direct undirected edges to up to 50 training-history papers; ties: training popularity, then common seeded random key",
+    "previous_results_sha256": "88992170a8f9cf9a0a087935e21144d7ef10b7b49491dce29b16f0d4777ca785",
+    "scope": "weighted engine ranking only; no change to production API page limits or citation policy 50-item limit",
+    "parameter_selection": "both baselines fixed before 100-candidate evaluation; no tuning on test data"
+  },
+  "summary": [
+    {
+      "model": "PakPerk weighted",
+      "coverage": 0.29330585001963094,
+      "ndcg10": {
+        "mean": 0.42958715189985786,
+        "lo": 0.41745658375265543,
+        "hi": 0.440779415312227
+      },
+      "recall10": {
+        "mean": 0.40493333333333337,
+        "lo": 0.39333166666666664,
+        "hi": 0.4156016666666667
+      },
+      "precision10": {
+        "mean": 0.20246666666666668,
+        "lo": 0.19666583333333332,
+        "hi": 0.20780083333333335
+      },
+      "mrr10": {
+        "mean": 0.6991898148148148,
+        "lo": 0.6831167361111111,
+        "hi": 0.7145003472222222
+      },
+      "hit10": {
+        "mean": 0.9113333333333332,
+        "lo": 0.899,
+        "hi": 0.921675
+      }
+    },
+    {
+      "model": "MostPop",
+      "coverage": 0.13056537102473498,
+      "ndcg10": {
+        "mean": 0.2374510653676615,
+        "lo": 0.22679178487936366,
+        "hi": 0.24867229593509704
+      },
+      "recall10": {
+        "mean": 0.26353333333333334,
+        "lo": 0.2518666666666667,
+        "hi": 0.2756683333333334
+      },
+      "precision10": {
+        "mean": 0.13176666666666667,
+        "lo": 0.12593333333333334,
+        "hi": 0.1378341666666667
+      },
+      "mrr10": {
+        "mean": 0.38443346560846553,
+        "lo": 0.36762748015873015,
+        "hi": 0.40063768187830684
+      },
+      "hit10": {
+        "mean": 0.7283333333333333,
+        "lo": 0.7086666666666667,
+        "hi": 0.746675
+      }
+    },
+    {
+      "model": "Citation-neighbor",
+      "coverage": 0.19740871613663133,
+      "ndcg10": {
+        "mean": 0.4680496957127421,
+        "lo": 0.454889218232614,
+        "hi": 0.4799043265133384
+      },
+      "recall10": {
+        "mean": 0.44266666666666665,
+        "lo": 0.4297266666666667,
+        "hi": 0.45526666666666665
+      },
+      "precision10": {
+        "mean": 0.22133333333333333,
+        "lo": 0.21486333333333335,
+        "hi": 0.22763333333333333
+      },
+      "mrr10": {
+        "mean": 0.737778835978836,
+        "lo": 0.7222128141534392,
+        "hi": 0.7525743386243388
+      },
+      "hit10": {
+        "mean": 0.9203333333333332,
+        "lo": 0.9096666666666666,
+        "hi": 0.9306666666666665
+      }
+    }
+  ],
+  "paired": [
+    {
+      "baseline": "MostPop",
+      "metric": "ndcg10",
+      "difference": 0.19213608653219635,
+      "lo": 0.17603279460549293,
+      "hi": 0.20739122644829946
+    },
+    {
+      "baseline": "MostPop",
+      "metric": "recall10",
+      "difference": 0.14139999999999997,
+      "lo": 0.12533333333333332,
+      "hi": 0.1564733333333333
+    },
+    {
+      "baseline": "MostPop",
+      "metric": "precision10",
+      "difference": 0.07069999999999999,
+      "lo": 0.06266666666666666,
+      "hi": 0.07823666666666665
+    },
+    {
+      "baseline": "MostPop",
+      "metric": "mrr10",
+      "difference": 0.3147563492063492,
+      "lo": 0.2914883366402117,
+      "hi": 0.3373940476190476
+    },
+    {
+      "baseline": "MostPop",
+      "metric": "hit10",
+      "difference": 0.183,
+      "lo": 0.16133333333333336,
+      "hi": 0.20467499999999997
+    },
+    {
+      "baseline": "Citation-neighbor",
+      "metric": "ndcg10",
+      "difference": -0.03846254381288421,
+      "lo": -0.04744118284753858,
+      "hi": -0.030231048390424987
+    },
+    {
+      "baseline": "Citation-neighbor",
+      "metric": "recall10",
+      "difference": -0.037733333333333334,
+      "lo": -0.04860333333333334,
+      "hi": -0.0276
+    },
+    {
+      "baseline": "Citation-neighbor",
+      "metric": "precision10",
+      "difference": -0.018866666666666667,
+      "lo": -0.02430166666666667,
+      "hi": -0.0138
+    },
+    {
+      "baseline": "Citation-neighbor",
+      "metric": "mrr10",
+      "difference": -0.03858902116402116,
+      "lo": -0.04971750992063492,
+      "hi": -0.02823421957671958
+    },
+    {
+      "baseline": "Citation-neighbor",
+      "metric": "hit10",
+      "difference": -0.008999999999999998,
+      "lo": -0.021,
+      "hi": 0.003333333333333333
+    }
+  ],
+  "per_seed": [
+    {
+      "seed": 42,
+      "model": "PakPerk weighted",
+      "ndcg10": 0.43185362798262594,
+      "recall10": 0.41220000000000007,
+      "precision10": 0.20610000000000003,
+      "mrr10": 0.6904607142857143,
+      "hit10": 0.914,
+      "coverage": 0.29499411071849235
+    },
+    {
+      "seed": 42,
+      "model": "MostPop",
+      "ndcg10": 0.23680425591582605,
+      "recall10": 0.26339999999999997,
+      "precision10": 0.13169999999999998,
+      "mrr10": 0.38170039682539686,
+      "hit10": 0.719,
+      "coverage": 0.1306831566548881
+    },
+    {
+      "seed": 42,
+      "model": "Citation-neighbor",
+      "ndcg10": 0.467855889420503,
+      "recall10": 0.448,
+      "precision10": 0.224,
+      "mrr10": 0.726745238095238,
+      "hit10": 0.913,
+      "coverage": 0.19840989399293285
+    },
+    {
+      "seed": 43,
+      "model": "PakPerk weighted",
+      "ndcg10": 0.4251598814199946,
+      "recall10": 0.39860000000000007,
+      "precision10": 0.19930000000000003,
+      "mrr10": 0.6989051587301588,
+      "hit10": 0.905,
+      "coverage": 0.29257950530035337
+    },
+    {
+      "seed": 43,
+      "model": "MostPop",
+      "ndcg10": 0.23926945385496526,
+      "recall10": 0.26120000000000004,
+      "precision10": 0.13060000000000002,
+      "mrr10": 0.39716706349206343,
+      "hit10": 0.742,
+      "coverage": 0.13292108362779742
+    },
+    {
+      "seed": 43,
+      "model": "Citation-neighbor",
+      "ndcg10": 0.4643013731315078,
+      "recall10": 0.43739999999999996,
+      "precision10": 0.21869999999999998,
+      "mrr10": 0.7361507936507936,
+      "hit10": 0.929,
+      "coverage": 0.19811542991755005
+    },
+    {
+      "seed": 44,
+      "model": "PakPerk weighted",
+      "ndcg10": 0.43174794629695307,
+      "recall10": 0.404,
+      "precision10": 0.202,
+      "mrr10": 0.7082035714285714,
+      "hit10": 0.915,
+      "coverage": 0.2923439340400471
+    },
+    {
+      "seed": 44,
+      "model": "MostPop",
+      "ndcg10": 0.23627948633219326,
+      "recall10": 0.266,
+      "precision10": 0.133,
+      "mrr10": 0.3744329365079365,
+      "hit10": 0.724,
+      "coverage": 0.12809187279151943
+    },
+    {
+      "seed": 44,
+      "model": "Citation-neighbor",
+      "ndcg10": 0.47199182458621547,
+      "recall10": 0.44260000000000005,
+      "precision10": 0.22130000000000002,
+      "mrr10": 0.7504404761904762,
+      "hit10": 0.919,
+      "coverage": 0.19570082449941106
+    }
+  ]
+}

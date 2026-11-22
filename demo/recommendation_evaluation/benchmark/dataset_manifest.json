@@ -1,0 +1,21 @@
+{
+  "repository": "https://github.com/js05212/citeulike-a",
+  "commit": "91b603922d7f2d3db18071d4798bf78c9c5d1680",
+  "files": {
+    "users.dat": {
+      "url": "https://raw.githubusercontent.com/js05212/citeulike-a/91b603922d7f2d3db18071d4798bf78c9c5d1680/users.dat",
+      "bytes": 1094785,
+      "sha256": "53211d82c14ff261e595634d285ed9fbf8049cf81dcb751d924d695b9612a02c"
+    },
+    "raw-data.csv": {
+      "url": "https://raw.githubusercontent.com/js05212/citeulike-a/91b603922d7f2d3db18071d4798bf78c9c5d1680/raw-data.csv",
+      "bytes": 23719886,
+      "sha256": "10b7a15ac2f7f1e03c6c8229c1398b716b89edfd199dbbdb7be547345d51c50f"
+    },
+    "citations.dat": {
+      "url": "https://raw.githubusercontent.com/js05212/citeulike-a/91b603922d7f2d3db18071d4798bf78c9c5d1680/citations.dat",
+      "bytes": 511127,
+      "sha256": "78458ba6b6f013552c43f47dbec1c2d19073820155c40567744cd8a038044364"
+    }
+  }
+}

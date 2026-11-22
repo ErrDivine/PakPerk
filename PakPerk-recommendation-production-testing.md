@@ -5,6 +5,9 @@ The local P/Q/R/S fixture, PostgreSQL worker tests, and live OpenAlex client tes
 with the development key have passed. The checks below use the actual release
 candidate and protected staging or rollout environments.
 
+Local verification on Windows: [2026-11-22 results](docs/recommendation-testing-2026-11-22.md).
+These results do not satisfy the protected deployment and rollout gates below.
+
 ## 1. Verify the deployed staging candidate
 
 - [ ] Deploy the reviewed API image with schema 26 and `weighted_v1` selected.

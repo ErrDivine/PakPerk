@@ -1055,6 +1055,11 @@ async fn postgres_generation_jobs_bind_context_leases_retention_and_account_casc
 }
 
 fn metadata(unique: &str) -> PaperMetadata {
+    // PostgreSQL stores microseconds; Windows clocks can include finer precision.
+    let published_at = chrono::DateTime::from_timestamp_micros(
+        (Utc::now() - chrono::Duration::days(1)).timestamp_micros(),
+    )
+    .unwrap();
     let suffix = 10_000 + (Uuid::now_v7().as_u128() % 90_000) as u32;
     let arxiv_id = ArxivIdentifier {
         base_id: format!("2608.{suffix:05}"),
@@ -1067,8 +1072,8 @@ fn metadata(unique: &str) -> PaperMetadata {
         authors: vec![Author::from("Ada Reader".to_owned())],
         primary_category: "cs.CL".to_owned(),
         categories: vec!["cs.CL".to_owned()],
-        published_at: Utc::now() - chrono::Duration::days(1),
-        updated_at: Utc::now() - chrono::Duration::days(1),
+        published_at,
+        updated_at: published_at,
         abs_url: Url::parse(&format!("https://arxiv.org/abs/{}", arxiv_id.versioned())).unwrap(),
         pdf_url: Url::parse(&format!("https://arxiv.org/pdf/{}", arxiv_id.versioned())).unwrap(),
         doi: None,

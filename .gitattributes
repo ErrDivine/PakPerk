@@ -1,1 +1,2 @@
 mobile/android/gradlew.bat text eol=crlf
+deploy/helm/pakperk/files/alerts/pakperk-production-alert-policy.json text eol=lf
